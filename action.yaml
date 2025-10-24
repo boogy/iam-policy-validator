@@ -279,7 +279,7 @@ runs:
 
     - name: Upload validation report
       if: always() && inputs.output-file != ''
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: iam-policy-validation-report
         path: ${{ github.workspace }}/${{ inputs.output-file }}
