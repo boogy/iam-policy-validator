@@ -1,0 +1,35 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "S3GetWildcard",
+      "Effect": "Allow",
+      "Action": ["s3:Get*"],
+      "Resource": ["arn:aws:s3:::my-bucket/*"]
+    },
+    {
+      "Sid": "EC2DescribeWildcard",
+      "Effect": "Allow",
+      "Action": ["ec2:Describe*"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "InvalidWildcard",
+      "Effect": "Allow",
+      "Action": ["s3:InvalidPrefix*"],
+      "Resource": ["arn:aws:s3:::my-bucket/*"]
+    },
+    {
+      "Sid": "IAMListWildcard",
+      "Effect": "Allow",
+      "Action": ["iam:List*", "iam:Get*"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "LambdaInvoke",
+      "Effect": "Allow",
+      "Action": ["lambda:Invoke*"],
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:my-function"
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+# Multi-Region Validation
+# Validates policies across multiple AWS regions to ensure consistency
+
+name: Multi-Region Policy Validation
+
+on:
+  pull_request:
+    paths:
+      - 'policies/**/*.json'
+
+jobs:
+  validate-policies:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        region: [us-east-1, us-west-2, eu-west-1]
+      fail-fast: false  # Continue testing other regions even if one fails
+
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials for ${{ matrix.region }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
+          aws-region: ${{ matrix.region }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install IAM Validator
+        run: |
+          cd iam-policy-auditor
+          uv sync
+
+      - name: Validate with Access Analyzer in ${{ matrix.region }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          uv run iam-validator analyze \
+            --path ./policies/ \
+            --region ${{ matrix.region }} \
+            --format json \
+            --output validation-${{ matrix.region }}.json
+
+      - name: Upload validation report for ${{ matrix.region }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-${{ matrix.region }}
+          path: validation-${{ matrix.region }}.json
+
+  summarize:
+    needs: validate-policies
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Download all validation reports
+        uses: actions/download-artifact@v4
+        with:
+          path: reports/
+
+      - name: Post summary to PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const reports = fs.readdirSync('reports');
+            let summary = '## Multi-Region Validation Results\n\n';
+
+            reports.forEach(region => {
+              const reportPath = `reports/${region}/validation-${region}.json`;
+              if (fs.existsSync(reportPath)) {
+                const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+                summary += `### ${region}\n`;
+                summary += `- Total Policies: ${report.summary.total_policies}\n`;
+                summary += `- Valid: ${report.summary.valid_policies} ✅\n`;
+                summary += `- Invalid: ${report.summary.invalid_policies} ❌\n\n`;
+              }
+            });
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });

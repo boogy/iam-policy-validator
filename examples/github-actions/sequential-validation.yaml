@@ -1,0 +1,70 @@
+# Sequential Validation Workflow (Recommended)
+# 1. Run AWS Access Analyzer first (fast, official AWS validation)
+# 2. If Access Analyzer passes, run full custom validation
+# 3. Post both results as separate PR comments
+
+name: Sequential IAM Policy Validation
+
+on:
+  pull_request:
+    paths:
+      - 'policies/**/*.json'
+      - 'policies/**/*.yaml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write  # Required for AWS OIDC
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
+          aws-region: us-east-1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install IAM Validator
+        run: |
+          cd iam-policy-auditor
+          uv sync
+
+      - name: Sequential Validation (Access Analyzer → Custom Checks)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # Run Access Analyzer first, then full validation if it passes
+          # Two separate comments will be posted to the PR:
+          # 1. Access Analyzer results (posted immediately)
+          # 2. Custom validation results (posted only if Access Analyzer passes)
+          uv run iam-validator analyze \
+            --path ./policies/ \
+            --github-comment \
+            --run-all-checks \
+            --github-review \
+            --fail-on-warnings
+
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: |
+            *.json
+            *.md
+          retention-days: 30

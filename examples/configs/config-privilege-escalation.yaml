@@ -1,0 +1,36 @@
+# Configuration to test policy-level privilege escalation detection
+
+checks:
+  security_best_practices:
+    enabled: true
+    description: "Checks for common security anti-patterns"
+
+    # Enable the sensitive action check
+    sensitive_action_check:
+      enabled: true
+      severity: error
+
+      # Detect privilege escalation patterns ACROSS multiple statements
+      # Using all_of to require ALL actions to be present in the policy
+      sensitive_actions:
+        # Pattern 1: User privilege escalation
+        - all_of:
+            - "iam:CreateUser"
+            - "iam:AttachUserPolicy"
+
+        # Pattern 2: Role privilege escalation
+        - all_of:
+            - "iam:CreateRole"
+            - "iam:AttachRolePolicy"
+
+        # Pattern 3: Lambda backdoor
+        - all_of:
+            - "lambda:CreateFunction"
+            - "iam:PassRole"
+
+settings:
+  fail_fast: false
+  enable_builtin_checks: true
+  parallel_execution: true
+  fail_on_severity:
+    - error

@@ -1,0 +1,585 @@
+# IAM Policy Validator Configuration
+# This file defines which checks to run and their configuration
+
+# ============================================================================
+# SEVERITY LEVELS
+# ============================================================================
+# The validator uses two types of severity levels:
+#
+# 1. IAM VALIDITY SEVERITIES (for AWS IAM policy correctness):
+#    - error:   Policy violates AWS IAM rules (invalid actions, ARNs, etc.)
+#    - warning: Policy may have IAM-related issues but is technically valid
+#    - info:    Informational messages about the policy structure
+#
+# 2. SECURITY SEVERITIES (for security best practices):
+#    - critical: Critical security risk (e.g., wildcard action + resource)
+#    - high:     High security risk (e.g., missing required conditions)
+#    - medium:   Medium security risk (e.g., overly permissive wildcards)
+#    - low:      Low security risk (e.g., minor best practice violations)
+#
+# Use 'error' for policy validity issues, and 'critical/high/medium/low' for
+# security best practices. This distinction helps separate "broken policies"
+# from "insecure but valid policies".
+# ============================================================================
+
+# ============================================================================
+# GLOBAL SETTINGS
+# ============================================================================
+
+settings:
+  # Stop validation on first error
+  fail_fast: false
+
+  # Maximum number of concurrent policy validations
+  max_concurrent: 10
+
+  # Enable/disable ALL built-in checks (default: true)
+  # Set to false when using AWS Access Analyzer to avoid redundant validation
+  # Individual checks can still be disabled with enabled: false below
+  enable_builtin_checks: true
+
+  # Enable parallel execution of checks (default: true)
+  parallel_execution: true
+
+  # Cache AWS service definitions locally
+  cache_enabled: true
+  cache_directory: ".cache/aws_services"
+  cache_ttl_hours: 24
+
+  # Severity levels that cause validation to fail
+  # IAM Validity: error, warning, info
+  # Security: critical, high, medium, low
+  fail_on_severity:
+    - error # IAM policy validity errors
+    - critical # Critical security issues
+    # - high     # Uncomment to fail on high security issues
+    # - warning  # Uncomment to fail on IAM validity warnings
+
+# ============================================================================
+# BUILT-IN CHECKS - AWS Validation
+# These validate that policies conform to AWS requirements
+# Disable all with: enable_builtin_checks: false (useful with Access Analyzer)
+# Or disable individually with: enabled: false
+# ============================================================================
+
+checks:
+  # Validate Statement ID (Sid) uniqueness as per AWS IAM requirements
+  sid_uniqueness:
+    enabled: true
+    severity: error
+    description: "Validates that Statement IDs (Sids) are unique within the policy"
+
+  # Validate policy size against AWS limits
+  policy_size:
+    enabled: true
+    severity: error
+    description: "Validates that IAM policies don't exceed AWS size limits"
+    # Policy type determines which AWS limit to enforce
+    # Options: managed, inline_user, inline_group, inline_role
+    policy_type: "managed"
+    # Optional: Override default AWS size limits (in characters, excluding whitespace)
+    # Default limits:
+    #   managed: 6144
+    #   inline_user: 2048
+    #   inline_group: 5120
+    #   inline_role: 10240
+    # size_limits:
+    #   managed: 6144
+    #   inline_user: 2048
+    #   inline_group: 5120
+    #   inline_role: 10240
+
+  # Validate IAM actions against AWS service definitions
+  action_validation:
+    enabled: true
+    severity: error
+    description: "Validates that actions exist in AWS services"
+
+    # Wildcard action allowlist - patterns that won't trigger warnings
+    # By default, non-sensitive read-only wildcards (List*, Describe*) are allowed
+    # Note: s3:Get* is EXCLUDED as it can access sensitive data
+    # You can customize this list to match your organization's policies
+    #
+    # Default allowlist includes common non-sensitive read-only patterns:
+    # - s3:List*, s3:Describe* (NOTE: s3:Get* excluded - can read sensitive data)
+    # - ec2:Describe*
+    # - iam:Get*, iam:List*
+    # - rds:Describe*
+    # - lambda:Get*, lambda:List*
+    # - dynamodb:Describe*
+    # - cloudwatch:Describe*, cloudwatch:Get*, cloudwatch:List*
+    # - logs:Describe*, logs:Get*, logs:Filter*
+    # - kms:Describe*, kms:Get*, kms:List*
+    # - sns:Get*, sns:List*
+    # - sqs:Get*, sqs:List*
+    # - elasticloadbalancing:Describe*
+    # - autoscaling:Describe*
+    # - cloudformation:Describe*, cloudformation:Get*, cloudformation:List*
+    # - route53:Get*, route53:List*
+    # - apigateway:GET
+    #
+    # To override the default allowlist, uncomment and customize:
+    # allowed_wildcards:
+    #   - "s3:Get*"      # WARNING: Can read sensitive data from S3
+    #   - "s3:List*"
+    #   - "ec2:Describe*"
+    #   - "iam:List*"
+    #   - "cloudwatch:*"  # Allow all CloudWatch actions
+    #
+    # To disable wildcard informational messages (recommended - use security_best_practices instead):
+    # The security_best_practices check provides better wildcard analysis with proper
+    # security severities (critical/high/medium). The action_validation wildcard messages
+    # are just informational (severity: info) since wildcards ARE valid IAM syntax.
+    disable_wildcard_warnings: true
+
+  # Validate condition keys for actions
+  condition_key_validation:
+    enabled: true
+    severity: error # Invalid condition keys are IAM policy errors
+    description: "Validates condition keys against AWS service definitions"
+    # Validate aws:* global condition keys against known list
+    validate_aws_global_keys: true
+
+  # Validate resource ARN formats
+  resource_validation:
+    enabled: true
+    severity: error
+    description: "Validates ARN format for resources"
+    # Regex pattern for ARN validation
+    # Pattern allows wildcards (*) in region and account fields
+    arn_pattern: "^arn:(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f):[a-z0-9\\-]+:[a-z0-9\\-*]*:[0-9*]*:.+$"
+
+  # Security best practices checks
+  # Scans at BOTH statement-level AND policy-level for security anti-patterns
+  security_best_practices:
+    enabled: true
+    description: "Checks for common security anti-patterns"
+
+    # Check for wildcard actions
+    wildcard_action_check:
+      enabled: true
+      severity: medium # Security issue: medium severity
+
+    # Check for wildcard resources
+    wildcard_resource_check:
+      enabled: true
+      severity: medium # Security issue: medium severity
+
+    # Critical check for both wildcards together
+    full_wildcard_check:
+      enabled: true
+      severity: critical # Security issue: critical severity (was error)
+
+    # Check for service-level wildcards (e.g., "iam:*", "s3:*", "ec2:*")
+    # These grant ALL permissions for a service and are often too permissive
+    service_wildcard_check:
+      enabled: true
+      severity: high # Security issue: high severity
+
+      # Optional: Allow specific services to use wildcards
+      # Useful for logging or monitoring services where wildcards are acceptable
+      allowed_services:
+        - "logs" # Allow "logs:*" for CloudWatch Logs
+        - "cloudwatch" # Allow "cloudwatch:*" for CloudWatch metrics
+        # - "xray"      # Uncomment to allow "xray:*" for AWS X-Ray
+
+    # Check for sensitive actions without conditions
+    # NOTE: For specific condition requirements (like iam:PassRole needing iam:PassedToService),
+    #       use the action_condition_enforcement built-in check instead (configured below)
+    sensitive_action_check:
+      enabled: true
+      severity: medium # Security issue: medium severity
+
+      # ========================================================================
+      # SENSITIVE ACTIONS - Exact action matches
+      # ========================================================================
+      # Supports three formats:
+      #
+      # 1. Simple list (backward compatible - uses any_of logic):
+      #    sensitive_actions:
+      #      - "iam:CreateUser"
+      #      - "s3:DeleteBucket"
+      #
+      # 2. any_of: Flag if ANY of these actions appear:
+      #    sensitive_actions:
+      #      any_of:
+      #        - "iam:CreateUser"
+      #        - "s3:DeleteBucket"
+      #
+      # 3. all_of: Flag only if ALL of these actions appear in the same statement:
+      #    sensitive_actions:
+      #      all_of:
+      #        - "iam:CreateUser"
+      #        - "iam:AttachUserPolicy"
+      #    (Useful for detecting privilege escalation patterns)
+      # ========================================================================
+
+      # List of specific actions considered sensitive
+      sensitive_actions:
+        # iam:PassRole commented out - use action_condition_enforcement for specific requirements
+        # - "iam:PassRole"
+        - "iam:CreateUser"
+        - "iam:CreateRole"
+        - "iam:PutUserPolicy"
+        - "iam:PutRolePolicy"
+        - "iam:AttachUserPolicy"
+        - "iam:AttachRolePolicy"
+        - "iam:CreateAccessKey"
+        - "iam:DeleteUser"
+        - "iam:DeleteRole"
+        - "s3:DeleteBucket"
+        - "s3:PutBucketPolicy"
+        - "s3:DeleteBucketPolicy"
+        - "ec2:TerminateInstances"
+        - "ec2:DeleteVolume"
+        - "rds:DeleteDBInstance"
+        - "lambda:DeleteFunction"
+        - "eks:DeleteCluster"
+
+      # ========================================================================
+      # SENSITIVE ACTION PATTERNS - Regex pattern matches
+      # ========================================================================
+      # Supports three formats (same as sensitive_actions):
+      #
+      # 1. Simple list (backward compatible - uses any_of logic):
+      #    sensitive_action_patterns:
+      #      - "^iam:Delete.*"
+      #      - "^s3:Delete.*"
+      #
+      # 2. any_of: Flag if actions match ANY pattern:
+      #    sensitive_action_patterns:
+      #      any_of:
+      #        - "^iam:Delete.*"
+      #        - "^s3:Delete.*"
+      #
+      # 3. all_of: Flag if actions match ALL patterns:
+      #    sensitive_action_patterns:
+      #      all_of:
+      #        - "^iam:.*"       # Must be IAM service
+      #        - ".*User$"       # Must end with "User"
+      #    (Useful for finding specific action types like iam:CreateUser, iam:DeleteUser)
+      # ========================================================================
+
+      # Regex patterns for sensitive actions
+      sensitive_action_patterns:
+        - "^iam:Delete.*" # All IAM delete actions
+        # - "^iam:Put.*Policy$" # All IAM policy put actions
+        # - ".*:Delete.*"           # Uncomment to flag all delete actions
+        # - "^s3:PutBucket.*" # All S3 bucket modification actions
+        # - "^kms:(Delete|Disable).*" # KMS delete and disable actions
+        # - "^rds:Delete.*" # All RDS delete actions
+
+      # ========================================================================
+      # EXAMPLES: Using any_of and all_of
+      # ========================================================================
+      # Example 1: Detect privilege escalation pattern (all_of)
+      # IMPORTANT: all_of checks work at POLICY-LEVEL, detecting actions
+      # scattered across MULTIPLE statements in the same policy!
+      #
+      # sensitive_actions:
+      #   all_of:
+      #     - "iam:CreateUser"
+      #     - "iam:AttachUserPolicy"
+      #
+      # This will flag a policy if it has BOTH actions anywhere across
+      # all its statements, even if they're in separate statements:
+      #   Statement 1: "iam:CreateUser"
+      #   Statement 2: "iam:AttachUserPolicy"
+      #   → DETECTED: Privilege escalation risk!
+      #
+      # Example 2: Detect any destructive S3 action (any_of with patterns)
+      # This checks per-statement (traditional behavior):
+      # sensitive_action_patterns:
+      #   any_of:
+      #     - "^s3:Delete.*"
+      #     - "^s3:PutBucket.*"
+      #
+      # Example 3: Detect IAM actions on user resources (all_of patterns)
+      # Flag only IAM actions that specifically target users:
+      # sensitive_action_patterns:
+      #   all_of:
+      #     - "^iam:.*"      # Must be IAM service
+      #     - ".*User.*"     # Must involve users
+      #
+      # ========================================================================
+      # ADVANCED: Multiple Groups (Detect different privilege escalation patterns)
+      # ========================================================================
+      # You can specify MULTIPLE all_of groups to detect DIFFERENT privilege
+      # escalation patterns across the ENTIRE POLICY:
+      #
+      # sensitive_actions:
+      #   - all_of:  # Pattern 1: User privilege escalation
+      #       - "iam:CreateUser"
+      #       - "iam:AttachUserPolicy"
+      #   - all_of:  # Pattern 2: Role privilege escalation
+      #       - "iam:CreateRole"
+      #       - "iam:AttachRolePolicy"
+      #   - all_of:  # Pattern 3: Lambda backdoor
+      #       - "lambda:CreateFunction"
+      #       - "iam:PassRole"
+      #
+      # Each all_of group is checked independently against ALL statements.
+      # If a policy grants all actions in ANY all_of group (even across
+      # different statements), it will be flagged.
+      #
+      # Mixed groups (combine simple actions, any_of, and all_of):
+      # sensitive_actions:
+      #   - "s3:DeleteBucket"  # Simple action (per-statement, any_of logic)
+      #   - all_of:            # Privilege escalation (policy-level detection)
+      #       - "iam:CreateUser"
+      #       - "iam:AttachUserPolicy"
+      #   - any_of:            # Any Lambda code changes (per-statement)
+      #       - "lambda:CreateFunction"
+      #       - "lambda:UpdateFunctionCode"
+      #
+      # Pattern groups work the same way:
+      # sensitive_action_patterns:
+      #   - "^kms:Delete.*"                      # Simple pattern
+      #   - all_of: ["^iam:.*", ".*User$"]      # IAM user actions
+      #   - all_of: ["^s3:.*", ".*Bucket.*"]    # S3 bucket operations
+      # ========================================================================
+
+  # ============================================================================
+  # Action Condition Enforcement
+  # Enforce ALL types of condition requirements for actions:
+  # - MFA requirements
+  # - IP/VPC restrictions
+  # - Tag requirements (replaces action_tag_enforcement)
+  # - Time-based access
+  # - Encryption requirements
+  # - Any AWS condition key
+  #
+  # Supports all_of/any_of/none_of logic for both actions and conditions
+  # - all_of: ALL specified items must be present
+  # - any_of: At least ONE specified item must be present
+  # - none_of: NONE of the specified items should be present (forbidden)
+  # ============================================================================
+  action_condition_enforcement:
+    enabled: true
+    severity: high # Default severity: high (can be overridden per-requirement)
+    description: "Enforce specific IAM condition requirements (unified: MFA, IP, tags, etc.)"
+
+    # ========================================================================
+    # PER-REQUIREMENT SEVERITY OVERRIDES
+    # ========================================================================
+    # You can set different severity levels for different requirements:
+    #
+    # Global severity (applies to all requirements unless overridden):
+    #   severity: high
+    #
+    # Per-requirement severity (overrides global):
+    #   - actions:
+    #       - "iam:PassRole"
+    #     severity: critical  # This requirement is critical
+    #     required_conditions: [...]
+    #
+    # Per-condition severity (overrides both global and requirement):
+    #   - actions:
+    #       - "ec2:RunInstances"
+    #     required_conditions:
+    #       - condition_key: "aws:RequestTag/Owner"
+    #         severity: high  # This specific condition is high
+    #
+    # Severity precedence: condition > requirement > global
+    # ========================================================================
+
+    action_condition_requirements:
+      # iam:PassRole MUST specify which services can use the role
+      # This is CRITICAL because missing iam:PassedToService enables privilege escalation
+      - actions:
+          - "iam:PassRole"
+        severity: critical # Override: this specific requirement is critical
+        required_conditions:
+          - condition_key: "iam:PassedToService"
+            description: "Specify which AWS services are allowed to use the passed role to prevent privilege escalation"
+            # enforce specific service list
+            # expected_value: ["lambda.amazonaws.com", "ecs-tasks.amazonaws.com"]
+            example: |
+              "Condition": {
+                "StringEquals": {
+                  "iam:PassedToService": [
+                    "lambda.amazonaws.com",
+                    "ecs-tasks.amazonaws.com",
+                    "ec2.amazonaws.com",
+                    "glue.amazonaws.com",
+                    "lambda.amazonaws.com"
+                  ]
+                }
+              }
+
+      # Sensitive IAM actions require MFA
+      - action_patterns:
+          - "^iam:Delete.*"
+          - "^iam:Put.*Policy$"
+          - "^iam:Attach.*Policy$"
+          - "^iam:Detach.*Policy$"
+        severity: high # High severity for IAM operations without MFA
+        required_conditions:
+          - condition_key: "aws:MultiFactorAuthPresent"
+            description: "Require MFA authentication for sensitive IAM operations"
+            expected_value: true
+
+      # S3 destructive operations require MFA
+      - actions:
+          - "s3:DeleteBucket"
+          - "s3:DeleteBucketPolicy"
+          - "s3:PutBucketPolicy"
+        severity: high # High severity for S3 destructive operations without MFA
+        required_conditions:
+          - condition_key: "aws:MultiFactorAuthPresent"
+            description: "Require MFA for S3 destructive operations"
+            expected_value: true
+
+      # All S3 operations must use HTTPS (optional - uncomment if needed)
+      # - action_patterns:
+      #     - "^s3:.*"
+      #   required_conditions:
+      #     - condition_key: "aws:SecureTransport"
+      #       description: "Require HTTPS for all S3 operations"
+      #       expected_value: true
+
+      # EC2 instances must be in specific VPCs (optional - uncomment and customize)
+      # - actions:
+      #     - "ec2:RunInstances"
+      #   required_conditions:
+      #     - condition_key: "ec2:Vpc"
+      #       description: "EC2 instances must be launched in approved VPCs"
+      #       example: |
+      #         "Condition": {
+      #           "StringEquals": {
+      #             "ec2:Vpc": "arn:aws:ec2:us-east-1:123456789012:vpc/vpc-12345678"
+      #           }
+      #         }
+
+      # Require source IP restrictions
+      - action_patterns:
+          - "^ssm:StartSession$"
+          - "^ssm:Run.*$"
+          - "^s3:GetObject$"
+          - "^rds:.*$"
+        severity: medium # Medium severity for missing IP restrictions
+        required_conditions:
+          - condition_key: "aws:SourceIp"
+            description: "Restrict access to corporate IP ranges"
+            example: |
+              "Condition": {
+                "IpAddress": {
+                  "aws:SourceIp": [
+                    "10.0.0.0/8",
+                    "172.16.0.0/12"
+                  ]
+                }
+              }
+
+      # ============================================================================
+      # TAG ENFORCEMENT EXAMPLES
+      # Use action_condition_enforcement for tag requirements too!
+      # ============================================================================
+
+      # EC2 instances must have owner tag matching principal's owner tag
+      - actions:
+          - "ec2:RunInstances"
+        required_conditions:
+          all_of:
+            - condition_key: "aws:ResourceTag/owner"
+              operator: "StringEquals"
+              expected_value: "${aws:PrincipalTag/owner}"
+              description: "Resource owner must match the principal's owner tag"
+
+            - condition_key: "aws:RequestTag/env"
+              operator: "StringEquals"
+              expected_value: ["prod", "pre", "dev", "sandbox"]
+              description: "Must specify a valid Environment tag"
+
+      # RDS databases need required tags
+      - action_patterns:
+          - "^rds:Create.*"
+          - "^rds:Modify.*"
+        required_conditions:
+          all_of:
+            - condition_key: "aws:RequestTag/DataClassification"
+              description: "Must specify data classification"
+            - condition_key: "aws:RequestTag/BackupPolicy"
+              description: "Must specify backup policy"
+            - condition_key: "aws:RequestTag/Owner"
+              description: "Must specify resource owner"
+
+      # S3 bucket operations with data classification matching
+      # - actions:
+      #     - "s3:CreateBucket"
+      #     - "s3:PutObject"
+      #   required_conditions:
+      #     all_of:
+      #       - condition_key: "aws:ResourceTag/DataClassification"
+      #         operator: "StringEquals"
+      #         expected_value: "${aws:PrincipalTag/DataClassification}"
+      #         description: "Data classification must match principal's tag"
+      #       - condition_key: "aws:RequestTag/Owner"
+      #         description: "Must specify owner"
+      #       - condition_key: "aws:RequestTag/CostCenter"
+      #         description: "Must specify cost center"
+
+      # ============================================================================
+      # NONE_OF EXAMPLES - Forbidden Actions and Conditions
+      # ============================================================================
+
+      # Example 1: Forbidden actions - flag if these dangerous actions appear
+      # - actions:
+      #     none_of:
+      #       - "iam:*"
+      #       - "s3:DeleteBucket"
+      #       - "s3:DeleteBucketPolicy"
+      #   description: "These highly sensitive actions are forbidden in this policy"
+
+      # Example 2: Ensure insecure transport is never explicitly allowed
+      # - actions:
+      #     - "s3:GetObject"
+      #     - "s3:PutObject"
+      #   required_conditions:
+      #     none_of:
+      #       - condition_key: "aws:SecureTransport"
+      #         expected_value: false
+      #         description: "Never allow insecure transport to be explicitly permitted"
+
+      # Example 3: Prevent overly permissive IP ranges
+      # - action_patterns:
+      #     - "^s3:.*"
+      #   required_conditions:
+      #     none_of:
+      #       - condition_key: "aws:SourceIp"
+      #         expected_value: "0.0.0.0/0"
+      #         description: "Do not allow access from any IP address"
+# ============================================================================
+# CUSTOM CHECKS - Business Rules
+# These enforce your organization's specific requirements
+# Configured via custom_checks_dir and the checks section below
+# ============================================================================
+
+# Custom checks directory - auto-discover PolicyCheck subclasses
+# custom_checks_dir: "./custom_checks"
+
+# Configure custom checks loaded from custom_checks_dir
+# The check_id corresponds to the check's check_id property
+# Note: action_condition_enforcement and action_tag_enforcement are now built-in checks
+# For examples of custom business-specific checks, see: examples/custom-business-rules.yaml
+
+# ============================================================================
+# USAGE SCENARIOS
+# ============================================================================
+
+# Scenario 1: Default - Full built-in validation
+#   iam-validator validate --path ./policies
+
+# Scenario 2: With AWS Access Analyzer (disable built-in AWS validation)
+#   Set: enable_builtin_checks: true
+#   Then run:
+#     iam-validator analyze --path ./policies --post-findings
+#     iam-validator validate --path ./policies  # Only custom checks run
+
+# Scenario 3: Disable specific built-in check
+#   checks:
+#     condition_key_validation:
+#       enabled: false  # Disable just this one check
+
+# Scenario 4: Enable custom business rules
+#   See: examples/custom-business-rules.yaml

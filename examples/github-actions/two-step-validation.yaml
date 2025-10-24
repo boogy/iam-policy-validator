@@ -1,0 +1,86 @@
+# Two-Step Validation Workflow
+# Step 1: Validate and generate JSON report
+# Step 2: Review report and post to PR
+# This is useful when you want to review results before posting
+
+name: Two-Step IAM Policy Validation
+
+on:
+  pull_request:
+    paths:
+      - 'policies/**/*.json'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install IAM Validator
+        run: |
+          cd iam-policy-auditor
+          uv sync
+
+      - name: Validate and Generate Report
+        run: |
+          uv run iam-validator validate \
+            --path ./policies/ \
+            --format json \
+            --output validation-report.json
+
+      - name: Upload Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: validation-report.json
+
+  post-to-pr:
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install IAM Validator
+        run: |
+          cd iam-policy-auditor
+          uv sync
+
+      - name: Download Report
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-report
+
+      - name: Post Report to PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          uv run iam-validator post-to-pr \
+            --report validation-report.json

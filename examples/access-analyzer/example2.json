@@ -1,0 +1,15 @@
+{
+  "findingDetails": "The policy element version is not valid.",
+  "findingType": "ERROR",
+  "issueCode": "INVALID_POLICY_ELEMENT",
+  "learnMoreLink": "https://docs.aws.amazon.com/IAM/latest/UserGuide/access-analyzer-reference-policy-checks.html#access-analyzer-reference-policy-checks-error-invalid-policy-element",
+  "locations": [
+    {
+      "path": [{ "value": "version" }],
+      "span": {
+        "start": { "line": 1, "column": 12, "offset": 12 },
+        "end": { "line": 1, "column": 24, "offset": 24 }
+      }
+    }
+  ]
+}

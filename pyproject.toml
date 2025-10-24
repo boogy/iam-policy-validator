@@ -1,0 +1,90 @@
+[project]
+name = "iam-validator"
+version = "0.1.0"
+description = "Validate AWS IAM policies for correctness and security using AWS Service Reference API"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "boogy", email = "0xboogy@gmail.com" }]
+license = { text = "MIT" }
+keywords = ["aws", "iam", "policy", "security", "validation", "github-action"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = [
+    "httpx[http2]>=0.27.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "rich>=13.0.0",
+    "boto3>=1.28.0",
+    "botocore>=1.40.55",
+]
+
+[project.urls]
+Homepage = "https://github.com/boogy/iam-validator"
+Documentation = "https://github.com/boogy/iam-validator/tree/main/docs"
+Repository = "https://github.com/boogy/iam-validator"
+Issues = "https://github.com/boogy/iam-validator/issues"
+Changelog = "https://github.com/boogy/iam-validator/blob/main/docs/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=7.0.0",
+    "pytest-benchmark>=4.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+    "types-pyyaml",
+    "types-boto3",
+]
+
+[project.scripts]
+iam-validator = "iam_validator.core.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["iam_validator"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
+markers = [
+    "benchmark: marks tests as benchmarks (deselect with '-m \"not benchmark\"')",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
+asyncio_mode = "auto"

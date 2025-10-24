@@ -1,0 +1,46 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BackupVaultAccess",
+      "Effect": "Allow",
+      "Action": [
+        "backup:CreateBackupVault",
+        "backup:DeleteBackupVault",
+        "backup:DescribeBackupVault",
+        "backup:ListBackupVaults",
+        "backup:PutBackupVaultAccessPolicy"
+      ],
+      "Resource": "arn:aws:backup:us-east-1:123456789012:backup-vault:production-*"
+    },
+    {
+      "Sid": "BackupJobManagement",
+      "Effect": "Allow",
+      "Action": [
+        "backup:StartBackupJob",
+        "backup:DescribeBackupJob",
+        "backup:ListBackupJobs",
+        "backup:StopBackupJob"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "backup:BackupVaultName": [
+            "production-vault",
+            "staging-vault"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "RestoreJobManagement",
+      "Effect": "Allow",
+      "Action": [
+        "backup:StartRestoreJob",
+        "backup:DescribeRestoreJob",
+        "backup:ListRestoreJobs"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

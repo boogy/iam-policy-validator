@@ -1,0 +1,286 @@
+name: "IAM Validator"
+description: "Validate AWS IAM policies for correctness and security using AWS Service Reference API"
+author: "boogy"
+
+branding:
+  icon: "shield"
+  color: "orange"
+
+inputs:
+  path:
+    description: "Path(s) to IAM policy JSON/YAML file or directory (relative to repository root). For multiple paths, use newline-separated values"
+    required: true
+
+  config-file:
+    description: "Path to custom configuration file (iam-validator.yaml)"
+    required: false
+    default: ""
+
+  fail-on-warnings:
+    description: "Fail validation if warnings are found (default: only fail on errors)"
+    required: false
+    default: "false"
+
+  post-comment:
+    description: "Post validation results as PR comment"
+    required: false
+    default: "true"
+
+  create-review:
+    description: "Create line-specific review comments on PR (requires post-comment: true)"
+    required: false
+    default: "true"
+
+  format:
+    description: "Output format (console, json, markdown, sarif, csv, html)"
+    required: false
+    default: "console"
+
+  output-file:
+    description: "Path to save output file (for json, markdown, sarif, csv, html formats)"
+    required: false
+    default: ""
+
+  recursive:
+    description: "Recursively search directories for policy files"
+    required: false
+    default: "true"
+
+  use-access-analyzer:
+    description: "Use AWS IAM Access Analyzer for validation (requires AWS credentials)"
+    required: false
+    default: "false"
+
+  access-analyzer-region:
+    description: "AWS region for Access Analyzer (default: us-east-1)"
+    required: false
+    default: "us-east-1"
+
+  policy-type:
+    description: "Policy type for Access Analyzer (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY)"
+    required: false
+    default: "RESOURCE_POLICY"
+
+  run-all-checks:
+    description: "Run custom checks after Access Analyzer (only if use-access-analyzer: true)"
+    required: false
+    default: "false"
+
+  # Custom Policy Check inputs
+  check-access-not-granted:
+    description: "Actions that should NOT be granted (space-separated, max 100). Example: 's3:DeleteBucket iam:CreateAccessKey'"
+    required: false
+    default: ""
+
+  check-access-resources:
+    description: "Resources to check with check-access-not-granted (space-separated, max 100). Example: 'arn:aws:s3:::prod-* arn:aws:iam::*:role/*'"
+    required: false
+    default: ""
+
+  check-no-new-access:
+    description: "Path to existing/baseline policy to compare against for new access checks (relative to repository root)"
+    required: false
+    default: ""
+
+  check-no-public-access:
+    description: "Check that resource policies do not allow public access (RESOURCE_POLICY only)"
+    required: false
+    default: "false"
+
+  public-access-resource-type:
+    description: "Resource type(s) for public access check. Use 'all' to check all 29 types, or specify space-separated types. Options: all, AWS::S3::Bucket, AWS::Lambda::Function, AWS::KMS::Key, AWS::SNS::Topic, AWS::SQS::Queue, etc."
+    required: false
+    default: "AWS::S3::Bucket"
+
+outputs:
+  validation-result:
+    description: "Validation result (success or failure)"
+    value: ${{ steps.validate.outcome }}
+
+  total-policies:
+    description: "Total number of policies validated"
+    value: ${{ steps.validate.outputs.total-policies }}
+
+  valid-policies:
+    description: "Number of valid policies"
+    value: ${{ steps.validate.outputs.valid-policies }}
+
+  invalid-policies:
+    description: "Number of invalid policies"
+    value: ${{ steps.validate.outputs.invalid-policies }}
+
+  total-issues:
+    description: "Total number of issues found"
+    value: ${{ steps.validate.outputs.total-issues }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.action_path }}/.venv
+        key: ${{ runner.os }}-uv-${{ hashFiles(format('{0}/pyproject.toml', github.action_path)) }}
+        restore-keys: |
+          ${{ runner.os }}-uv-
+
+    - name: Sync dependencies
+      working-directory: ${{ github.action_path }}
+      run: uv sync --frozen
+      shell: bash
+
+    - name: Run IAM Policy Validator
+      id: validate
+      working-directory: ${{ github.action_path }}
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        set -e
+
+        # Determine command based on use-access-analyzer flag
+        if [ "${{ inputs.use-access-analyzer }}" = "true" ]; then
+          CMD="analyze"
+        else
+          CMD="validate"
+        fi
+
+        # Parse paths (support newline-separated values)
+        PATH_ARGS=""
+        IFS=$'\n'
+        for p in ${{ inputs.path }}; do
+          # Trim whitespace
+          p=$(echo "$p" | xargs)
+          if [ -n "$p" ]; then
+            PATH_ARGS="$PATH_ARGS --path ${{ github.workspace }}/$p"
+          fi
+        done
+        unset IFS
+
+        # Build arguments
+        ARGS="$CMD $PATH_ARGS"
+
+        # Add config file if specified
+        if [ -n "${{ inputs.config-file }}" ]; then
+          ARGS="$ARGS --config ${{ github.workspace }}/${{ inputs.config-file }}"
+        fi
+
+        # Add format and output
+        ARGS="$ARGS --format ${{ inputs.format }}"
+        if [ -n "${{ inputs.output-file }}" ]; then
+          ARGS="$ARGS --output ${{ github.workspace }}/${{ inputs.output-file }}"
+        fi
+
+        # Add recursive flag
+        if [ "${{ inputs.recursive }}" = "false" ]; then
+          ARGS="$ARGS --no-recursive"
+        fi
+
+        # Add fail-on-warnings flag
+        if [ "${{ inputs.fail-on-warnings }}" = "true" ]; then
+          ARGS="$ARGS --fail-on-warnings"
+        fi
+
+        # Add Access Analyzer specific options
+        if [ "${{ inputs.use-access-analyzer }}" = "true" ]; then
+          ARGS="$ARGS --region ${{ inputs.access-analyzer-region }}"
+          ARGS="$ARGS --policy-type ${{ inputs.policy-type }}"
+
+          if [ "${{ inputs.run-all-checks }}" = "true" ]; then
+            ARGS="$ARGS --run-all-checks"
+          fi
+
+          # Custom Policy Checks
+          if [ -n "${{ inputs.check-access-not-granted }}" ]; then
+            ARGS="$ARGS --check-access-not-granted ${{ inputs.check-access-not-granted }}"
+
+            if [ -n "${{ inputs.check-access-resources }}" ]; then
+              ARGS="$ARGS --check-access-resources ${{ inputs.check-access-resources }}"
+            fi
+          fi
+
+          if [ -n "${{ inputs.check-no-new-access }}" ]; then
+            ARGS="$ARGS --check-no-new-access ${{ github.workspace }}/${{ inputs.check-no-new-access }}"
+          fi
+
+          if [ "${{ inputs.check-no-public-access }}" = "true" ]; then
+            ARGS="$ARGS --check-no-public-access"
+
+            if [ -n "${{ inputs.public-access-resource-type }}" ]; then
+              ARGS="$ARGS --public-access-resource-type '${{ inputs.public-access-resource-type }}'"
+            fi
+          fi
+        fi
+
+        # Add GitHub integration flags (only for PRs)
+        if [ "${{ inputs.post-comment }}" = "true" ] && [ -n "${{ github.event.pull_request.number }}" ]; then
+          ARGS="$ARGS --github-comment"
+
+          if [ "${{ inputs.create-review }}" = "true" ]; then
+            ARGS="$ARGS --github-review"
+          fi
+        fi
+
+        echo "Running: uv run iam-validator $ARGS"
+
+        # Create temp file for JSON metrics extraction
+        METRICS_FILE=$(mktemp)
+
+        # Save original format and override to JSON for metrics parsing
+        ORIGINAL_FORMAT="${{ inputs.format }}"
+        METRICS_ARGS="${ARGS//--format $ORIGINAL_FORMAT/--format json --output $METRICS_FILE}"
+
+        # Run validation and capture exit code
+        uv run iam-validator $METRICS_ARGS 2>&1 || EXIT_CODE=$?
+
+        # Extract metrics from JSON output
+        if [ -f "$METRICS_FILE" ] && [ -s "$METRICS_FILE" ]; then
+          TOTAL_POLICIES=$(jq -r '.total_policies // 0' "$METRICS_FILE" 2>/dev/null || echo "0")
+          VALID_POLICIES=$(jq -r '.valid_policies // 0' "$METRICS_FILE" 2>/dev/null || echo "0")
+          INVALID_POLICIES=$(jq -r '.invalid_policies // 0' "$METRICS_FILE" 2>/dev/null || echo "0")
+          TOTAL_ISSUES=$(jq -r '.total_issues // 0' "$METRICS_FILE" 2>/dev/null || echo "0")
+
+          echo "total-policies=$TOTAL_POLICIES" >> $GITHUB_OUTPUT
+          echo "valid-policies=$VALID_POLICIES" >> $GITHUB_OUTPUT
+          echo "invalid-policies=$INVALID_POLICIES" >> $GITHUB_OUTPUT
+          echo "total-issues=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
+
+          # Output summary to console as well
+          echo "📊 Validation Metrics:"
+          echo "  Total policies: $TOTAL_POLICIES"
+          echo "  Valid: $VALID_POLICIES"
+          echo "  Invalid: $INVALID_POLICIES"
+          echo "  Total issues: $TOTAL_ISSUES"
+
+          rm -f "$METRICS_FILE"
+        else
+          echo "⚠️  Warning: Could not extract metrics from validation output"
+          # Fallback to zeros if JSON parsing failed
+          echo "total-policies=0" >> $GITHUB_OUTPUT
+          echo "valid-policies=0" >> $GITHUB_OUTPUT
+          echo "invalid-policies=0" >> $GITHUB_OUTPUT
+          echo "total-issues=0" >> $GITHUB_OUTPUT
+        fi
+
+        # Exit with the validation result
+        exit ${EXIT_CODE:-0}
+      shell: bash
+
+    - name: Upload validation report
+      if: always() && inputs.output-file != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: iam-policy-validation-report
+        path: ${{ github.workspace }}/${{ inputs.output-file }}
+        retention-days: 30

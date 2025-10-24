@@ -1,0 +1,46 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ValidS3Action",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::my-bucket/*"
+    },
+    {
+      "Sid": "InvalidS3Action",
+      "Effect": "Allow",
+      "Action": [
+        "s3:InvalidAction",
+        "s3:AnotherBadAction"
+      ],
+      "Resource": "arn:aws:s3:::my-bucket/*"
+    },
+    {
+      "Sid": "InvalidServiceAction",
+      "Effect": "Allow",
+      "Action": "invalid:DoSomething",
+      "Resource": "*"
+    },
+    {
+      "Sid": "SensitiveWithoutMFA",
+      "Effect": "Allow",
+      "Action": [
+        "iam:DeleteUser",
+        "iam:DeleteRole"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        }
+      }
+    },
+    {
+      "Sid": "WildcardActions",
+      "Effect": "Allow",
+      "Action": "s3:*",
+      "Resource": "arn:aws:s3:::prod-data/*"
+    }
+  ]
+}

@@ -1,0 +1,255 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "S3FullAccessMultipleBuckets",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:GetObjectVersion",
+        "s3:PutObjectAcl",
+        "s3:GetObjectAcl",
+        "s3:ListBucket",
+        "s3:ListBucketVersions",
+        "s3:GetBucketLocation",
+        "s3:GetBucketVersioning"
+      ],
+      "Resource": [
+        "arn:aws:s3:::application-data-prod-us-east-1/*",
+        "arn:aws:s3:::application-data-prod-us-west-2/*",
+        "arn:aws:s3:::application-data-prod-eu-west-1/*",
+        "arn:aws:s3:::application-logs-prod-us-east-1/*",
+        "arn:aws:s3:::application-logs-prod-us-west-2/*",
+        "arn:aws:s3:::application-logs-prod-eu-west-1/*",
+        "arn:aws:s3:::application-backups-prod-us-east-1/*",
+        "arn:aws:s3:::application-backups-prod-us-west-2/*"
+      ]
+    },
+    {
+      "Sid": "DynamoDBTableAccessMultiRegion",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:BatchGetItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:ConditionCheckItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:DescribeTable",
+        "dynamodb:GetItem",
+        "dynamodb:GetRecords",
+        "dynamodb:PutItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:UpdateItem"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:123456789012:table/Users",
+        "arn:aws:dynamodb:us-east-1:123456789012:table/Sessions",
+        "arn:aws:dynamodb:us-east-1:123456789012:table/Products",
+        "arn:aws:dynamodb:us-east-1:123456789012:table/Orders",
+        "arn:aws:dynamodb:us-west-2:123456789012:table/Users",
+        "arn:aws:dynamodb:us-west-2:123456789012:table/Sessions",
+        "arn:aws:dynamodb:us-west-2:123456789012:table/Products",
+        "arn:aws:dynamodb:us-west-2:123456789012:table/Orders"
+      ]
+    },
+    {
+      "Sid": "LambdaFunctionManagementExtensive",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:CreateFunction",
+        "lambda:DeleteFunction",
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:InvokeFunction",
+        "lambda:ListFunctions",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:PublishVersion",
+        "lambda:CreateAlias",
+        "lambda:UpdateAlias",
+        "lambda:GetAlias"
+      ],
+      "Resource": [
+        "arn:aws:lambda:us-east-1:123456789012:function:api-gateway-handler-*",
+        "arn:aws:lambda:us-east-1:123456789012:function:data-processor-*",
+        "arn:aws:lambda:us-east-1:123456789012:function:event-handler-*",
+        "arn:aws:lambda:us-west-2:123456789012:function:api-gateway-handler-*",
+        "arn:aws:lambda:us-west-2:123456789012:function:data-processor-*",
+        "arn:aws:lambda:us-west-2:123456789012:function:event-handler-*",
+        "arn:aws:lambda:eu-west-1:123456789012:function:api-gateway-handler-*",
+        "arn:aws:lambda:eu-west-1:123456789012:function:data-processor-*",
+        "arn:aws:lambda:eu-west-1:123456789012:function:event-handler-*"
+      ]
+    },
+    {
+      "Sid": "EC2InstanceManagementComprehensive",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeImages",
+        "ec2:DescribeVolumes",
+        "ec2:DescribeSnapshots",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeVpcs",
+        "ec2:RunInstances",
+        "ec2:StartInstances",
+        "ec2:StopInstances",
+        "ec2:RebootInstances",
+        "ec2:TerminateInstances",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:Region": [
+            "us-east-1",
+            "us-west-2",
+            "eu-west-1"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "RDSDatabaseManagementFull",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateDBInstance",
+        "rds:DeleteDBInstance",
+        "rds:ModifyDBInstance",
+        "rds:RebootDBInstance",
+        "rds:StartDBInstance",
+        "rds:StopDBInstance",
+        "rds:DescribeDBInstances",
+        "rds:CreateDBSnapshot",
+        "rds:DeleteDBSnapshot",
+        "rds:DescribeDBSnapshots",
+        "rds:RestoreDBInstanceFromDBSnapshot",
+        "rds:AddTagsToResource",
+        "rds:RemoveTagsFromResource",
+        "rds:ListTagsForResource"
+      ],
+      "Resource": [
+        "arn:aws:rds:us-east-1:123456789012:db:production-database-primary",
+        "arn:aws:rds:us-east-1:123456789012:db:production-database-replica-1",
+        "arn:aws:rds:us-west-2:123456789012:db:production-database-primary",
+        "arn:aws:rds:us-west-2:123456789012:db:production-database-replica-1"
+      ]
+    },
+    {
+      "Sid": "CloudWatchLogsAndMetrics",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
+        "cloudwatch:PutMetricData",
+        "cloudwatch:GetMetricData",
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:ListMetrics"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "KMSKeyManagementMultiRegion",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Encrypt",
+        "kms:Decrypt",
+        "kms:GenerateDataKey",
+        "kms:GenerateDataKeyWithoutPlaintext",
+        "kms:DescribeKey",
+        "kms:CreateAlias",
+        "kms:DeleteAlias",
+        "kms:ListAliases",
+        "kms:ListKeys"
+      ],
+      "Resource": [
+        "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+        "arn:aws:kms:us-west-2:123456789012:key/23456789-2345-2345-2345-234567890123",
+        "arn:aws:kms:eu-west-1:123456789012:key/34567890-3456-3456-3456-345678901234"
+      ]
+    },
+    {
+      "Sid": "SNSSQSMessagingServices",
+      "Effect": "Allow",
+      "Action": [
+        "sns:Publish",
+        "sns:Subscribe",
+        "sns:Unsubscribe",
+        "sns:CreateTopic",
+        "sns:DeleteTopic",
+        "sns:GetTopicAttributes",
+        "sns:SetTopicAttributes",
+        "sqs:SendMessage",
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:CreateQueue",
+        "sqs:DeleteQueue",
+        "sqs:GetQueueAttributes",
+        "sqs:SetQueueAttributes"
+      ],
+      "Resource": [
+        "arn:aws:sns:us-east-1:123456789012:application-notifications-*",
+        "arn:aws:sns:us-west-2:123456789012:application-notifications-*",
+        "arn:aws:sqs:us-east-1:123456789012:application-queue-*",
+        "arn:aws:sqs:us-west-2:123456789012:application-queue-*"
+      ]
+    },
+    {
+      "Sid": "SecretsManagerAccessExtended",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:ListSecrets",
+        "secretsmanager:CreateSecret",
+        "secretsmanager:UpdateSecret",
+        "secretsmanager:DeleteSecret",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:RotateSecret"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:us-east-1:123456789012:secret:application/production/*",
+        "arn:aws:secretsmanager:us-west-2:123456789012:secret:application/production/*"
+      ]
+    },
+    {
+      "Sid": "ECSTaskExecutionComprehensive",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:CreateCluster",
+        "ecs:DeleteCluster",
+        "ecs:DescribeClusters",
+        "ecs:ListClusters",
+        "ecs:RegisterTaskDefinition",
+        "ecs:DeregisterTaskDefinition",
+        "ecs:DescribeTaskDefinition",
+        "ecs:ListTaskDefinitions",
+        "ecs:RunTask",
+        "ecs:StartTask",
+        "ecs:StopTask",
+        "ecs:DescribeTasks",
+        "ecs:ListTasks"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "IAMRoleManagementLimited",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:PassRole"
+      ],
+      "Resource": [
+        "arn:aws:iam::123456789012:role/application-lambda-execution-role",
+        "arn:aws:iam::123456789012:role/application-ecs-task-execution-role"
+      ]
+    }
+  ]
+}

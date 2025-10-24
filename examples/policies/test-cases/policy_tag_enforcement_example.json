@@ -1,0 +1,42 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RunInstancesWithoutTags",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "*"
+    },
+    {
+      "Sid": "RunInstancesWithCorrectTags",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/owner": "${aws:PrincipalTag/owner}",
+          "aws:RequestTag/Environment": "Production"
+        }
+      }
+    },
+    {
+      "Sid": "RDSWithoutTags",
+      "Effect": "Allow",
+      "Action": "rds:CreateDBInstance",
+      "Resource": "*"
+    },
+    {
+      "Sid": "RDSWithSimpleTags",
+      "Effect": "Allow",
+      "Action": "rds:CreateDBInstance",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/DataClassification": "Internal",
+          "aws:RequestTag/BackupPolicy": "Daily",
+          "aws:RequestTag/Owner": "team@example.com"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AthenaQueryExecution",
+      "Effect": "Allow",
+      "Action": [
+        "athena:StartQueryExecution",
+        "athena:StopQueryExecution",
+        "athena:GetQueryExecution",
+        "athena:GetQueryResults",
+        "athena:ListQueryExecutions"
+      ],
+      "Resource": "arn:aws:athena:us-west-2:123456789012:workgroup/analytics-team"
+    },
+    {
+      "Sid": "AthenaDataCatalog",
+      "Effect": "Allow",
+      "Action": [
+        "glue:GetDatabase",
+        "glue:GetTable",
+        "glue:GetPartitions"
+      ],
+      "Resource": [
+        "arn:aws:glue:us-west-2:123456789012:catalog",
+        "arn:aws:glue:us-west-2:123456789012:database/analytics_db",
+        "arn:aws:glue:us-west-2:123456789012:table/analytics_db/*"
+      ]
+    },
+    {
+      "Sid": "S3QueryResults",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::athena-query-results-bucket",
+        "arn:aws:s3:::athena-query-results-bucket/*",
+        "arn:aws:s3:::analytics-data-bucket/*"
+      ]
+    }
+  ]
+}

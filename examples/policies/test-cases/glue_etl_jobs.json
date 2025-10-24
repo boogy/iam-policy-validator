@@ -1,0 +1,54 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "GlueJobManagement",
+      "Effect": "Allow",
+      "Action": [
+        "glue:CreateJob",
+        "glue:DeleteJob",
+        "glue:UpdateJob",
+        "glue:GetJob",
+        "glue:GetJobs",
+        "glue:StartJobRun",
+        "glue:BatchStopJobRun",
+        "glue:GetJobRun",
+        "glue:GetJobRuns"
+      ],
+      "Resource": [
+        "arn:aws:glue:us-east-1:123456789012:job/etl-*",
+        "arn:aws:glue:us-east-1:123456789012:catalog",
+        "arn:aws:glue:us-east-1:123456789012:database/*",
+        "arn:aws:glue:us-east-1:123456789012:table/*"
+      ]
+    },
+    {
+      "Sid": "GlueCatalogAccess",
+      "Effect": "Allow",
+      "Action": [
+        "glue:GetDatabase",
+        "glue:GetDatabases",
+        "glue:GetTable",
+        "glue:GetTables",
+        "glue:GetPartition",
+        "glue:GetPartitions",
+        "glue:CreateTable",
+        "glue:UpdateTable"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "S3DataAccess",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::data-lake-raw/*",
+        "arn:aws:s3:::data-lake-processed/*"
+      ]
+    }
+  ]
+}

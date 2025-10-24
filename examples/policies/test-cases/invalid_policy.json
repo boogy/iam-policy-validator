@@ -1,0 +1,39 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InvalidActions",
+      "Effect": "Allow",
+      "Action": ["s3:GetObjectThatDoesNotExist", "ec2:InvalidAction"],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:InvalidConditionKey": "SomeValue"
+        }
+      }
+    },
+    {
+      "Sid": "SecurityRisk",
+      "Effect": "Allow",
+      "Action": "*",
+      "Resource": "*",
+      "Condition": {
+        "Bool": {
+          "aws:MultiFactorAuthPresent": "false"
+        }
+      }
+    },
+    {
+      "Sid": "InvalidARN",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "not-a-valid-arn"
+    },
+    {
+      "Sid": "InvalidPartition",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:yolo:s3:::my_bucket/my_object:extra"
+    }
+  ]
+}

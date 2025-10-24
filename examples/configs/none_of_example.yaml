@@ -1,0 +1,54 @@
+# Example IAM Policy Validator Configuration with none_of examples
+
+checks:
+  action_condition_enforcement:
+    enabled: true
+    severity: error
+    description: "Demonstrate none_of functionality for actions and conditions"
+
+    action_condition_requirements:
+      # Example 1: Forbidden actions - these should never appear in a policy
+      - actions:
+          none_of:
+            - "iam:DeleteUser"
+            - "iam:DeleteRole"
+            - "s3:DeleteBucket"
+        description: "These dangerous actions are forbidden in this policy"
+
+      # Example 2: S3 operations must NOT allow insecure transport
+      - actions:
+          - "s3:GetObject"
+          - "s3:PutObject"
+        required_conditions:
+          none_of:
+            - condition_key: "aws:SecureTransport"
+              expected_value: false
+              description: "Never explicitly allow insecure transport (http)"
+
+      # Example 3: Prevent wildcard IP access for sensitive services
+      - action_patterns:
+          - "^rds:.*"
+          - "^dynamodb:.*"
+        required_conditions:
+          none_of:
+            - condition_key: "aws:SourceIp"
+              expected_value: "0.0.0.0/0"
+              description: "Database access must not allow all IPs"
+
+      # Example 4: Complex - require MFA but ensure we don't have overly permissive conditions
+      - actions:
+          - "iam:CreateAccessKey"
+          - "iam:CreateUser"
+        required_conditions:
+          all_of:
+            - condition_key: "aws:MultiFactorAuthPresent"
+              expected_value: true
+              description: "MFA required for user management"
+          none_of:
+            - condition_key: "aws:SourceIp"
+              expected_value: "0.0.0.0/0"
+              description: "Cannot allow access from any IP"
+
+settings:
+  fail_fast: false
+  enable_builtin_checks: true  # Enable built-in checks including action_condition_enforcement
