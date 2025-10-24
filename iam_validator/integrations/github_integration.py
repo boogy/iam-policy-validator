@@ -352,7 +352,7 @@ class GitHubIntegration:
             True if all parts posted successfully, False otherwise
         """
         # GitHub's actual limit
-        GITHUB_COMMENT_LIMIT = 65536
+        github_comment_limit = 65536
 
         # Delete all existing comments with this identifier
         await self._delete_comments_with_identifier(identifier)
@@ -369,15 +369,15 @@ class GitHubIntegration:
             full_body = f"{identifier}\n{part_indicator}\n\n{part_body}"
 
             # Safety check: ensure we don't exceed GitHub's limit
-            if len(full_body) > GITHUB_COMMENT_LIMIT:
+            if len(full_body) > github_comment_limit:
                 logger.error(
                     f"Part {part_num}/{total_parts} exceeds GitHub's comment limit "
-                    f"({len(full_body)} > {GITHUB_COMMENT_LIMIT} chars). "
+                    f"({len(full_body)} > {github_comment_limit} chars). "
                     f"This part will be truncated."
                 )
                 # Truncate with warning message
                 available_space = (
-                    GITHUB_COMMENT_LIMIT - 500
+                    github_comment_limit - 500
                 )  # Reserve space for truncation message
                 truncated_body = part_body[:available_space]
                 truncation_warning = (

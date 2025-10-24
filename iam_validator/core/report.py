@@ -244,13 +244,6 @@ class ReportGenerator:
         # - HTML comment identifier: "<!-- iam-policy-validator -->\n" (~35 chars)
         # - Safety buffer for formatting
         continuation_overhead = 200
-        part_indicator_overhead = 60  # Identifier + part indicator + newlines
-        available_per_part = (
-            max_length
-            - len(footer_content)
-            - continuation_overhead
-            - part_indicator_overhead
-        )
 
         # Sort results to prioritize errors - support both IAM validity and security severities
         sorted_results = sorted(

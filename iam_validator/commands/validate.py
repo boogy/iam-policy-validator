@@ -236,7 +236,6 @@ Examples:
 
         all_results = []
         total_processed = 0
-        has_failures = False
 
         # Clean up old review comments at the start (before posting any new ones)
         if args.github_comment and getattr(args, "github_review", False):
