@@ -139,7 +139,7 @@ Usage:
 """
 
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
@@ -164,7 +164,7 @@ class AdvancedMultiConditionValidator(PolicyCheck):
     def default_severity(self) -> str:
         return "error"
 
-    def _matches_pattern(self, value: str, patterns: List[str]) -> bool:
+    def _matches_pattern(self, value: str, patterns: list[str]) -> bool:
         """Check if value matches any pattern (supports wildcards)."""
         for pattern in patterns:
             if "*" in pattern:
@@ -175,7 +175,7 @@ class AdvancedMultiConditionValidator(PolicyCheck):
                 return True
         return False
 
-    def _matches_resource_pattern(self, resources: Any, patterns: List[str]) -> bool:
+    def _matches_resource_pattern(self, resources: Any, patterns: list[str]) -> bool:
         """Check if any resource matches the given patterns."""
         if not resources or not patterns:
             return False
@@ -189,8 +189,8 @@ class AdvancedMultiConditionValidator(PolicyCheck):
         return False
 
     def _is_exception_applicable(
-        self, statement: Statement, exceptions: List[Dict[str, Any]]
-    ) -> Tuple[bool, Optional[str]]:
+        self, statement: Statement, exceptions: list[dict[str, Any]]
+    ) -> tuple[bool, str | None]:
         """Check if statement matches any exception rules."""
         for exception in exceptions:
             # Check principal exceptions
@@ -219,10 +219,10 @@ class AdvancedMultiConditionValidator(PolicyCheck):
 
     def _extract_condition_value(
         self,
-        conditions: Optional[Dict[str, Any]],
+        conditions: dict[str, Any] | None,
         condition_key: str,
-        operators: List[str],
-    ) -> Tuple[bool, Optional[Any]]:
+        operators: list[str],
+    ) -> tuple[bool, Any | None]:
         """Extract condition value if present."""
         if not conditions:
             return False, None
@@ -237,8 +237,8 @@ class AdvancedMultiConditionValidator(PolicyCheck):
         return False, None
 
     def _validate_condition_requirement(
-        self, conditions: Optional[Dict[str, Any]], requirement: Dict[str, Any]
-    ) -> Tuple[bool, Optional[str]]:
+        self, conditions: dict[str, Any] | None, requirement: dict[str, Any]
+    ) -> tuple[bool, str | None]:
         """
         Validate a single condition requirement.
         Returns (is_valid, error_message)
@@ -308,8 +308,8 @@ class AdvancedMultiConditionValidator(PolicyCheck):
         return True, None
 
     def _validate_all_of_conditions(
-        self, conditions: Optional[Dict[str, Any]], requirements: List[Dict[str, Any]]
-    ) -> List[str]:
+        self, conditions: dict[str, Any] | None, requirements: list[dict[str, Any]]
+    ) -> list[str]:
         """Validate that ALL conditions are present and valid."""
         errors = []
 
@@ -324,9 +324,9 @@ class AdvancedMultiConditionValidator(PolicyCheck):
 
     def _validate_any_of_conditions(
         self,
-        conditions: Optional[Dict[str, Any]],
-        condition_groups: List[Dict[str, Any]],
-    ) -> Tuple[bool, List[str]]:
+        conditions: dict[str, Any] | None,
+        condition_groups: list[dict[str, Any]],
+    ) -> tuple[bool, list[str]]:
         """
         Validate that at least ONE group of conditions is satisfied.
         Returns (any_valid, all_errors)
@@ -356,9 +356,9 @@ class AdvancedMultiConditionValidator(PolicyCheck):
         statement_idx: int,
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
-    ) -> List[ValidationIssue]:
+    ) -> list[ValidationIssue]:
         """Execute the advanced multi-condition validation."""
-        issues: List[ValidationIssue] = []
+        issues: list[ValidationIssue] = []
 
         # Only check Allow statements
         if statement.effect.lower() != "allow":
@@ -455,8 +455,8 @@ class AdvancedMultiConditionValidator(PolicyCheck):
     def _build_recommendation(
         self,
         category_name: str,
-        required_conditions: Dict[str, Any],
-        actions: List[str],
+        required_conditions: dict[str, Any],
+        actions: list[str],
     ) -> str:
         """Build detailed recommendation for fixing the issue."""
         recommendation = [
@@ -489,7 +489,7 @@ class AdvancedMultiConditionValidator(PolicyCheck):
 
         return "\n".join(recommendation)
 
-    def _build_example_condition(self, required_conditions: Dict[str, Any]) -> str:
+    def _build_example_condition(self, required_conditions: dict[str, Any]) -> str:
         """Build example condition block."""
         example_conditions = {}
 

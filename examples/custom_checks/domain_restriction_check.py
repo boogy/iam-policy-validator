@@ -21,7 +21,6 @@ Usage:
 Author: Your Organization
 """
 
-from typing import List
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
@@ -54,7 +53,7 @@ class DomainRestrictionCheck(PolicyCheck):
         statement_idx: int,
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
-    ) -> List[ValidationIssue]:
+    ) -> list[ValidationIssue]:
         """
         Check that all resources match approved domain patterns.
 
@@ -102,7 +101,7 @@ class DomainRestrictionCheck(PolicyCheck):
         return issues
 
     def _matches_approved_domain(
-        self, resource: str, approved_domains: List[str]
+        self, resource: str, approved_domains: list[str]
     ) -> bool:
         """
         Check if a resource matches any approved domain pattern.

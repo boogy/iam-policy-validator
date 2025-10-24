@@ -239,7 +239,7 @@ jobs:
 
       # Prevent dangerous actions
       - name: Check for Dangerous Actions
-        uses: boogy/iam-policy-auditor@main
+        uses: boogy/iam-policy-auditor@v1
         with:
           path: policies/
           use-access-analyzer: true
@@ -249,7 +249,7 @@ jobs:
 
       # Check S3 bucket policies for public access
       - name: Check S3 Public Access
-        uses: boogy/iam-policy-auditor@main
+        uses: boogy/iam-policy-auditor@v1
         with:
           path: s3-policies/
           use-access-analyzer: true
@@ -261,13 +261,13 @@ jobs:
 
       # Compare against baseline to prevent new permissions
       - name: Checkout baseline from main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
           path: baseline
 
       - name: Check for New Access
-        uses: boogy/iam-policy-auditor@main
+        uses: boogy/iam-policy-auditor@v1
         with:
           path: policies/role-policy.json
           use-access-analyzer: true

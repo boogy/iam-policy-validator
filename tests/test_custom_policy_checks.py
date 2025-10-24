@@ -1,7 +1,8 @@
 """Tests for custom policy checks using AWS IAM Access Analyzer."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from iam_validator.core.access_analyzer import (
     AccessAnalyzerValidator,

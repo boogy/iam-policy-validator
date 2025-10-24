@@ -25,7 +25,6 @@ Usage:
 """
 
 import re
-from typing import List
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
@@ -53,7 +52,7 @@ class MFARequiredCheck(PolicyCheck):
         statement_idx: int,
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
-    ) -> List[ValidationIssue]:
+    ) -> list[ValidationIssue]:
         """Check that sensitive actions have MFA conditions."""
         issues = []
 
@@ -111,7 +110,7 @@ class MFARequiredCheck(PolicyCheck):
 
         return False
 
-    def _matches_pattern(self, action: str, patterns: List[str]) -> bool:
+    def _matches_pattern(self, action: str, patterns: list[str]) -> bool:
         """Check if action matches any regex pattern."""
         for pattern in patterns:
             try:

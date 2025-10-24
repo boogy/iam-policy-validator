@@ -2,7 +2,6 @@
 
 import html
 from datetime import datetime
-from typing import Any
 
 from iam_validator.core.formatters.base import OutputFormatter
 from iam_validator.core.models import ValidationReport
@@ -316,43 +315,36 @@ class HTMLFormatter(OutputFormatter):
         total_issues = report.total_issues
 
         html_parts = [
-            """
+            f"""
         <section class="summary">
             <h2>Summary</h2>
             <div class="summary-grid">
                 <div class="stat-card">
-                    <div class="stat-value">{}</div>
+                    <div class="stat-value">{report.total_policies}</div>
                     <div class="stat-label">Total Policies</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">{}</div>
+                    <div class="stat-value">{report.valid_policies}</div>
                     <div class="stat-label">Valid Policies</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">{}</div>
+                    <div class="stat-value">{total_issues}</div>
                     <div class="stat-label">Total Issues</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" style="color: var(--error-color)">{}</div>
+                    <div class="stat-value" style="color: var(--error-color)">{error_count}</div>
                     <div class="stat-label">Errors</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" style="color: var(--warning-color)">{}</div>
+                    <div class="stat-value" style="color: var(--warning-color)">{warning_count}</div>
                     <div class="stat-label">Warnings</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" style="color: var(--info-color)">{}</div>
+                    <div class="stat-value" style="color: var(--info-color)">{info_count}</div>
                     <div class="stat-label">Info</div>
                 </div>
             </div>
-        """.format(
-                report.total_policies,
-                report.valid_policies,
-                total_issues,
-                error_count,
-                warning_count,
-                info_count,
-            )
+        """
         ]
 
         if include_charts and total_issues > 0:

@@ -43,7 +43,7 @@ Usage:
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
@@ -65,7 +65,7 @@ class TimeBasedAccessCheck(PolicyCheck):
     def default_severity(self) -> str:
         return "error"
 
-    def _matches_pattern(self, action: str, patterns: List[str]) -> bool:
+    def _matches_pattern(self, action: str, patterns: list[str]) -> bool:
         """Check if action matches any of the given patterns."""
         for pattern in patterns:
             if "*" in pattern:
@@ -79,9 +79,9 @@ class TimeBasedAccessCheck(PolicyCheck):
 
     def _has_time_condition(
         self,
-        conditions: Optional[Dict[str, Any]],
+        conditions: dict[str, Any] | None,
         condition_key: str,
-        allowed_operators: List[str],
+        allowed_operators: list[str],
     ) -> bool:
         """Check if statement has the required time-based condition."""
         if not conditions:
@@ -107,9 +107,9 @@ class TimeBasedAccessCheck(PolicyCheck):
         statement_idx: int,
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
-    ) -> List[ValidationIssue]:
+    ) -> list[ValidationIssue]:
         """Execute the time-based access check."""
-        issues: List[ValidationIssue] = []
+        issues: list[ValidationIssue] = []
 
         # Skip Deny statements
         if statement.effect.lower() == "deny":

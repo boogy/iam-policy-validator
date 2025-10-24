@@ -31,9 +31,6 @@ venv/
 env/
 ENV/
 
-# uv
-uv.lock
-
 # Testing
 .benchmarks
 *.log

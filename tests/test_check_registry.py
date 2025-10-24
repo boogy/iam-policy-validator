@@ -1,6 +1,6 @@
 """Unit tests for Check Registry module."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 

@@ -25,7 +25,6 @@ Usage:
               - "CostCenter"
 """
 
-from typing import List
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
@@ -53,7 +52,7 @@ class TagEnforcementCheck(PolicyCheck):
         statement_idx: int,
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
-    ) -> List[ValidationIssue]:
+    ) -> list[ValidationIssue]:
         """Check tag enforcement requirements."""
         issues = []
 
@@ -93,8 +92,8 @@ class TagEnforcementCheck(PolicyCheck):
         return issues
 
     def _check_tag_conditions(
-        self, statement: Statement, required_tags: List[str]
-    ) -> List[str]:
+        self, statement: Statement, required_tags: list[str]
+    ) -> list[str]:
         """
         Check which required tags are missing from conditions.
 

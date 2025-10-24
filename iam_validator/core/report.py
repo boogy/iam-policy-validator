@@ -417,7 +417,7 @@ class ReportGenerator:
         """Format a single policy's issues for the comment."""
         lines = []
 
-        lines.append(f"<details open>")
+        lines.append("<details open>")
         lines.append(
             f"<summary><b>{idx}. <code>{result.policy_file}</code></b> - {len(result.issues)} issue(s) found</summary>"
         )
@@ -590,7 +590,7 @@ class ReportGenerator:
                     continue
 
                 policy_lines = []
-                policy_lines.append(f"<details open>")
+                policy_lines.append("<details open>")
                 policy_lines.append(
                     f"<summary><b>{idx}. <code>{result.policy_file}</code></b> - {len(result.issues)} issue(s) found</summary>"
                 )
@@ -681,7 +681,7 @@ class ReportGenerator:
                 details_lines.append("> ⚠️ **Output Truncated**")
                 details_lines.append(">")
                 details_lines.append(
-                    f"> The report was truncated to fit within GitHub's comment size limit."
+                    "> The report was truncated to fit within GitHub's comment size limit."
                 )
                 details_lines.append(
                     f"> **Showing:** {policies_shown} policies with {issues_shown} issues"

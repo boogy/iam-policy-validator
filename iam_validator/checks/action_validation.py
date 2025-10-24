@@ -2,7 +2,7 @@
 
 import re
 from functools import lru_cache
-from typing import Pattern
+from re import Pattern
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
