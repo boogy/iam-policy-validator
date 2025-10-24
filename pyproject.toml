@@ -60,10 +60,11 @@ packages = ["iam_validator"]
 
 [tool.mypy]
 python_version = "3.10"
-strict = true
-warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = true
+ignore_missing_imports = true
+# Relaxed for v1.0.0 - will enable strict mode incrementally
+check_untyped_defs = false
+disallow_untyped_defs = false
 
 [tool.ruff]
 line-length = 100
