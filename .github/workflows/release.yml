@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v*.*.*" # Triggers on version tags like v0.1.0, v1.2.3, etc.
+      - "v*.*.*"
 
 permissions:
   contents: write
@@ -87,6 +87,48 @@ jobs:
         run: uv publish
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Create Release Summary
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          # 🚀 Release Summary
+
+          ## 📦 Package Information
+          - **Package**: `iam-policy-validator`
+          - **Version**: `${{ steps.get_version.outputs.version }}`
+          - **Tag**: `${{ steps.get_version.outputs.tag }}`
+
+          ## 📋 What Was Published
+
+          ### GitHub Release
+          - ✅ Created release: [${{ steps.get_version.outputs.tag }}](https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.tag }})
+          - 📄 Changelog generated from commits
+          - 📦 Artifacts attached: wheel + source distribution
+
+          ### PyPI
+          ${{ !contains(steps.get_version.outputs.version, 'rc') && !contains(steps.get_version.outputs.version, 'beta') && !contains(steps.get_version.outputs.version, 'alpha') && '- ✅ Published to [PyPI](https://pypi.org/project/iam-policy-validator/)' || '- ⏭️ Skipped (pre-release version)' }}
+
+          ### Version Tags
+          - 🏷️ Major tag: `v${{ steps.get_version.outputs.version && split(steps.get_version.outputs.version, '.')[0] || '1' }}`
+          - 🏷️ Minor tag: `v${{ steps.get_version.outputs.version && join(slice(split(steps.get_version.outputs.version, '.'), 0, 2), '.') || '1.0' }}`
+          - 🏷️ Full tag: `v${{ steps.get_version.outputs.version }}`
+
+          ## 🔗 Quick Links
+          - [📦 PyPI Package](https://pypi.org/project/iam-policy-validator/)
+          - [📚 GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.tag }})
+          - [📖 Repository](https://github.com/${{ github.repository }})
+
+          ## 📥 Installation
+          ```bash
+          pip install iam-policy-validator==${{ steps.get_version.outputs.version }}
+          ```
+
+          or use the latest:
+          ```bash
+          pip install iam-policy-validator
+          ```
+          EOF
 
   update-action-versions:
     name: Update Major/Minor Tag References
