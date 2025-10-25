@@ -68,7 +68,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@6da8fa9354ddfdc4aeace5fc48d7f679b5214090 # v2
         with:
-          name: Release ${{ steps.get_version.outputs.tag }}
+          name: ${{ steps.get_version.outputs.tag }}
           body_path: CHANGELOG.txt
           files: |
             dist/*.whl
@@ -91,43 +91,51 @@ jobs:
       - name: Create Release Summary
         if: always()
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          VERSION="${{ steps.get_version.outputs.version }}"
+          TAG="${{ steps.get_version.outputs.tag }}"
+          IS_PRERELEASE="${{ contains(steps.get_version.outputs.version, 'rc') || contains(steps.get_version.outputs.version, 'beta') || contains(steps.get_version.outputs.version, 'alpha') }}"
+
+          # Extract major and minor versions
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f1-2)
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
           # 🚀 Release Summary
 
           ## 📦 Package Information
-          - **Package**: `iam-policy-validator`
-          - **Version**: `${{ steps.get_version.outputs.version }}`
-          - **Tag**: `${{ steps.get_version.outputs.tag }}`
+          - **Package**: \`iam-policy-validator\`
+          - **Version**: \`$VERSION\`
+          - **Tag**: \`$TAG\`
 
           ## 📋 What Was Published
 
           ### GitHub Release
-          - ✅ Created release: [${{ steps.get_version.outputs.tag }}](https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.tag }})
+          - ✅ Created release: [$TAG](https://github.com/${{ github.repository }}/releases/tag/$TAG)
           - 📄 Changelog generated from commits
           - 📦 Artifacts attached: wheel + source distribution
 
           ### PyPI
-          ${{ !contains(steps.get_version.outputs.version, 'rc') && !contains(steps.get_version.outputs.version, 'beta') && !contains(steps.get_version.outputs.version, 'alpha') && '- ✅ Published to [PyPI](https://pypi.org/project/iam-policy-validator/)' || '- ⏭️ Skipped (pre-release version)' }}
+          $(if [ "$IS_PRERELEASE" = "false" ]; then echo "- ✅ Published to [PyPI](https://pypi.org/project/iam-policy-validator/)"; else echo "- ⏭️ Skipped (pre-release version)"; fi)
 
           ### Version Tags
-          - 🏷️ Major tag: `v${{ steps.get_version.outputs.version && split(steps.get_version.outputs.version, '.')[0] || '1' }}`
-          - 🏷️ Minor tag: `v${{ steps.get_version.outputs.version && join(slice(split(steps.get_version.outputs.version, '.'), 0, 2), '.') || '1.0' }}`
-          - 🏷️ Full tag: `v${{ steps.get_version.outputs.version }}`
+          - 🏷️ Major tag: \`v$MAJOR\`
+          - 🏷️ Minor tag: \`v$MINOR\`
+          - 🏷️ Full tag: \`v$VERSION\`
 
           ## 🔗 Quick Links
           - [📦 PyPI Package](https://pypi.org/project/iam-policy-validator/)
-          - [📚 GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.tag }})
+          - [📚 GitHub Release](https://github.com/${{ github.repository }}/releases/tag/$TAG)
           - [📖 Repository](https://github.com/${{ github.repository }})
 
           ## 📥 Installation
-          ```bash
-          pip install iam-policy-validator==${{ steps.get_version.outputs.version }}
-          ```
+          \`\`\`bash
+          pip install iam-policy-validator==$VERSION
+          \`\`\`
 
           or use the latest:
-          ```bash
+          \`\`\`bash
           pip install iam-policy-validator
-          ```
+          \`\`\`
           EOF
 
   update-action-versions:
