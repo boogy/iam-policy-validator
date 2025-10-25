@@ -283,8 +283,8 @@ wheels = [
 ]
 
 [[package]]
-name = "iam-validator"
-version = "1.0.0"
+name = "iam-policy-validator"
+version = "1.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },

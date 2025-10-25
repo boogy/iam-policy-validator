@@ -113,7 +113,7 @@ jobs:
           git push origin "v$MAJOR" --force
 
           # Update vX.Y tag (e.g., v1.2)
-          git tag -fa "v$MINOR" -m "Update v$MINOR to $VERSION"
+          git tag -fa "v$MINOR" -m "Updated v$MINOR to $VERSION"
           git push origin "v$MINOR" --force
 
           echo "Updated tags: v$MAJOR and v$MINOR to point to $VERSION"
