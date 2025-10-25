@@ -13,17 +13,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6
         with:
           python-version: "3.12"
 
       - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+        uses: astral-sh/setup-uv@5dbc9fba7434435c4cd0268139340fa3696d98f3 # v7
+        with:
+          enable-cache: true
 
       - name: Install dependencies
         run: uv sync --all-extras
@@ -34,30 +34,6 @@ jobs:
       - name: Run Ruff formatter check
         run: uv run ruff format --check .
 
-  # Temporarily disabled - will re-enable when type annotations are complete
-  # type-check:
-  #   name: Type Check with mypy
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v5
-
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v6
-  #       with:
-  #         python-version: "3.12"
-
-  #     - name: Install uv
-  #       run: |
-  #         curl -LsSf https://astral.sh/uv/install.sh | sh
-  #         echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-  #     - name: Install dependencies
-  #       run: uv sync --all-extras
-
-  #     - name: Run mypy
-  #       run: uv run mypy iam_validator/
-
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -67,17 +43,17 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+        uses: astral-sh/setup-uv@5dbc9fba7434435c4cd0268139340fa3696d98f3 # v7
+        with:
+          enable-cache: true
 
       - name: Install dependencies
         run: uv sync --all-extras
@@ -91,17 +67,17 @@ jobs:
     needs: [lint, test]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6
         with:
           python-version: "3.12"
 
       - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+        uses: astral-sh/setup-uv@5dbc9fba7434435c4cd0268139340fa3696d98f3 # v7
+        with:
+          enable-cache: true
 
       - name: Install dependencies
         run: uv sync
@@ -115,17 +91,17 @@ jobs:
     needs: [lint, test]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6
         with:
           python-version: "3.12"
 
       - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+        uses: astral-sh/setup-uv@5dbc9fba7434435c4cd0268139340fa3696d98f3 # v7
+        with:
+          enable-cache: true
 
       - name: Install dependencies
         run: uv sync
