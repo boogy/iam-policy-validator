@@ -109,13 +109,6 @@ jobs:
       - name: Build package
         run: uv build
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v5
-        with:
-          name: dist-packages
-          path: dist/
-          retention-days: 7
-
   integration-test:
     name: Integration Test (Self-Test)
     runs-on: ubuntu-latest
