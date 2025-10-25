@@ -37,14 +37,9 @@ class MarkdownFormatter(OutputFormatter):
             if i.severity in ("error", "critical", "high")
         )
         warnings = sum(
-            1
-            for r in report.results
-            for i in r.issues
-            if i.severity in ("warning", "medium")
+            1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")
         )
-        infos = sum(
-            1 for r in report.results for i in r.issues if i.severity in ("info", "low")
-        )
+        infos = sum(1 for r in report.results for i in r.issues if i.severity in ("info", "low"))
 
         output = [
             "# IAM Policy Validation Report\n",

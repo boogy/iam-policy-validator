@@ -95,16 +95,14 @@ class MSTeamsIntegration:
         # Basic URL validation - should contain office.com or webhook.office365.com
         if "webhook.office" not in webhook_url.lower():
             logger.warning(
-                f"Webhook URL doesn't appear to be a valid MS Teams webhook: "
-                f"{webhook_url[:50]}..."
+                f"Webhook URL doesn't appear to be a valid MS Teams webhook: {webhook_url[:50]}..."
             )
             # Still allow it, but warn
 
         # Length check to prevent extremely long URLs
         if len(webhook_url) > 2048:
             logger.warning(
-                f"Webhook URL is unusually long ({len(webhook_url)} chars), "
-                "may be invalid"
+                f"Webhook URL is unusually long ({len(webhook_url)} chars), may be invalid"
             )
             return None
 
@@ -198,9 +196,7 @@ class MSTeamsIntegration:
         if message.facts:
             fact_set = {
                 "type": "FactSet",
-                "facts": [
-                    {"title": f["title"], "value": f["value"]} for f in message.facts
-                ],
+                "facts": [{"title": f["title"], "value": f["value"]} for f in message.facts],
             }
             card["attachments"][0]["content"]["body"].append(fact_set)
 
@@ -215,9 +211,7 @@ class MSTeamsIntegration:
 
         return card
 
-    def _create_simple_card(
-        self, title: str, text: str, theme_color: str
-    ) -> dict[str, Any]:
+    def _create_simple_card(self, title: str, text: str, theme_color: str) -> dict[str, Any]:
         """Create a simple message card (legacy format).
 
         Args:
@@ -236,9 +230,7 @@ class MSTeamsIntegration:
             "text": text,
         }
 
-    async def send_message(
-        self, message: TeamsMessage, use_adaptive_card: bool = True
-    ) -> bool:
+    async def send_message(self, message: TeamsMessage, use_adaptive_card: bool = True) -> bool:
         """Send a message to MS Teams.
 
         Args:
@@ -262,14 +254,10 @@ class MSTeamsIntegration:
                 payload = self._create_adaptive_card(message)
             else:
                 color = self._get_card_color(message.message_type)
-                payload = self._create_simple_card(
-                    message.title, message.message, color
-                )
+                payload = self._create_simple_card(message.title, message.message, color)
 
             if self._client:
-                response = await self._client.post(
-                    self.webhook_url, json=payload, timeout=30.0
-                )
+                response = await self._client.post(self.webhook_url, json=payload, timeout=30.0)
             else:
                 async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
                     response = await client.post(self.webhook_url, json=payload)

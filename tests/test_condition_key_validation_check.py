@@ -46,9 +46,7 @@ class TestConditionKeyValidationCheck:
     async def test_no_conditions(self, check, fetcher, config):
         """Test statement with no conditions."""
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["arn:aws:s3:::bucket/*"]
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -64,7 +62,7 @@ class TestConditionKeyValidationCheck:
             Effect="Allow",
             Action=["s3:GetObject"],
             Resource=["arn:aws:s3:::bucket/*"],
-            Condition={"StringEquals": {"s3:prefix": "documents/"}}
+            Condition={"StringEquals": {"s3:prefix": "documents/"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -74,13 +72,16 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_invalid_condition_key(self, check, fetcher, config):
         """Test invalid condition key is flagged."""
-        fetcher.validate_condition_key.return_value = (False, "Condition key 's3:invalidKey' is not valid for action 's3:GetObject'")
+        fetcher.validate_condition_key.return_value = (
+            False,
+            "Condition key 's3:invalidKey' is not valid for action 's3:GetObject'",
+        )
 
         statement = Statement(
             Effect="Allow",
             Action=["s3:GetObject"],
             Resource=["arn:aws:s3:::bucket/*"],
-            Condition={"StringEquals": {"s3:invalidKey": "value"}}
+            Condition={"StringEquals": {"s3:invalidKey": "value"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -93,6 +94,7 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_multiple_condition_keys(self, check, fetcher, config):
         """Test multiple condition keys are validated."""
+
         async def validate_side_effect(action, key):
             if key == "s3:prefix":
                 return (True, None)
@@ -105,12 +107,7 @@ class TestConditionKeyValidationCheck:
             Effect="Allow",
             Action=["s3:GetObject"],
             Resource=["arn:aws:s3:::bucket/*"],
-            Condition={
-                "StringEquals": {
-                    "s3:prefix": "documents/",
-                    "s3:invalidKey": "value"
-                }
-            }
+            Condition={"StringEquals": {"s3:prefix": "documents/", "s3:invalidKey": "value"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -129,8 +126,8 @@ class TestConditionKeyValidationCheck:
             Resource=["arn:aws:s3:::bucket/*"],
             Condition={
                 "StringEquals": {"s3:prefix": "documents/"},
-                "IpAddress": {"aws:SourceIp": "10.0.0.0/8"}
-            }
+                "IpAddress": {"aws:SourceIp": "10.0.0.0/8"},
+            },
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -146,7 +143,7 @@ class TestConditionKeyValidationCheck:
             Effect="Allow",
             Action=["s3:GetObject", "s3:PutObject"],
             Resource=["arn:aws:s3:::bucket/*"],
-            Condition={"StringEquals": {"s3:prefix": "documents/"}}
+            Condition={"StringEquals": {"s3:prefix": "documents/"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -163,7 +160,7 @@ class TestConditionKeyValidationCheck:
             Effect="Allow",
             Action=["*"],
             Resource=["arn:aws:s3:::bucket/*"],
-            Condition={"StringEquals": {"s3:prefix": "documents/"}}
+            Condition={"StringEquals": {"s3:prefix": "documents/"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -179,7 +176,7 @@ class TestConditionKeyValidationCheck:
             Effect="Allow",
             Action=["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
             Resource=["arn:aws:s3:::bucket/*"],
-            Condition={"StringEquals": {"s3:invalidKey": "value"}}
+            Condition={"StringEquals": {"s3:invalidKey": "value"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -197,7 +194,7 @@ class TestConditionKeyValidationCheck:
             Effect="Allow",
             Action=["s3:GetObject"],
             Resource=["arn:aws:s3:::bucket/*"],
-            Condition={"StringEquals": {"s3:invalidKey": "value"}}
+            Condition={"StringEquals": {"s3:invalidKey": "value"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -212,7 +209,7 @@ class TestConditionKeyValidationCheck:
             Effect="Allow",
             Action=["s3:GetObject"],
             Resource=["arn:aws:s3:::bucket/*"],
-            Condition={"StringEquals": {"s3:invalidKey": "value"}}
+            Condition={"StringEquals": {"s3:invalidKey": "value"}},
         )
         issues = await check.execute(statement, 7, fetcher, config)
 
@@ -227,7 +224,7 @@ class TestConditionKeyValidationCheck:
             Effect="Allow",
             Action=["s3:GetObject"],
             Resource=["arn:aws:s3:::bucket/*"],
-            Condition={"StringEquals": {"s3:invalidKey": "value"}}
+            Condition={"StringEquals": {"s3:invalidKey": "value"}},
         )
         statement.line_number = 55
 
@@ -245,7 +242,7 @@ class TestConditionKeyValidationCheck:
             Effect="Allow",
             Action=["s3:GetObject"],
             Resource=["arn:aws:s3:::bucket/*"],
-            Condition={"StringEquals": {"s3:invalidKey": "value"}}
+            Condition={"StringEquals": {"s3:invalidKey": "value"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -260,7 +257,7 @@ class TestConditionKeyValidationCheck:
             Effect="Allow",
             Action=["s3:GetObject"],
             Resource=["arn:aws:s3:::bucket/*"],
-            Condition={"StringEquals": {"s3:invalidKey": "value"}}
+            Condition={"StringEquals": {"s3:invalidKey": "value"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -276,7 +273,7 @@ class TestConditionKeyValidationCheck:
             Effect="Allow",
             Action="s3:GetObject",
             Resource=["arn:aws:s3:::bucket/*"],
-            Condition={"StringEquals": {"s3:prefix": "documents/"}}
+            Condition={"StringEquals": {"s3:prefix": "documents/"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
 

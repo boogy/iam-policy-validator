@@ -169,9 +169,7 @@ class ConfigLoader:
         return ValidatorConfig(config_dict)
 
     @staticmethod
-    def apply_config_to_registry(
-        config: ValidatorConfig, registry: CheckRegistry
-    ) -> None:
+    def apply_config_to_registry(config: ValidatorConfig, registry: CheckRegistry) -> None:
         """
         Apply configuration to a check registry.
 
@@ -203,9 +201,7 @@ class ConfigLoader:
             registry.configure_check(check_id, check_config)
 
     @staticmethod
-    def load_custom_checks(
-        config: ValidatorConfig, registry: CheckRegistry
-    ) -> list[str]:
+    def load_custom_checks(config: ValidatorConfig, registry: CheckRegistry) -> list[str]:
         """
         Load custom checks from Python modules.
 
@@ -262,9 +258,7 @@ class ConfigLoader:
                     enabled=True,
                     severity=custom_check_config.get("severity"),
                     config=custom_check_config.get("config", {}),
-                    description=custom_check_config.get(
-                        "description", check_instance.description
-                    ),
+                    description=custom_check_config.get("description", check_instance.description),
                 )
                 registry.configure_check(check_instance.check_id, check_config)
 
@@ -277,9 +271,7 @@ class ConfigLoader:
         return loaded_checks
 
     @staticmethod
-    def discover_checks_in_directory(
-        directory: Path, registry: CheckRegistry
-    ) -> list[str]:
+    def discover_checks_in_directory(directory: Path, registry: CheckRegistry) -> list[str]:
         """
         Auto-discover and load custom checks from a directory.
 
@@ -370,9 +362,7 @@ class ConfigLoader:
                                 enabled=False,
                                 description=check_instance.description,
                             )
-                            registry.configure_check(
-                                check_instance.check_id, check_config
-                            )
+                            registry.configure_check(check_instance.check_id, check_config)
 
                             loaded_checks.append(check_instance.check_id)
                             logger.info(
@@ -408,6 +398,4 @@ def load_validator_config(
     Returns:
         ValidatorConfig object
     """
-    return ConfigLoader.load_config(
-        explicit_path=config_path, allow_missing=allow_missing
-    )
+    return ConfigLoader.load_config(explicit_path=config_path, allow_missing=allow_missing)

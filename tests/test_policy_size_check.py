@@ -72,9 +72,7 @@ class TestPolicySizeCheck:
         # Each action is around 15 chars, so we need ~410 actions
         actions = [f"s3:GetObject{i:04d}" for i in range(450)]
 
-        config = CheckConfig(
-            check_id="policy_size", config={"policy_type": "managed"}
-        )
+        config = CheckConfig(check_id="policy_size", config={"policy_type": "managed"})
 
         policy = IAMPolicy(
             Version="2012-10-17",
@@ -102,9 +100,7 @@ class TestPolicySizeCheck:
         # Create a policy that exceeds inline_user limit (2048)
         actions = [f"s3:GetObject{i:04d}" for i in range(150)]
 
-        config = CheckConfig(
-            check_id="policy_size", config={"policy_type": "inline_user"}
-        )
+        config = CheckConfig(check_id="policy_size", config={"policy_type": "inline_user"})
 
         policy = IAMPolicy(
             Version="2012-10-17",
@@ -129,9 +125,7 @@ class TestPolicySizeCheck:
         # Create a policy that exceeds inline_group limit (5120)
         actions = [f"s3:GetObject{i:04d}" for i in range(350)]
 
-        config = CheckConfig(
-            check_id="policy_size", config={"policy_type": "inline_group"}
-        )
+        config = CheckConfig(check_id="policy_size", config={"policy_type": "inline_group"})
 
         policy = IAMPolicy(
             Version="2012-10-17",
@@ -156,9 +150,7 @@ class TestPolicySizeCheck:
         # Create a policy that exceeds inline_role limit (10240)
         actions = [f"s3:GetObject{i:04d}" for i in range(700)]
 
-        config = CheckConfig(
-            check_id="policy_size", config={"policy_type": "inline_role"}
-        )
+        config = CheckConfig(check_id="policy_size", config={"policy_type": "inline_role"})
 
         policy = IAMPolicy(
             Version="2012-10-17",
@@ -237,9 +229,7 @@ class TestPolicySizeCheck:
         """Test that suggestion is included."""
         actions = [f"s3:GetObject{i:04d}" for i in range(450)]
 
-        config = CheckConfig(
-            check_id="policy_size", config={"policy_type": "managed"}
-        )
+        config = CheckConfig(check_id="policy_size", config={"policy_type": "managed"})
 
         policy = IAMPolicy(
             Version="2012-10-17",
@@ -265,17 +255,13 @@ class TestPolicySizeCheck:
         policy_small = IAMPolicy(
             Version="2012-10-17",
             Statement=[
-                Statement(
-                    Sid="Test", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]
-                )
+                Statement(Sid="Test", Effect="Allow", Action=["s3:GetObject"], Resource=["*"])
             ],
         )
 
         # The policy should have the same effective size regardless of whitespace
         # since we remove all whitespace before measuring
-        issues = await check.execute_policy(
-            policy_small, "test.json", fetcher, config
-        )
+        issues = await check.execute_policy(policy_small, "test.json", fetcher, config)
         assert len(issues) == 0
 
     @pytest.mark.asyncio
@@ -285,9 +271,7 @@ class TestPolicySizeCheck:
         actions1 = [f"s3:GetObject{i:04d}" for i in range(250)]
         actions2 = [f"s3:PutObject{i:04d}" for i in range(250)]
 
-        config = CheckConfig(
-            check_id="policy_size", config={"policy_type": "managed"}
-        )
+        config = CheckConfig(check_id="policy_size", config={"policy_type": "managed"})
 
         policy = IAMPolicy(
             Version="2012-10-17",
@@ -341,9 +325,7 @@ class TestPolicySizeCheck:
         """Test that percentage over limit is calculated."""
         actions = [f"s3:GetObject{i:04d}" for i in range(450)]
 
-        config = CheckConfig(
-            check_id="policy_size", config={"policy_type": "managed"}
-        )
+        config = CheckConfig(check_id="policy_size", config={"policy_type": "managed"})
 
         policy = IAMPolicy(
             Version="2012-10-17",

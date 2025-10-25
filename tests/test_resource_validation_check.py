@@ -42,9 +42,7 @@ class TestResourceValidationCheck:
     async def test_valid_arn_aws_partition(self, check, fetcher, config):
         """Test valid ARN with aws partition."""
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["arn:aws:s3:::my-bucket/*"]
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::my-bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
@@ -53,9 +51,7 @@ class TestResourceValidationCheck:
     async def test_valid_arn_aws_cn_partition(self, check, fetcher, config):
         """Test valid ARN with aws-cn partition."""
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["arn:aws-cn:s3:::my-bucket/*"]
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws-cn:s3:::my-bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
@@ -64,9 +60,7 @@ class TestResourceValidationCheck:
     async def test_valid_arn_govcloud(self, check, fetcher, config):
         """Test valid ARN with aws-us-gov partition."""
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["arn:aws-us-gov:s3:::my-bucket/*"]
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws-us-gov:s3:::my-bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
@@ -77,7 +71,7 @@ class TestResourceValidationCheck:
         statement = Statement(
             Effect="Allow",
             Action=["dynamodb:GetItem"],
-            Resource=["arn:aws:dynamodb:us-east-1:123456789012:table/MyTable"]
+            Resource=["arn:aws:dynamodb:us-east-1:123456789012:table/MyTable"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
@@ -88,7 +82,7 @@ class TestResourceValidationCheck:
         statement = Statement(
             Effect="Allow",
             Action=["ec2:TerminateInstances"],
-            Resource=["arn:aws:ec2:us-west-2:123456789012:instance/i-1234567890abcdef0"]
+            Resource=["arn:aws:ec2:us-west-2:123456789012:instance/i-1234567890abcdef0"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
@@ -96,11 +90,7 @@ class TestResourceValidationCheck:
     @pytest.mark.asyncio
     async def test_wildcard_resource_skipped(self, check, fetcher, config):
         """Test wildcard resource is skipped."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
 
@@ -108,9 +98,7 @@ class TestResourceValidationCheck:
     async def test_invalid_arn_missing_prefix(self, check, fetcher, config):
         """Test invalid ARN without arn: prefix."""
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["aws:s3:::my-bucket/*"]
+            Effect="Allow", Action=["s3:GetObject"], Resource=["aws:s3:::my-bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -126,7 +114,7 @@ class TestResourceValidationCheck:
         statement = Statement(
             Effect="Allow",
             Action=["s3:GetObject"],
-            Resource=["arn:invalid-partition:s3:::my-bucket/*"]
+            Resource=["arn:invalid-partition:s3:::my-bucket/*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -136,11 +124,7 @@ class TestResourceValidationCheck:
     @pytest.mark.asyncio
     async def test_invalid_arn_malformed(self, check, fetcher, config):
         """Test malformed ARN."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["not-an-arn"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["not-an-arn"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 1
@@ -155,8 +139,8 @@ class TestResourceValidationCheck:
             Resource=[
                 "arn:aws:s3:::valid-bucket/*",
                 "invalid-arn",
-                "arn:aws:s3:::another-bucket/*"
-            ]
+                "arn:aws:s3:::another-bucket/*",
+            ],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -167,10 +151,7 @@ class TestResourceValidationCheck:
     async def test_statement_with_sid(self, check, fetcher, config):
         """Test that statement SID is captured."""
         statement = Statement(
-            Sid="TestStatement",
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["invalid-arn"]
+            Sid="TestStatement", Effect="Allow", Action=["s3:GetObject"], Resource=["invalid-arn"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -179,11 +160,7 @@ class TestResourceValidationCheck:
     @pytest.mark.asyncio
     async def test_statement_index(self, check, fetcher, config):
         """Test that statement index is captured."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["invalid-arn"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["invalid-arn"])
         issues = await check.execute(statement, 9, fetcher, config)
 
         assert issues[0].statement_index == 9
@@ -191,11 +168,7 @@ class TestResourceValidationCheck:
     @pytest.mark.asyncio
     async def test_line_number_captured(self, check, fetcher, config):
         """Test that line number is captured when available."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["invalid-arn"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["invalid-arn"])
         statement.line_number = 100
 
         issues = await check.execute(statement, 0, fetcher, config)
@@ -206,11 +179,7 @@ class TestResourceValidationCheck:
     async def test_custom_severity(self, check, fetcher):
         """Test custom severity from config."""
         config = CheckConfig(check_id="resource_validation", severity="warning")
-        statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["invalid-arn"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["invalid-arn"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert issues[0].severity == "warning"
@@ -219,15 +188,14 @@ class TestResourceValidationCheck:
     async def test_custom_arn_pattern(self, check, fetcher):
         """Test custom ARN pattern from config."""
         # More restrictive pattern that only allows standard AWS partition
-        config = CheckConfig(check_id="resource_validation", config={
-            "arn_pattern": r"^arn:aws:[a-z0-9\-]+:[a-z0-9\-]*:[0-9]*:.+$"
-        })
+        config = CheckConfig(
+            check_id="resource_validation",
+            config={"arn_pattern": r"^arn:aws:[a-z0-9\-]+:[a-z0-9\-]*:[0-9]*:.+$"},
+        )
 
         # This should fail with the restrictive pattern
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["arn:aws-cn:s3:::my-bucket/*"]
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws-cn:s3:::my-bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -237,9 +205,7 @@ class TestResourceValidationCheck:
     async def test_string_resource(self, check, fetcher, config):
         """Test resource as string instead of list."""
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource="arn:aws:s3:::my-bucket/*"
+            Effect="Allow", Action=["s3:GetObject"], Resource="arn:aws:s3:::my-bucket/*"
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -248,10 +214,7 @@ class TestResourceValidationCheck:
     @pytest.mark.asyncio
     async def test_no_resources(self, check, fetcher, config):
         """Test statement with no Resource field."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 0
@@ -259,11 +222,7 @@ class TestResourceValidationCheck:
     @pytest.mark.asyncio
     async def test_suggestion_included(self, check, fetcher, config):
         """Test that suggestion is included in issues."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["invalid-arn"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["invalid-arn"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert issues[0].suggestion is not None
@@ -275,7 +234,7 @@ class TestResourceValidationCheck:
         statement = Statement(
             Effect="Allow",
             Action=["s3:GetObject"],
-            Resource=["arn:aws:s3:::my-bucket/path/*/file.txt"]
+            Resource=["arn:aws:s3:::my-bucket/path/*/file.txt"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
@@ -284,9 +243,7 @@ class TestResourceValidationCheck:
     async def test_valid_arn_empty_region_and_account(self, check, fetcher, config):
         """Test valid ARN with empty region and account (like S3)."""
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["arn:aws:s3:::my-bucket"]
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::my-bucket"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
@@ -301,8 +258,8 @@ class TestResourceValidationCheck:
                 "arn:aws-iso:s3:::bucket1",
                 "arn:aws-iso-b:s3:::bucket2",
                 "arn:aws-iso-e:s3:::bucket3",
-                "arn:aws-iso-f:s3:::bucket4"
-            ]
+                "arn:aws-iso-f:s3:::bucket4",
+            ],
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
@@ -311,9 +268,7 @@ class TestResourceValidationCheck:
     async def test_valid_arn_eusc_partition(self, check, fetcher, config):
         """Test valid ARN with aws-eusc partition."""
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["arn:aws-eusc:s3:::my-bucket/*"]
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws-eusc:s3:::my-bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
@@ -324,7 +279,7 @@ class TestResourceValidationCheck:
         statement = Statement(
             Effect="Allow",
             Action=["lambda:InvokeFunction"],
-            Resource=["arn:aws:lambda:*:123456789012:function:dev-*"]
+            Resource=["arn:aws:lambda:*:123456789012:function:dev-*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
@@ -335,7 +290,7 @@ class TestResourceValidationCheck:
         statement = Statement(
             Effect="Allow",
             Action=["s3:GetObject"],
-            Resource=["arn:aws:s3:us-east-1:*:bucket/my-bucket/*"]
+            Resource=["arn:aws:s3:us-east-1:*:bucket/my-bucket/*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
@@ -346,7 +301,7 @@ class TestResourceValidationCheck:
         statement = Statement(
             Effect="Allow",
             Action=["logs:CreateLogGroup"],
-            Resource=["arn:aws:logs:*:*:log-group:/aws/lambda/dev-*"]
+            Resource=["arn:aws:logs:*:*:log-group:/aws/lambda/dev-*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
@@ -360,8 +315,8 @@ class TestResourceValidationCheck:
             Resource=[
                 "arn:aws:dynamodb:*:123456789012:table/Users",
                 "arn:aws:dynamodb:us-west-2:*:table/Products",
-                "arn:aws:ec2:*:*:instance/*"
-            ]
+                "arn:aws:ec2:*:*:instance/*",
+            ],
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0

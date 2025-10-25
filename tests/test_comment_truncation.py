@@ -21,10 +21,7 @@ def create_test_issue(severity: str, index: int) -> ValidationIssue:
 
 def create_test_result(policy_file: str, num_issues: int) -> PolicyValidationResult:
     """Create a test validation result."""
-    issues = [
-        create_test_issue("error" if i % 2 == 0 else "warning", i)
-        for i in range(num_issues)
-    ]
+    issues = [create_test_issue("error" if i % 2 == 0 else "warning", i) for i in range(num_issues)]
     return PolicyValidationResult(
         policy_file=policy_file,
         is_valid=False,
@@ -132,11 +129,7 @@ def test_empty_report():
     """Test that empty report (all valid) works correctly."""
     generator = ReportGenerator()
 
-    results = [
-        PolicyValidationResult(
-            policy_file="valid-policy.json", is_valid=True, issues=[]
-        )
-    ]
+    results = [PolicyValidationResult(policy_file="valid-policy.json", is_valid=True, issues=[])]
     report = generator.generate_report(results)
 
     comment = generator.generate_github_comment(report)
@@ -163,8 +156,7 @@ def test_character_count_accuracy():
         max_allowed = limit * 1.05
 
         assert actual_length <= max_allowed, (
-            f"Comment length {actual_length} exceeds limit {limit} "
-            f"(with 5% buffer: {max_allowed})"
+            f"Comment length {actual_length} exceeds limit {limit} (with 5% buffer: {max_allowed})"
         )
 
 

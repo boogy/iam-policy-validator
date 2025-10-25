@@ -38,7 +38,7 @@ Usage:
 """
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
@@ -60,7 +60,7 @@ class CrossAccountExternalIdCheck(PolicyCheck):
     def default_severity(self) -> str:
         return "error"
 
-    def _extract_account_from_principal(self, principal: Any) -> Optional[str]:
+    def _extract_account_from_principal(self, principal: Any) -> str | None:
         """Extract AWS account ID from principal."""
         if isinstance(principal, str):
             # Format: arn:aws:iam::123456789012:root
@@ -82,9 +82,9 @@ class CrossAccountExternalIdCheck(PolicyCheck):
 
     def _has_external_id_condition(
         self,
-        conditions: Optional[Dict[str, Any]],
-        required_pattern: Optional[str] = None,
-    ) -> Tuple[bool, Optional[str]]:
+        conditions: dict[str, Any] | None,
+        required_pattern: str | None = None,
+    ) -> tuple[bool, str | None]:
         """
         Check if statement has ExternalId condition.
         Returns (has_condition, external_id_value)
@@ -104,8 +104,8 @@ class CrossAccountExternalIdCheck(PolicyCheck):
         return False, None
 
     def _validate_external_id_format(
-        self, external_id: str, pattern: Optional[str]
-    ) -> Tuple[bool, Optional[str]]:
+        self, external_id: str, pattern: str | None
+    ) -> tuple[bool, str | None]:
         """Validate ExternalId format against pattern."""
         if not pattern:
             return True, None
@@ -124,9 +124,9 @@ class CrossAccountExternalIdCheck(PolicyCheck):
         statement_idx: int,
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
-    ) -> List[ValidationIssue]:
+    ) -> list[ValidationIssue]:
         """Execute the cross-account ExternalId check."""
-        issues: List[ValidationIssue] = []
+        issues: list[ValidationIssue] = []
 
         # Only check Allow statements
         if statement.effect.lower() != "allow":
@@ -136,12 +136,13 @@ class CrossAccountExternalIdCheck(PolicyCheck):
         actions = (
             statement.action
             if isinstance(statement.action, list)
-            else [statement.action] if statement.action else []
+            else [statement.action]
+            if statement.action
+            else []
         )
 
         has_assume_role = any(
-            action in ["sts:AssumeRole", "sts:*", "*"]
-            or action.startswith("sts:AssumeRole*")
+            action in ["sts:AssumeRole", "sts:*", "*"] or action.startswith("sts:AssumeRole*")
             for action in actions
             if action  # Filter out None values
         )

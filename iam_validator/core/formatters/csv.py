@@ -61,14 +61,9 @@ class CSVFormatter(OutputFormatter):
             if i.severity in ("error", "critical", "high")
         )
         warnings = sum(
-            1
-            for r in report.results
-            for i in r.issues
-            if i.severity in ("warning", "medium")
+            1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")
         )
-        infos = sum(
-            1 for r in report.results for i in r.issues if i.severity in ("info", "low")
-        )
+        infos = sum(1 for r in report.results for i in r.issues if i.severity in ("info", "low"))
 
         writer.writerow(["Summary Statistics"])
         writer.writerow(["Metric", "Value"])
@@ -106,11 +101,7 @@ class CSVFormatter(OutputFormatter):
                 writer.writerow(
                     [
                         policy_result.policy_file,
-                        (
-                            issue.statement_index + 1
-                            if issue.statement_index is not None
-                            else ""
-                        ),
+                        (issue.statement_index + 1 if issue.statement_index is not None else ""),
                         issue.statement_sid or "",
                         issue.line_number or "",
                         issue.severity,
@@ -144,16 +135,13 @@ class CSVFormatter(OutputFormatter):
                     issue_type or "unknown",
                     severity,
                     data["count"],
-                    "; ".join(data["files"][:5])
-                    + ("..." if len(data["files"]) > 5 else ""),
+                    "; ".join(data["files"][:5]) + ("..." if len(data["files"]) > 5 else ""),
                 ]
             )
 
         return output.getvalue()
 
-    def _create_pivot_data(
-        self, report: ValidationReport
-    ) -> dict[tuple, dict[str, Any]]:
+    def _create_pivot_data(self, report: ValidationReport) -> dict[tuple, dict[str, Any]]:
         """Create pivot table data structure."""
         pivot_data = {}
 

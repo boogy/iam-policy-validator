@@ -26,9 +26,7 @@ class ActionDetail(BaseModel):
     action_condition_keys: list[str] | None = Field(
         default_factory=list, alias="ActionConditionKeys"
     )
-    resources: list[dict[str, Any]] | None = Field(
-        default_factory=list, alias="Resources"
-    )
+    resources: list[dict[str, Any]] | None = Field(default_factory=list, alias="Resources")
     annotations: dict[str, Any] | None = Field(default=None, alias="Annotations")
     supported_by: dict[str, Any] | None = Field(default=None, alias="SupportedBy")
 
@@ -40,9 +38,7 @@ class ResourceType(BaseModel):
 
     name: str = Field(alias="Name")
     arn_pattern: str | None = Field(default=None, alias="ARNPattern")
-    condition_keys: list[str] | None = Field(
-        default_factory=list, alias="ConditionKeys"
-    )
+    condition_keys: list[str] | None = Field(default_factory=list, alias="ConditionKeys")
 
 
 class ConditionKey(BaseModel):
@@ -70,9 +66,7 @@ class ServiceDetail(BaseModel):
     # Raw API data
     actions_list: list[ActionDetail] = Field(default_factory=list, alias="Actions")
     resources_list: list[ResourceType] = Field(default_factory=list, alias="Resources")
-    condition_keys_list: list[ConditionKey] = Field(
-        default_factory=list, alias="ConditionKeys"
-    )
+    condition_keys_list: list[ConditionKey] = Field(default_factory=list, alias="ConditionKeys")
 
     def model_post_init(self, __context: Any) -> None:
         """Convert lists to dictionaries for easier lookup."""
@@ -96,18 +90,10 @@ class Statement(BaseModel):
     action: list[str] | str | None = Field(default=None, alias="Action")
     not_action: list[str] | str | None = Field(default=None, alias="NotAction")
     resource: list[str] | str | None = Field(default=None, alias="Resource")
-    not_resource: list[str] | str | None = Field(
-        default=None, alias="NotResource"
-    )
-    condition: dict[str, dict[str, Any]] | None = Field(
-        default=None, alias="Condition"
-    )
-    principal: dict[str, Any] | str | None = Field(
-        default=None, alias="Principal"
-    )
-    not_principal: dict[str, Any] | str | None = Field(
-        default=None, alias="NotPrincipal"
-    )
+    not_resource: list[str] | str | None = Field(default=None, alias="NotResource")
+    condition: dict[str, dict[str, Any]] | None = Field(default=None, alias="Condition")
+    principal: dict[str, Any] | str | None = Field(default=None, alias="Principal")
+    not_principal: dict[str, Any] | str | None = Field(default=None, alias="NotPrincipal")
     # Line number metadata (populated during parsing)
     line_number: int | None = Field(default=None, exclude=True)
 
@@ -148,9 +134,7 @@ class ValidationIssue(BaseModel):
     severity: str  # "error", "warning", "info" OR "critical", "high", "medium", "low"
     statement_sid: str | None = None
     statement_index: int
-    issue_type: (
-        str  # "invalid_action", "invalid_condition_key", "invalid_resource", etc.
-    )
+    issue_type: str  # "invalid_action", "invalid_condition_key", "invalid_resource", etc.
     message: str
     action: str | None = None
     resource: str | None = None
@@ -159,20 +143,27 @@ class ValidationIssue(BaseModel):
     line_number: int | None = None  # Line number in the policy file (if available)
 
     # Severity level constants (ClassVar to avoid Pydantic treating them as fields)
-    VALID_SEVERITIES: ClassVar[frozenset[str]] = frozenset([
-        "error", "warning", "info",  # IAM validity severities
-        "critical", "high", "medium", "low"  # Security severities
-    ])
+    VALID_SEVERITIES: ClassVar[frozenset[str]] = frozenset(
+        [
+            "error",
+            "warning",
+            "info",  # IAM validity severities
+            "critical",
+            "high",
+            "medium",
+            "low",  # Security severities
+        ]
+    )
 
     # Severity ordering for fail_on_severity (higher value = more severe)
     SEVERITY_RANK: ClassVar[dict[str, int]] = {
-        "error": 100,      # IAM validity errors (highest)
-        "critical": 90,    # Critical security issues
-        "high": 70,        # High security issues
-        "warning": 50,     # IAM validity warnings
-        "medium": 40,      # Medium security issues
-        "low": 20,         # Low security issues
-        "info": 10         # Informational (lowest)
+        "error": 100,  # IAM validity errors (highest)
+        "critical": 90,  # Critical security issues
+        "high": 70,  # High security issues
+        "warning": 50,  # IAM validity warnings
+        "medium": 40,  # Medium security issues
+        "low": 20,  # Low security issues
+        "info": 10,  # Informational (lowest)
     }
 
     def get_severity_rank(self) -> int:

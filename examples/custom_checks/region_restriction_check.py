@@ -21,8 +21,6 @@ Usage:
             require_region_condition: true
 """
 
-from typing import List
-
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
@@ -49,7 +47,7 @@ class RegionRestrictionCheck(PolicyCheck):
         statement_idx: int,
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
-    ) -> List[ValidationIssue]:
+    ) -> list[ValidationIssue]:
         """Check region restrictions."""
         issues = []
 
@@ -85,9 +83,7 @@ class RegionRestrictionCheck(PolicyCheck):
                 )
 
         # Check 2: Verify aws:RequestedRegion condition if required
-        if require_condition and not self._has_region_condition(
-            statement, approved_regions
-        ):
+        if require_condition and not self._has_region_condition(statement, approved_regions):
             issues.append(
                 ValidationIssue(
                     severity="warning",
@@ -117,9 +113,7 @@ class RegionRestrictionCheck(PolicyCheck):
 
         return ""
 
-    def _has_region_condition(
-        self, statement: Statement, approved_regions: List[str]
-    ) -> bool:
+    def _has_region_condition(self, statement: Statement, approved_regions: list[str]) -> bool:
         """Check if statement has appropriate region condition."""
         if not statement.condition:
             return False

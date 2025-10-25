@@ -18,8 +18,7 @@ def create_large_issue(severity: str, index: int) -> ValidationIssue:
         statement_index=index,
         action=f"s3:GetObject{index}",
         resource=f"arn:aws:s3:::bucket-{index}/*",
-        suggestion=f"Consider fixing this issue by doing XYZ for statement {index}. "
-        * 3,
+        suggestion=f"Consider fixing this issue by doing XYZ for statement {index}. " * 3,
     )
 
 
@@ -57,9 +56,7 @@ def test_large_report_multiple_parts():
 
     parts = generator.generate_github_comment_parts(report, max_length_per_part=20000)
 
-    assert (
-        len(parts) > 1
-    ), f"Large report should generate multiple parts, got {len(parts)}"
+    assert len(parts) > 1, f"Large report should generate multiple parts, got {len(parts)}"
     # Parts should be reasonable - if individual policies are larger than max, that's expected
     # But we should still split at policy boundaries
     print(f"Generated {len(parts)} parts with lengths: {[len(p) for p in parts]}")
@@ -175,9 +172,7 @@ def test_errors_prioritized_across_parts():
 
     # Errors should appear before or at the same time as warnings
     if first_error_idx >= 0 and last_warning_idx >= 0:
-        assert (
-            first_error_idx <= last_warning_idx
-        ), "Errors should appear before warnings"
+        assert first_error_idx <= last_warning_idx, "Errors should appear before warnings"
 
 
 def test_part_limit_enforced():
@@ -188,15 +183,13 @@ def test_part_limit_enforced():
     report = generator.generate_report(results)
 
     max_length = 20000
-    parts = generator.generate_github_comment_parts(
-        report, max_length_per_part=max_length
-    )
+    parts = generator.generate_github_comment_parts(report, max_length_per_part=max_length)
 
     for idx, part in enumerate(parts):
         # Allow 5% buffer for calculation differences
-        assert (
-            len(part) <= max_length * 1.05
-        ), f"Part {idx + 1} length {len(part)} exceeds limit {max_length}"
+        assert len(part) <= max_length * 1.05, (
+            f"Part {idx + 1} length {len(part)} exceeds limit {max_length}"
+        )
 
 
 def test_no_lost_policies():
@@ -219,9 +212,9 @@ def test_no_lost_policies():
             found_policies.add(policy_name)
 
     # All policies should be present
-    assert (
-        len(found_policies) == num_policies
-    ), f"Only found {len(found_policies)} policies out of {num_policies}"
+    assert len(found_policies) == num_policies, (
+        f"Only found {len(found_policies)} policies out of {num_policies}"
+    )
 
 
 def test_empty_report_single_part():

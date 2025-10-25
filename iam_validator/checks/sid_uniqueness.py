@@ -15,9 +15,7 @@ from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import IAMPolicy, Statement, ValidationIssue
 
 
-def _check_sid_uniqueness_impl(
-    policy: IAMPolicy, severity: str
-) -> list[ValidationIssue]:
+def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[ValidationIssue]:
     """Implementation of SID uniqueness checking.
 
     Args:

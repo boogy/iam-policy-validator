@@ -1,6 +1,5 @@
 """Condition key validation check - validates condition keys against AWS definitions."""
 
-
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
@@ -59,8 +58,7 @@ class ConditionKeyValidationCheck(PolicyCheck):
                                 statement_sid=statement_sid,
                                 statement_index=statement_idx,
                                 issue_type="invalid_condition_key",
-                                message=error_msg
-                                or f"Invalid condition key: {condition_key}",
+                                message=error_msg or f"Invalid condition key: {condition_key}",
                                 action=action,
                                 condition_key=condition_key,
                                 line_number=line_number,

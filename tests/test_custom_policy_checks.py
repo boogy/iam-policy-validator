@@ -1,7 +1,8 @@
 """Tests for custom policy checks using AWS IAM Access Analyzer."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from iam_validator.core.access_analyzer import (
     AccessAnalyzerValidator,
@@ -54,9 +55,7 @@ class TestCheckAccessNotGranted:
             "reasons": [],
         }
 
-        result = validator.check_access_not_granted(
-            sample_policy, actions=["s3:DeleteBucket"]
-        )
+        result = validator.check_access_not_granted(sample_policy, actions=["s3:DeleteBucket"])
 
         assert isinstance(result, CustomCheckResult)
         assert result.check_type == "AccessNotGranted"
@@ -84,9 +83,7 @@ class TestCheckAccessNotGranted:
             ],
         }
 
-        result = validator.check_access_not_granted(
-            sample_policy, actions=["s3:GetObject"]
-        )
+        result = validator.check_access_not_granted(sample_policy, actions=["s3:GetObject"])
 
         assert result.result == CheckResultType.FAIL
         assert result.passed is False
@@ -113,9 +110,7 @@ class TestCheckAccessNotGranted:
 
         # Verify resources were passed to API
         call_args = validator.client.check_access_not_granted.call_args
-        assert call_args.kwargs["access"][0]["resources"] == [
-            "arn:aws:s3:::production-bucket/*"
-        ]
+        assert call_args.kwargs["access"][0]["resources"] == ["arn:aws:s3:::production-bucket/*"]
 
 
 class TestCheckNoNewAccess:
@@ -201,9 +196,7 @@ class TestCheckNoPublicAccess:
             ],
         }
 
-        result = validator.check_no_public_access(
-            bucket_policy, ResourceType.AWS_S3_BUCKET
-        )
+        result = validator.check_no_public_access(bucket_policy, ResourceType.AWS_S3_BUCKET)
 
         assert result.result == CheckResultType.PASS
         assert result.passed is True
@@ -237,9 +230,7 @@ class TestCheckNoPublicAccess:
             ],
         }
 
-        result = validator.check_no_public_access(
-            public_bucket_policy, ResourceType.AWS_S3_BUCKET
-        )
+        result = validator.check_no_public_access(public_bucket_policy, ResourceType.AWS_S3_BUCKET)
 
         assert result.result == CheckResultType.FAIL
         assert result.passed is False
@@ -258,9 +249,7 @@ class TestCheckNoPublicAccess:
         policy = {"Version": "2012-10-17", "Statement": []}
 
         # Test with S3 Access Point
-        result = validator.check_no_public_access(
-            policy, ResourceType.AWS_S3_ACCESS_POINT
-        )
+        result = validator.check_no_public_access(policy, ResourceType.AWS_S3_ACCESS_POINT)
         assert result.passed is True
 
         # Verify correct resource type was passed
@@ -350,9 +339,7 @@ class TestValidatePoliciesWithCustomChecks:
             "reasons": [{"description": "Public access", "statementIndex": 0}],
         }
 
-        custom_checks = {
-            "no_public_access": {"resource_types": [ResourceType.AWS_S3_BUCKET]}
-        }
+        custom_checks = {"no_public_access": {"resource_types": [ResourceType.AWS_S3_BUCKET]}}
 
         results = validator.validate_policies(
             [("bucket-policy.json", sample_policy)], custom_checks=custom_checks

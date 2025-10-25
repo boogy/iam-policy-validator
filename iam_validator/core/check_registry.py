@@ -287,9 +287,7 @@ class CheckRegistry:
             for check in enabled_checks:
                 config = self.get_config(check.check_id)
                 if config:
-                    issues = await check.execute(
-                        statement, statement_idx, fetcher, config
-                    )
+                    issues = await check.execute(statement, statement_idx, fetcher, config)
                     all_issues.extend(issues)
             return all_issues
 
@@ -342,9 +340,7 @@ class CheckRegistry:
             config = self.get_config(check.check_id)
             if config:
                 try:
-                    issues = await check.execute(
-                        statement, statement_idx, fetcher, config
-                    )
+                    issues = await check.execute(statement, statement_idx, fetcher, config)
                     all_issues.extend(issues)
                 except Exception as e:
                     print(f"Warning: Check '{check.check_id}' failed: {e}")
@@ -386,9 +382,7 @@ class CheckRegistry:
                 config = self.get_config(check.check_id)
                 if config:
                     try:
-                        issues = await check.execute_policy(
-                            policy, policy_file, fetcher, config
-                        )
+                        issues = await check.execute_policy(policy, policy_file, fetcher, config)
                         all_issues.extend(issues)
                     except Exception as e:
                         print(f"Warning: Check '{check.check_id}' failed: {e}")

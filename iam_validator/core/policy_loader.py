@@ -236,10 +236,7 @@ class PolicyLoader:
         pattern = "**/*" if recursive else "*"
 
         for file_path in path.glob(pattern):
-            if (
-                file_path.is_file()
-                and file_path.suffix.lower() in self.SUPPORTED_EXTENSIONS
-            ):
+            if file_path.is_file() and file_path.suffix.lower() in self.SUPPORTED_EXTENSIONS:
                 policy = self.load_from_file(str(file_path))
                 if policy:
                     policies.append((str(file_path), policy))
@@ -247,9 +244,7 @@ class PolicyLoader:
         logger.info(f"Loaded {len(policies)} policies from {directory_path}")
         return policies
 
-    def load_from_path(
-        self, path: str, recursive: bool = True
-    ) -> list[tuple[str, IAMPolicy]]:
+    def load_from_path(self, path: str, recursive: bool = True) -> list[tuple[str, IAMPolicy]]:
         """Load IAM policies from a file or directory.
 
         Args:
@@ -291,9 +286,7 @@ class PolicyLoader:
         logger.info(f"Loaded {len(all_policies)} total policies from {len(paths)} path(s)")
         return all_policies
 
-    def _get_policy_files(
-        self, path: str, recursive: bool = True
-    ) -> Generator[Path, None, None]:
+    def _get_policy_files(self, path: str, recursive: bool = True) -> Generator[Path, None, None]:
         """Get all policy files from a path (file or directory).
 
         This is a generator that yields file paths without loading them,
@@ -314,10 +307,7 @@ class PolicyLoader:
         elif path_obj.is_dir():
             pattern = "**/*" if recursive else "*"
             for file_path in path_obj.glob(pattern):
-                if (
-                    file_path.is_file()
-                    and file_path.suffix.lower() in self.SUPPORTED_EXTENSIONS
-                ):
+                if file_path.is_file() and file_path.suffix.lower() in self.SUPPORTED_EXTENSIONS:
                     yield file_path
         else:
             logger.error(f"Path not found: {path}")

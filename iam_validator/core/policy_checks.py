@@ -89,9 +89,7 @@ class PolicyValidator:
             brace_depth = 0
             in_statement = False
 
-            for i, line in enumerate(
-                lines[statement_start - 1 :], start=statement_start
-            ):
+            for i, line in enumerate(lines[statement_start - 1 :], start=statement_start):
                 # Track braces to stay within statement bounds
                 for char in line:
                     if char == "{":
@@ -114,9 +112,7 @@ class PolicyValidator:
             logger.debug(f"Could not find field line in {policy_file}: {e}")
             return None
 
-    async def validate_policy(
-        self, policy: IAMPolicy, policy_file: str
-    ) -> PolicyValidationResult:
+    async def validate_policy(self, policy: IAMPolicy, policy_file: str) -> PolicyValidationResult:
         """Validate a complete IAM policy.
 
         Args:
@@ -151,9 +147,7 @@ class PolicyValidator:
 
             # Pre-fetch all required services in parallel
             if actions_by_service:
-                service_prefixes = [
-                    s for s in actions_by_service.keys() if s != "_invalid"
-                ]
+                service_prefixes = [s for s in actions_by_service.keys() if s != "_invalid"]
                 # Batch fetch services to warm up cache
                 fetch_results = await asyncio.gather(
                     *[self.fetcher.fetch_service_by_name(s) for s in service_prefixes],
@@ -217,9 +211,7 @@ class PolicyValidator:
                                 condition_line = self._find_field_line(
                                     policy_file, statement_line, condition_key
                                 )
-                            condition_line_cache[condition_key] = (
-                                condition_line or statement_line
-                            )
+                            condition_line_cache[condition_key] = condition_line or statement_line
 
                         # Validate condition key against all non-wildcard actions
                         for action in non_wildcard_actions:
@@ -239,9 +231,7 @@ class PolicyValidator:
                     # Try to find specific resource line
                     resource_line = None
                     if statement_line:
-                        resource_line = self._find_field_line(
-                            policy_file, statement_line, resource
-                        )
+                        resource_line = self._find_field_line(policy_file, statement_line, resource)
                     self._validate_resource(
                         resource,
                         idx,
@@ -251,9 +241,7 @@ class PolicyValidator:
                     )
 
             # Security best practice checks
-            self._check_security_best_practices(
-                statement, idx, statement_line, result, policy_file
-            )
+            self._check_security_best_practices(statement, idx, statement_line, result, policy_file)
 
         # Update final validation status
         # Default to failing only on "error" severity for legacy validator
@@ -323,9 +311,7 @@ class PolicyValidator:
         """Validate a condition key against an action."""
         result.condition_keys_checked += 1
 
-        is_valid, error_msg = await self.fetcher.validate_condition_key(
-            action, condition_key
-        )
+        is_valid, error_msg = await self.fetcher.validate_condition_key(action, condition_key)
 
         if not is_valid:
             result.issues.append(
@@ -389,9 +375,7 @@ class PolicyValidator:
                 # Try to find "Action" field line
                 action_field_line = None
                 if line_number:
-                    action_field_line = self._find_field_line(
-                        policy_file, line_number, '"Action"'
-                    )
+                    action_field_line = self._find_field_line(policy_file, line_number, '"Action"')
                 result.issues.append(
                     ValidationIssue(
                         severity="warning",
@@ -456,9 +440,7 @@ class PolicyValidator:
                 action_line = None
                 if line_number:
                     action_name = action.split(":")[-1] if ":" in action else action
-                    action_line = self._find_field_line(
-                        policy_file, line_number, action_name
-                    )
+                    action_line = self._find_field_line(policy_file, line_number, action_name)
                 result.issues.append(
                     ValidationIssue(
                         severity="warning",
@@ -495,10 +477,7 @@ async def validate_policies(
         async with AWSServiceFetcher() as fetcher:
             validator = PolicyValidator(fetcher)
 
-            tasks = [
-                validator.validate_policy(policy, file_path)
-                for file_path, policy in policies
-            ]
+            tasks = [validator.validate_policy(policy, file_path) for file_path, policy in policies]
 
             results = await asyncio.gather(*tasks)
 
@@ -538,9 +517,7 @@ async def validate_policies(
     checks_dir = custom_checks_dir or config.custom_checks_dir
     if checks_dir:
         checks_dir_path = Path(checks_dir).resolve()
-        discovered_checks = ConfigLoader.discover_checks_in_directory(
-            checks_dir_path, registry
-        )
+        discovered_checks = ConfigLoader.discover_checks_in_directory(checks_dir_path, registry)
         if discovered_checks:
             logger.info(
                 f"Auto-discovered {len(discovered_checks)} custom checks from {checks_dir_path}"
@@ -588,9 +565,7 @@ async def _validate_policy_with_registry(
 
     # Run policy-level checks first (checks that need to see the entire policy)
     # These checks examine relationships between statements, not individual statements
-    policy_level_issues = await registry.execute_policy_checks(
-        policy, policy_file, fetcher
-    )
+    policy_level_issues = await registry.execute_policy_checks(policy, policy_file, fetcher)
     result.issues.extend(policy_level_issues)
 
     # Execute all statement-level checks for each statement
@@ -614,6 +589,8 @@ async def _validate_policy_with_registry(
                 result.condition_keys_checked += len(conditions)
 
     # Update final validation status based on fail_on_severities configuration
-    result.is_valid = len([i for i in result.issues if _should_fail_on_issue(i, fail_on_severities)]) == 0
+    result.is_valid = (
+        len([i for i in result.issues if _should_fail_on_issue(i, fail_on_severities)]) == 0
+    )
 
     return result

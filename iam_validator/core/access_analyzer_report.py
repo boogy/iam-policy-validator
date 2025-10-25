@@ -57,9 +57,7 @@ class AccessAnalyzerReportFormatter:
         summary_text.append(f"{report.total_suggestions}", style="bold blue")
 
         # Add custom checks summary if present
-        total_custom_checks = sum(
-            len(r.custom_checks) for r in report.results if r.custom_checks
-        )
+        total_custom_checks = sum(len(r.custom_checks) for r in report.results if r.custom_checks)
         failed_custom_checks = sum(r.failed_custom_checks for r in report.results)
 
         if total_custom_checks > 0:
@@ -121,9 +119,7 @@ class AccessAnalyzerReportFormatter:
         }
         icon, color = icons.get(finding.finding_type, ("ℹ️", "white"))
 
-        self.console.print(
-            f"\n  {icon} [{color}]{finding.finding_type.value}[/{color}]"
-        )
+        self.console.print(f"\n  {icon} [{color}]{finding.finding_type.value}[/{color}]")
         self.console.print(f"     Code: [bold]{finding.issue_code}[/bold]")
         self.console.print(f"     {finding.message}")
 
@@ -155,9 +151,7 @@ class AccessAnalyzerReportFormatter:
             icon, color = ("❌", "red")
             result_text = "FAIL"
 
-        self.console.print(
-            f"\n  {icon} [{color}]{check.check_type}: {result_text}[/{color}]"
-        )
+        self.console.print(f"\n  {icon} [{color}]{check.check_type}: {result_text}[/{color}]")
         if check.message:
             self.console.print(f"     {check.message}")
 
@@ -175,9 +169,7 @@ class AccessAnalyzerReportFormatter:
         """Print final statistics table."""
         self.console.print("\n")
 
-        table = Table(
-            title="Finding Statistics", show_header=True, header_style="bold magenta"
-        )
+        table = Table(title="Finding Statistics", show_header=True, header_style="bold magenta")
         table.add_column("Finding Type", style="cyan", no_wrap=True)
         table.add_column("Count", justify="right", style="green")
 
@@ -303,12 +295,12 @@ class AccessAnalyzerReportFormatter:
         lines.append(f"| **Total Policies Analyzed** | {report.total_policies} | 📋 |")
         lines.append(f"| **Valid Policies** | {report.valid_policies} | ✅ |")
         lines.append(f"| **Invalid Policies** | {report.invalid_policies} | ❌ |")
-        lines.append(f"| **Total Findings** | {report.total_findings} | {'⚠️' if report.total_findings > 0 else '✨'} |")
+        lines.append(
+            f"| **Total Findings** | {report.total_findings} | {'⚠️' if report.total_findings > 0 else '✨'} |"
+        )
 
         # Add custom checks summary if present
-        total_custom_checks = sum(
-            len(r.custom_checks) for r in report.results if r.custom_checks
-        )
+        total_custom_checks = sum(len(r.custom_checks) for r in report.results if r.custom_checks)
         failed_custom_checks = sum(r.failed_custom_checks for r in report.results)
 
         if total_custom_checks > 0:
@@ -432,18 +424,13 @@ class AccessAnalyzerReportFormatter:
                 continue
 
             # Group findings by type
-            errors = [
-                f for f in result.findings if f.finding_type == FindingType.ERROR
-            ]
+            errors = [f for f in result.findings if f.finding_type == FindingType.ERROR]
             warnings = [
                 f
                 for f in result.findings
-                if f.finding_type
-                in (FindingType.WARNING, FindingType.SECURITY_WARNING)
+                if f.finding_type in (FindingType.WARNING, FindingType.SECURITY_WARNING)
             ]
-            suggestions = [
-                f for f in result.findings if f.finding_type == FindingType.SUGGESTION
-            ]
+            suggestions = [f for f in result.findings if f.finding_type == FindingType.SUGGESTION]
 
             # Add errors (prioritized)
             if errors:
@@ -643,9 +630,7 @@ class AccessAnalyzerReportFormatter:
 
         return lines
 
-    def save_markdown_report(
-        self, report: AccessAnalyzerReport, file_path: str
-    ) -> None:
+    def save_markdown_report(self, report: AccessAnalyzerReport, file_path: str) -> None:
         """Save Markdown report to file.
 
         Args:

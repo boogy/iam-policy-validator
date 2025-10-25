@@ -113,9 +113,7 @@ class PRCommenter:
 
             for issue in result.issues:
                 # Determine the line number for this issue
-                line_number = self._find_issue_line(
-                    issue, result.policy_file, line_mapping
-                )
+                line_number = self._find_issue_line(issue, result.policy_file, line_mapping)
 
                 if line_number:
                     comment = {
@@ -140,9 +138,7 @@ class PRCommenter:
 
         # Determine review event based on issues
         has_errors = any(
-            issue.severity == "error"
-            for result in report.results
-            for issue in result.issues
+            issue.severity == "error" for result in report.results for issue in result.issues
         )
 
         event = ReviewEvent.REQUEST_CHANGES if has_errors else ReviewEvent.COMMENT
@@ -224,9 +220,7 @@ class PRCommenter:
         # Fallback: try to find specific field in file
         search_term = issue.action or issue.resource or issue.condition_key
         if search_term:
-            return self._search_for_field_line(
-                policy_file, issue.statement_index, search_term
-            )
+            return self._search_for_field_line(policy_file, issue.statement_index, search_term)
 
         return None
 

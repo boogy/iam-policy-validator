@@ -242,9 +242,7 @@ class AWSServiceFetcher:
             batch = self.COMMON_SERVICES[i : i + batch_size]
             await asyncio.gather(*[fetch_service(name) for name in batch])
 
-        logger.info(
-            f"Pre-fetched {len(self._prefetched_services)} services successfully"
-        )
+        logger.info(f"Pre-fetched {len(self._prefetched_services)} services successfully")
 
     def _get_cache_path(self, url: str) -> Path:
         """Get cache file path with timestamp for TTL checking."""
@@ -410,9 +408,7 @@ class AWSServiceFetcher:
                 logger.info(f"Retrying in {wait_time} seconds...")
                 await asyncio.sleep(wait_time)
 
-        raise last_exception or Exception(
-            f"Failed to fetch {url} after {self.retries} attempts"
-        )
+        raise last_exception or Exception(f"Failed to fetch {url} after {self.retries} attempts")
 
     async def fetch_services(self) -> list[ServiceInfo]:
         """Fetch list of AWS services with caching."""
@@ -474,9 +470,7 @@ class AWSServiceFetcher:
 
         raise ValueError(f"Service '{service_name}' not found")
 
-    async def fetch_multiple_services(
-        self, service_names: list[str]
-    ) -> dict[str, ServiceDetail]:
+    async def fetch_multiple_services(self, service_names: list[str]) -> dict[str, ServiceDetail]:
         """Fetch multiple services concurrently with optimized batching."""
 
         async def fetch_single(name: str) -> tuple[str, ServiceDetail]:
@@ -510,9 +504,7 @@ class AWSServiceFetcher:
 
         return match.group("service").lower(), match.group("action")
 
-    def _match_wildcard_action(
-        self, pattern: str, actions: list[str]
-    ) -> tuple[bool, list[str]]:
+    def _match_wildcard_action(self, pattern: str, actions: list[str]) -> tuple[bool, list[str]]:
         """Match wildcard pattern against list of actions.
 
         Args:
@@ -589,19 +581,13 @@ class AWSServiceFetcher:
                     )
 
             # Check if exact action exists (case-insensitive)
-            action_exists = any(
-                a.lower() == action_name.lower() for a in available_actions
-            )
+            action_exists = any(a.lower() == action_name.lower() for a in available_actions)
 
             if action_exists:
                 return True, None, False
             else:
                 # Suggest similar actions
-                similar = [
-                    a
-                    for a in available_actions
-                    if action_name.lower() in a.lower()
-                ][:3]
+                similar = [a for a in available_actions if action_name.lower() in a.lower()][:3]
 
                 suggestion = f" Did you mean: {', '.join(similar)}?" if similar else ""
                 return (
@@ -669,9 +655,7 @@ class AWSServiceFetcher:
             )
 
         except Exception as e:
-            logger.error(
-                f"Error validating condition key {condition_key} for {action}: {e}"
-            )
+            logger.error(f"Error validating condition key {condition_key} for {action}: {e}")
             return False, f"Failed to validate condition key: {str(e)}"
 
     async def clear_caches(self) -> None:

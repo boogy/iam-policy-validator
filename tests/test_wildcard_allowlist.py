@@ -74,14 +74,11 @@ class TestWildcardAllowlist:
         fetcher.validate_action.return_value = (True, None, True)
 
         config = CheckConfig(
-            check_id="action_validation",
-            config={"allowed_wildcards": ["s3:List*"]}
+            check_id="action_validation", config={"allowed_wildcards": ["s3:List*"]}
         )
 
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:List*"],
-            Resource=["arn:aws:s3:::bucket/*"]
+            Effect="Allow", Action=["s3:List*"], Resource=["arn:aws:s3:::bucket/*"]
         )
 
         issues = await check.execute(statement, 0, fetcher, config)
@@ -96,13 +93,13 @@ class TestWildcardAllowlist:
 
         config = CheckConfig(
             check_id="action_validation",
-            config={"allowed_wildcards": ["s3:List*"]}  # Only List* is allowed
+            config={"allowed_wildcards": ["s3:List*"]},  # Only List* is allowed
         )
 
         statement = Statement(
             Effect="Allow",
             Action=["s3:Put*"],  # Put* is not allowed
-            Resource=["arn:aws:s3:::bucket/*"]
+            Resource=["arn:aws:s3:::bucket/*"],
         )
 
         issues = await check.execute(statement, 0, fetcher, config)
@@ -123,7 +120,7 @@ class TestWildcardAllowlist:
         statement = Statement(
             Effect="Allow",
             Action=["s3:List*"],  # In default allowlist
-            Resource=["arn:aws:s3:::bucket/*"]
+            Resource=["arn:aws:s3:::bucket/*"],
         )
 
         issues = await check.execute(statement, 0, fetcher, config)
@@ -134,6 +131,7 @@ class TestWildcardAllowlist:
     @pytest.mark.asyncio
     async def test_multiple_wildcards_mixed(self, check, fetcher):
         """Test mix of allowed and disallowed wildcards."""
+
         async def validate_side_effect(action):
             # All are valid wildcards
             return (True, None, True)
@@ -141,14 +139,11 @@ class TestWildcardAllowlist:
         fetcher.validate_action.side_effect = validate_side_effect
 
         config = CheckConfig(
-            check_id="action_validation",
-            config={"allowed_wildcards": ["s3:List*", "iam:List*"]}
+            check_id="action_validation", config={"allowed_wildcards": ["s3:List*", "iam:List*"]}
         )
 
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:List*", "s3:Put*", "iam:List*"],
-            Resource=["*"]
+            Effect="Allow", Action=["s3:List*", "s3:Put*", "iam:List*"], Resource=["*"]
         )
 
         issues = await check.execute(statement, 0, fetcher, config)
@@ -164,14 +159,13 @@ class TestWildcardAllowlist:
         fetcher.validate_action.return_value = (True, None, True)
 
         config = CheckConfig(
-            check_id="action_validation",
-            config={"disable_wildcard_warnings": True}
+            check_id="action_validation", config={"disable_wildcard_warnings": True}
         )
 
         statement = Statement(
             Effect="Allow",
             Action=["s3:Delete*"],  # Not in default allowlist
-            Resource=["arn:aws:s3:::bucket/*"]
+            Resource=["arn:aws:s3:::bucket/*"],
         )
 
         issues = await check.execute(statement, 0, fetcher, config)
@@ -186,14 +180,13 @@ class TestWildcardAllowlist:
 
         # Custom allowlist with only lambda actions
         config = CheckConfig(
-            check_id="action_validation",
-            config={"allowed_wildcards": ["lambda:Invoke*"]}
+            check_id="action_validation", config={"allowed_wildcards": ["lambda:Invoke*"]}
         )
 
         statement = Statement(
             Effect="Allow",
             Action=["s3:List*"],  # In DEFAULT allowlist but not custom
-            Resource=["arn:aws:s3:::bucket/*"]
+            Resource=["arn:aws:s3:::bucket/*"],
         )
 
         issues = await check.execute(statement, 0, fetcher, config)
@@ -209,13 +202,11 @@ class TestWildcardAllowlist:
 
         config = CheckConfig(
             check_id="action_validation",
-            config={"allowed_wildcards": ["s3:*", "cloudwatch:*"]}  # Allow all for these services
+            config={"allowed_wildcards": ["s3:*", "cloudwatch:*"]},  # Allow all for these services
         )
 
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:DeleteBucket", "cloudwatch:PutMetricData"],
-            Resource=["*"]
+            Effect="Allow", Action=["s3:DeleteBucket", "cloudwatch:PutMetricData"], Resource=["*"]
         )
 
         issues = await check.execute(statement, 0, fetcher, config)
@@ -229,14 +220,11 @@ class TestWildcardAllowlist:
         fetcher.validate_action.return_value = (False, "Action pattern does not match", True)
 
         config = CheckConfig(
-            check_id="action_validation",
-            config={"allowed_wildcards": ["s3:Get*"]}
+            check_id="action_validation", config={"allowed_wildcards": ["s3:Get*"]}
         )
 
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:InvalidPrefix*"],
-            Resource=["arn:aws:s3:::bucket/*"]
+            Effect="Allow", Action=["s3:InvalidPrefix*"], Resource=["arn:aws:s3:::bucket/*"]
         )
 
         issues = await check.execute(statement, 0, fetcher, config)
@@ -265,11 +253,7 @@ class TestWildcardAllowlist:
             "lambda:List*",
         ]
 
-        statement = Statement(
-            Effect="Allow",
-            Action=read_only_actions,
-            Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=read_only_actions, Resource=["*"])
 
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -285,19 +269,15 @@ class TestWildcardAllowlist:
 
         # Write and sensitive read operations
         sensitive_actions = [
-            "s3:Get*",      # Can read sensitive data
-            "s3:Put*",      # Write operation
-            "s3:Delete*",   # Destructive operation
+            "s3:Get*",  # Can read sensitive data
+            "s3:Put*",  # Write operation
+            "s3:Delete*",  # Destructive operation
             "ec2:Terminate*",  # Destructive operation
             "iam:Delete*",  # Destructive operation
             "lambda:Delete*",  # Destructive operation
         ]
 
-        statement = Statement(
-            Effect="Allow",
-            Action=sensitive_actions,
-            Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=sensitive_actions, Resource=["*"])
 
         issues = await check.execute(statement, 0, fetcher, config)
 

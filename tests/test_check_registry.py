@@ -1,6 +1,6 @@
 """Unit tests for Check Registry module."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -152,9 +152,7 @@ class TestCheckRegistry:
     @pytest.fixture
     def mock_statement(self):
         """Create a mock IAM statement."""
-        return Statement(
-            effect="Allow", action=["s3:GetObject"], resource="arn:aws:s3:::bucket/*"
-        )
+        return Statement(effect="Allow", action=["s3:GetObject"], resource="arn:aws:s3:::bucket/*")
 
     @pytest.fixture
     def mock_fetcher(self):
@@ -215,9 +213,7 @@ class TestCheckRegistry:
         check = MockCheck()
         registry.register(check)
 
-        new_config = CheckConfig(
-            check_id="mock_check", enabled=False, severity="error"
-        )
+        new_config = CheckConfig(check_id="mock_check", enabled=False, severity="error")
         registry.configure_check("mock_check", new_config)
 
         config = registry.get_config("mock_check")
@@ -264,9 +260,7 @@ class TestCheckRegistry:
         registry.register(check2)
 
         # Disable check1
-        registry.configure_check(
-            "check1", CheckConfig(check_id="check1", enabled=False)
-        )
+        registry.configure_check("check1", CheckConfig(check_id="check1", enabled=False))
 
         enabled = registry.get_enabled_checks()
         assert len(enabled) == 1
@@ -308,9 +302,7 @@ class TestCheckRegistry:
         assert registry.is_enabled("mock_check") is True
 
         # Disable it
-        registry.configure_check(
-            "mock_check", CheckConfig(check_id="mock_check", enabled=False)
-        )
+        registry.configure_check("mock_check", CheckConfig(check_id="mock_check", enabled=False))
         assert registry.is_enabled("mock_check") is False
 
     def test_is_enabled_nonexistent(self, registry):
@@ -333,18 +325,12 @@ class TestCheckRegistry:
         checks_list = registry.list_checks()
 
         assert len(checks_list) == 2
-        assert any(
-            c["check_id"] == "check1" and c["enabled"] is True for c in checks_list
-        )
-        assert any(
-            c["check_id"] == "check2" and c["enabled"] is False for c in checks_list
-        )
+        assert any(c["check_id"] == "check1" and c["enabled"] is True for c in checks_list)
+        assert any(c["check_id"] == "check2" and c["enabled"] is False for c in checks_list)
         assert any(c["severity"] == "error" and c["check_id"] == "check2" for c in checks_list)
 
     @pytest.mark.asyncio
-    async def test_execute_checks_parallel_no_checks(
-        self, registry, mock_statement, mock_fetcher
-    ):
+    async def test_execute_checks_parallel_no_checks(self, registry, mock_statement, mock_fetcher):
         """Test parallel execution with no checks registered."""
         issues = await registry.execute_checks_parallel(mock_statement, 0, mock_fetcher)
         assert issues == []
@@ -391,9 +377,7 @@ class TestCheckRegistry:
         registry.register(check2)
 
         # Disable check1
-        registry.configure_check(
-            "issue_check", CheckConfig(check_id="issue_check", enabled=False)
-        )
+        registry.configure_check("issue_check", CheckConfig(check_id="issue_check", enabled=False))
 
         issues = await registry.execute_checks_parallel(mock_statement, 0, mock_fetcher)
 
@@ -401,16 +385,12 @@ class TestCheckRegistry:
         assert len(issues) == 1
 
     @pytest.mark.asyncio
-    async def test_execute_checks_sequential(
-        self, registry, mock_statement, mock_fetcher
-    ):
+    async def test_execute_checks_sequential(self, registry, mock_statement, mock_fetcher):
         """Test sequential execution of checks."""
         check = IssueGeneratingCheck(num_issues=2)
         registry.register(check)
 
-        issues = await registry.execute_checks_sequential(
-            mock_statement, 0, mock_fetcher
-        )
+        issues = await registry.execute_checks_sequential(mock_statement, 0, mock_fetcher)
 
         assert len(issues) == 2
 
@@ -425,9 +405,7 @@ class TestCheckRegistry:
         registry.register(failing)
         registry.register(working)
 
-        issues = await registry.execute_checks_sequential(
-            mock_statement, 0, mock_fetcher
-        )
+        issues = await registry.execute_checks_sequential(mock_statement, 0, mock_fetcher)
 
         # Should still get issues from working check
         assert len(issues) == 1
@@ -460,9 +438,7 @@ class TestCreateDefaultRegistry:
 
     def test_create_default_registry_with_builtin_checks(self):
         """Test creating registry with built-in checks."""
-        registry = create_default_registry(
-            enable_parallel=True, include_builtin_checks=True
-        )
+        registry = create_default_registry(enable_parallel=True, include_builtin_checks=True)
 
         assert isinstance(registry, CheckRegistry)
         assert registry.enable_parallel is True
@@ -471,17 +447,13 @@ class TestCreateDefaultRegistry:
 
     def test_create_default_registry_without_builtin_checks(self):
         """Test creating empty registry without built-in checks."""
-        registry = create_default_registry(
-            enable_parallel=True, include_builtin_checks=False
-        )
+        registry = create_default_registry(enable_parallel=True, include_builtin_checks=False)
 
         assert isinstance(registry, CheckRegistry)
         assert len(registry.get_all_checks()) == 0
 
     def test_create_default_registry_parallel_disabled(self):
         """Test creating registry with parallel execution disabled."""
-        registry = create_default_registry(
-            enable_parallel=False, include_builtin_checks=False
-        )
+        registry = create_default_registry(enable_parallel=False, include_builtin_checks=False)
 
         assert registry.enable_parallel is False

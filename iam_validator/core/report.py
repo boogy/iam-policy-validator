@@ -67,9 +67,7 @@ class ReportGenerator:
         """
         return self.formatter_registry.format_report(report, format_id, **kwargs)
 
-    def generate_report(
-        self, results: list[PolicyValidationResult]
-    ) -> ValidationReport:
+    def generate_report(self, results: list[PolicyValidationResult]) -> ValidationReport:
         """Generate a validation report from results.
 
         Args:
@@ -103,9 +101,7 @@ class ReportGenerator:
         summary_text.append(f"Invalid: {report.invalid_policies}\n", style="red")
         summary_text.append(f"Total Issues: {report.total_issues}\n")
 
-        self.console.print(
-            Panel(summary_text, title="Validation Summary", border_style="blue")
-        )
+        self.console.print(Panel(summary_text, title="Validation Summary", border_style="blue"))
 
         # Detailed results
         for result in report.results:
@@ -120,9 +116,7 @@ class ReportGenerator:
                 else ""
             )
         else:
-            self.console.print(
-                f"\n[red]✗ {report.invalid_policies} policies have issues[/red]"
-            )
+            self.console.print(f"\n[red]✗ {report.invalid_policies} policies have issues[/red]")
 
     def _print_policy_result(self, result: PolicyValidationResult) -> None:
         """Print results for a single policy."""
@@ -216,9 +210,7 @@ class ReportGenerator:
         chars_per_issue = 500
         return base_overhead + (report.total_issues * chars_per_issue)
 
-    def _generate_split_comments(
-        self, report: ValidationReport, max_length: int
-    ) -> list[str]:
+    def _generate_split_comments(self, report: ValidationReport, max_length: int) -> list[str]:
         """Split a large report into multiple comment parts.
 
         Args:
@@ -244,13 +236,6 @@ class ReportGenerator:
         # - HTML comment identifier: "<!-- iam-policy-validator -->\n" (~35 chars)
         # - Safety buffer for formatting
         continuation_overhead = 200
-        part_indicator_overhead = 60  # Identifier + part indicator + newlines
-        available_per_part = (
-            max_length
-            - len(footer_content)
-            - continuation_overhead
-            - part_indicator_overhead
-        )
 
         # Sort results to prioritize errors - support both IAM validity and security severities
         sorted_results = sorted(
@@ -290,15 +275,10 @@ class ReportGenerator:
 
             # Check if adding this policy would exceed the limit
             test_length = (
-                current_length
-                + policy_length
-                + len(footer_content)
-                + continuation_overhead
+                current_length + policy_length + len(footer_content) + continuation_overhead
             )
 
-            if (
-                test_length > max_length and len(current_part_lines) > 4
-            ):  # 4 = header lines
+            if test_length > max_length and len(current_part_lines) > 4:  # 4 = header lines
                 # Finalize current part without this policy
                 part_content = self._finalize_part(
                     current_part_lines,
@@ -343,10 +323,14 @@ class ReportGenerator:
         # Title with emoji and status badge
         if report.invalid_policies == 0:
             lines.append("# 🎉 IAM Policy Validation Passed!")
-            status_badge = "![Status](https://img.shields.io/badge/status-passed-success?style=flat-square)"
+            status_badge = (
+                "![Status](https://img.shields.io/badge/status-passed-success?style=flat-square)"
+            )
         else:
             lines.append("# 🚨 IAM Policy Validation Failed")
-            status_badge = "![Status](https://img.shields.io/badge/status-failed-critical?style=flat-square)"
+            status_badge = (
+                "![Status](https://img.shields.io/badge/status-failed-critical?style=flat-square)"
+            )
 
         lines.append("")
         lines.append(status_badge)
@@ -369,7 +353,10 @@ class ReportGenerator:
         if report.total_issues > 0:
             # Count issues - support both IAM validity and security severities
             errors = sum(
-                1 for r in report.results for i in r.issues if i.severity in ("error", "critical", "high")
+                1
+                for r in report.results
+                for i in r.issues
+                if i.severity in ("error", "critical", "high")
             )
             warnings = sum(
                 1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")
@@ -411,13 +398,11 @@ class ReportGenerator:
             ]
         )
 
-    def _format_policy_for_comment(
-        self, idx: int, result: PolicyValidationResult
-    ) -> str:
+    def _format_policy_for_comment(self, idx: int, result: PolicyValidationResult) -> str:
         """Format a single policy's issues for the comment."""
         lines = []
 
-        lines.append(f"<details open>")
+        lines.append("<details open>")
         lines.append(
             f"<summary><b>{idx}. <code>{result.policy_file}</code></b> - {len(result.issues)} issue(s) found</summary>"
         )
@@ -478,9 +463,7 @@ class ReportGenerator:
 
         return "\n".join(parts)
 
-    def generate_github_comment(
-        self, report: ValidationReport, max_length: int = 65000
-    ) -> str:
+    def generate_github_comment(self, report: ValidationReport, max_length: int = 65000) -> str:
         """Generate a GitHub-flavored markdown comment for PR reviews.
 
         Args:
@@ -495,10 +478,14 @@ class ReportGenerator:
         # Header with emoji and status badge
         if report.invalid_policies == 0:
             lines.append("# 🎉 IAM Policy Validation Passed!")
-            status_badge = "![Status](https://img.shields.io/badge/status-passed-success?style=flat-square)"
+            status_badge = (
+                "![Status](https://img.shields.io/badge/status-passed-success?style=flat-square)"
+            )
         else:
             lines.append("# 🚨 IAM Policy Validation Failed")
-            status_badge = "![Status](https://img.shields.io/badge/status-failed-critical?style=flat-square)"
+            status_badge = (
+                "![Status](https://img.shields.io/badge/status-failed-critical?style=flat-square)"
+            )
 
         lines.append("")
         lines.append(status_badge)
@@ -521,7 +508,10 @@ class ReportGenerator:
         if report.total_issues > 0:
             # Count issues - support both IAM validity and security severities
             errors = sum(
-                1 for r in report.results for i in r.issues if i.severity in ("error", "critical", "high")
+                1
+                for r in report.results
+                for i in r.issues
+                if i.severity in ("error", "critical", "high")
             )
             warnings = sum(
                 1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")
@@ -590,7 +580,7 @@ class ReportGenerator:
                     continue
 
                 policy_lines = []
-                policy_lines.append(f"<details open>")
+                policy_lines.append("<details open>")
                 policy_lines.append(
                     f"<summary><b>{idx}. <code>{result.policy_file}</code></b> - {len(result.issues)} issue(s) found</summary>"
                 )
@@ -607,9 +597,9 @@ class ReportGenerator:
                     policy_lines.append("")
                     for issue in errors:
                         issue_content = self._format_issue_markdown(issue)
-                        test_length = len(
-                            "\n".join(details_lines + policy_lines)
-                        ) + len(issue_content)
+                        test_length = len("\n".join(details_lines + policy_lines)) + len(
+                            issue_content
+                        )
                         if test_length > available_length:
                             truncated = True
                             break
@@ -626,9 +616,9 @@ class ReportGenerator:
                     policy_lines.append("")
                     for issue in warnings:
                         issue_content = self._format_issue_markdown(issue)
-                        test_length = len(
-                            "\n".join(details_lines + policy_lines)
-                        ) + len(issue_content)
+                        test_length = len("\n".join(details_lines + policy_lines)) + len(
+                            issue_content
+                        )
                         if test_length > available_length:
                             truncated = True
                             break
@@ -645,9 +635,9 @@ class ReportGenerator:
                     policy_lines.append("")
                     for issue in infos:
                         issue_content = self._format_issue_markdown(issue)
-                        test_length = len(
-                            "\n".join(details_lines + policy_lines)
-                        ) + len(issue_content)
+                        test_length = len("\n".join(details_lines + policy_lines)) + len(
+                            issue_content
+                        )
                         if test_length > available_length:
                             truncated = True
                             break
@@ -672,16 +662,14 @@ class ReportGenerator:
 
             # Add truncation warning if needed
             if truncated:
-                remaining_policies = (
-                    len([r for r in report.results if r.issues]) - policies_shown
-                )
+                remaining_policies = len([r for r in report.results if r.issues]) - policies_shown
                 remaining_issues = report.total_issues - issues_shown
 
                 details_lines.append("")
                 details_lines.append("> ⚠️ **Output Truncated**")
                 details_lines.append(">")
                 details_lines.append(
-                    f"> The report was truncated to fit within GitHub's comment size limit."
+                    "> The report was truncated to fit within GitHub's comment size limit."
                 )
                 details_lines.append(
                     f"> **Showing:** {policies_shown} policies with {issues_shown} issues"
@@ -700,9 +688,7 @@ class ReportGenerator:
             # Success message when no issues
             lines.append("## ✨ All Policies Valid")
             lines.append("")
-            lines.append(
-                "> 🎯 Great job! All IAM policies passed validation with no issues found."
-            )
+            lines.append("> 🎯 Great job! All IAM policies passed validation with no issues found.")
             lines.append("")
 
         # Add footer

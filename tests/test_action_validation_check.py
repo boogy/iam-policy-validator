@@ -48,9 +48,7 @@ class TestActionValidationCheck:
         fetcher.validate_action.return_value = (True, None, False)
 
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["arn:aws:s3:::bucket/*"]
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -60,12 +58,14 @@ class TestActionValidationCheck:
     @pytest.mark.asyncio
     async def test_invalid_action(self, check, fetcher, config):
         """Test invalid action is flagged."""
-        fetcher.validate_action.return_value = (False, "Action 's3:InvalidAction' does not exist", False)
+        fetcher.validate_action.return_value = (
+            False,
+            "Action 's3:InvalidAction' does not exist",
+            False,
+        )
 
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:InvalidAction"],
-            Resource=["arn:aws:s3:::bucket/*"]
+            Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -78,11 +78,7 @@ class TestActionValidationCheck:
     @pytest.mark.asyncio
     async def test_wildcard_action_skipped(self, check, fetcher, config):
         """Test wildcard-only action is skipped."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["*"],
-            Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["*"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 0
@@ -95,9 +91,7 @@ class TestActionValidationCheck:
 
         # Use a wildcard that's NOT in the default allowlist (write operation)
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:Put*"],
-            Resource=["arn:aws:s3:::bucket/*"]
+            Effect="Allow", Action=["s3:Put*"], Resource=["arn:aws:s3:::bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -110,6 +104,7 @@ class TestActionValidationCheck:
     @pytest.mark.asyncio
     async def test_multiple_actions(self, check, fetcher, config):
         """Test multiple actions are validated."""
+
         async def validate_side_effect(action):
             if action == "s3:GetObject":
                 return (True, None, False)
@@ -121,7 +116,7 @@ class TestActionValidationCheck:
         statement = Statement(
             Effect="Allow",
             Action=["s3:GetObject", "s3:InvalidAction"],
-            Resource=["arn:aws:s3:::bucket/*"]
+            Resource=["arn:aws:s3:::bucket/*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -138,7 +133,7 @@ class TestActionValidationCheck:
             Sid="TestStatement",
             Effect="Allow",
             Action=["s3:InvalidAction"],
-            Resource=["arn:aws:s3:::bucket/*"]
+            Resource=["arn:aws:s3:::bucket/*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -150,9 +145,7 @@ class TestActionValidationCheck:
         fetcher.validate_action.return_value = (False, "Invalid action", False)
 
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:InvalidAction"],
-            Resource=["arn:aws:s3:::bucket/*"]
+            Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"]
         )
         issues = await check.execute(statement, 3, fetcher, config)
 
@@ -164,9 +157,7 @@ class TestActionValidationCheck:
         fetcher.validate_action.return_value = (False, "Invalid action", False)
 
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:InvalidAction"],
-            Resource=["arn:aws:s3:::bucket/*"]
+            Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"]
         )
         statement.line_number = 42
 
@@ -181,9 +172,7 @@ class TestActionValidationCheck:
 
         config = CheckConfig(check_id="action_validation", severity="warning")
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:InvalidAction"],
-            Resource=["arn:aws:s3:::bucket/*"]
+            Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -195,9 +184,7 @@ class TestActionValidationCheck:
         fetcher.validate_action.return_value = (True, None, False)
 
         statement = Statement(
-            Effect="Allow",
-            Action="s3:GetObject",
-            Resource=["arn:aws:s3:::bucket/*"]
+            Effect="Allow", Action="s3:GetObject", Resource=["arn:aws:s3:::bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -207,10 +194,7 @@ class TestActionValidationCheck:
     @pytest.mark.asyncio
     async def test_no_actions(self, check, fetcher, config):
         """Test statement with no Action field."""
-        statement = Statement(
-            Effect="Allow",
-            Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 0
@@ -222,9 +206,7 @@ class TestActionValidationCheck:
         fetcher.validate_action.return_value = (False, None, False)
 
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:InvalidAction"],
-            Resource=["arn:aws:s3:::bucket/*"]
+            Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 

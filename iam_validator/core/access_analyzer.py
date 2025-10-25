@@ -237,9 +237,7 @@ class AccessAnalyzerValidator:
             self.logger.error(f"Failed to initialize Access Analyzer client: {e}")
             raise
 
-    def validate_policy(
-        self, policy_document: dict[str, Any]
-    ) -> list[AccessAnalyzerFinding]:
+    def validate_policy(self, policy_document: dict[str, Any]) -> list[AccessAnalyzerFinding]:
         """Validate a single policy document using Access Analyzer.
 
         Args:
@@ -338,17 +336,13 @@ class AccessAnalyzerValidator:
                 reasons=reasons,
             )
 
-            self.logger.debug(
-                f"CheckAccessNotGranted: {result.value} - {len(reasons)} reasons"
-            )
+            self.logger.debug(f"CheckAccessNotGranted: {result.value} - {len(reasons)} reasons")
             return check_result
 
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
             error_msg = e.response.get("Error", {}).get("Message", str(e))
-            self.logger.error(
-                f"CheckAccessNotGranted API error ({error_code}): {error_msg}"
-            )
+            self.logger.error(f"CheckAccessNotGranted API error ({error_code}): {error_msg}")
             raise
         except BotoCoreError as e:
             self.logger.error(f"AWS SDK error: {e}")
@@ -401,9 +395,7 @@ class AccessAnalyzerValidator:
                 reasons=reasons,
             )
 
-            self.logger.debug(
-                f"CheckNoNewAccess: {result.value} - {len(reasons)} reasons"
-            )
+            self.logger.debug(f"CheckNoNewAccess: {result.value} - {len(reasons)} reasons")
             return check_result
 
         except ClientError as e:
@@ -460,17 +452,13 @@ class AccessAnalyzerValidator:
                 reasons=reasons,
             )
 
-            self.logger.debug(
-                f"CheckNoPublicAccess: {result.value} - {len(reasons)} reasons"
-            )
+            self.logger.debug(f"CheckNoPublicAccess: {result.value} - {len(reasons)} reasons")
             return check_result
 
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
             error_msg = e.response.get("Error", {}).get("Message", str(e))
-            self.logger.error(
-                f"CheckNoPublicAccess API error ({error_code}): {error_msg}"
-            )
+            self.logger.error(f"CheckNoPublicAccess API error ({error_code}): {error_msg}")
             raise
         except BotoCoreError as e:
             self.logger.error(f"AWS SDK error: {e}")
@@ -540,9 +528,7 @@ class AccessAnalyzerValidator:
                                 "expected dict, skipping check"
                             )
                         else:
-                            existing_policies = no_new_access_config.get(
-                                "existing_policies", {}
-                            )
+                            existing_policies = no_new_access_config.get("existing_policies", {})
                             if policy_file in existing_policies:
                                 check_result = self.check_no_new_access(
                                     policy_doc, existing_policies[policy_file]
@@ -582,9 +568,7 @@ class AccessAnalyzerValidator:
                     policy_file=policy_file,
                     is_valid=not has_errors,
                     findings=findings,
-                    custom_checks=(
-                        custom_check_results if custom_check_results else None
-                    ),
+                    custom_checks=(custom_check_results if custom_check_results else None),
                 )
                 results.append(result)
 
@@ -600,9 +584,7 @@ class AccessAnalyzerValidator:
 
         return results
 
-    def generate_report(
-        self, results: list[AccessAnalyzerResult]
-    ) -> AccessAnalyzerReport:
+    def generate_report(self, results: list[AccessAnalyzerResult]) -> AccessAnalyzerReport:
         """Generate a summary report from validation results.
 
         Args:
@@ -662,9 +644,7 @@ def validate_policies_with_analyzer(
     if not loaded_policies:
         raise ValueError(f"No valid IAM policies found in {path_description}")
 
-    logging.info(
-        f"Loaded {len(loaded_policies)} policies for Access Analyzer validation"
-    )
+    logging.info(f"Loaded {len(loaded_policies)} policies for Access Analyzer validation")
 
     # Convert IAMPolicy models to dicts for Access Analyzer
     # Use by_alias=True to export with capitalized field names (Version, Statement, etc.)

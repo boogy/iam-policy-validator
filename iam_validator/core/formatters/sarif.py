@@ -40,9 +40,7 @@ class SARIFFormatter(OutputFormatter):
         sarif = self._create_sarif_output(report, **kwargs)
         return json.dumps(sarif, indent=2)
 
-    def _create_sarif_output(
-        self, report: ValidationReport, **kwargs
-    ) -> dict[str, Any]:
+    def _create_sarif_output(self, report: ValidationReport, **kwargs) -> dict[str, Any]:
         """Create SARIF output structure."""
         tool_version = kwargs.get("tool_version", "1.0.0")
 
@@ -74,9 +72,7 @@ class SARIFFormatter(OutputFormatter):
                     "results": self._create_results(report, severity_map),
                     "invocations": [
                         {
-                            "executionSuccessful": len(
-                                [r for r in report.results if r.is_valid]
-                            )
+                            "executionSuccessful": len([r for r in report.results if r.is_valid])
                             > 0,
                             "endTimeUtc": datetime.now(timezone.utc).isoformat(),
                         }
@@ -93,9 +89,7 @@ class SARIFFormatter(OutputFormatter):
             {
                 "id": "invalid-action",
                 "shortDescription": {"text": "Invalid IAM Action"},
-                "fullDescription": {
-                    "text": "The specified IAM action does not exist in AWS"
-                },
+                "fullDescription": {"text": "The specified IAM action does not exist in AWS"},
                 "helpUri": "https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_action.html",
                 "defaultConfiguration": {"level": "error"},
             },
@@ -127,9 +121,7 @@ class SARIFFormatter(OutputFormatter):
             {
                 "id": "security-sensitive-action",
                 "shortDescription": {"text": "Sensitive Action Without Conditions"},
-                "fullDescription": {
-                    "text": "Sensitive actions should have condition restrictions"
-                },
+                "fullDescription": {"text": "Sensitive actions should have condition restrictions"},
                 "defaultConfiguration": {"level": "warning"},
             },
         ]

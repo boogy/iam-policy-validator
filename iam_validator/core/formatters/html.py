@@ -2,7 +2,6 @@
 
 import html
 from datetime import datetime
-from typing import Any
 
 from iam_validator.core.formatters.base import OutputFormatter
 from iam_validator.core.models import ValidationReport
@@ -42,7 +41,7 @@ class HTMLFormatter(OutputFormatter):
         dark_mode = kwargs.get("dark_mode", False)
 
         html_content = f"""<!DOCTYPE html>
-<html lang="en" class="{' dark' if dark_mode else ''}">
+<html lang="en" class="{" dark" if dark_mode else ""}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -54,7 +53,7 @@ class HTMLFormatter(OutputFormatter):
     <div class="container">
         <header>
             <h1>🛡️ {html.escape(title)}</h1>
-            <div class="timestamp">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
+            <div class="timestamp">Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</div>
         </header>
 
         {self._render_summary(report, include_charts)}
@@ -305,10 +304,7 @@ class HTMLFormatter(OutputFormatter):
             if i.severity in ("error", "critical", "high")
         )
         warning_count = sum(
-            1
-            for r in report.results
-            for i in r.issues
-            if i.severity in ("warning", "medium")
+            1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")
         )
         info_count = sum(
             1 for r in report.results for i in r.issues if i.severity in ("info", "low")
@@ -316,43 +312,36 @@ class HTMLFormatter(OutputFormatter):
         total_issues = report.total_issues
 
         html_parts = [
-            """
+            f"""
         <section class="summary">
             <h2>Summary</h2>
             <div class="summary-grid">
                 <div class="stat-card">
-                    <div class="stat-value">{}</div>
+                    <div class="stat-value">{report.total_policies}</div>
                     <div class="stat-label">Total Policies</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">{}</div>
+                    <div class="stat-value">{report.valid_policies}</div>
                     <div class="stat-label">Valid Policies</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">{}</div>
+                    <div class="stat-value">{total_issues}</div>
                     <div class="stat-label">Total Issues</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" style="color: var(--error-color)">{}</div>
+                    <div class="stat-value" style="color: var(--error-color)">{error_count}</div>
                     <div class="stat-label">Errors</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" style="color: var(--warning-color)">{}</div>
+                    <div class="stat-value" style="color: var(--warning-color)">{warning_count}</div>
                     <div class="stat-label">Warnings</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" style="color: var(--info-color)">{}</div>
+                    <div class="stat-value" style="color: var(--info-color)">{info_count}</div>
                     <div class="stat-label">Info</div>
                 </div>
             </div>
-        """.format(
-                report.total_policies,
-                report.valid_policies,
-                total_issues,
-                error_count,
-                warning_count,
-                info_count,
-            )
+        """
         ]
 
         if include_charts and total_issues > 0:
@@ -411,14 +400,14 @@ class HTMLFormatter(OutputFormatter):
                 <tr class="issue-row"
                     data-severity="{issue.severity}"
                     data-file="{html.escape(policy_result.policy_file)}"
-                    data-check="{html.escape(issue.issue_type or '')}"
+                    data-check="{html.escape(issue.issue_type or "")}"
                     data-message="{html.escape(issue.message.lower())}">
                     <td>{html.escape(policy_result.policy_file)}</td>
-                    <td>{issue.line_number or '-'}</td>
+                    <td>{issue.line_number or "-"}</td>
                     <td><span class="severity-badge severity-{issue.severity}">{issue.severity}</span></td>
-                    <td>{html.escape(issue.issue_type or '-')}</td>
+                    <td>{html.escape(issue.issue_type or "-")}</td>
                     <td>{html.escape(issue.message)}</td>
-                    <td>{html.escape(issue.suggestion or '-')}</td>
+                    <td>{html.escape(issue.suggestion or "-")}</td>
                 </tr>
                 """
                 rows.append(row)
@@ -438,7 +427,7 @@ class HTMLFormatter(OutputFormatter):
                     </tr>
                 </thead>
                 <tbody>
-                    {''.join(rows) if rows else '<tr><td colspan="6" style="text-align: center">No issues found</td></tr>'}
+                    {"".join(rows) if rows else '<tr><td colspan="6" style="text-align: center">No issues found</td></tr>'}
                 </tbody>
             </table>
         </section>
@@ -467,7 +456,7 @@ class HTMLFormatter(OutputFormatter):
             for stmt_idx, issues in sorted(issues_by_statement.items()):
                 detail += f"""
                 <div class="statement-issues">
-                    <h4>Statement {stmt_idx + 1 if stmt_idx >= 0 else 'Global'}</h4>
+                    <h4>Statement {stmt_idx + 1 if stmt_idx >= 0 else "Global"}</h4>
                     <ul>
                 """
                 for issue in issues:
@@ -475,7 +464,7 @@ class HTMLFormatter(OutputFormatter):
                         <li>
                             <span class="severity-badge severity-{issue.severity}">{issue.severity}</span>
                             {html.escape(issue.message)}
-                            {f'<br><em>{html.escape(issue.suggestion)}</em>' if issue.suggestion else ''}
+                            {f"<br><em>{html.escape(issue.suggestion)}</em>" if issue.suggestion else ""}
                         </li>
                     """
                 detail += """
@@ -489,7 +478,7 @@ class HTMLFormatter(OutputFormatter):
         return f"""
         <section class="policy-details hidden">
             <h2>Policy Details</h2>
-            {''.join(details)}
+            {"".join(details)}
         </section>
         """
 

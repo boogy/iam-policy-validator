@@ -41,18 +41,14 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_deny_statement_skipped(self, check, fetcher, config):
         """Test that Deny statements are skipped."""
-        statement = Statement(
-            Effect="Deny", Action=["*"], Resource=["*"]
-        )
+        statement = Statement(Effect="Deny", Action=["*"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
 
     @pytest.mark.asyncio
     async def test_wildcard_action(self, check, fetcher, config):
         """Test wildcard action detection."""
-        statement = Statement(
-            Effect="Allow", Action=["*"], Resource=["arn:aws:s3:::my-bucket"]
-        )
+        statement = Statement(Effect="Allow", Action=["*"], Resource=["arn:aws:s3:::my-bucket"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Should have one issue for wildcard action
@@ -64,9 +60,7 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_wildcard_resource(self, check, fetcher, config):
         """Test wildcard resource detection."""
-        statement = Statement(
-            Effect="Allow", Action=["s3:GetObject"], Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Should have one issue for wildcard resource
@@ -78,9 +72,7 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_full_wildcard_critical(self, check, fetcher, config):
         """Test both wildcards together is flagged as critical."""
-        statement = Statement(
-            Effect="Allow", Action=["*"], Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=["*"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Should have critical issue for full wildcard
@@ -92,11 +84,7 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_sensitive_action_without_condition(self, check, fetcher, config):
         """Test sensitive action without conditions."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["iam:CreateUser"],
-            Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=["iam:CreateUser"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Should have issue for sensitive action without condition
@@ -113,7 +101,7 @@ class TestSecurityBestPracticesCheck:
             Effect="Allow",
             Action=["iam:CreateUser"],
             Resource=["*"],
-            Condition={"StringEquals": {"aws:RequestedRegion": "us-east-1"}}
+            Condition={"StringEquals": {"aws:RequestedRegion": "us-east-1"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -127,7 +115,7 @@ class TestSecurityBestPracticesCheck:
         statement = Statement(
             Effect="Allow",
             Action=["iam:CreateUser", "iam:DeleteUser", "s3:DeleteBucket"],
-            Resource=["*"]
+            Resource=["*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -142,12 +130,7 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_statement_with_sid(self, check, fetcher, config):
         """Test that statement SID is captured."""
-        statement = Statement(
-            Sid="TestStatement",
-            Effect="Allow",
-            Action=["*"],
-            Resource=["*"]
-        )
+        statement = Statement(Sid="TestStatement", Effect="Allow", Action=["*"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert all(issue.statement_sid == "TestStatement" for issue in issues)
@@ -155,11 +138,7 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_statement_index(self, check, fetcher, config):
         """Test that statement index is captured."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["*"],
-            Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=["*"], Resource=["*"])
         issues = await check.execute(statement, 5, fetcher, config)
 
         assert all(issue.statement_index == 5 for issue in issues)
@@ -167,12 +146,10 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_disable_wildcard_action_check(self, check, fetcher):
         """Test disabling wildcard action check."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "wildcard_action_check": {"enabled": False}
-        })
-        statement = Statement(
-            Effect="Allow", Action=["*"], Resource=["arn:aws:s3:::bucket"]
+        config = CheckConfig(
+            check_id="security_best_practices", config={"wildcard_action_check": {"enabled": False}}
         )
+        statement = Statement(Effect="Allow", Action=["*"], Resource=["arn:aws:s3:::bucket"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Should not have wildcard action issue
@@ -182,12 +159,11 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_disable_wildcard_resource_check(self, check, fetcher):
         """Test disabling wildcard resource check."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "wildcard_resource_check": {"enabled": False}
-        })
-        statement = Statement(
-            Effect="Allow", Action=["s3:GetObject"], Resource=["*"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={"wildcard_resource_check": {"enabled": False}},
         )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Should not have wildcard resource issue
@@ -197,14 +173,11 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_disable_sensitive_action_check(self, check, fetcher):
         """Test disabling sensitive action check."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {"enabled": False}
-        })
-        statement = Statement(
-            Effect="Allow",
-            Action=["iam:CreateUser"],
-            Resource=["*"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={"sensitive_action_check": {"enabled": False}},
         )
+        statement = Statement(Effect="Allow", Action=["iam:CreateUser"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Should not have sensitive action issue
@@ -214,12 +187,11 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_custom_severity_wildcard_action(self, check, fetcher):
         """Test custom severity for wildcard action check."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "wildcard_action_check": {"severity": "error"}
-        })
-        statement = Statement(
-            Effect="Allow", Action=["*"], Resource=["arn:aws:s3:::bucket"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={"wildcard_action_check": {"severity": "error"}},
         )
+        statement = Statement(Effect="Allow", Action=["*"], Resource=["arn:aws:s3:::bucket"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         wildcard_action_issues = [i for i in issues if "all actions" in i.message]
@@ -228,15 +200,12 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_custom_sensitive_actions(self, check, fetcher):
         """Test custom sensitive actions list."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": ["s3:PutObject"]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={"sensitive_action_check": {"sensitive_actions": ["s3:PutObject"]}},
+        )
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:PutObject", "iam:CreateUser"],
-            Resource=["*"]
+            Effect="Allow", Action=["s3:PutObject", "iam:CreateUser"], Resource=["*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -248,16 +217,19 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_sensitive_action_pattern_regex(self, check, fetcher):
         """Test sensitive action pattern matching with regex."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [],
-                "sensitive_action_patterns": ["^iam:.*", ".*:Delete.*"]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [],
+                    "sensitive_action_patterns": ["^iam:.*", ".*:Delete.*"],
+                }
+            },
+        )
         statement = Statement(
             Effect="Allow",
             Action=["iam:CreateUser", "s3:DeleteBucket", "s3:GetObject"],
-            Resource=["*"]
+            Resource=["*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -271,16 +243,19 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_invalid_regex_pattern_ignored(self, check, fetcher):
         """Test that invalid regex patterns are ignored."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [],
-                "sensitive_action_patterns": ["[invalid(regex"]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [],
+                    "sensitive_action_patterns": ["[invalid(regex"],
+                }
+            },
+        )
         statement = Statement(
             Effect="Allow",
             Action=["s3:GetObject"],  # Use non-sensitive action
-            Resource=["*"]
+            Resource=["*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -292,9 +267,7 @@ class TestSecurityBestPracticesCheck:
     async def test_normal_action_not_flagged(self, check, fetcher, config):
         """Test that normal actions are not flagged."""
         statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["arn:aws:s3:::my-bucket/*"]
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::my-bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -304,11 +277,7 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_line_number_captured(self, check, fetcher, config):
         """Test that line number is captured when available."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["*"],
-            Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=["*"], Resource=["*"])
         statement.line_number = 42
 
         issues = await check.execute(statement, 0, fetcher, config)
@@ -318,11 +287,7 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_service_wildcard_detected(self, check, fetcher, config):
         """Test that service-level wildcards are detected."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["iam:*"],
-            Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=["iam:*"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         service_wildcard_issues = [i for i in issues if "Service-level wildcard" in i.message]
@@ -334,11 +299,7 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_multiple_service_wildcards(self, check, fetcher, config):
         """Test multiple service-level wildcards are all flagged."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["iam:*", "s3:*", "ec2:*"],
-            Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=["iam:*", "s3:*", "ec2:*"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         service_wildcard_issues = [i for i in issues if "Service-level wildcard" in i.message]
@@ -349,16 +310,11 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_allowed_service_wildcard(self, check, fetcher):
         """Test that allowed services don't trigger the check."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "service_wildcard_check": {
-                "allowed_services": ["logs", "cloudwatch"]
-            }
-        })
-        statement = Statement(
-            Effect="Allow",
-            Action=["logs:*", "cloudwatch:*"],
-            Resource=["*"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={"service_wildcard_check": {"allowed_services": ["logs", "cloudwatch"]}},
         )
+        statement = Statement(Effect="Allow", Action=["logs:*", "cloudwatch:*"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Should not flag allowed services
@@ -368,16 +324,11 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_mixed_allowed_and_disallowed_service_wildcards(self, check, fetcher):
         """Test mix of allowed and disallowed service wildcards."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "service_wildcard_check": {
-                "allowed_services": ["logs"]
-            }
-        })
-        statement = Statement(
-            Effect="Allow",
-            Action=["logs:*", "iam:*", "s3:*"],
-            Resource=["*"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={"service_wildcard_check": {"allowed_services": ["logs"]}},
         )
+        statement = Statement(Effect="Allow", Action=["logs:*", "iam:*", "s3:*"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Should only flag iam:* and s3:*, not logs:*
@@ -389,16 +340,11 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_service_wildcard_with_custom_severity(self, check, fetcher):
         """Test custom severity for service wildcard check."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "service_wildcard_check": {
-                "severity": "error"
-            }
-        })
-        statement = Statement(
-            Effect="Allow",
-            Action=["iam:*"],
-            Resource=["*"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={"service_wildcard_check": {"severity": "error"}},
         )
+        statement = Statement(Effect="Allow", Action=["iam:*"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         service_wildcard_issues = [i for i in issues if "Service-level wildcard" in i.message]
@@ -407,16 +353,11 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_service_wildcard_check_disabled(self, check, fetcher):
         """Test disabling service wildcard check."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "service_wildcard_check": {
-                "enabled": False
-            }
-        })
-        statement = Statement(
-            Effect="Allow",
-            Action=["iam:*", "s3:*"],
-            Resource=["*"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={"service_wildcard_check": {"enabled": False}},
         )
+        statement = Statement(Effect="Allow", Action=["iam:*", "s3:*"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Should not have service wildcard issues
@@ -426,11 +367,7 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_full_wildcard_not_flagged_by_service_check(self, check, fetcher, config):
         """Test that full wildcard (*) is not flagged by service wildcard check."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["*"],
-            Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=["*"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Full wildcard should be caught by wildcard_action_check, not service_wildcard_check
@@ -440,11 +377,7 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_partial_wildcards_not_flagged(self, check, fetcher, config):
         """Test that partial wildcards like 'iam:Get*' are not flagged."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["iam:Get*", "s3:List*"],
-            Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=["iam:Get*", "s3:List*"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Partial wildcards should not trigger service wildcard check
@@ -454,11 +387,7 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_service_wildcard_suggestion(self, check, fetcher, config):
         """Test that service wildcard issues include helpful suggestions."""
-        statement = Statement(
-            Effect="Allow",
-            Action=["iam:*"],
-            Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=["iam:*"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         service_wildcard_issues = [i for i in issues if "Service-level wildcard" in i.message]
@@ -473,17 +402,16 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_sensitive_actions_any_of(self, check, fetcher):
         """Test sensitive_actions with any_of logic."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": {
-                    "any_of": ["iam:CreateUser", "s3:DeleteBucket"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": {"any_of": ["iam:CreateUser", "s3:DeleteBucket"]}
                 }
-            }
-        })
+            },
+        )
         statement = Statement(
-            Effect="Allow",
-            Action=["iam:CreateUser", "s3:GetObject"],
-            Resource=["*"]
+            Effect="Allow", Action=["iam:CreateUser", "s3:GetObject"], Resource=["*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -495,19 +423,20 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_sensitive_actions_all_of(self, check, fetcher):
         """Test sensitive_actions with all_of logic."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": {
-                    "all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]}
                 }
-            }
-        })
+            },
+        )
 
         # Statement with both actions - should be flagged
         statement = Statement(
             Effect="Allow",
             Action=["iam:CreateUser", "iam:AttachUserPolicy", "s3:GetObject"],
-            Resource=["*"]
+            Resource=["*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -520,19 +449,18 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_sensitive_actions_all_of_partial_match(self, check, fetcher):
         """Test sensitive_actions with all_of logic - partial match should not flag."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": {
-                    "all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]}
                 }
-            }
-        })
+            },
+        )
 
         # Statement with only one action - should NOT be flagged (all_of requires both)
         statement = Statement(
-            Effect="Allow",
-            Action=["iam:CreateUser", "s3:GetObject"],
-            Resource=["*"]
+            Effect="Allow", Action=["iam:CreateUser", "s3:GetObject"], Resource=["*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -542,18 +470,17 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_sensitive_action_patterns_any_of(self, check, fetcher):
         """Test sensitive_action_patterns with any_of logic."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [],
-                "sensitive_action_patterns": {
-                    "any_of": ["^iam:Delete.*", "^s3:Delete.*"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [],
+                    "sensitive_action_patterns": {"any_of": ["^iam:Delete.*", "^s3:Delete.*"]},
                 }
-            }
-        })
+            },
+        )
         statement = Statement(
-            Effect="Allow",
-            Action=["iam:DeleteUser", "s3:GetObject"],
-            Resource=["*"]
+            Effect="Allow", Action=["iam:DeleteUser", "s3:GetObject"], Resource=["*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -565,20 +492,21 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_sensitive_action_patterns_all_of(self, check, fetcher):
         """Test sensitive_action_patterns with all_of logic."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [],
-                "sensitive_action_patterns": {
-                    "all_of": ["^iam:.*", ".*User$"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [],
+                    "sensitive_action_patterns": {"all_of": ["^iam:.*", ".*User$"]},
                 }
-            }
-        })
+            },
+        )
 
         # Action that matches both patterns
         statement = Statement(
             Effect="Allow",
             Action=["iam:CreateUser", "iam:DeleteRole", "s3:GetObject"],
-            Resource=["*"]
+            Resource=["*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -590,20 +518,19 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_sensitive_action_patterns_all_of_no_match(self, check, fetcher):
         """Test sensitive_action_patterns with all_of logic - no complete match."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [],  # Disable default sensitive actions
-                "sensitive_action_patterns": {
-                    "all_of": ["^iam:.*", ".*User$"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [],  # Disable default sensitive actions
+                    "sensitive_action_patterns": {"all_of": ["^iam:.*", ".*User$"]},
                 }
-            }
-        })
+            },
+        )
 
         # Actions that match only one pattern each (avoid default sensitive actions)
         statement = Statement(
-            Effect="Allow",
-            Action=["iam:GetRole", "ec2:CreateUser", "s3:GetObject"],
-            Resource=["*"]
+            Effect="Allow", Action=["iam:GetRole", "ec2:CreateUser", "s3:GetObject"], Resource=["*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -614,20 +541,19 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_combined_actions_and_patterns_any_of(self, check, fetcher):
         """Test combination of sensitive_actions and sensitive_action_patterns with any_of."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": {
-                    "any_of": ["s3:DeleteBucket"]
-                },
-                "sensitive_action_patterns": {
-                    "any_of": ["^iam:Delete.*"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": {"any_of": ["s3:DeleteBucket"]},
+                    "sensitive_action_patterns": {"any_of": ["^iam:Delete.*"]},
                 }
-            }
-        })
+            },
+        )
         statement = Statement(
             Effect="Allow",
             Action=["s3:DeleteBucket", "iam:DeleteUser", "ec2:RunInstances"],
-            Resource=["*"]
+            Resource=["*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -641,22 +567,21 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_combined_actions_and_patterns_all_of(self, check, fetcher):
         """Test combination of sensitive_actions and sensitive_action_patterns with all_of."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": {
-                    "all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]
-                },
-                "sensitive_action_patterns": {
-                    "all_of": ["^s3:.*", ".*Bucket.*"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
+                    "sensitive_action_patterns": {"all_of": ["^s3:.*", ".*Bucket.*"]},
                 }
-            }
-        })
+            },
+        )
 
         # Statement with actions matching both all_of criteria
         statement = Statement(
             Effect="Allow",
             Action=["iam:CreateUser", "iam:AttachUserPolicy", "s3:DeleteBucket"],
-            Resource=["*"]
+            Resource=["*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -667,16 +592,15 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_backward_compatibility_simple_list(self, check, fetcher):
         """Test backward compatibility with simple list format."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": ["iam:CreateUser", "s3:DeleteBucket"]
-            }
-        })
-        statement = Statement(
-            Effect="Allow",
-            Action=["iam:CreateUser"],
-            Resource=["*"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": ["iam:CreateUser", "s3:DeleteBucket"]
+                }
+            },
         )
+        statement = Statement(Effect="Allow", Action=["iam:CreateUser"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Should work as before (any_of logic)
@@ -687,17 +611,16 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_backward_compatibility_pattern_list(self, check, fetcher):
         """Test backward compatibility with simple pattern list format."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [],
-                "sensitive_action_patterns": ["^iam:Delete.*", "^s3:Delete.*"]
-            }
-        })
-        statement = Statement(
-            Effect="Allow",
-            Action=["iam:DeleteUser"],
-            Resource=["*"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [],
+                    "sensitive_action_patterns": ["^iam:Delete.*", "^s3:Delete.*"],
+                }
+            },
         )
+        statement = Statement(Effect="Allow", Action=["iam:DeleteUser"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Should work as before (any_of logic)
@@ -708,16 +631,15 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_wildcard_actions_ignored(self, check, fetcher):
         """Test that wildcard actions are ignored in sensitive action checks."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": ["*"]  # Should not flag wildcard
-            }
-        })
-        statement = Statement(
-            Effect="Allow",
-            Action=["*"],
-            Resource=["*"]
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": ["*"]  # Should not flag wildcard
+                }
+            },
         )
+        statement = Statement(Effect="Allow", Action=["*"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Should not have sensitive action issues (wildcard is handled by other checks)
@@ -727,13 +649,13 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_empty_config_uses_defaults(self, check, fetcher):
         """Test that empty config falls back to default sensitive actions."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {}
-        })
+        config = CheckConfig(
+            check_id="security_best_practices", config={"sensitive_action_check": {}}
+        )
         statement = Statement(
             Effect="Allow",
             Action=["iam:CreateUser"],  # In default list
-            Resource=["*"]
+            Resource=["*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -749,18 +671,21 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_multiple_all_of_groups_first_matches(self, check, fetcher):
         """Test multiple all_of groups where first group matches."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [
-                    {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
-                    {"all_of": ["lambda:CreateFunction", "iam:PassRole"]},
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [
+                        {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
+                        {"all_of": ["lambda:CreateFunction", "iam:PassRole"]},
+                    ]
+                }
+            },
+        )
         statement = Statement(
             Effect="Allow",
             Action=["iam:CreateUser", "iam:AttachUserPolicy", "s3:GetObject"],
-            Resource=["*"]
+            Resource=["*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -773,18 +698,21 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_multiple_all_of_groups_second_matches(self, check, fetcher):
         """Test multiple all_of groups where second group matches."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [
-                    {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
-                    {"all_of": ["lambda:CreateFunction", "iam:PassRole"]},
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [
+                        {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
+                        {"all_of": ["lambda:CreateFunction", "iam:PassRole"]},
+                    ]
+                }
+            },
+        )
         statement = Statement(
             Effect="Allow",
             Action=["lambda:CreateFunction", "iam:PassRole", "s3:GetObject"],
-            Resource=["*"]
+            Resource=["*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -797,21 +725,26 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_multiple_all_of_groups_both_match(self, check, fetcher):
         """Test multiple all_of groups where both groups match."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [
-                    {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
-                    {"all_of": ["lambda:CreateFunction", "iam:PassRole"]},
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [
+                        {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
+                        {"all_of": ["lambda:CreateFunction", "iam:PassRole"]},
+                    ]
+                }
+            },
+        )
         statement = Statement(
             Effect="Allow",
             Action=[
-                "iam:CreateUser", "iam:AttachUserPolicy",
-                "lambda:CreateFunction", "iam:PassRole"
+                "iam:CreateUser",
+                "iam:AttachUserPolicy",
+                "lambda:CreateFunction",
+                "iam:PassRole",
             ],
-            Resource=["*"]
+            Resource=["*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -827,18 +760,21 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_multiple_all_of_groups_none_match(self, check, fetcher):
         """Test multiple all_of groups where no groups match."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [
-                    {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
-                    {"all_of": ["lambda:CreateFunction", "iam:PassRole"]},
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [
+                        {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
+                        {"all_of": ["lambda:CreateFunction", "iam:PassRole"]},
+                    ]
+                }
+            },
+        )
         statement = Statement(
             Effect="Allow",
             Action=["iam:CreateUser", "s3:GetObject"],  # Only partial match
-            Resource=["*"]
+            Resource=["*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -849,21 +785,20 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_mixed_groups_strings_and_all_of(self, check, fetcher):
         """Test mixed configuration with strings and all_of groups."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [
-                    "s3:DeleteBucket",  # Simple string
-                    {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [
+                        "s3:DeleteBucket",  # Simple string
+                        {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
+                    ]
+                }
+            },
+        )
 
         # Test 1: Only simple string matches
-        statement1 = Statement(
-            Effect="Allow",
-            Action=["s3:DeleteBucket"],
-            Resource=["*"]
-        )
+        statement1 = Statement(Effect="Allow", Action=["s3:DeleteBucket"], Resource=["*"])
         issues1 = await check.execute(statement1, 0, fetcher, config)
         sensitive_issues1 = [i for i in issues1 if "Sensitive action" in i.message]
         assert len(sensitive_issues1) == 1
@@ -871,9 +806,7 @@ class TestSecurityBestPracticesCheck:
 
         # Test 2: Only all_of group matches
         statement2 = Statement(
-            Effect="Allow",
-            Action=["iam:CreateUser", "iam:AttachUserPolicy"],
-            Resource=["*"]
+            Effect="Allow", Action=["iam:CreateUser", "iam:AttachUserPolicy"], Resource=["*"]
         )
         issues2 = await check.execute(statement2, 0, fetcher, config)
         sensitive_issues2 = [i for i in issues2 if "Sensitive action" in i.message]
@@ -883,7 +816,7 @@ class TestSecurityBestPracticesCheck:
         statement3 = Statement(
             Effect="Allow",
             Action=["s3:DeleteBucket", "iam:CreateUser", "iam:AttachUserPolicy"],
-            Resource=["*"]
+            Resource=["*"],
         )
         issues3 = await check.execute(statement3, 0, fetcher, config)
         sensitive_issues3 = [i for i in issues3 if "Sensitive action" in i.message]
@@ -893,21 +826,22 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_multiple_pattern_all_of_groups(self, check, fetcher):
         """Test multiple all_of groups in sensitive_action_patterns."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [],
-                "sensitive_action_patterns": [
-                    {"all_of": ["^iam:.*", ".*User$"]},  # IAM user actions
-                    {"all_of": ["^s3:.*", ".*Bucket.*"]},  # S3 bucket actions
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [],
+                    "sensitive_action_patterns": [
+                        {"all_of": ["^iam:.*", ".*User$"]},  # IAM user actions
+                        {"all_of": ["^s3:.*", ".*Bucket.*"]},  # S3 bucket actions
+                    ],
+                }
+            },
+        )
 
         # Test 1: Matches first pattern group
         statement1 = Statement(
-            Effect="Allow",
-            Action=["iam:CreateUser", "s3:GetObject"],
-            Resource=["*"]
+            Effect="Allow", Action=["iam:CreateUser", "s3:GetObject"], Resource=["*"]
         )
         issues1 = await check.execute(statement1, 0, fetcher, config)
         sensitive_issues1 = [i for i in issues1 if "Sensitive action" in i.message]
@@ -916,9 +850,7 @@ class TestSecurityBestPracticesCheck:
 
         # Test 2: Matches second pattern group
         statement2 = Statement(
-            Effect="Allow",
-            Action=["s3:DeleteBucket", "ec2:RunInstances"],
-            Resource=["*"]
+            Effect="Allow", Action=["s3:DeleteBucket", "ec2:RunInstances"], Resource=["*"]
         )
         issues2 = await check.execute(statement2, 0, fetcher, config)
         sensitive_issues2 = [i for i in issues2 if "Sensitive action" in i.message]
@@ -928,21 +860,24 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_mixed_pattern_groups_strings_and_all_of(self, check, fetcher):
         """Test mixed pattern configuration with strings and all_of groups."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [],
-                "sensitive_action_patterns": [
-                    "^kms:Delete.*",  # Simple pattern
-                    {"all_of": ["^iam:.*", ".*User$"]},  # IAM user actions
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [],
+                    "sensitive_action_patterns": [
+                        "^kms:Delete.*",  # Simple pattern
+                        {"all_of": ["^iam:.*", ".*User$"]},  # IAM user actions
+                    ],
+                }
+            },
+        )
 
         # Test with both matching
         statement = Statement(
             Effect="Allow",
             Action=["kms:DeleteKey", "iam:CreateUser", "s3:GetObject"],
-            Resource=["*"]
+            Resource=["*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
         sensitive_issues = [i for i in issues if "Sensitive action" in i.message]
@@ -953,20 +888,21 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_multiple_any_of_groups(self, check, fetcher):
         """Test multiple any_of groups in configuration."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [
-                    {"any_of": ["iam:CreateUser", "iam:CreateRole"]},
-                    {"any_of": ["s3:DeleteBucket", "s3:DeleteObject"]},
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [
+                        {"any_of": ["iam:CreateUser", "iam:CreateRole"]},
+                        {"any_of": ["s3:DeleteBucket", "s3:DeleteObject"]},
+                    ]
+                }
+            },
+        )
 
         # Test first group match
         statement = Statement(
-            Effect="Allow",
-            Action=["iam:CreateUser", "ec2:RunInstances"],
-            Resource=["*"]
+            Effect="Allow", Action=["iam:CreateUser", "ec2:RunInstances"], Resource=["*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
         sensitive_issues = [i for i in issues if "Sensitive action" in i.message]
@@ -976,19 +912,26 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_complex_nested_groups(self, check, fetcher):
         """Test complex nested group configuration."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [
-                    "rds:DeleteDBInstance",  # Simple action
-                    {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},  # Privilege escalation
-                    {"any_of": ["lambda:CreateFunction", "lambda:UpdateFunctionCode"]},  # Lambda changes
-                ],
-                "sensitive_action_patterns": [
-                    "^kms:Delete.*",  # KMS delete operations
-                    {"all_of": ["^s3:.*", ".*Bucket.*"]},  # S3 bucket operations
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [
+                        "rds:DeleteDBInstance",  # Simple action
+                        {
+                            "all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]
+                        },  # Privilege escalation
+                        {
+                            "any_of": ["lambda:CreateFunction", "lambda:UpdateFunctionCode"]
+                        },  # Lambda changes
+                    ],
+                    "sensitive_action_patterns": [
+                        "^kms:Delete.*",  # KMS delete operations
+                        {"all_of": ["^s3:.*", ".*Bucket.*"]},  # S3 bucket operations
+                    ],
+                }
+            },
+        )
 
         # Test statement matching multiple groups
         statement = Statement(
@@ -999,7 +942,7 @@ class TestSecurityBestPracticesCheck:
                 "s3:DeleteBucket",  # Matches pattern all_of group
                 "kms:DeleteKey",  # Matches simple pattern
             ],
-            Resource=["*"]
+            Resource=["*"],
         )
         issues = await check.execute(statement, 0, fetcher, config)
         sensitive_issues = [i for i in issues if "Sensitive action" in i.message]
@@ -1017,37 +960,35 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_policy_level_privilege_escalation_detected(self, check, fetcher):
         """Test policy-level detection of privilege escalation across multiple statements."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [
-                    {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]}
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [{"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]}]
+                }
+            },
+        )
 
         # Create a policy with actions scattered across multiple statements
         policy = IAMPolicy(
             Version="2012-10-17",
             Statement=[
                 Statement(
-                    Sid="AllowCreateUser",
-                    Effect="Allow",
-                    Action=["iam:CreateUser"],
-                    Resource=["*"]
+                    Sid="AllowCreateUser", Effect="Allow", Action=["iam:CreateUser"], Resource=["*"]
                 ),
                 Statement(
                     Sid="AllowS3Read",
                     Effect="Allow",
                     Action=["s3:GetObject", "s3:ListBucket"],
-                    Resource=["*"]
+                    Resource=["*"],
                 ),
                 Statement(
                     Sid="AllowAttachPolicy",
                     Effect="Allow",
                     Action=["iam:AttachUserPolicy"],
-                    Resource=["*"]
+                    Resource=["*"],
                 ),
-            ]
+            ],
         )
 
         # Execute policy-level check
@@ -1066,31 +1007,26 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_policy_level_no_privilege_escalation_partial_match(self, check, fetcher):
         """Test policy-level check doesn't flag when only partial match."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [
-                    {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]}
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [{"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]}]
+                }
+            },
+        )
 
         # Policy with only one of the required actions
         policy = IAMPolicy(
             Version="2012-10-17",
             Statement=[
                 Statement(
-                    Sid="AllowCreateUser",
-                    Effect="Allow",
-                    Action=["iam:CreateUser"],
-                    Resource=["*"]
+                    Sid="AllowCreateUser", Effect="Allow", Action=["iam:CreateUser"], Resource=["*"]
                 ),
                 Statement(
-                    Sid="AllowS3Read",
-                    Effect="Allow",
-                    Action=["s3:GetObject"],
-                    Resource=["*"]
+                    Sid="AllowS3Read", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]
                 ),
-            ]
+            ],
         )
 
         issues = await check.execute_policy(policy, "test.json", fetcher, config)
@@ -1102,15 +1038,18 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_policy_level_multiple_escalation_patterns(self, check, fetcher):
         """Test policy-level detection of multiple privilege escalation patterns."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [
-                    {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
-                    {"all_of": ["iam:CreateRole", "iam:AttachRolePolicy"]},
-                    {"all_of": ["lambda:CreateFunction", "iam:PassRole"]},
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [
+                        {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
+                        {"all_of": ["iam:CreateRole", "iam:AttachRolePolicy"]},
+                        {"all_of": ["lambda:CreateFunction", "iam:PassRole"]},
+                    ]
+                }
+            },
+        )
 
         # Policy with actions for two different escalation patterns
         policy = IAMPolicy(
@@ -1120,7 +1059,7 @@ class TestSecurityBestPracticesCheck:
                 Statement(Effect="Allow", Action=["iam:AttachUserPolicy"], Resource=["*"]),
                 Statement(Effect="Allow", Action=["lambda:CreateFunction"], Resource=["*"]),
                 Statement(Effect="Allow", Action=["iam:PassRole"], Resource=["*"]),
-            ]
+            ],
         )
 
         issues = await check.execute_policy(policy, "test.json", fetcher, config)
@@ -1137,13 +1076,14 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_policy_level_with_patterns(self, check, fetcher):
         """Test policy-level detection using regex patterns."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_action_patterns": [
-                    {"all_of": ["^iam:Create.*", "^iam:Attach.*"]}
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_action_patterns": [{"all_of": ["^iam:Create.*", "^iam:Attach.*"]}]
+                }
+            },
+        )
 
         # Policy with actions matching both patterns
         policy = IAMPolicy(
@@ -1152,7 +1092,7 @@ class TestSecurityBestPracticesCheck:
                 Statement(Effect="Allow", Action=["iam:CreateUser"], Resource=["*"]),
                 Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["*"]),
                 Statement(Effect="Allow", Action=["iam:AttachUserPolicy"], Resource=["*"]),
-            ]
+            ],
         )
 
         issues = await check.execute_policy(policy, "test.json", fetcher, config)
@@ -1166,13 +1106,14 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_policy_level_deny_statements_ignored(self, check, fetcher):
         """Test that Deny statements are ignored in policy-level checks."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [
-                    {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]}
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [{"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]}]
+                }
+            },
+        )
 
         # Policy with Deny statements
         policy = IAMPolicy(
@@ -1180,7 +1121,7 @@ class TestSecurityBestPracticesCheck:
             Statement=[
                 Statement(Effect="Allow", Action=["iam:CreateUser"], Resource=["*"]),
                 Statement(Effect="Deny", Action=["iam:AttachUserPolicy"], Resource=["*"]),
-            ]
+            ],
         )
 
         issues = await check.execute_policy(policy, "test.json", fetcher, config)
@@ -1192,20 +1133,21 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_policy_level_wildcards_ignored(self, check, fetcher):
         """Test that wildcard actions are ignored in policy-level privilege escalation checks."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "sensitive_actions": [
-                    {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]}
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "sensitive_actions": [{"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]}]
+                }
+            },
+        )
 
         # Policy with wildcard (should be handled by other checks)
         policy = IAMPolicy(
             Version="2012-10-17",
             Statement=[
                 Statement(Effect="Allow", Action=["*"], Resource=["*"]),
-            ]
+            ],
         )
 
         issues = await check.execute_policy(policy, "test.json", fetcher, config)
@@ -1217,21 +1159,22 @@ class TestSecurityBestPracticesCheck:
     @pytest.mark.asyncio
     async def test_policy_level_check_disabled(self, check, fetcher):
         """Test that policy-level check respects sensitive_action_check enabled flag."""
-        config = CheckConfig(check_id="security_best_practices", config={
-            "sensitive_action_check": {
-                "enabled": False,  # Disabled
-                "sensitive_actions": [
-                    {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]}
-                ]
-            }
-        })
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "sensitive_action_check": {
+                    "enabled": False,  # Disabled
+                    "sensitive_actions": [{"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]}],
+                }
+            },
+        )
 
         policy = IAMPolicy(
             Version="2012-10-17",
             Statement=[
                 Statement(Effect="Allow", Action=["iam:CreateUser"], Resource=["*"]),
                 Statement(Effect="Allow", Action=["iam:AttachUserPolicy"], Resource=["*"]),
-            ]
+            ],
         )
 
         issues = await check.execute_policy(policy, "test.json", fetcher, config)

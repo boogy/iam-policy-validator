@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'  # Triggers on version tags like v0.1.0, v1.2.3, etc.
+      - "v*.*.*" # Triggers on version tags like v0.1.0, v1.2.3, etc.
 
 permissions:
   contents: write
@@ -16,17 +16,17 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
-          fetch-depth: 0  # Full history for changelog generation
+          fetch-depth: 0 # Full history for changelog generation
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
@@ -79,7 +79,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish to PyPI
-        if: "!contains(steps.get_version.outputs.version, 'rc') && !contains(steps.get_version.outputs.version, 'beta') && !contains(steps.get_version.outputs.version, 'alpha')"
+        if: |
+          !contains(steps.get_version.outputs.version, 'rc') &&
+          !contains(steps.get_version.outputs.version, 'beta') &&
+          !contains(steps.get_version.outputs.version, 'alpha')
         run: uv publish
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
@@ -91,7 +94,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Update major and minor version tags
         run: |

@@ -58,9 +58,7 @@ class GitHubIntegration:
         self.repository = self._validate_repository(
             repository or os.environ.get("GITHUB_REPOSITORY")
         )
-        self.pr_number = self._validate_pr_number(
-            pr_number or os.environ.get("GITHUB_PR_NUMBER")
-        )
+        self.pr_number = self._validate_pr_number(pr_number or os.environ.get("GITHUB_PR_NUMBER"))
         self.api_url = self._validate_api_url(
             os.environ.get("GITHUB_API_URL", "https://api.github.com")
         )
@@ -121,23 +119,17 @@ class GitHubIntegration:
 
         # Must be in format owner/repo
         if "/" not in repository:
-            logger.warning(
-                f"Invalid repository format: {repository} (expected owner/repo)"
-            )
+            logger.warning(f"Invalid repository format: {repository} (expected owner/repo)")
             return None
 
         parts = repository.split("/")
         if len(parts) != 2:
-            logger.warning(
-                f"Invalid repository format: {repository} (expected exactly one slash)"
-            )
+            logger.warning(f"Invalid repository format: {repository} (expected exactly one slash)")
             return None
 
         owner, repo = parts
         if not owner or not repo:
-            logger.warning(
-                f"Invalid repository format: {repository} (empty owner or repo)"
-            )
+            logger.warning(f"Invalid repository format: {repository} (empty owner or repo)")
             return None
 
         # Basic sanitization - alphanumeric, hyphens, underscores, dots
@@ -352,7 +344,7 @@ class GitHubIntegration:
             True if all parts posted successfully, False otherwise
         """
         # GitHub's actual limit
-        GITHUB_COMMENT_LIMIT = 65536
+        github_comment_limit = 65536
 
         # Delete all existing comments with this identifier
         await self._delete_comments_with_identifier(identifier)
@@ -363,22 +355,18 @@ class GitHubIntegration:
 
         for part_num, part_body in enumerate(comment_parts, 1):
             # Add identifier and part indicator
-            part_indicator = (
-                f"**(Part {part_num}/{total_parts})**" if total_parts > 1 else ""
-            )
+            part_indicator = f"**(Part {part_num}/{total_parts})**" if total_parts > 1 else ""
             full_body = f"{identifier}\n{part_indicator}\n\n{part_body}"
 
             # Safety check: ensure we don't exceed GitHub's limit
-            if len(full_body) > GITHUB_COMMENT_LIMIT:
+            if len(full_body) > github_comment_limit:
                 logger.error(
                     f"Part {part_num}/{total_parts} exceeds GitHub's comment limit "
-                    f"({len(full_body)} > {GITHUB_COMMENT_LIMIT} chars). "
+                    f"({len(full_body)} > {github_comment_limit} chars). "
                     f"This part will be truncated."
                 )
                 # Truncate with warning message
-                available_space = (
-                    GITHUB_COMMENT_LIMIT - 500
-                )  # Reserve space for truncation message
+                available_space = github_comment_limit - 500  # Reserve space for truncation message
                 truncated_body = part_body[:available_space]
                 truncation_warning = (
                     "\n\n---\n\n"
@@ -387,15 +375,16 @@ class GitHubIntegration:
                     "> Download the full report using `--output report.json` or "
                     "`--format markdown --output report.md`\n"
                 )
-                full_body = f"{identifier}\n{part_indicator}\n\n{truncated_body}{truncation_warning}"
+                full_body = (
+                    f"{identifier}\n{part_indicator}\n\n{truncated_body}{truncation_warning}"
+                )
 
             if not await self.post_comment(full_body):
                 logger.error(f"Failed to post comment part {part_num}/{total_parts}")
                 success = False
             else:
                 logger.debug(
-                    f"Posted part {part_num}/{total_parts} "
-                    f"({len(full_body):,} characters)"
+                    f"Posted part {part_num}/{total_parts} ({len(full_body):,} characters)"
                 )
 
         if success:
@@ -441,9 +430,7 @@ class GitHubIntegration:
 
         if result and isinstance(result, list):
             for comment in result:
-                if isinstance(comment, dict) and identifier in str(
-                    comment.get("body", "")
-                ):
+                if isinstance(comment, dict) and identifier in str(comment.get("body", "")):
                     comment_id = comment.get("id")
                     if isinstance(comment_id, int):
                         return comment_id
@@ -499,9 +486,7 @@ class GitHubIntegration:
             return True
         return False
 
-    async def cleanup_bot_review_comments(
-        self, identifier: str = "🤖 IAM Policy Validator"
-    ) -> int:
+    async def cleanup_bot_review_comments(self, identifier: str = "🤖 IAM Policy Validator") -> int:
         """Delete all review comments from the bot (from previous runs).
 
         This ensures old/outdated comments are removed before posting new ones.

@@ -321,9 +321,7 @@ class TestPolicyLoader:
         """Test loading a policy with Action as a string (not list)."""
         policy_dict = {
             "Version": "2012-10-17",
-            "Statement": [
-                {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}
-            ],
+            "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}],
         }
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -342,9 +340,7 @@ class TestPolicyLoader:
         """Test loading a policy with Resource as a string (not list)."""
         policy_dict = {
             "Version": "2012-10-17",
-            "Statement": [
-                {"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": "*"}
-            ],
+            "Statement": [{"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": "*"}],
         }
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:

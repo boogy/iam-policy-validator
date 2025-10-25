@@ -2,7 +2,8 @@
 
 import re
 from functools import lru_cache
-from typing import TYPE_CHECKING, Pattern
+from re import Pattern
+from typing import TYPE_CHECKING
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
@@ -89,9 +90,7 @@ class SecurityBestPracticesCheck(PolicyCheck):
         # Check 1: Wildcard action check
         if self._is_sub_check_enabled(config, "wildcard_action_check"):
             if "*" in actions:
-                severity = self._get_sub_check_severity(
-                    config, "wildcard_action_check", "warning"
-                )
+                severity = self._get_sub_check_severity(config, "wildcard_action_check", "warning")
                 issues.append(
                     ValidationIssue(
                         severity=severity,
@@ -125,9 +124,7 @@ class SecurityBestPracticesCheck(PolicyCheck):
         # Check 3: Critical - both wildcards together
         if self._is_sub_check_enabled(config, "full_wildcard_check"):
             if "*" in actions and "*" in resources:
-                severity = self._get_sub_check_severity(
-                    config, "full_wildcard_check", "error"
-                )
+                severity = self._get_sub_check_severity(config, "full_wildcard_check", "error")
                 issues.append(
                     ValidationIssue(
                         severity=severity,
@@ -173,19 +170,13 @@ class SecurityBestPracticesCheck(PolicyCheck):
 
         # Check 5: Sensitive actions without conditions
         if self._is_sub_check_enabled(config, "sensitive_action_check"):
-            has_conditions = (
-                statement.condition is not None and len(statement.condition) > 0
-            )
+            has_conditions = statement.condition is not None and len(statement.condition) > 0
 
             # Check if sensitive actions match using any_of/all_of logic
-            is_sensitive, matched_actions = self._check_sensitive_actions(
-                actions, config
-            )
+            is_sensitive, matched_actions = self._check_sensitive_actions(actions, config)
 
             if is_sensitive and not has_conditions:
-                severity = self._get_sub_check_severity(
-                    config, "sensitive_action_check", "warning"
-                )
+                severity = self._get_sub_check_severity(config, "sensitive_action_check", "warning")
 
                 # Create appropriate message based on matched actions
                 if len(matched_actions) == 1:
@@ -201,9 +192,7 @@ class SecurityBestPracticesCheck(PolicyCheck):
                         statement_index=statement_idx,
                         issue_type="missing_condition",
                         message=message,
-                        action=(
-                            matched_actions[0] if len(matched_actions) == 1 else None
-                        ),
+                        action=(matched_actions[0] if len(matched_actions) == 1 else None),
                         suggestion="Add conditions like 'aws:Resource/owner must match aws:Principal/owner', IP restrictions, MFA requirements, or time-based restrictions",
                         line_number=line_number,
                     )
@@ -242,9 +231,9 @@ class SecurityBestPracticesCheck(PolicyCheck):
 
         # Collect all actions from all Allow statements across the entire policy
         all_actions: set[str] = set()
-        statement_map: dict[str, list[tuple[int, str | None]]] = (
-            {}
-        )  # action -> [(stmt_idx, sid), ...]
+        statement_map: dict[
+            str, list[tuple[int, str | None]]
+        ] = {}  # action -> [(stmt_idx, sid), ...]
 
         for idx, statement in enumerate(policy.statement):
             if statement.effect == "Allow":
@@ -335,9 +324,7 @@ class SecurityBestPracticesCheck(PolicyCheck):
 
                     if check_type == "actions":
                         # Exact matching
-                        matched_actions = [
-                            a for a in all_actions if a in required_actions
-                        ]
+                        matched_actions = [a for a in all_actions if a in required_actions]
                     else:
                         # Pattern matching - for each pattern, find actions that match
                         for pattern in required_actions:
@@ -362,9 +349,7 @@ class SecurityBestPracticesCheck(PolicyCheck):
                             if action in statement_map:
                                 for stmt_idx, sid in statement_map[action]:
                                     sid_str = f"'{sid}'" if sid else f"#{stmt_idx}"
-                                    statement_refs.append(
-                                        f"Statement {sid_str}: {action}"
-                                    )
+                                    statement_refs.append(f"Statement {sid_str}: {action}")
 
                         action_list = "', '".join(matched_actions)
                         stmt_details = "\n  - ".join(statement_refs)
@@ -520,9 +505,7 @@ class SecurityBestPracticesCheck(PolicyCheck):
 
         return is_sensitive, matched_actions
 
-    def _check_actions_config(
-        self, actions: list[str], config
-    ) -> tuple[bool, list[str]]:
+    def _check_actions_config(self, actions: list[str], config) -> tuple[bool, list[str]]:
         """
         Check actions against sensitive_actions configuration.
 
@@ -581,9 +564,7 @@ class SecurityBestPracticesCheck(PolicyCheck):
 
         return False, []
 
-    def _check_patterns_config(
-        self, actions: list[str], config
-    ) -> tuple[bool, list[str]]:
+    def _check_patterns_config(self, actions: list[str], config) -> tuple[bool, list[str]]:
         """
         Check actions against sensitive_action_patterns configuration.
 

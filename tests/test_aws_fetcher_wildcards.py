@@ -83,9 +83,7 @@ class TestWildcardMatching:
             "ListBuckets",
         ]
 
-        has_matches, matched = fetcher._match_wildcard_action(
-            "*Get*Object*", actions
-        )
+        has_matches, matched = fetcher._match_wildcard_action("*Get*Object*", actions)
 
         assert has_matches is True
         assert len(matched) == 4
@@ -194,9 +192,7 @@ class TestActionValidationWithWildcards:
     async def test_validate_ec2_describe_wildcard(self):
         """Test validation of ec2:Describe* wildcard pattern."""
         async with AWSServiceFetcher() as fetcher:
-            is_valid, error_msg, is_wildcard = await fetcher.validate_action(
-                "ec2:Describe*"
-            )
+            is_valid, error_msg, is_wildcard = await fetcher.validate_action("ec2:Describe*")
 
             assert is_valid is True
             assert error_msg is None
@@ -206,9 +202,7 @@ class TestActionValidationWithWildcards:
     async def test_validate_invalid_wildcard_pattern(self):
         """Test validation of wildcard pattern that matches no actions."""
         async with AWSServiceFetcher() as fetcher:
-            is_valid, error_msg, is_wildcard = await fetcher.validate_action(
-                "s3:InvalidPrefix*"
-            )
+            is_valid, error_msg, is_wildcard = await fetcher.validate_action("s3:InvalidPrefix*")
 
             assert is_valid is False
             assert "does not match any actions" in error_msg
@@ -219,9 +213,7 @@ class TestActionValidationWithWildcards:
         """Test that exact actions don't return is_wildcard=True."""
         async with AWSServiceFetcher() as fetcher:
             # Exact action
-            is_valid, error_msg, is_wildcard = await fetcher.validate_action(
-                "s3:GetObject"
-            )
+            is_valid, error_msg, is_wildcard = await fetcher.validate_action("s3:GetObject")
 
             assert is_valid is True
             assert error_msg is None
@@ -272,9 +264,7 @@ class TestActionValidationWithWildcards:
     async def test_validate_suffix_wildcard(self):
         """Test validation of suffix wildcard pattern."""
         async with AWSServiceFetcher() as fetcher:
-            is_valid, error_msg, is_wildcard = await fetcher.validate_action(
-                "s3:*Object"
-            )
+            is_valid, error_msg, is_wildcard = await fetcher.validate_action("s3:*Object")
 
             assert is_valid is True
             assert error_msg is None
@@ -284,9 +274,7 @@ class TestActionValidationWithWildcards:
     async def test_validate_middle_wildcard(self):
         """Test validation of middle wildcard pattern."""
         async with AWSServiceFetcher() as fetcher:
-            is_valid, error_msg, is_wildcard = await fetcher.validate_action(
-                "s3:*Object*"
-            )
+            is_valid, error_msg, is_wildcard = await fetcher.validate_action("s3:*Object*")
 
             assert is_valid is True
             assert error_msg is None

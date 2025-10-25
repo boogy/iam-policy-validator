@@ -130,9 +130,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             return issues
 
         # Get action condition requirements from config
-        action_condition_requirements = config.config.get(
-            "action_condition_requirements", []
-        )
+        action_condition_requirements = config.config.get("action_condition_requirements", [])
         if not action_condition_requirements:
             return issues
 
@@ -152,9 +150,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             actions_config = requirement.get("actions", [])
             if isinstance(actions_config, dict) and "none_of" in actions_config:
                 # This is a forbidden action rule - flag it
-                description = requirement.get(
-                    "description", "These actions should not be used"
-                )
+                description = requirement.get("description", "These actions should not be used")
                 # Use per-requirement severity if specified, else use global
                 severity = requirement.get("severity", self.get_severity(config))
                 issues.append(
@@ -248,9 +244,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 # Collect matching actions
                 for stmt_action in statement_actions:
                     for req_action in all_of:
-                        if self._action_matches(
-                            stmt_action, req_action, action_patterns
-                        ):
+                        if self._action_matches(stmt_action, req_action, action_patterns):
                             if stmt_action not in matching_actions:
                                 matching_actions.append(stmt_action)
 
@@ -259,9 +253,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 any_present = False
                 for stmt_action in statement_actions:
                     for req_action in any_of:
-                        if self._action_matches(
-                            stmt_action, req_action, action_patterns
-                        ):
+                        if self._action_matches(stmt_action, req_action, action_patterns):
                             any_present = True
                             if stmt_action not in matching_actions:
                                 matching_actions.append(stmt_action)
@@ -274,9 +266,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 forbidden_actions = []
                 for stmt_action in statement_actions:
                     for forbidden_action in none_of:
-                        if self._action_matches(
-                            stmt_action, forbidden_action, action_patterns
-                        ):
+                        if self._action_matches(stmt_action, forbidden_action, action_patterns):
                             forbidden_actions.append(stmt_action)
 
                 # If forbidden actions are found, this is a match for flagging
@@ -343,9 +333,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # Handle simple list format (backward compatibility)
         if isinstance(required_conditions_config, list):
             for condition_requirement in required_conditions_config:
-                if not self._has_condition_requirement(
-                    statement, condition_requirement
-                ):
+                if not self._has_condition_requirement(statement, condition_requirement):
                     issues.append(
                         self._create_issue(
                             statement,
@@ -367,9 +355,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             # Validate all_of: ALL conditions must be present
             if all_of:
                 for condition_requirement in all_of:
-                    if not self._has_condition_requirement(
-                        statement, condition_requirement
-                    ):
+                    if not self._has_condition_requirement(statement, condition_requirement):
                         issues.append(
                             self._create_issue(
                                 statement,
@@ -385,15 +371,12 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             # Validate any_of: At least ONE condition must be present
             if any_of:
                 any_present = any(
-                    self._has_condition_requirement(statement, cond_req)
-                    for cond_req in any_of
+                    self._has_condition_requirement(statement, cond_req) for cond_req in any_of
                 )
 
                 if not any_present:
                     # Create a combined error for any_of
-                    condition_keys = [
-                        cond.get("condition_key", "unknown") for cond in any_of
-                    ]
+                    condition_keys = [cond.get("condition_key", "unknown") for cond in any_of]
                     issues.append(
                         ValidationIssue(
                             severity=self.get_severity(config),
@@ -413,9 +396,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             # Validate none_of: NONE of these conditions should be present
             if none_of:
                 for condition_requirement in none_of:
-                    if self._has_condition_requirement(
-                        statement, condition_requirement
-                    ):
+                    if self._has_condition_requirement(statement, condition_requirement):
                         issues.append(
                             self._create_none_of_issue(
                                 statement,
@@ -464,9 +445,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             return False
 
         # If operator specified, only check that operator
-        operators_to_check = (
-            [operator] if operator else list(statement.condition.keys())
-        )
+        operators_to_check = [operator] if operator else list(statement.condition.keys())
 
         # Look through specified condition operators
         for op in operators_to_check:
@@ -530,9 +509,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         example = condition_requirement.get("example", "")
         operator = condition_requirement.get("operator", "StringEquals")
 
-        message_prefix = (
-            "ALL required:" if requirement_type == "all_of" else "Required:"
-        )
+        message_prefix = "ALL required:" if requirement_type == "all_of" else "Required:"
 
         # Determine severity with precedence: condition > requirement > global
         severity = (
@@ -641,7 +618,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         description = condition_requirement.get("description", "")
         expected_value = condition_requirement.get("expected_value")
 
-        message = f"FORBIDDEN: Action(s) {matching_actions} must NOT have condition '{condition_key}'"
+        message = (
+            f"FORBIDDEN: Action(s) {matching_actions} must NOT have condition '{condition_key}'"
+        )
         if expected_value is not None:
             message += f" with value '{expected_value}'"
         if description:

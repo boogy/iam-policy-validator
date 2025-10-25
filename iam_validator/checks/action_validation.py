@@ -2,7 +2,7 @@
 
 import re
 from functools import lru_cache
-from typing import Pattern
+from re import Pattern
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
@@ -143,9 +143,7 @@ class ActionValidationCheck(PolicyCheck):
             allowed_wildcards = allowed_wildcards_raw
 
         # Check if wildcard warnings are disabled entirely
-        disable_wildcard_warnings = config.config.get(
-            "disable_wildcard_warnings", False
-        )
+        disable_wildcard_warnings = config.config.get("disable_wildcard_warnings", False)
 
         for action in actions:
             # Wildcard-only actions are handled by security checks

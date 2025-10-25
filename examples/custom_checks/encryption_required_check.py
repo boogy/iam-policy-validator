@@ -22,8 +22,6 @@ Usage:
             require_secure_transport: true
 """
 
-from typing import List
-
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
@@ -50,7 +48,7 @@ class EncryptionRequiredCheck(PolicyCheck):
         statement_idx: int,
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
-    ) -> List[ValidationIssue]:
+    ) -> list[ValidationIssue]:
         """Check encryption requirements."""
         issues = []
 
@@ -84,9 +82,7 @@ class EncryptionRequiredCheck(PolicyCheck):
                     )
 
         # Check 2: SecureTransport requirement
-        if require_secure_transport and not self._has_secure_transport_condition(
-            statement
-        ):
+        if require_secure_transport and not self._has_secure_transport_condition(statement):
             issues.append(
                 ValidationIssue(
                     severity="warning",

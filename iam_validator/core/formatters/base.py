@@ -47,9 +47,7 @@ class OutputFormatter(ABC):
         """
         pass
 
-    def format_to_file(
-        self, report: ValidationReport, filepath: str, **kwargs: Any
-    ) -> None:
+    def format_to_file(self, report: ValidationReport, filepath: str, **kwargs: Any) -> None:
         """Format report and write to file.
 
         Args:
@@ -106,14 +104,9 @@ class FormatterRegistry:
         Returns:
             Dictionary of format_id -> description
         """
-        return {
-            fmt_id: formatter.description
-            for fmt_id, formatter in self._formatters.items()
-        }
+        return {fmt_id: formatter.description for fmt_id, formatter in self._formatters.items()}
 
-    def format_report(
-        self, report: ValidationReport, format_id: str, **kwargs: Any
-    ) -> str:
+    def format_report(self, report: ValidationReport, format_id: str, **kwargs: Any) -> str:
         """Format a report using the specified formatter.
 
         Args:
@@ -130,9 +123,7 @@ class FormatterRegistry:
         formatter = self.get_formatter(format_id)
         if not formatter:
             available = ", ".join(self._formatters.keys())
-            raise ValueError(
-                f"Formatter '{format_id}' not found. Available: {available}"
-            )
+            raise ValueError(f"Formatter '{format_id}' not found. Available: {available}")
 
         return formatter.format(report, **kwargs)
 

@@ -2,7 +2,6 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 import yaml
@@ -50,9 +49,7 @@ class TestValidatorConfig:
                 "action_validation": {"enabled": True, "severity": "error"},
                 "condition_validation": {"enabled": False},
             },
-            "custom_checks": [
-                {"module": "my_module.MyCheck", "enabled": True}
-            ],
+            "custom_checks": [{"module": "my_module.MyCheck", "enabled": True}],
             "custom_checks_dir": "/path/to/checks",
             "settings": {"parallel_execution": True, "cache_ttl": 3600},
         }
@@ -66,11 +63,7 @@ class TestValidatorConfig:
 
     def test_get_check_config(self):
         """Test getting configuration for a specific check."""
-        config_dict = {
-            "checks": {
-                "action_validation": {"enabled": True, "severity": "error"}
-            }
-        }
+        config_dict = {"checks": {"action_validation": {"enabled": True, "severity": "error"}}}
         config = ValidatorConfig(config_dict)
 
         check_config = config.get_check_config("action_validation")
@@ -102,9 +95,7 @@ class TestValidatorConfig:
 
     def test_get_check_severity(self):
         """Test getting severity override for a check."""
-        config_dict = {
-            "checks": {"my_check": {"enabled": True, "severity": "error"}}
-        }
+        config_dict = {"checks": {"my_check": {"enabled": True, "severity": "error"}}}
         config = ValidatorConfig(config_dict)
 
         severity = config.get_check_severity("my_check")
@@ -118,9 +109,7 @@ class TestValidatorConfig:
 
     def test_get_setting(self):
         """Test getting a global setting."""
-        config_dict = {
-            "settings": {"parallel_execution": True, "cache_ttl": 3600}
-        }
+        config_dict = {"settings": {"parallel_execution": True, "cache_ttl": 3600}}
         config = ValidatorConfig(config_dict)
 
         assert config.get_setting("parallel_execution") is True
@@ -230,9 +219,7 @@ class TestConfigLoader:
     def test_load_config_success(self, temp_dir):
         """Test successfully loading a config file."""
         config_path = temp_dir / "iam-validator.yaml"
-        config_data = {
-            "checks": {"action_validation": {"enabled": True, "severity": "error"}}
-        }
+        config_data = {"checks": {"action_validation": {"enabled": True, "severity": "error"}}}
         config_path.write_text(yaml.dump(config_data))
 
         config = ConfigLoader.load_config(search_path=temp_dir)
@@ -259,11 +246,7 @@ class TestConfigLoader:
         check = MockCheckForConfig()
         registry.register(check)
 
-        config_dict = {
-            "checks": {
-                "mock_check": {"enabled": False, "severity": "error"}
-            }
-        }
+        config_dict = {"checks": {"mock_check": {"enabled": False, "severity": "error"}}}
         config = ValidatorConfig(config_dict)
 
         ConfigLoader.apply_config_to_registry(config, registry)
@@ -296,11 +279,7 @@ class TestConfigLoader:
 
     def test_load_custom_checks_invalid_module_path(self):
         """Test loading custom checks with invalid module path."""
-        config_dict = {
-            "custom_checks": [
-                {"module": "invalid_format", "enabled": True}
-            ]
-        }
+        config_dict = {"custom_checks": [{"module": "invalid_format", "enabled": True}]}
         config = ValidatorConfig(config_dict)
         registry = CheckRegistry()
 
@@ -310,11 +289,7 @@ class TestConfigLoader:
 
     def test_load_custom_checks_module_not_found(self):
         """Test loading custom checks when module doesn't exist."""
-        config_dict = {
-            "custom_checks": [
-                {"module": "nonexistent.module.Check", "enabled": True}
-            ]
-        }
+        config_dict = {"custom_checks": [{"module": "nonexistent.module.Check", "enabled": True}]}
         config = ValidatorConfig(config_dict)
         registry = CheckRegistry()
 
@@ -324,11 +299,7 @@ class TestConfigLoader:
 
     def test_load_custom_checks_disabled(self):
         """Test that disabled custom checks are not loaded."""
-        config_dict = {
-            "custom_checks": [
-                {"module": "some.module.Check", "enabled": False}
-            ]
-        }
+        config_dict = {"custom_checks": [{"module": "some.module.Check", "enabled": False}]}
         config = ValidatorConfig(config_dict)
         registry = CheckRegistry()
 
@@ -379,7 +350,7 @@ class TestConfigLoader:
     def test_discover_checks_loads_valid_check(self, temp_dir):
         """Test discovering and loading a valid custom check."""
         check_file = temp_dir / "custom_check.py"
-        check_code = '''
+        check_code = """
 from iam_validator.core.check_registry import PolicyCheck
 
 class CustomSecurityCheck(PolicyCheck):
@@ -393,7 +364,7 @@ class CustomSecurityCheck(PolicyCheck):
 
     async def execute(self, statement, statement_idx, fetcher, config):
         return []
-'''
+"""
         check_file.write_text(check_code)
         registry = CheckRegistry()
 
@@ -408,7 +379,7 @@ class CustomSecurityCheck(PolicyCheck):
     def test_discover_checks_multiple_files(self, temp_dir):
         """Test discovering checks from multiple files."""
         check1 = temp_dir / "check1.py"
-        check1_code = '''
+        check1_code = """
 from iam_validator.core.check_registry import PolicyCheck
 
 class Check1(PolicyCheck):
@@ -422,11 +393,11 @@ class Check1(PolicyCheck):
 
     async def execute(self, statement, statement_idx, fetcher, config):
         return []
-'''
+"""
         check1.write_text(check1_code)
 
         check2 = temp_dir / "check2.py"
-        check2_code = '''
+        check2_code = """
 from iam_validator.core.check_registry import PolicyCheck
 
 class Check2(PolicyCheck):
@@ -440,7 +411,7 @@ class Check2(PolicyCheck):
 
     async def execute(self, statement, statement_idx, fetcher, config):
         return []
-'''
+"""
         check2.write_text(check2_code)
 
         registry = CheckRegistry()

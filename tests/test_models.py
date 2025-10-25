@@ -189,9 +189,7 @@ class TestStatement:
 
     def test_statement_with_sid(self):
         """Test statement with SID."""
-        stmt = Statement(
-            Sid="AllowS3Read", Effect="Allow", Action=["s3:GetObject"], Resource="*"
-        )
+        stmt = Statement(Sid="AllowS3Read", Effect="Allow", Action=["s3:GetObject"], Resource="*")
 
         assert stmt.sid == "AllowS3Read"
 
@@ -284,9 +282,7 @@ class TestIAMPolicy:
         """Test creating a valid IAM policy."""
         policy = IAMPolicy(
             Version="2012-10-17",
-            Statement=[
-                Statement(Effect="Allow", Action=["s3:GetObject"], Resource="*")
-            ],
+            Statement=[Statement(Effect="Allow", Action=["s3:GetObject"], Resource="*")],
         )
 
         assert policy.version == "2012-10-17"
@@ -298,9 +294,7 @@ class TestIAMPolicy:
         policy = IAMPolicy(
             Version="2012-10-17",
             Id="MyPolicyId",
-            Statement=[
-                Statement(Effect="Allow", Action=["s3:GetObject"], Resource="*")
-            ],
+            Statement=[Statement(Effect="Allow", Action=["s3:GetObject"], Resource="*")],
         )
 
         assert policy.id == "MyPolicyId"
@@ -482,9 +476,7 @@ class TestValidationReport:
     def test_report_with_results(self):
         """Test report with validation results."""
         results = [
-            PolicyValidationResult(
-                policy_file="policy1.json", is_valid=True, issues=[]
-            ),
+            PolicyValidationResult(policy_file="policy1.json", is_valid=True, issues=[]),
             PolicyValidationResult(
                 policy_file="policy2.json",
                 is_valid=False,

@@ -53,9 +53,7 @@ class TestSidUniquenessCheck:
         policy = IAMPolicy(
             Version="2012-10-17",
             Statement=[
-                Statement(
-                    Sid="First", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]
-                ),
+                Statement(Sid="First", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]),
                 Statement(
                     Sid="Second",
                     Effect="Allow",
@@ -143,21 +141,15 @@ class TestSidUniquenessCheck:
         policy = IAMPolicy(
             Version="2012-10-17",
             Statement=[
-                Statement(
-                    Sid="DupA", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]
-                ),
-                Statement(
-                    Sid="DupA", Effect="Allow", Action=["s3:PutObject"], Resource=["*"]
-                ),
+                Statement(Sid="DupA", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]),
+                Statement(Sid="DupA", Effect="Allow", Action=["s3:PutObject"], Resource=["*"]),
                 Statement(
                     Sid="DupB",
                     Effect="Allow",
                     Action=["s3:DeleteObject"],
                     Resource=["*"],
                 ),
-                Statement(
-                    Sid="DupB", Effect="Allow", Action=["s3:ListBucket"], Resource=["*"]
-                ),
+                Statement(Sid="DupB", Effect="Allow", Action=["s3:ListBucket"], Resource=["*"]),
             ],
         )
         issues = await check.execute_policy(policy, "test.json", fetcher, config)
@@ -198,9 +190,7 @@ class TestSidUniquenessCheck:
                     Action=["s3:GetObject"],
                     Resource=["*"],
                 ),
-                Statement(
-                    Effect="Allow", Action=["s3:PutObject"], Resource=["*"]
-                ),  # No SID
+                Statement(Effect="Allow", Action=["s3:PutObject"], Resource=["*"]),  # No SID
                 Statement(
                     Sid="Duplicate",
                     Effect="Allow",
@@ -217,14 +207,10 @@ class TestSidUniquenessCheck:
     @pytest.mark.asyncio
     async def test_line_numbers_captured(self, check, fetcher, config):
         """Test that line numbers are captured."""
-        stmt1 = Statement(
-            Sid="Dup", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]
-        )
+        stmt1 = Statement(Sid="Dup", Effect="Allow", Action=["s3:GetObject"], Resource=["*"])
         stmt1.line_number = 10
 
-        stmt2 = Statement(
-            Sid="Dup", Effect="Allow", Action=["s3:PutObject"], Resource=["*"]
-        )
+        stmt2 = Statement(Sid="Dup", Effect="Allow", Action=["s3:PutObject"], Resource=["*"])
         stmt2.line_number = 20
 
         policy = IAMPolicy(Version="2012-10-17", Statement=[stmt1, stmt2])
@@ -240,12 +226,8 @@ class TestSidUniquenessCheck:
         policy = IAMPolicy(
             Version="2012-10-17",
             Statement=[
-                Statement(
-                    Sid="Dup", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]
-                ),
-                Statement(
-                    Sid="Dup", Effect="Allow", Action=["s3:PutObject"], Resource=["*"]
-                ),
+                Statement(Sid="Dup", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]),
+                Statement(Sid="Dup", Effect="Allow", Action=["s3:PutObject"], Resource=["*"]),
             ],
         )
         issues = await check.execute_policy(policy, "test.json", fetcher, config)
@@ -258,12 +240,8 @@ class TestSidUniquenessCheck:
         policy = IAMPolicy(
             Version="2012-10-17",
             Statement=[
-                Statement(
-                    Sid="Dup", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]
-                ),
-                Statement(
-                    Sid="Dup", Effect="Allow", Action=["s3:PutObject"], Resource=["*"]
-                ),
+                Statement(Sid="Dup", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]),
+                Statement(Sid="Dup", Effect="Allow", Action=["s3:PutObject"], Resource=["*"]),
             ],
         )
         issues = await check.execute_policy(policy, "test.json", fetcher, config)
@@ -277,18 +255,14 @@ class TestSidUniquenessCheck:
         policy = IAMPolicy(
             Version="2012-10-17",
             Statement=[
-                Statement(
-                    Sid="Dup", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]
-                ),
+                Statement(Sid="Dup", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]),
                 Statement(
                     Sid="Unique",
                     Effect="Allow",
                     Action=["s3:ListBucket"],
                     Resource=["*"],
                 ),
-                Statement(
-                    Sid="Dup", Effect="Allow", Action=["s3:PutObject"], Resource=["*"]
-                ),
+                Statement(Sid="Dup", Effect="Allow", Action=["s3:PutObject"], Resource=["*"]),
                 Statement(
                     Sid="Dup",
                     Effect="Allow",

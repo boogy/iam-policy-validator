@@ -236,7 +236,6 @@ Examples:
 
         all_results = []
         total_processed = 0
-        has_failures = False
 
         # Clean up old review comments at the start (before posting any new ones)
         if args.github_comment and getattr(args, "github_review", False):
@@ -268,9 +267,7 @@ Examples:
                     if result.is_valid:
                         logging.info(f"  ✓ {file_path}: Valid")
                     else:
-                        logging.warning(
-                            f"  ✗ {file_path}: {len(result.issues)} issue(s) found"
-                        )
+                        logging.warning(f"  ✗ {file_path}: {len(result.issues)} issue(s) found")
                         # Note: validation_success tracks overall status
 
                 # Post to GitHub immediately for this file (progressive PR comments)
@@ -342,9 +339,7 @@ Examples:
                     return
 
                 logging.info("Cleaning up old review comments from previous runs...")
-                deleted = await github.cleanup_bot_review_comments(
-                    PRCommenter.REVIEW_IDENTIFIER
-                )
+                deleted = await github.cleanup_bot_review_comments(PRCommenter.REVIEW_IDENTIFIER)
                 if deleted > 0:
                     logging.info(f"Removed {deleted} old comment(s)")
         except Exception as e:

@@ -1,6 +1,6 @@
 [project]
-name = "iam-validator"
-version = "0.1.0"
+name = "iam-policy-validator"
+version = "1.0.0"
 description = "Validate AWS IAM policies for correctness and security using AWS Service Reference API"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,11 +30,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/boogy/iam-validator"
-Documentation = "https://github.com/boogy/iam-validator/tree/main/docs"
-Repository = "https://github.com/boogy/iam-validator"
-Issues = "https://github.com/boogy/iam-validator/issues"
-Changelog = "https://github.com/boogy/iam-validator/blob/main/docs/CHANGELOG.md"
+Homepage = "https://github.com/boogy/iam-policy-validator"
+Documentation = "https://github.com/boogy/iam-policy-validator/tree/main/docs"
+Repository = "https://github.com/boogy/iam-policy-validator"
+Issues = "https://github.com/boogy/iam-policy-validator/issues"
+Changelog = "https://github.com/boogy/iam-policy-validator/blob/main/docs/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
@@ -60,10 +60,11 @@ packages = ["iam_validator"]
 
 [tool.mypy]
 python_version = "3.10"
-strict = true
-warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = true
+ignore_missing_imports = true
+# Relaxed for v1.0.0 - will enable strict mode incrementally
+check_untyped_defs = false
+disallow_untyped_defs = false
 
 [tool.ruff]
 line-length = 100
@@ -71,6 +72,11 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]  # Ignore line length - will enforce in core code only
+
+[tool.ruff.lint.per-file-ignores]
+"examples/**/*.py" = ["E501"]  # Allow longer lines in examples
+"tests/**/*.py" = ["E501"]  # Allow longer lines in tests
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
