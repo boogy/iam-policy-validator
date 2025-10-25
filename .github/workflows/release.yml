@@ -158,12 +158,13 @@ jobs:
           MAJOR=$(echo $VERSION | cut -d. -f1)
           MINOR=$(echo $VERSION | cut -d. -f1-2)
 
-          # Update vX tag (e.g., v1)
+          # Update vX tag (e.g., v1) - annotated (unsigned by bot)
           git tag -fa "v$MAJOR" -m "Update v$MAJOR to $VERSION"
           git push origin "v$MAJOR" --force
 
-          # Update vX.Y tag (e.g., v1.2)
+          # Update vX.Y tag (e.g., v1.2) - annotated (unsigned by bot)
           git tag -fa "v$MINOR" -m "Updated v$MINOR to $VERSION"
           git push origin "v$MINOR" --force
 
-          echo "Updated tags: v$MAJOR and v$MINOR to point to $VERSION"
+          echo "✅ Updated tags: v$MAJOR and v$MINOR to point to $VERSION"
+          echo "ℹ️  Note: Automated tags are annotated but not signed by the bot."
