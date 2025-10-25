@@ -30,7 +30,21 @@ class ValidatorConfig:
             config_dict: Dictionary loaded from YAML config file
         """
         self.config_dict = config_dict or {}
-        self.checks_config = self.config_dict.get("checks", {})
+
+        # Support both nested and flat structure
+        # New flat structure: each check is a top-level key ending with "_check"
+        # Old nested structure: all checks under "checks" key
+        if "checks" in self.config_dict:
+            # Old nested structure
+            self.checks_config = self.config_dict.get("checks", {})
+        else:
+            # New flat structure - extract all keys ending with "_check"
+            self.checks_config = {
+                key.replace("_check", ""): value
+                for key, value in self.config_dict.items()
+                if key.endswith("_check") and isinstance(value, dict)
+            }
+
         self.custom_checks = self.config_dict.get("custom_checks", [])
         self.custom_checks_dir = self.config_dict.get("custom_checks_dir")
         self.settings = self.config_dict.get("settings", {})
