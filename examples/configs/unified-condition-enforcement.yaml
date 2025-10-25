@@ -21,13 +21,12 @@
 #
 # ============================================================================
 
-checks:
-  action_condition_enforcement:
-    enabled: true
-    severity: error
-    description: "Unified condition enforcement for all condition types"
+action_condition_enforcement_check:
+  enabled: true
+  severity: error
+  description: "Unified condition enforcement for all condition types"
 
-    action_condition_requirements:
+  action_condition_requirements:
       # ========================================================================
       # EXAMPLE 1: Simple action with required condition (backward compatible)
       # ========================================================================

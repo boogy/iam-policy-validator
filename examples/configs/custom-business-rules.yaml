@@ -20,61 +20,62 @@ settings:
   enable_builtin_checks: true
   parallel_execution: true
 
-checks:
-  # ============================================================================
-  # Action Condition Enforcement
-  # ============================================================================
-  # Enforce specific IAM condition requirements for actions
-  # See main iam-validator.yaml for full configuration examples
+# ============================================================================
+# Action Condition Enforcement
+# ============================================================================
+# Enforce specific IAM condition requirements for actions
+# See main iam-validator.yaml for full configuration examples
 
-  action_condition_enforcement:
-    enabled: true
-    severity: error
-    description: "Enforce specific IAM condition requirements"
+action_condition_enforcement_check:
+  enabled: true
+  severity: error
+  description: "Enforce specific IAM condition requirements"
 
-    action_condition_requirements:
-      # iam:PassRole MUST specify which services can use the role
-      - actions:
-          - "iam:PassRole"
-        required_conditions:
-          - condition_key: "iam:PassedToService"
-            description: "Specify which AWS services are allowed to use the passed role to prevent privilege escalation"
-            expected_value: ["lambda.amazonaws.com", "ecs-tasks.amazonaws.com"]
+  action_condition_requirements:
+    # iam:PassRole MUST specify which services can use the role
+    - actions:
+        - "iam:PassRole"
+      required_conditions:
+        - condition_key: "iam:PassedToService"
+          description: "Specify which AWS services are allowed to use the passed role to prevent privilege escalation"
+          expected_value: ["lambda.amazonaws.com", "ecs-tasks.amazonaws.com"]
 
-      # Sensitive IAM actions require MFA
-      - action_patterns:
-          - "^iam:Delete.*"
-          - "^iam:Put.*Policy$"
-        required_conditions:
-          - condition_key: "aws:MultiFactorAuthPresent"
-            description: "Require MFA authentication for sensitive IAM operations"
-            expected_value: true
+    # Sensitive IAM actions require MFA
+    - action_patterns:
+        - "^iam:Delete.*"
+        - "^iam:Put.*Policy$"
+      required_conditions:
+        - condition_key: "aws:MultiFactorAuthPresent"
+          description: "Require MFA authentication for sensitive IAM operations"
+          expected_value: true
 
-  # ============================================================================
-  # Tag Enforcement
-  # ============================================================================
-  # Ensure resources are properly tagged for cost allocation and compliance
+# ============================================================================
+# Tag Enforcement
+# ============================================================================
+# Ensure resources are properly tagged for cost allocation and compliance
+# NOTE: Tag enforcement is now part of action_condition_enforcement_check
+# Use required_conditions with aws:RequestTag/* condition keys
 
-  action_tag_enforcement:
-    enabled: true
-    severity: error
-    description: "Enforce specific tags for specific actions"
+action_tag_enforcement_check:
+  enabled: true
+  severity: error
+  description: "Enforce specific tags for specific actions"
 
-    action_tag_requirements:
-      # EC2 instances must have cost allocation tags
-      - actions:
-          - "ec2:RunInstances"
-        required_tags:
-          - "Environment"
-          - "Owner"
-          - "CostCenter"
+  action_tag_requirements:
+    # EC2 instances must have cost allocation tags
+    - actions:
+        - "ec2:RunInstances"
+      required_tags:
+        - "Environment"
+        - "Owner"
+        - "CostCenter"
 
-      # RDS databases need data classification
-      - action_patterns:
-          - "^rds:Create.*"
-        required_tags:
-          - "DataClassification"
-          - "Owner"
+    # RDS databases need data classification
+    - action_patterns:
+        - "^rds:Create.*"
+      required_tags:
+        - "DataClassification"
+        - "Owner"
 
 # ============================================================================
 # TESTING

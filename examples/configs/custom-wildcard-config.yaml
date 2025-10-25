@@ -1,43 +1,43 @@
 # Example: Custom wildcard allowlist configuration
 # This shows how to customize which wildcard actions are allowed
 
-checks:
-  action_validation:
-    enabled: true
-    severity: error
-    description: "Validates that actions exist in AWS services"
+# Validate IAM actions against AWS service definitions
+action_validation_check:
+  enabled: true
+  severity: error
+  description: "Validates that actions exist in AWS services"
 
-    # Custom wildcard allowlist - override the defaults
-    # Only these patterns won't trigger warnings
-    allowed_wildcards:
-      # Read-only S3 operations
-      - "s3:Get*"
-      - "s3:List*"
+  # Custom wildcard allowlist - override the defaults
+  # Only these patterns won't trigger warnings
+  allowed_wildcards:
+    # Read-only S3 operations
+    - "s3:Get*"
+    - "s3:List*"
 
-      # EC2 read operations
-      - "ec2:Describe*"
+    # EC2 read operations
+    - "ec2:Describe*"
 
-      # IAM read operations
-      - "iam:Get*"
-      - "iam:List*"
+    # IAM read operations
+    - "iam:Get*"
+    - "iam:List*"
 
-      # Allow all CloudWatch operations (monitoring)
-      - "cloudwatch:*"
+    # Allow all CloudWatch operations (monitoring)
+    - "cloudwatch:*"
 
-      # Allow all CloudWatch Logs operations (logging)
-      - "logs:*"
+    # Allow all CloudWatch Logs operations (logging)
+    - "logs:*"
 
-      # Custom business-specific pattern
-      - "lambda:Invoke*"  # Allow Lambda invocation wildcards
+    # Custom business-specific pattern
+    - "lambda:Invoke*"  # Allow Lambda invocation wildcards
 
-      # Allow specific DynamoDB read patterns
-      - "dynamodb:Get*"
-      - "dynamodb:Query"
-      - "dynamodb:Scan"
-      - "dynamodb:BatchGet*"
+    # Allow specific DynamoDB read patterns
+    - "dynamodb:Get*"
+    - "dynamodb:Query"
+    - "dynamodb:Scan"
+    - "dynamodb:BatchGet*"
 
-    # Alternatively, to disable wildcard warnings entirely:
-    # disable_wildcard_warnings: true
+  # Alternatively, to disable wildcard warnings entirely:
+  # disable_wildcard_warnings: true
 
 settings:
   fail_fast: false

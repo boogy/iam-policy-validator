@@ -1,15 +1,15 @@
 # Advanced Action-Specific Condition Enforcement Configuration
 # Demonstrates all_of/any_of logic for both actions and conditions
 
-enable_builtin_checks: true
+settings:
+  enable_builtin_checks: true
 
-checks:
-  action_condition_enforcement:
-    enabled: true
-    severity: error
-    description: "Enforce specific conditions for specific actions with all_of/any_of support"
+action_condition_enforcement_check:
+  enabled: true
+  severity: error
+  description: "Enforce specific conditions for specific actions with all_of/any_of support"
 
-    action_condition_requirements:
+  action_condition_requirements:
       # ============================================================
       # EXAMPLE 1: BASIC USAGE (Backward Compatible)
       # ============================================================
