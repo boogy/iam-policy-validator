@@ -10,18 +10,24 @@ from iam_validator import __version__
 from iam_validator.commands import ALL_COMMANDS
 
 
-def setup_logging(verbose: bool = False) -> None:
+def setup_logging(log_level: str | None = None, verbose: bool = False) -> None:
     """Setup logging configuration.
 
     Args:
-        verbose: Enable verbose logging
+        log_level: Log level from CLI argument (debug, info, warning, error, critical)
+        verbose: Enable verbose logging (deprecated, use --log-level debug instead)
 
     Environment Variables:
         LOG_LEVEL: Set log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-                   Overrides the --verbose flag if set
+
+    Priority:
+        1. --log-level CLI argument (highest priority)
+        2. LOG_LEVEL environment variable
+        3. --verbose flag (sets DEBUG level)
+        4. Default: WARNING (lowest priority)
     """
     # Check for LOG_LEVEL environment variable
-    log_level_str = os.getenv("LOG_LEVEL", "").upper()
+    env_log_level = os.getenv("LOG_LEVEL", "").upper()
 
     # Map string to logging level
     level_map = {
@@ -32,13 +38,15 @@ def setup_logging(verbose: bool = False) -> None:
         "CRITICAL": logging.CRITICAL,
     }
 
-    # Priority: LOG_LEVEL env var > --verbose flag > default (INFO)
-    if log_level_str in level_map:
-        level = level_map[log_level_str]
+    # Priority: CLI --log-level > LOG_LEVEL env var > --verbose flag > default (WARNING)
+    if log_level:
+        level = level_map[log_level.upper()]
+    elif env_log_level in level_map:
+        level = level_map[env_log_level]
     elif verbose:
         level = logging.DEBUG
     else:
-        level = logging.INFO
+        level = logging.WARNING
 
     logging.basicConfig(
         level=level,
@@ -66,6 +74,14 @@ def main() -> int:
         help="Show version information and exit",
     )
 
+    # Add global log level argument
+    parser.add_argument(
+        "--log-level",
+        choices=["debug", "info", "warning", "error", "critical"],
+        default=None,
+        help="Set logging level (default: warning)",
+    )
+
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
     # Register all commands
@@ -88,8 +104,9 @@ def main() -> int:
         return 1
 
     # Setup logging
+    log_level = getattr(args, "log_level", None)
     verbose = getattr(args, "verbose", False)
-    setup_logging(verbose)
+    setup_logging(log_level, verbose)
 
     # Execute command
     try:
