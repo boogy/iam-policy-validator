@@ -124,7 +124,9 @@ class ReportGenerator:
 
         # Show policies with security findings (separate from validity)
         if report.policies_with_security_issues > 0:
-            summary_text.append(f"Security Findings: {report.policies_with_security_issues} ", style="yellow")
+            summary_text.append(
+                f"Security Findings: {report.policies_with_security_issues} ", style="yellow"
+            )
 
         summary_text.append("\n")
 

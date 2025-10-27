@@ -252,7 +252,9 @@ class ValidationReport(BaseModel):
     total_policies: int
     valid_policies: int
     invalid_policies: int  # Policies with IAM validity issues (error/warning)
-    policies_with_security_issues: int = 0  # Policies with security findings (critical/high/medium/low)
+    policies_with_security_issues: int = (
+        0  # Policies with security findings (critical/high/medium/low)
+    )
     total_issues: int
     validity_issues: int = 0  # Count of IAM validity issues (error/warning/info)
     security_issues: int = 0  # Count of security issues (critical/high/medium/low)

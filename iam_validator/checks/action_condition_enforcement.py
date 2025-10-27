@@ -214,7 +214,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
                 # Check against configured actions
                 for required_action in actions_config:
-                    if await self._action_matches(stmt_action, required_action, action_patterns, fetcher):
+                    if await self._action_matches(
+                        stmt_action, required_action, action_patterns, fetcher
+                    ):
                         matched = True
                         break
 
@@ -240,7 +242,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 for req_action in all_of:
                     found = False
                     for stmt_action in statement_actions:
-                        if await self._action_matches(stmt_action, req_action, action_patterns, fetcher):
+                        if await self._action_matches(
+                            stmt_action, req_action, action_patterns, fetcher
+                        ):
                             found = True
                             break
                     if not found:
@@ -253,7 +257,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 # Collect matching actions
                 for stmt_action in statement_actions:
                     for req_action in all_of:
-                        if await self._action_matches(stmt_action, req_action, action_patterns, fetcher):
+                        if await self._action_matches(
+                            stmt_action, req_action, action_patterns, fetcher
+                        ):
                             if stmt_action not in matching_actions:
                                 matching_actions.append(stmt_action)
 
@@ -262,7 +268,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 any_present = False
                 for stmt_action in statement_actions:
                     for req_action in any_of:
-                        if await self._action_matches(stmt_action, req_action, action_patterns, fetcher):
+                        if await self._action_matches(
+                            stmt_action, req_action, action_patterns, fetcher
+                        ):
                             any_present = True
                             if stmt_action not in matching_actions:
                                 matching_actions.append(stmt_action)
@@ -275,7 +283,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 forbidden_actions = []
                 for stmt_action in statement_actions:
                     for forbidden_action in none_of:
-                        if await self._action_matches(stmt_action, forbidden_action, action_patterns, fetcher):
+                        if await self._action_matches(
+                            stmt_action, forbidden_action, action_patterns, fetcher
+                        ):
                             forbidden_actions.append(stmt_action)
 
                 # If forbidden actions are found, this is a match for flagging
@@ -287,7 +297,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         return False, []
 
     async def _action_matches(
-        self, statement_action: str, required_action: str, patterns: list[str], fetcher: AWSServiceFetcher
+        self,
+        statement_action: str,
+        required_action: str,
+        patterns: list[str],
+        fetcher: AWSServiceFetcher,
     ) -> bool:
         """
         Check if a statement action matches a required action or pattern.
@@ -351,7 +365,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     # Find which actual AWS actions the wildcard would grant
                     _, granted_actions = fetcher._match_wildcard_action(
                         statement_action.split(":", 1)[1],  # Just the action part (e.g., "C*")
-                        available_actions
+                        available_actions,
                     )
 
                     # Check if any of the granted actions match our patterns
