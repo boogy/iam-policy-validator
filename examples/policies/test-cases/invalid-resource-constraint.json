@@ -1,0 +1,41 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InvalidListRolesWithSpecificResource",
+      "Effect": "Allow",
+      "Action": ["iam:ListRoles"],
+      "Resource": "arn:aws:iam::123456789012:role/MyRole"
+    },
+    {
+      "Sid": "InvalidListAllMyBucketsWithSpecificBucket",
+      "Effect": "Allow",
+      "Action": ["s3:ListAllMyBuckets"],
+      "Resource": "arn:aws:s3:::my-bucket"
+    },
+    {
+      "Sid": "InvalidListAccessGrantsInstances",
+      "Effect": "Allow",
+      "Action": ["s3:ListAccessGrantsInstances"],
+      "Resource": "arn:aws:s3:::my-bucket"
+    },
+    {
+      "Sid": "InvalidMixedActionsWithSpecificResources",
+      "Effect": "Allow",
+      "Action": ["iam:ListRoles", "iam:GetRole"],
+      "Resource": "arn:aws:iam::123456789012:role/MyRole"
+    },
+    {
+      "Sid": "ValidListRolesWithWildcard",
+      "Effect": "Allow",
+      "Action": ["iam:ListRoles"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ValidGetRoleWithSpecificResource",
+      "Effect": "Allow",
+      "Action": ["iam:GetRole"],
+      "Resource": "arn:aws:iam::123456789012:role/MyRole"
+    }
+  ]
+}

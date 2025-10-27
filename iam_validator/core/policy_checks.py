@@ -474,7 +474,18 @@ async def validate_policies(
     """
     if not use_registry:
         # Legacy path - use old PolicyValidator
-        async with AWSServiceFetcher() as fetcher:
+        # Load config for cache settings even in legacy mode
+        from iam_validator.core.config_loader import ConfigLoader
+
+        config = ConfigLoader.load_config(explicit_path=config_path, allow_missing=True)
+        cache_enabled = config.get_setting("cache_enabled", True)
+        cache_ttl_hours = config.get_setting("cache_ttl_hours", 168)
+        cache_directory = config.get_setting("cache_directory", None)
+        cache_ttl_seconds = cache_ttl_hours * 3600
+
+        async with AWSServiceFetcher(
+            enable_cache=cache_enabled, cache_ttl=cache_ttl_seconds, cache_dir=cache_directory
+        ) as fetcher:
             validator = PolicyValidator(fetcher)
 
             tasks = [validator.validate_policy(policy, file_path) for file_path, policy in policies]
@@ -530,8 +541,16 @@ async def validate_policies(
     # Get fail_on_severity setting from config
     fail_on_severities = config.get_setting("fail_on_severity", ["error"])
 
+    # Get cache settings from config
+    cache_enabled = config.get_setting("cache_enabled", True)
+    cache_ttl_hours = config.get_setting("cache_ttl_hours", 168)  # 7 days default
+    cache_directory = config.get_setting("cache_directory", None)
+    cache_ttl_seconds = cache_ttl_hours * 3600
+
     # Validate policies using registry
-    async with AWSServiceFetcher() as fetcher:
+    async with AWSServiceFetcher(
+        enable_cache=cache_enabled, cache_ttl=cache_ttl_seconds, cache_dir=cache_directory
+    ) as fetcher:
         tasks = [
             _validate_policy_with_registry(policy, file_path, registry, fetcher, fail_on_severities)
             for file_path, policy in policies

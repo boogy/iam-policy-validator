@@ -8,6 +8,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from iam_validator.__version__ import __version__
 from iam_validator.core.access_analyzer import (
     AccessAnalyzerFinding,
     AccessAnalyzerReport,
@@ -70,7 +71,7 @@ class AccessAnalyzerReportFormatter:
 
         panel = Panel(
             summary_text,
-            title="[bold]Access Analyzer Validation Summary[/bold]",
+            title=f"[bold]Access Analyzer Validation Summary (iam-validator v{__version__})[/bold]",
             border_style="blue",
         )
         self.console.print(panel)

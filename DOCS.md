@@ -17,7 +17,8 @@
 7. [Built-in Checks](#built-in-validation-checks)
 8. [Custom Validation Rules](#creating-custom-checks)
 9. [Performance & Optimization](#performance-optimization)
-10. [Development](#development)
+10. [Cache Management](#cache-command)
+11. [Development](#development)
 
 ---
 
@@ -176,7 +177,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.12'
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -230,7 +231,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.12'
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -284,7 +285,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.12'
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -631,9 +632,49 @@ iam-validator post-to-pr --report report.json --no-review
 iam-validator post-to-pr --report report.json --no-summary
 ```
 
+### `cache` Command
+
+Manage AWS service definition cache for improved performance:
+
+```bash
+iam-validator cache {info,list,clear,refresh,prefetch,location}
+
+Subcommands:
+  info                Show cache information and statistics
+  list                List all cached AWS services
+  clear               Clear all cached AWS service definitions
+  refresh             Clear cache and pre-fetch common AWS services
+  prefetch            Pre-fetch common AWS services (without clearing)
+  location            Show cache directory location
+```
+
+**Examples:**
+
+```bash
+# Show cache information and statistics
+iam-validator cache info
+
+# List all cached AWS services
+iam-validator cache list
+
+# Clear all cached service definitions
+iam-validator cache clear
+
+# Refresh cache (clear and pre-fetch common services)
+iam-validator cache refresh
+
+# Pre-fetch common AWS services without clearing existing cache
+iam-validator cache prefetch
+
+# Show cache directory location
+iam-validator cache location
+```
+
 ---
 
 ## Configuration
+
+> **📢 Configuration Change (v1.1.0+):** The `allowed_wildcards` configuration has moved from `action_validation_check` to `security_best_practices_check` for cleaner separation of concerns. If you have a custom config file, update it accordingly. See [Migration Note](#configuration-migration) below.
 
 ### Configuration File
 
@@ -682,7 +723,8 @@ sid_uniqueness_check:
 action_validation_check:
   enabled: true
   severity: error
-  disable_wildcard_warnings: true
+  description: "Validates that actions exist in AWS services"
+  # Note: Wildcard security checks are handled by security_best_practices_check
 
 # Validate condition keys
 condition_key_validation_check:
@@ -697,12 +739,23 @@ resource_validation_check:
 # Security best practices
 security_best_practices_check:
   enabled: true
+  # Define allowed wildcard patterns for safe read-only operations
+  allowed_wildcards:
+    - "s3:List*"
+    - "s3:Describe*"
+    - "ec2:Describe*"
+    - "iam:Get*"
+    - "iam:List*"
+    - "cloudwatch:Describe*"
+    - "logs:Describe*"
+
   wildcard_action_check:
     enabled: true
     severity: medium
   wildcard_resource_check:
     enabled: true
     severity: medium
+    # Inherits allowed_wildcards from parent
   full_wildcard_check:
     enabled: true
     severity: critical  # Action:* + Resource:* is critical!
@@ -750,12 +803,12 @@ See `examples/configs/` directory:
 
 ### 1. Action Validation
 
-Verifies IAM actions exist in AWS services:
+Verifies IAM actions exist in AWS service definitions. This check focuses **solely on validity** - security concerns like wildcards are handled by [Security Best Practices](#4-security-best-practices).
 
 ```json
 {
   "Effect": "Allow",
-  "Action": "s3:GetObject",  // ✅ Valid
+  "Action": "s3:GetObject",  // ✅ Valid action
   "Resource": "*"
 }
 ```
@@ -763,7 +816,15 @@ Verifies IAM actions exist in AWS services:
 ```json
 {
   "Effect": "Allow",
-  "Action": "s3:InvalidAction",  // ❌ Invalid
+  "Action": "s3:InvalidAction",  // ❌ Invalid - action doesn't exist
+  "Resource": "*"
+}
+```
+
+```json
+{
+  "Effect": "Allow",
+  "Action": "s3:List*",  // ✅ Valid - wildcards skipped (checked by security_best_practices_check)
   "Resource": "*"
 }
 ```
@@ -820,28 +881,32 @@ Ensures Statement IDs are unique within a policy:
 
 ### 6. Wildcard Action Validation
 
-The `action_validation_check` supports customizable wildcard allowlists:
-
-```yaml
-# Allow specific wildcard patterns (e.g., read-only operations)
-action_validation_check:
-  enabled: true
-  severity: error
-  # Override default allowlist with custom patterns
-  allowed_wildcards:
-    - "s3:Get*"
-    - "s3:List*"
-    - "ec2:Describe*"
-    - "cloudwatch:*"  # Allow all CloudWatch actions
-  # Disable informational wildcard warnings
-  disable_wildcard_warnings: true
-```
-
-Use `security_best_practices_check` to enforce security policies on wildcards:
+The `security_best_practices_check` handles all wildcard security validation with customizable allowlists:
 
 ```yaml
 security_best_practices_check:
   enabled: true
+
+  # Define allowed wildcard patterns (e.g., safe read-only operations)
+  # These patterns are considered acceptable and won't trigger warnings
+  allowed_wildcards:
+    - "s3:List*"        # Safe: listing resources
+    - "s3:Describe*"    # Safe: describing configurations
+    - "ec2:Describe*"   # Safe: read-only operations
+    - "iam:Get*"        # Safe: non-sensitive IAM reads
+    - "iam:List*"       # Safe: listing IAM entities
+    - "cloudwatch:Describe*"
+    - "logs:Describe*"
+
+  # Wildcard resource check uses allowed_wildcards
+  # Resource: "*" is acceptable if ALL actions match allowed_wildcards
+  wildcard_resource_check:
+    enabled: true
+    severity: medium
+    # Optionally override parent allowed_wildcards for this check:
+    # allowed_wildcards:
+    #   - "s3:List*"
+
   # Flag service-level wildcards (e.g., "s3:*")
   service_wildcard_check:
     enabled: true
@@ -851,6 +916,48 @@ security_best_practices_check:
       - "logs"
       - "cloudwatch"
 ```
+
+**Note:** The `action_validation_check` now focuses solely on validating that actions exist in AWS service definitions. All wildcard security concerns are handled by `security_best_practices_check`.
+
+### Configuration Migration
+
+If you have a custom configuration file from before v1.1.0, update it as follows:
+
+**Before (v1.0.x):**
+```yaml
+action_validation_check:
+  enabled: true
+  severity: error
+  allowed_wildcards:
+    - "s3:List*"
+    - "ec2:Describe*"
+  disable_wildcard_warnings: true
+```
+
+**After (v1.1.0+):**
+```yaml
+action_validation_check:
+  enabled: true
+  severity: error
+  # allowed_wildcards removed - moved to security_best_practices_check
+  # disable_wildcard_warnings removed - no longer needed
+
+security_best_practices_check:
+  enabled: true
+  # Move allowed_wildcards here
+  allowed_wildcards:
+    - "s3:List*"
+    - "ec2:Describe*"
+
+  wildcard_resource_check:
+    enabled: true
+    # Automatically inherits allowed_wildcards from parent
+```
+
+**Why this change?**
+- **Clearer separation**: Action validation checks **validity**, security checks handle **safety**
+- **Less confusion**: No overlap between validation and security concerns
+- **Better architecture**: Wildcard security logic is centralized in one place
 
 ---
 
@@ -1060,7 +1167,7 @@ make check
 
 ### Publishing
 
-See `docs/development/PUBLISHING.md` for release process.
+The project uses **trusted publishing** to PyPI via GitHub Actions - no API tokens required. See [release.yml](.github/workflows/release.yml) for the automated release workflow.
 
 ### Contributing
 

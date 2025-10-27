@@ -1,0 +1,46 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "WildcardDetectsSensitiveActions",
+      "Effect": "Allow",
+      "Action": ["ec2:*"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PrefixWildcardDetectsSensitiveActions",
+      "Effect": "Allow",
+      "Action": ["iam:Delete*"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ComplexWildcardDetectsSensitiveActions",
+      "Effect": "Allow",
+      "Action": ["s3:*Bucket*"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ExactSensitiveActionDetected",
+      "Effect": "Allow",
+      "Action": ["iam:CreateUser"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SafeWildcardNotFlagged",
+      "Effect": "Allow",
+      "Action": ["s3:Get*"],
+      "Resource": "arn:aws:s3:::my-bucket/*"
+    },
+    {
+      "Sid": "SensitiveActionWithConditions",
+      "Effect": "Allow",
+      "Action": ["iam:*"],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        }
+      }
+    }
+  ]
+}

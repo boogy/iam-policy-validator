@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 
-from iam_validator import __version__
+from iam_validator.__version__ import __version__
 from iam_validator.commands import ALL_COMMANDS
 
 

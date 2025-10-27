@@ -30,6 +30,7 @@ class CheckConfig:
     severity: str | None = None  # Override default severity
     config: dict[str, Any] = field(default_factory=dict)  # Check-specific config
     description: str = ""
+    root_config: dict[str, Any] = field(default_factory=dict)  # Full config for cross-check access
 
 
 class PolicyCheck(ABC):
@@ -433,6 +434,7 @@ def create_default_registry(
         # Import and register built-in checks
         from iam_validator.checks import (
             ActionConditionEnforcementCheck,
+            ActionResourceConstraintCheck,
             ActionValidationCheck,
             ConditionKeyValidationCheck,
             PolicySizeCheck,
@@ -446,6 +448,7 @@ def create_default_registry(
         registry.register(ResourceValidationCheck())
         registry.register(SecurityBestPracticesCheck())
         registry.register(ActionConditionEnforcementCheck())
+        registry.register(ActionResourceConstraintCheck())
         registry.register(SidUniquenessCheck())
         registry.register(PolicySizeCheck())
 

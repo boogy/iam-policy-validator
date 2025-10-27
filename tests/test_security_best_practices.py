@@ -1181,3 +1181,182 @@ class TestSecurityBestPracticesCheck:
 
         # Should not detect anything when check is disabled
         assert len(issues) == 0
+
+    # ============================================================================
+    # Tests for wildcard_resource_check with allowed_wildcards
+    # ============================================================================
+
+    @pytest.mark.asyncio
+    async def test_wildcard_resource_with_allowed_actions(self, check, fetcher):
+        """Test that Resource: '*' is allowed when all actions are in allowed_wildcards."""
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "wildcard_resource_check": {
+                    "enabled": True,
+                    "allowed_wildcards": ["s3:List*", "s3:Describe*", "ec2:Describe*"],
+                }
+            },
+        )
+
+        # Statement with only allowed wildcard actions and Resource: "*"
+        statement = Statement(
+            Effect="Allow", Action=["s3:ListAllMyBuckets", "s3:DescribeBuckets"], Resource=["*"]
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should NOT flag wildcard resource (all actions are in allowed list)
+        wildcard_resource_issues = [i for i in issues if "all resources" in i.message]
+        assert len(wildcard_resource_issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_wildcard_resource_with_non_allowed_actions(self, check, fetcher):
+        """Test that Resource: '*' is flagged when actions are NOT in allowed_wildcards."""
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "wildcard_resource_check": {
+                    "enabled": True,
+                    "allowed_wildcards": ["s3:List*", "s3:Describe*"],
+                }
+            },
+        )
+
+        # Statement with action NOT in allowed list and Resource: "*"
+        statement = Statement(Effect="Allow", Action=["s3:PutObject"], Resource=["*"])
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should flag wildcard resource (action is not in allowed list)
+        wildcard_resource_issues = [i for i in issues if "all resources" in i.message]
+        assert len(wildcard_resource_issues) == 1
+
+    @pytest.mark.asyncio
+    async def test_wildcard_resource_mixed_actions(self, check, fetcher):
+        """Test Resource: '*' flagged when statement has mix of allowed and non-allowed actions."""
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "wildcard_resource_check": {
+                    "enabled": True,
+                    "allowed_wildcards": ["s3:List*", "s3:Describe*"],
+                }
+            },
+        )
+
+        # Statement with BOTH allowed and non-allowed actions
+        statement = Statement(
+            Effect="Allow", Action=["s3:ListBucket", "s3:PutObject"], Resource=["*"]
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should flag wildcard resource (not ALL actions are allowed)
+        wildcard_resource_issues = [i for i in issues if "all resources" in i.message]
+        assert len(wildcard_resource_issues) == 1
+
+    @pytest.mark.asyncio
+    async def test_wildcard_resource_with_wildcard_pattern_match(self, check, fetcher):
+        """Test that pattern matching works for allowed_wildcards."""
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "wildcard_resource_check": {
+                    "enabled": True,
+                    "allowed_wildcards": ["s3:List*", "ec2:Describe*"],
+                }
+            },
+        )
+
+        # Statement with actions matching wildcard patterns
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:ListBucket", "s3:ListAllMyBuckets", "ec2:DescribeInstances"],
+            Resource=["*"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should NOT flag (all actions match patterns)
+        wildcard_resource_issues = [i for i in issues if "all resources" in i.message]
+        assert len(wildcard_resource_issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_wildcard_resource_inherits_from_parent(self, check, fetcher):
+        """Test that wildcard_resource_check inherits from parent security_best_practices_check."""
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                # Parent level allowed_wildcards
+                "allowed_wildcards": ["s3:List*", "iam:List*", "ec2:Describe*"],
+                "wildcard_resource_check": {
+                    "enabled": True
+                    # No allowed_wildcards specified - inherits from parent
+                }
+            },
+        )
+
+        # Statement with actions that are in parent's allowed_wildcards
+        statement = Statement(
+            Effect="Allow", Action=["s3:ListAllMyBuckets", "iam:ListRoles"], Resource=["*"]
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should NOT flag (inherits allowed_wildcards from parent)
+        wildcard_resource_issues = [i for i in issues if "all resources" in i.message]
+        assert len(wildcard_resource_issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_wildcard_resource_empty_allowed_list(self, check, fetcher):
+        """Test that empty allowed_wildcards list flags all Resource: '*'."""
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={"wildcard_resource_check": {"enabled": True, "allowed_wildcards": []}},
+        )
+
+        # Statement with safe actions but empty allowed_wildcards
+        statement = Statement(Effect="Allow", Action=["s3:ListBucket"], Resource=["*"])
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should flag wildcard resource (allowed_wildcards is empty)
+        wildcard_resource_issues = [i for i in issues if "all resources" in i.message]
+        assert len(wildcard_resource_issues) == 1
+
+    @pytest.mark.asyncio
+    async def test_wildcard_resource_with_full_wildcard_action(self, check, fetcher):
+        """Test that Resource: '*' with Action: '*' is flagged by both checks."""
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={
+                "wildcard_resource_check": {
+                    "enabled": True,
+                    "allowed_wildcards": ["s3:List*"],
+                }
+            },
+        )
+
+        # Statement with full wildcard action
+        statement = Statement(Effect="Allow", Action=["*"], Resource=["*"])
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should flag wildcard resource (action "*" is never in allowed list)
+        wildcard_resource_issues = [i for i in issues if "all resources" in i.message]
+        assert len(wildcard_resource_issues) >= 1  # May be flagged by both checks
+
+        # Should also flag with critical full wildcard check
+        critical_issues = [i for i in issues if "CRITICAL SECURITY RISK" in i.message]
+        assert len(critical_issues) == 1
+
+    @pytest.mark.asyncio
+    async def test_wildcard_resource_no_config(self, check, fetcher):
+        """Test wildcard_resource_check with no root_config (no allowed_wildcards available)."""
+        config = CheckConfig(
+            check_id="security_best_practices",
+            config={"wildcard_resource_check": {"enabled": True}},
+            root_config={},  # Empty root config
+        )
+
+        # Statement with safe actions
+        statement = Statement(Effect="Allow", Action=["s3:ListBucket"], Resource=["*"])
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should flag wildcard resource (no allowed_wildcards configured anywhere)
+        wildcard_resource_issues = [i for i in issues if "all resources" in i.message]
+        assert len(wildcard_resource_issues) == 1

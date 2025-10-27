@@ -11,6 +11,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from iam_validator.__version__ import __version__
 from iam_validator.core.formatters import (
     ConsoleFormatter,
     CSVFormatter,
@@ -143,7 +144,13 @@ class ReportGenerator:
             summary_text.append(")")
         summary_text.append("\n")
 
-        self.console.print(Panel(summary_text, title="Validation Summary", border_style="blue"))
+        self.console.print(
+            Panel(
+                summary_text,
+                title=f"Validation Summary (iam-validator v{__version__})",
+                border_style="blue",
+            )
+        )
 
         # Detailed results
         for result in report.results:

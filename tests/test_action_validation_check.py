@@ -86,20 +86,19 @@ class TestActionValidationCheck:
 
     @pytest.mark.asyncio
     async def test_wildcard_pattern_action(self, check, fetcher, config):
-        """Test wildcard pattern action gets warning when not in allowlist."""
+        """Test wildcard pattern actions are skipped (handled by security_best_practices_check)."""
         fetcher.validate_action.return_value = (True, None, True)
 
-        # Use a wildcard that's NOT in the default allowlist (write operation)
+        # Wildcard actions are skipped by action_validation_check
         statement = Statement(
             Effect="Allow", Action=["s3:Put*"], Resource=["arn:aws:s3:::bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
-        assert len(issues) == 1
-        assert issues[0].severity == "info"
-        assert issues[0].issue_type == "wildcard_action"
-        assert issues[0].action == "s3:Put*"
-        assert "wildcard" in issues[0].message.lower()
+        # No issues - wildcards are handled by security_best_practices_check
+        assert len(issues) == 0
+        # validate_action should not be called for wildcard actions
+        fetcher.validate_action.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_multiple_actions(self, check, fetcher, config):

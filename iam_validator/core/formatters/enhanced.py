@@ -9,6 +9,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
+from iam_validator.__version__ import __version__
 from iam_validator.core.formatters.base import OutputFormatter
 from iam_validator.core.models import PolicyValidationResult, ValidationReport
 
@@ -49,7 +50,11 @@ class EnhancedFormatter(OutputFormatter):
 
         # Header with title
         console.print()
-        title = Text("IAM Policy Validation Report", style="bold cyan", justify="center")
+        title = Text(
+            f"IAM Policy Validation Report (v{__version__})",
+            style="bold cyan",
+            justify="center",
+        )
         console.print(Panel(title, border_style="bright_blue", padding=(1, 0)))
         console.print()
 

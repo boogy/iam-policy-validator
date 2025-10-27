@@ -34,7 +34,7 @@ dev:
 	uv sync
 
 # Sync defaults.py from YAML config
-sync-defaults:
+sync-defaults: clean
 	@echo "Syncing defaults.py from default-config.yaml..."
 	@uv run python scripts/sync_defaults_from_yaml.py
 
@@ -46,6 +46,7 @@ clean:
 	@rm -rf .pytest_cache/
 	@rm -rf .mypy_cache/
 	@rm -rf .ruff_cache/
+	@rm -rf .benchmarks
 	@find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	@find . -type f -name "*.pyc" -delete
 	@find . -type f -name "*.pyo" -delete

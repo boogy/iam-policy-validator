@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "WrongCondition",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject*"],
+      "Resource": "arn:aws:s3:::my_bucket/*",
+      "Condition": {
+        "StringEquals": {
+          "iam:PermissionsBoundary": "arn:aws:iam::*:policy/DeveloperBoundary"
+        }
+      }
+    },
+    {
+      "Sid": "TestingTerragruntTemplateConditions",
+      "Effect": "Allow",
+      "Action": ["s3:Delete*"],
+      "Resource": "arn:aws:s3:::my_bucket/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:MultiFactorAuthPresent": "true"
+        }
+      }
+    }
+  ]
+}

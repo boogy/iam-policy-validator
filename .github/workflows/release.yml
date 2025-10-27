@@ -84,9 +84,7 @@ jobs:
           !contains(steps.get_version.outputs.version, 'rc') &&
           !contains(steps.get_version.outputs.version, 'beta') &&
           !contains(steps.get_version.outputs.version, 'alpha')
-        run: uv publish
-        env:
-          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: uv publish --trusted-publishing always
 
       - name: Create Release Summary
         if: always()

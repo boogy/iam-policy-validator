@@ -23,7 +23,9 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
+import sys
 import time
 from collections import OrderedDict
 from pathlib import Path
@@ -122,28 +124,51 @@ class AWSServiceFetcher:
     BASE_URL = "https://servicereference.us-east-1.amazonaws.com/"
 
     # Common AWS services to pre-fetch
+    # All other services will be fetched on-demand (lazy loading if found in policies)
     COMMON_SERVICES = [
-        "iam",
-        "sts",
-        "s3",
-        "ec2",
-        "lambda",
-        "dynamodb",
-        "rds",
-        "cloudwatch",
-        "sns",
-        "sqs",
-        "kms",
-        "cloudformation",
-        "elasticloadbalancing",
-        "autoscaling",
-        "route53",
+        "acm",
         "apigateway",
+        "autoscaling",
+        "backup",
+        "batch",
+        "bedrock",
+        "cloudformation",
+        "cloudfront",
+        "cloudtrail",
+        "cloudwatch",
+        "config",
+        "dynamodb",
+        "ec2-instance-connect",
+        "ec2",
+        "ecr",
         "ecs",
         "eks",
-        "cloudfront",
-        "logs",
+        "elasticache",
+        "elasticloadbalancing",
         "events",
+        "firehose",
+        "glacier",
+        "glue",
+        "guardduty",
+        "iam",
+        "imagebuilder",
+        "inspector2",
+        "kinesis",
+        "kms",
+        "lambda",
+        "logs",
+        "rds",
+        "route53",
+        "s3",
+        "scheduler",
+        "secretsmanager",
+        "securityhub",
+        "sns",
+        "sqs",
+        "sts",
+        "support",
+        "waf",
+        "wafv2",
     ]
 
     def __init__(
@@ -151,11 +176,12 @@ class AWSServiceFetcher:
         timeout: float = 30.0,
         retries: int = 3,
         enable_cache: bool = True,
-        cache_ttl: int = 3600,
+        cache_ttl: int = 604800,
         memory_cache_size: int = 256,
         connection_pool_size: int = 50,
         keepalive_connections: int = 20,
         prefetch_common: bool = True,
+        cache_dir: Path | str | None = None,
     ):
         """Initialize aws service fetcher.
 
@@ -163,11 +189,12 @@ class AWSServiceFetcher:
             timeout: Request timeout in seconds
             retries: Number of retry attempts
             enable_cache: Enable disk caching
-            cache_ttl: Cache time to live in seconds (default: 1 hour)
+            cache_ttl: Cache time to live in seconds (default: 7 days)
             memory_cache_size: Max items in memory cache
             connection_pool_size: Max connections in pool
             keepalive_connections: Number of keepalive connections
             prefetch_common: Pre-fetch common services on init
+            cache_dir: Custom cache directory (defaults to platform-specific user cache dir)
         """
         self.timeout = timeout
         self.retries = retries
@@ -177,7 +204,7 @@ class AWSServiceFetcher:
 
         self._client: httpx.AsyncClient | None = None
         self._memory_cache = LRUCache(maxsize=memory_cache_size, ttl=cache_ttl)
-        self._cache_dir = Path.cwd() / ".cache" / "aws_services"
+        self._cache_dir = self._get_cache_directory(cache_dir)
         self._patterns = CompiledPatterns()
 
         # Batch request queue
@@ -194,6 +221,39 @@ class AWSServiceFetcher:
         # Create cache directory if needed
         if self.enable_cache:
             self._cache_dir.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _get_cache_directory(cache_dir: Path | str | None = None) -> Path:
+        """Get the cache directory path, using platform-appropriate defaults.
+
+        Priority:
+        1. Provided cache_dir parameter
+        2. Platform-specific user cache directory
+           - Linux/Unix: ~/.cache/iam-validator/aws_services
+           - macOS: ~/Library/Caches/iam-validator/aws_services
+           - Windows: %LOCALAPPDATA%/iam-validator/cache/aws_services
+
+        Args:
+            cache_dir: Optional custom cache directory path
+
+        Returns:
+            Path object for the cache directory
+        """
+        if cache_dir is not None:
+            return Path(cache_dir)
+
+        # Determine platform-specific cache directory
+        if sys.platform == "darwin":
+            # macOS
+            base_cache = Path.home() / "Library" / "Caches"
+        elif sys.platform == "win32":
+            # Windows
+            base_cache = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        else:
+            # Linux and other Unix-like systems
+            base_cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+
+        return base_cache / "iam-validator" / "aws_services"
 
     async def __aenter__(self) -> "AWSServiceFetcher":
         """Async context manager entry with optimized settings."""

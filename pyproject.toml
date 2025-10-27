@@ -1,6 +1,6 @@
 [project]
 name = "iam-policy-validator"
-version = "1.1.0"
+version = "1.1.1"
 description = "Validate AWS IAM policies for correctness and security using AWS Service Reference API"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -94,3 +94,11 @@ markers = [
     "integration: marks tests as integration tests",
 ]
 asyncio_mode = "auto"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-benchmark",
+    "pytest-cov",
+]

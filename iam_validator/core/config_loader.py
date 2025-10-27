@@ -246,6 +246,7 @@ class ConfigLoader:
                 severity=check_config_dict.get("severity"),
                 config=check_config_dict,
                 description=check_config_dict.get("description", check.description),
+                root_config=config.config_dict,  # Pass full config for cross-check access
             )
 
             registry.configure_check(check_id, check_config)
