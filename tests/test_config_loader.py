@@ -229,11 +229,20 @@ class TestConfigLoader:
         assert config.get_check_severity("action_validation") == "error"
 
     def test_load_config_not_found_allow_missing(self, temp_dir):
-        """Test loading config when file not found with allow_missing=True."""
+        """Test loading config when file not found with allow_missing=True.
+
+        When allow_missing=True and no config file is found, the system should
+        return a ValidatorConfig with default configuration loaded.
+        """
         config = ConfigLoader.load_config(search_path=temp_dir, allow_missing=True)
 
         assert isinstance(config, ValidatorConfig)
-        assert config.config_dict == {}
+        # Should have default configuration loaded
+        assert config.config_dict != {}
+        assert "settings" in config.config_dict
+        # Verify some key default settings exist
+        assert config.config_dict["settings"]["fail_fast"] is False
+        assert "action_validation_check" in config.config_dict
 
     def test_load_config_not_found_disallow_missing(self, temp_dir):
         """Test loading config when file not found with allow_missing=False."""
