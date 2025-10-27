@@ -318,19 +318,6 @@ class HTMLFormatter(OutputFormatter):
 
     def _render_summary(self, report: ValidationReport, include_charts: bool) -> str:
         """Render summary section with statistics."""
-        # Count issues by severity - support both IAM validity and security severities
-        error_count = sum(
-            1
-            for r in report.results
-            for i in r.issues
-            if i.severity in ("error", "critical", "high")
-        )
-        warning_count = sum(
-            1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")
-        )
-        info_count = sum(
-            1 for r in report.results for i in r.issues if i.severity in ("info", "low")
-        )
         total_issues = report.total_issues
 
         html_parts = [

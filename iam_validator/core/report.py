@@ -131,14 +131,14 @@ class ReportGenerator:
         # Breakdown of issue types
         summary_text.append(f"Total Issues: {report.total_issues}")
         if report.validity_issues > 0 or report.security_issues > 0:
-            summary_text.append(f" (")
+            summary_text.append(" (")
             if report.validity_issues > 0:
                 summary_text.append(f"{report.validity_issues} validity", style="red")
             if report.validity_issues > 0 and report.security_issues > 0:
                 summary_text.append(", ")
             if report.security_issues > 0:
                 summary_text.append(f"{report.security_issues} security", style="yellow")
-            summary_text.append(f")")
+            summary_text.append(")")
         summary_text.append("\n")
 
         self.console.print(Panel(summary_text, title="Validation Summary", border_style="blue"))
