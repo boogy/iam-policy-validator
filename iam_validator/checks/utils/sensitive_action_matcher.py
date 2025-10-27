@@ -14,23 +14,23 @@ from iam_validator.core.check_registry import CheckConfig
 # Using frozenset for O(1) lookups and immutability
 DEFAULT_SENSITIVE_ACTIONS = frozenset(
     {
-        "ec2:DeleteVolume"
-        "ec2:TerminateInstances"
-        "eks:DeleteCluster"
-        "iam:AttachRolePolicy"
-        "iam:AttachUserPolicy"
-        "iam:CreateAccessKey"
-        "iam:CreateRole"
-        "iam:CreateUser"
-        "iam:DeleteRole"
-        "iam:DeleteUser"
-        "iam:PutRolePolicy"
-        "iam:PutUserPolicy"
-        "lambda:DeleteFunction"
-        "rds:DeleteDBInstance"
-        "s3:DeleteBucket"
-        "s3:DeleteBucketPolicy"
-        "s3:PutBucketPolicy"
+        "ec2:DeleteVolume",
+        "ec2:TerminateInstances",
+        "eks:DeleteCluster",
+        "iam:AttachRolePolicy",
+        "iam:AttachUserPolicy",
+        "iam:CreateAccessKey",
+        "iam:CreateRole",
+        "iam:CreateUser",
+        "iam:DeleteRole",
+        "iam:DeleteUser",
+        "iam:PutRolePolicy",
+        "iam:PutUserPolicy",
+        "lambda:DeleteFunction",
+        "rds:DeleteDBInstance",
+        "s3:DeleteBucket",
+        "s3:DeleteBucketPolicy",
+        "s3:PutBucketPolicy",
     }
 )
 
