@@ -7,6 +7,7 @@ from iam_validator.core.formatters.base import (
 )
 from iam_validator.core.formatters.console import ConsoleFormatter
 from iam_validator.core.formatters.csv import CSVFormatter
+from iam_validator.core.formatters.enhanced import EnhancedFormatter
 from iam_validator.core.formatters.html import HTMLFormatter
 from iam_validator.core.formatters.json import JSONFormatter
 from iam_validator.core.formatters.markdown import MarkdownFormatter
@@ -17,6 +18,7 @@ __all__ = [
     "FormatterRegistry",
     "get_global_registry",
     "ConsoleFormatter",
+    "EnhancedFormatter",
     "JSONFormatter",
     "MarkdownFormatter",
     "SARIFFormatter",

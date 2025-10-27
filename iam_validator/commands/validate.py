@@ -59,9 +59,9 @@ Examples:
         parser.add_argument(
             "--format",
             "-f",
-            choices=["console", "json", "markdown", "html", "csv", "sarif"],
+            choices=["console", "enhanced", "json", "markdown", "html", "csv", "sarif"],
             default="console",
-            help="Output format (default: console)",
+            help="Output format (default: console). Use 'enhanced' for modern visual output with Rich library",
         )
 
         parser.add_argument(
@@ -177,7 +177,8 @@ Examples:
         report = generator.generate_report(results)
 
         # Output results
-        if args.format == "console":
+        if args.format is None:
+            # Default: use classic console output (direct Rich printing)
             generator.print_console_report(report)
         elif args.format == "json":
             if args.output:
@@ -190,7 +191,7 @@ Examples:
             else:
                 print(generator.generate_github_comment(report))
         else:
-            # Use formatter registry for other formats (html, csv, sarif)
+            # Use formatter registry for other formats (enhanced, html, csv, sarif)
             output_content = generator.format_report(report, args.format)
             if args.output:
                 with open(args.output, "w", encoding="utf-8") as f:
@@ -285,6 +286,7 @@ Examples:
 
         # Output final results
         if args.format == "console":
+            # Classic console output (direct Rich printing from report.py)
             generator.print_console_report(report)
         elif args.format == "json":
             if args.output:
@@ -297,7 +299,7 @@ Examples:
             else:
                 print(generator.generate_github_comment(report))
         else:
-            # Use formatter registry for other formats (html, csv, sarif)
+            # Use formatter registry for other formats (enhanced, html, csv, sarif)
             output_content = generator.format_report(report, args.format)
             if args.output:
                 with open(args.output, "w", encoding="utf-8") as f:

@@ -519,11 +519,17 @@ class TestValidationReport:
     def test_get_summary_no_issues(self):
         """Test get_summary with no issues."""
         report = ValidationReport(
-            total_policies=10, valid_policies=10, invalid_policies=0, total_issues=0
+            total_policies=10,
+            valid_policies=10,
+            invalid_policies=0,
+            total_issues=0,
+            validity_issues=0,
+            security_issues=0,
         )
 
         summary = report.get_summary()
         assert "10 policies" in summary
         assert "10 valid" in summary
-        assert "0 invalid" in summary
         assert "0 total issues" in summary
+        # With 0 invalid policies, we don't mention "invalid" to keep summary clean
+        assert "invalid" not in summary or "0" not in summary

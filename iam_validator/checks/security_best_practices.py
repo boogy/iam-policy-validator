@@ -91,14 +91,27 @@ class SecurityBestPracticesCheck(PolicyCheck):
         if self._is_sub_check_enabled(config, "wildcard_action_check"):
             if "*" in actions:
                 severity = self._get_sub_check_severity(config, "wildcard_action_check", "warning")
+                sub_check_config = config.config.get("wildcard_action_check", {})
+
+                message = sub_check_config.get("message", "Statement allows all actions (*)")
+                suggestion_text = sub_check_config.get(
+                    "suggestion", "Consider limiting to specific actions needed"
+                )
+                example = sub_check_config.get("example", "")
+
+                # Combine suggestion + example like action_condition_enforcement does
+                suggestion = (
+                    f"{suggestion_text}\nExample:\n{example}" if example else suggestion_text
+                )
+
                 issues.append(
                     ValidationIssue(
                         severity=severity,
                         statement_sid=statement_sid,
                         statement_index=statement_idx,
                         issue_type="overly_permissive",
-                        message="Statement allows all actions (*)",
-                        suggestion="Consider limiting to specific actions needed",
+                        message=message,
+                        suggestion=suggestion,
                         line_number=line_number,
                     )
                 )
@@ -109,14 +122,27 @@ class SecurityBestPracticesCheck(PolicyCheck):
                 severity = self._get_sub_check_severity(
                     config, "wildcard_resource_check", "warning"
                 )
+                sub_check_config = config.config.get("wildcard_resource_check", {})
+
+                message = sub_check_config.get("message", "Statement applies to all resources (*)")
+                suggestion_text = sub_check_config.get(
+                    "suggestion", "Consider limiting to specific resources"
+                )
+                example = sub_check_config.get("example", "")
+
+                # Combine suggestion + example
+                suggestion = (
+                    f"{suggestion_text}\nExample:\n{example}" if example else suggestion_text
+                )
+
                 issues.append(
                     ValidationIssue(
                         severity=severity,
                         statement_sid=statement_sid,
                         statement_index=statement_idx,
                         issue_type="overly_permissive",
-                        message="Statement applies to all resources (*)",
-                        suggestion="Consider limiting to specific resources",
+                        message=message,
+                        suggestion=suggestion,
                         line_number=line_number,
                     )
                 )
@@ -125,14 +151,31 @@ class SecurityBestPracticesCheck(PolicyCheck):
         if self._is_sub_check_enabled(config, "full_wildcard_check"):
             if "*" in actions and "*" in resources:
                 severity = self._get_sub_check_severity(config, "full_wildcard_check", "error")
+                sub_check_config = config.config.get("full_wildcard_check", {})
+
+                message = sub_check_config.get(
+                    "message",
+                    "Statement allows all actions on all resources - CRITICAL SECURITY RISK",
+                )
+                suggestion_text = sub_check_config.get(
+                    "suggestion",
+                    "This grants full administrative access. Restrict to specific actions and resources.",
+                )
+                example = sub_check_config.get("example", "")
+
+                # Combine suggestion + example
+                suggestion = (
+                    f"{suggestion_text}\nExample:\n{example}" if example else suggestion_text
+                )
+
                 issues.append(
                     ValidationIssue(
                         severity=severity,
                         statement_sid=statement_sid,
                         statement_index=statement_idx,
                         issue_type="security_risk",
-                        message="Statement allows all actions on all resources - CRITICAL SECURITY RISK",
-                        suggestion="This grants full administrative access. Restrict to specific actions and resources.",
+                        message=message,
+                        suggestion=suggestion,
                         line_number=line_number,
                     )
                 )
@@ -155,15 +198,43 @@ class SecurityBestPracticesCheck(PolicyCheck):
                         severity = self._get_sub_check_severity(
                             config, "service_wildcard_check", "warning"
                         )
+                        sub_check_config = config.config.get("service_wildcard_check", {})
+
+                        # Get message template and replace placeholders
+                        message_template = sub_check_config.get(
+                            "message",
+                            "Service-level wildcard '{action}' grants all permissions for {service} service",
+                        )
+                        suggestion_template = sub_check_config.get(
+                            "suggestion",
+                            "Consider specifying explicit actions instead of '{action}'. If you need multiple actions, list them individually or use more specific wildcards like '{service}:Get*' or '{service}:List*'.",
+                        )
+                        example_template = sub_check_config.get("example", "")
+
+                        message = message_template.format(action=action, service=service)
+                        suggestion_text = suggestion_template.format(action=action, service=service)
+                        example = (
+                            example_template.format(action=action, service=service)
+                            if example_template
+                            else ""
+                        )
+
+                        # Combine suggestion + example
+                        suggestion = (
+                            f"{suggestion_text}\nExample:\n{example}"
+                            if example
+                            else suggestion_text
+                        )
+
                         issues.append(
                             ValidationIssue(
                                 severity=severity,
                                 statement_sid=statement_sid,
                                 statement_index=statement_idx,
                                 issue_type="overly_permissive",
-                                message=f"Service-level wildcard '{action}' grants all permissions for {service} service",
+                                message=message,
                                 action=action,
-                                suggestion=f"Consider specifying explicit actions instead of '{action}'. If you need multiple actions, list them individually or use more specific wildcards like '{service}:Get*' or '{service}:List*'.",
+                                suggestion=suggestion,
                                 line_number=line_number,
                             )
                         )
@@ -177,13 +248,33 @@ class SecurityBestPracticesCheck(PolicyCheck):
 
             if is_sensitive and not has_conditions:
                 severity = self._get_sub_check_severity(config, "sensitive_action_check", "warning")
+                sub_check_config = config.config.get("sensitive_action_check", {})
 
-                # Create appropriate message based on matched actions
+                # Create appropriate message based on matched actions using configurable templates
                 if len(matched_actions) == 1:
-                    message = f"Sensitive action '{matched_actions[0]}' should have conditions to limit when it can be used"
+                    message_template = sub_check_config.get(
+                        "message_single",
+                        "Sensitive action '{action}' should have conditions to limit when it can be used",
+                    )
+                    message = message_template.format(action=matched_actions[0])
                 else:
                     action_list = "', '".join(matched_actions)
-                    message = f"Sensitive actions '{action_list}' should have conditions to limit when they can be used"
+                    message_template = sub_check_config.get(
+                        "message_multiple",
+                        "Sensitive actions '{actions}' should have conditions to limit when they can be used",
+                    )
+                    message = message_template.format(actions=action_list)
+
+                suggestion_text = sub_check_config.get(
+                    "suggestion",
+                    "Add conditions like 'aws:Resource/owner must match aws:Principal/owner', IP restrictions, MFA requirements, or time-based restrictions",
+                )
+                example = sub_check_config.get("example", "")
+
+                # Combine suggestion + example
+                suggestion = (
+                    f"{suggestion_text}\nExample:\n{example}" if example else suggestion_text
+                )
 
                 issues.append(
                     ValidationIssue(
@@ -193,7 +284,7 @@ class SecurityBestPracticesCheck(PolicyCheck):
                         issue_type="missing_condition",
                         message=message,
                         action=(matched_actions[0] if len(matched_actions) == 1 else None),
-                        suggestion="Add conditions like 'aws:Resource/owner must match aws:Principal/owner', IP restrictions, MFA requirements, or time-based restrictions",
+                        suggestion=suggestion,
                         line_number=line_number,
                     )
                 )

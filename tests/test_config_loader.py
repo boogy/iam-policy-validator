@@ -33,8 +33,8 @@ class TestValidatorConfig:
     """Test the ValidatorConfig class."""
 
     def test_empty_initialization(self):
-        """Test ValidatorConfig with no config dict."""
-        config = ValidatorConfig()
+        """Test ValidatorConfig with no config dict and no defaults."""
+        config = ValidatorConfig(use_defaults=False)
 
         assert config.config_dict == {}
         assert config.checks_config == {}
@@ -43,7 +43,7 @@ class TestValidatorConfig:
         assert config.settings == {}
 
     def test_initialization_with_config_dict(self):
-        """Test ValidatorConfig with a config dictionary."""
+        """Test ValidatorConfig with a config dictionary and no defaults."""
         config_dict = {
             "checks": {
                 "action_validation": {"enabled": True, "severity": "error"},
@@ -54,7 +54,7 @@ class TestValidatorConfig:
             "settings": {"parallel_execution": True, "cache_ttl": 3600},
         }
 
-        config = ValidatorConfig(config_dict)
+        config = ValidatorConfig(config_dict, use_defaults=False)
 
         assert config.checks_config == config_dict["checks"]
         assert config.custom_checks == config_dict["custom_checks"]
@@ -71,7 +71,7 @@ class TestValidatorConfig:
 
     def test_get_check_config_nonexistent(self):
         """Test getting config for non-existent check returns empty dict."""
-        config = ValidatorConfig()
+        config = ValidatorConfig(use_defaults=False)
         check_config = config.get_check_config("nonexistent_check")
         assert check_config == {}
 
@@ -103,7 +103,7 @@ class TestValidatorConfig:
 
     def test_get_check_severity_not_set(self):
         """Test getting severity when not set returns None."""
-        config = ValidatorConfig()
+        config = ValidatorConfig(use_defaults=False)
         severity = config.get_check_severity("any_check")
         assert severity is None
 
@@ -117,7 +117,7 @@ class TestValidatorConfig:
 
     def test_get_setting_with_default(self):
         """Test getting a setting with default value."""
-        config = ValidatorConfig()
+        config = ValidatorConfig(use_defaults=False)
 
         assert config.get_setting("nonexistent", default="default_value") == "default_value"
         assert config.get_setting("nonexistent") is None
@@ -229,11 +229,20 @@ class TestConfigLoader:
         assert config.get_check_severity("action_validation") == "error"
 
     def test_load_config_not_found_allow_missing(self, temp_dir):
-        """Test loading config when file not found with allow_missing=True."""
+        """Test loading config when file not found with allow_missing=True.
+
+        When allow_missing=True and no config file is found, the system should
+        return a ValidatorConfig with default configuration loaded.
+        """
         config = ConfigLoader.load_config(search_path=temp_dir, allow_missing=True)
 
         assert isinstance(config, ValidatorConfig)
-        assert config.config_dict == {}
+        # Should have default configuration loaded
+        assert config.config_dict != {}
+        assert "settings" in config.config_dict
+        # Verify some key default settings exist
+        assert config.config_dict["settings"]["fail_fast"] is False
+        assert "action_validation_check" in config.config_dict
 
     def test_load_config_not_found_disallow_missing(self, temp_dir):
         """Test loading config when file not found with allow_missing=False."""
@@ -270,7 +279,7 @@ class TestConfigLoader:
 
     def test_load_custom_checks_none(self):
         """Test loading custom checks when none are configured."""
-        config = ValidatorConfig()
+        config = ValidatorConfig(use_defaults=False)
         registry = CheckRegistry()
 
         loaded = ConfigLoader.load_custom_checks(config, registry)

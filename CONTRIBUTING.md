@@ -132,7 +132,7 @@ iam-policy-auditor/
 ├── .github/workflows/          # CI/CD workflows
 ├── pyproject.toml              # Project metadata and dependencies
 ├── Makefile                    # Development commands
-└── iam-validator.yaml          # Default configuration
+└── default-config.yaml         # Example configuration file
 ```
 
 ## Development Workflow
@@ -400,49 +400,59 @@ For detailed publishing instructions, see [docs/development/PUBLISHING.md](docs/
 
 ### Creating a New Check
 
-1. **Create Check Class**
+See the comprehensive [Custom Checks Guide](docs/custom-checks.md) for detailed instructions on creating custom validation checks.
+
+**Quick Example:**
+
+1. **Create Check File**
    ```python
-   # iam_validator/checks/my_check.py
+   # my_checks/mfa_check.py
    from typing import List
-   from iam_validator.core.models import PolicyCheck, Statement, ValidationIssue
+   from iam_validator.core.models import PolicyValidationIssue, PolicyStatement
 
-   class MyCustomCheck(PolicyCheck):
-       @property
-       def check_id(self) -> str:
-           return "my_custom_check"
+   def execute(statement: PolicyStatement, policy_document: dict) -> List[PolicyValidationIssue]:
+       """Ensure sensitive actions require MFA."""
+       issues = []
 
-       @property
-       def description(self) -> str:
-           return "Description of what this check does"
+       sensitive_actions = ["iam:CreateUser", "iam:DeleteUser"]
+       actions = statement.action if isinstance(statement.action, list) else [statement.action]
 
-       async def execute(
-           self,
-           statement: Statement,
-           statement_idx: int,
-           fetcher,
-           config
-       ) -> List[ValidationIssue]:
-           # Implement your check logic
-           issues = []
-           # ... check logic ...
-           return issues
+       for action in actions:
+           if action in sensitive_actions:
+               # Check for MFA condition
+               has_mfa = statement.condition and "aws:MultiFactorAuthPresent" in str(statement.condition)
+
+               if not has_mfa:
+                   issues.append(
+                       PolicyValidationIssue(
+                           check_name="mfa_required",
+                           severity="high",
+                           message=f"Action '{action}' requires MFA",
+                           statement_index=statement.index,
+                           action=action,
+                           suggestion='Add: {"Bool": {"aws:MultiFactorAuthPresent": "true"}}'
+                       )
+                   )
+
+       return issues
    ```
 
-2. **Register the Check**
-   - Check is auto-discovered if in `checks/` directory
-   - Or register manually in configuration
+2. **Use the Check**
+   ```bash
+   iam-validator validate --path ./policies/ --custom-checks-dir ./my_checks
+   ```
 
 3. **Add Tests**
    ```python
    # tests/test_my_check.py
-   def test_my_custom_check():
+   def test_mfa_check():
        # Test your check
        pass
    ```
 
 4. **Document the Check**
-   - Add to `docs/reference/CHECKS.md`
-   - Add example to `examples/`
+   - Add to `docs/custom-checks.md`
+   - Add example to `examples/custom_checks/`
 
 ### Adding a New Formatter
 

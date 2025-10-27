@@ -16,7 +16,13 @@
     {
       "Sid": "IAMPassRole",
       "Effect": "Allow",
-      "Action": ["iam:PassRole"],
+      "Action": ["iam:Pas*"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "IAMCreateActions",
+      "Effect": "Allow",
+      "Action": ["iam:Cr*at*"],
       "Resource": "*"
     }
   ]

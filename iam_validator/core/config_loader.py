@@ -15,21 +15,57 @@ from typing import Any
 import yaml
 
 from iam_validator.core.check_registry import CheckConfig, CheckRegistry, PolicyCheck
+from iam_validator.core.defaults import get_default_config
 
 logger = logging.getLogger(__name__)
+
+
+def deep_merge(base: dict, override: dict) -> dict:
+    """
+    Deep merge two dictionaries, with override taking precedence.
+
+    Args:
+        base: Base dictionary with default values
+        override: Dictionary with override values
+
+    Returns:
+        Merged dictionary where override values take precedence
+    """
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
 
 
 class ValidatorConfig:
     """Main configuration object for the validator."""
 
-    def __init__(self, config_dict: dict[str, Any] | None = None):
+    def __init__(self, config_dict: dict[str, Any] | None = None, use_defaults: bool = True):
         """
         Initialize configuration from a dictionary.
 
         Args:
-            config_dict: Dictionary loaded from YAML config file
+            config_dict: Dictionary loaded from YAML config file.
+                        If None, either uses default configuration (if use_defaults=True)
+                        or creates an empty configuration (if use_defaults=False).
+                        If provided, merges with defaults (user config takes precedence).
+            use_defaults: Whether to load default configuration. Set to False for testing
+                         or when you want an empty configuration.
         """
-        self.config_dict = config_dict or {}
+        # Start with default configuration if requested
+        if use_defaults:
+            default_config = get_default_config()
+            # Merge user config with defaults if provided
+            if config_dict:
+                self.config_dict = deep_merge(default_config, config_dict)
+            else:
+                self.config_dict = default_config
+        else:
+            # No defaults - use provided config or empty dict
+            self.config_dict = config_dict or {}
 
         # Support both nested and flat structure
         # New flat structure: each check is a top-level key ending with "_check"

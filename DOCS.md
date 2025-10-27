@@ -99,7 +99,58 @@ This posts two separate PR comments:
 
 ## GitHub Actions
 
-### Option 1: Basic Validation (Custom Checks Only)
+The IAM Policy Validator can be used in GitHub Actions in **two ways**:
+
+### **Option A: As a Standalone GitHub Action (Recommended)**
+
+Use the published action directly - it handles all setup automatically (Python, uv, dependencies):
+
+```yaml
+- name: Validate IAM Policies
+  uses: boogy/iam-policy-validator@v1
+  with:
+    path: policies/
+    post-comment: true
+    create-review: true
+```
+
+**Benefits:**
+- ✅ Zero setup required - action handles everything
+- ✅ Automatic caching of dependencies
+- ✅ Consistent environment across runs
+- ✅ Simple, declarative configuration
+
+### **Option B: As a Python Module/CLI Tool**
+
+Install and run the validator manually in your workflow:
+
+```yaml
+- name: Set up Python
+  uses: actions/setup-python@v5
+  with:
+    python-version: '3.13'
+
+- name: Install uv
+  uses: astral-sh/setup-uv@v3
+
+- name: Install dependencies
+  run: uv sync
+
+- name: Validate IAM Policies
+  run: uv run iam-validator validate --path ./policies/ --github-comment
+```
+
+**Use when you need:**
+- Full control over the Python environment
+- Custom dependency versions
+- Integration with existing setup steps
+- Advanced CLI options not exposed in the action
+
+---
+
+## Workflow Examples
+
+### Option 1: Basic Validation (Standalone Action)
 
 Create `.github/workflows/iam-policy-validator.yml`:
 
@@ -120,12 +171,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.13'
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -148,7 +199,7 @@ jobs:
 
 ### Option 2: Sequential Validation (Recommended) ⭐
 
-Run AWS Access Analyzer first, then custom checks:
+Use AWS Access Analyzer first, then custom checks (standalone action):
 
 ```yaml
 name: Sequential IAM Policy Validation
@@ -168,7 +219,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -179,10 +230,10 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.13'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
 
       - name: Install dependencies
         run: uv sync
@@ -207,7 +258,63 @@ jobs:
 - ✅ Only runs custom checks if Access Analyzer passes
 - ✅ Two separate PR comments for clear separation
 
-### Option 3: Custom Security Checks
+### Option 3: Using as Python Module (Manual Setup)
+
+When you need more control or want to use the CLI directly:
+
+```yaml
+name: IAM Policy Validation (CLI)
+
+on:
+  pull_request:
+    paths:
+      - 'policies/**/*.json'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Validate IAM Policies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          uv run iam-validator validate \
+            --path ./policies/ \
+            --github-comment \
+            --github-review \
+            --fail-on-warnings \
+            --log-level info
+```
+
+**Use this approach when:**
+- You need access to CLI options not exposed in the action (e.g., `--log-level`, `--custom-checks-dir`, `--stream`)
+- You want to run multiple validation commands in sequence
+- You're already using `uv` in your workflow
+- You need to customize the Python environment
+
+### Option 4: Custom Security Checks (Standalone Action)
+
+Use the standalone action for custom security checks:
 
 ```yaml
 name: IAM Policy Security Validation
@@ -227,7 +334,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -237,39 +344,59 @@ jobs:
 
       # Prevent dangerous actions
       - name: Check for Dangerous Actions
-        run: |
-          uv run iam-validator analyze \
-            --path policies/ \
-            --check-access-not-granted "s3:DeleteBucket iam:CreateAccessKey iam:AttachUserPolicy" \
-            --github-comment \
-            --fail-on-warnings
+        uses: boogy/iam-policy-validator@v1
+        with:
+          path: policies/
+          use-access-analyzer: true
+          check-access-not-granted: "s3:DeleteBucket iam:CreateAccessKey iam:AttachUserPolicy"
+          post-comment: true
+          fail-on-warnings: true
 
       # Check S3 bucket policies for public access
       - name: Check S3 Public Access
-        run: |
-          uv run iam-validator analyze \
-            --path s3-policies/ \
-            --policy-type RESOURCE_POLICY \
-            --check-no-public-access \
-            --public-access-resource-type "AWS::S3::Bucket" \
-            --github-comment \
-            --fail-on-warnings
+        uses: boogy/iam-policy-validator@v1
+        with:
+          path: s3-policies/
+          use-access-analyzer: true
+          policy-type: RESOURCE_POLICY
+          check-no-public-access: true
+          public-access-resource-type: "AWS::S3::Bucket"
+          post-comment: true
+          fail-on-warnings: true
 
       # Compare against baseline
       - name: Checkout baseline from main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
           path: baseline
 
       - name: Check for New Access
-        run: |
-          uv run iam-validator analyze \
-            --path policies/role-policy.json \
-            --check-no-new-access baseline/policies/role-policy.json \
-            --github-comment \
-            --fail-on-warnings
+        uses: boogy/iam-policy-validator@v1
+        with:
+          path: policies/role-policy.json
+          use-access-analyzer: true
+          check-no-new-access: baseline/policies/role-policy.json
+          post-comment: true
+          fail-on-warnings: true
 ```
+
+---
+
+## When to Use Each Approach
+
+### Use Standalone Action (`uses: boogy/iam-policy-validator@v1`) when:
+- ✅ You want zero-setup validation (recommended for most users)
+- ✅ You need simple, declarative configuration
+- ✅ You're validating policies in CI/CD
+- ✅ You want automatic dependency management
+
+### Use Python Module/CLI (`uv run iam-validator`) when:
+- ✅ You need advanced CLI options (e.g., `--log-level`, `--custom-checks-dir`, `--stream`, `--no-registry`)
+- ✅ You want to run multiple validation commands in sequence
+- ✅ You need full control over the Python environment
+- ✅ You're integrating with existing Python-based workflows
+- ✅ You're developing or testing the validator itself
 
 See `examples/github-actions/` for more workflow examples.
 
@@ -365,6 +492,16 @@ uv run iam-validator analyze \
 
 ## CLI Reference
 
+### Global Options
+
+These options are available for all commands:
+
+```bash
+--log-level {debug,info,warning,error,critical}
+                              Set logging level (default: warning)
+--version                     Show version information and exit
+```
+
 ### `validate` Command
 
 Validate IAM policies against AWS service definitions:
@@ -374,15 +511,20 @@ iam-validator validate --path PATH [OPTIONS]
 
 Options:
   --path PATH, -p PATH          Path to IAM policy file or directory (required, can be repeated)
-  --format {console,json,markdown,sarif,csv,html}
+  --format, -f {console,enhanced,json,markdown,html,csv,sarif}
                                 Output format (default: console)
-  --output OUTPUT, -o OUTPUT    Output file path
-  --stream                      Enable streaming mode for large policy sets
+                                - console: Clean terminal output
+                                - enhanced: Modern visual output with Rich library
+  --output OUTPUT, -o OUTPUT    Output file path (for json/markdown/html/csv/sarif formats)
+  --stream                      Process files one-by-one (memory efficient, progressive feedback)
+  --batch-size BATCH_SIZE       Number of policies to process per batch (default: 10, only with --stream)
   --no-recursive                Don't recursively search directories
-  --fail-on-warnings            Fail validation if warnings are found
+  --fail-on-warnings            Fail validation if warnings are found (default: only fail on errors)
   --github-comment              Post validation results as GitHub PR comment
-  --github-review               Create line-specific review comments
-  --config CONFIG, -c CONFIG    Path to configuration file (default: iam-validator.yaml)
+  --github-review               Create line-specific review comments on PR (requires --github-comment)
+  --config CONFIG, -c CONFIG    Path to configuration file (default: auto-discover iam-validator.yaml)
+  --custom-checks-dir DIR       Path to directory containing custom checks for auto-discovery
+  --no-registry                 Use legacy validation (disable check registry system)
   --verbose, -v                 Enable verbose logging
 ```
 
@@ -394,6 +536,9 @@ iam-validator validate --path policy.json
 
 # Multiple paths with JSON output
 iam-validator validate --path ./iam/ --path ./s3-policies/ --format json --output report.json
+
+# Enhanced visual output
+iam-validator validate --path ./policies/ --format enhanced
 
 # Streaming mode for large policy sets
 iam-validator validate --path ./policies/ --stream
@@ -411,29 +556,30 @@ iam-validator analyze --path PATH [OPTIONS]
 
 Options:
   --path PATH, -p PATH          Path to IAM policy file or directory (required, can be repeated)
-  --format {console,json,markdown}
+  --policy-type, -t {IDENTITY_POLICY,RESOURCE_POLICY,SERVICE_CONTROL_POLICY}
+                                Type of IAM policy to validate (default: IDENTITY_POLICY)
+  --region REGION               AWS region for Access Analyzer (default: us-east-1)
+  --profile PROFILE             AWS profile to use for Access Analyzer
+  --format, -f {console,json,markdown}
                                 Output format (default: console)
-  --output OUTPUT, -o OUTPUT    Output file path
-  --region REGION, -r REGION    AWS region for Access Analyzer (default: us-east-1)
-  --policy-type {IDENTITY_POLICY,RESOURCE_POLICY,SERVICE_CONTROL_POLICY}
-                                Type of IAM policy (default: IDENTITY_POLICY)
-  --profile PROFILE             AWS profile name
-  --github-comment              Post results as GitHub PR comment
-  --run-all-checks              Run full validation if Access Analyzer passes
-  --github-review               Add line-specific review comments (requires --run-all-checks)
+  --output OUTPUT, -o OUTPUT    Output file path (only for json/markdown formats)
   --no-recursive                Don't recursively search directories
-  --fail-on-warnings            Fail on any findings
+  --fail-on-warnings            Fail validation if warnings are found (default: only fail on errors)
+  --github-comment              Post validation results as GitHub PR comment
+  --github-review               Create line-specific review comments on PR (requires --github-comment)
+  --run-all-checks              Run full validation checks if Access Analyzer passes
   --verbose, -v                 Enable verbose logging
 
   # Custom Policy Checks
   --check-access-not-granted ACTION [ACTION ...]
-                                Check that policies don't grant specific actions
-  --check-access-resources ARN [ARN ...]
-                                Resources to check for access-not-granted
-  --check-no-new-access PATH    Compare against baseline policy
-  --check-no-public-access      Check for public access
-  --public-access-resource-type TYPE [TYPE ...]
-                                Resource types to check (or 'all')
+                                Check that policy does NOT grant specific actions (e.g., s3:DeleteBucket)
+  --check-access-resources RESOURCE [RESOURCE ...]
+                                Resources to check with --check-access-not-granted (e.g., arn:aws:s3:::bucket/*)
+  --check-no-new-access EXISTING_POLICY
+                                Path to existing policy to compare against for new access checks
+  --check-no-public-access      Check that resource policy does not allow public access (for RESOURCE_POLICY type only)
+  --public-access-resource-type {all,AWS::S3::Bucket,...}
+                                Resource type(s) for public access check. Use 'all' to check all 29 types.
 ```
 
 **Examples:**
@@ -465,12 +611,24 @@ Post validation reports to GitHub PRs:
 iam-validator post-to-pr --report REPORT [OPTIONS]
 
 Options:
-  --report REPORT, -r REPORT    Path to JSON report file (required)
-  --create-review               Create line-specific review comments (default: true)
-  --no-review                   Don't create review comments
-  --add-summary                 Add summary comment (default: true)
+  --report, -r REPORT           Path to JSON report file (required)
+  --create-review               Create line-specific review comments (default: True)
+  --no-review                   Don't create line-specific review comments
+  --add-summary                 Add summary comment (default: True)
   --no-summary                  Don't add summary comment
-  --verbose, -v                 Enable verbose logging
+```
+
+**Examples:**
+
+```bash
+# Post report with line comments and summary
+iam-validator post-to-pr --report report.json
+
+# Post only summary comment
+iam-validator post-to-pr --report report.json --no-review
+
+# Post only line comments (no summary)
+iam-validator post-to-pr --report report.json --no-summary
 ```
 
 ---
@@ -479,53 +637,106 @@ Options:
 
 ### Configuration File
 
-Create `iam-validator.yaml` in your project root:
+Create a configuration file (e.g., `my-config.yaml`) based on [default-config.yaml](default-config.yaml):
 
 ```yaml
-# Enable/disable checks
-checks:
-  action_validation:
+# ============================================================================
+# GLOBAL SETTINGS
+# ============================================================================
+settings:
+  # Stop validation on first error
+  fail_fast: false
+
+  # Maximum number of concurrent policy validations
+  max_concurrent: 10
+
+  # Enable/disable ALL built-in checks (default: true)
+  # Set to false when using AWS Access Analyzer to avoid redundant validation
+  enable_builtin_checks: true
+
+  # Enable parallel execution of checks (default: true)
+  parallel_execution: true
+
+  # Cache AWS service definitions locally
+  cache_enabled: true
+  cache_directory: ".cache/aws_services"
+  cache_ttl_hours: 24
+
+  # Severity levels that cause validation to fail
+  fail_on_severity:
+    - error     # IAM policy validity errors
+    - critical  # Critical security issues
+    # - high    # Uncomment to fail on high security issues
+    # - warning # Uncomment to fail on IAM validity warnings
+
+# ============================================================================
+# BUILT-IN CHECKS - AWS Validation
+# ============================================================================
+
+# Validate Statement ID (Sid) uniqueness
+sid_uniqueness_check:
+  enabled: true
+  severity: error
+
+# Validate IAM actions against AWS service definitions
+action_validation_check:
+  enabled: true
+  severity: error
+  disable_wildcard_warnings: true
+
+# Validate condition keys
+condition_key_validation_check:
+  enabled: true
+  severity: error
+
+# Validate resource ARN format
+resource_validation_check:
+  enabled: true
+  severity: error
+
+# Security best practices
+security_best_practices_check:
+  enabled: true
+  wildcard_action_check:
     enabled: true
-    severity: error
-
-  condition_key_validation:
+    severity: medium
+  wildcard_resource_check:
     enabled: true
-    severity: warning
-
-  resource_arn_validation:
+    severity: medium
+  full_wildcard_check:
     enabled: true
-    severity: warning
-
-  security_best_practices:
+    severity: critical  # Action:* + Resource:* is critical!
+  service_wildcard_check:
     enabled: true
-    wildcard_action_check:
-      enabled: true
-      severity: warning
-    wildcard_resource_check:
-      enabled: true
-      severity: warning
-
-  sid_uniqueness:
+    severity: high
+  sensitive_action_check:
     enabled: true
-    severity: error
+    severity: medium
 
-# GitHub integration
-github:
-  comment_on_pr: true
-  create_review: true
-  update_existing_comments: true
-
-# Output settings
-output:
-  format: console
-  verbose: false
+# Action condition enforcement (MFA, IP restrictions, tags, etc.)
+action_condition_enforcement_check:
+  enabled: true
+  severity: high
 ```
+
+Use with: `iam-validator validate --path policy.json --config my-config.yaml`
+
+See [default-config.yaml](default-config.yaml) for full documentation with all available options.
 
 ### Severity Levels
 
-- **error**: Fail validation
-- **warning**: Report but don't fail (unless `--fail-on-warnings`)
-- **info**: Informational only
+**IAM Validity Severities** (for AWS IAM policy correctness):
+- **error**: Policy violates AWS IAM rules (invalid actions, ARNs, etc.) - fails validation
+- **warning**: Policy may have IAM-related issues but is technically valid
+- **info**: Informational messages about the policy structure
+
+**Security Severities** (for security best practices):
+- **critical**: Critical security risk (e.g., Action:* + Resource:*) - fails validation by default
+- **high**: High security risk (e.g., missing required conditions)
+- **medium**: Medium security risk (e.g., overly permissive wildcards)
+- **low**: Low security risk (e.g., minor best practice violations)
+
+By default, validation fails on `error` and `critical` severities. Use `--fail-on-warnings` to fail on all issues.
 
 ### Example Configurations
 
@@ -609,140 +820,118 @@ Ensures Statement IDs are unique within a policy:
 
 ### 6. Wildcard Action Validation
 
-Custom patterns for wildcard actions:
+The `action_validation_check` supports customizable wildcard allowlists:
 
 ```yaml
-# custom-wildcard-config.yaml
-checks:
-  wildcard_action_check:
+# Allow specific wildcard patterns (e.g., read-only operations)
+action_validation_check:
+  enabled: true
+  severity: error
+  # Override default allowlist with custom patterns
+  allowed_wildcards:
+    - "s3:Get*"
+    - "s3:List*"
+    - "ec2:Describe*"
+    - "cloudwatch:*"  # Allow all CloudWatch actions
+  # Disable informational wildcard warnings
+  disable_wildcard_warnings: true
+```
+
+Use `security_best_practices_check` to enforce security policies on wildcards:
+
+```yaml
+security_best_practices_check:
+  enabled: true
+  # Flag service-level wildcards (e.g., "s3:*")
+  service_wildcard_check:
     enabled: true
-    allowed_actions:
-      - s3:Get*
-      - s3:List*
-    blocked_actions:
-      - s3:Delete*
-      - iam:*
+    severity: high
+    # Allow specific services to use wildcards
+    allowed_services:
+      - "logs"
+      - "cloudwatch"
 ```
 
 ---
 
 ## Creating Custom Checks
 
-### Statement-Level Check
+The validator supports custom validation checks to enforce organization-specific policies and business rules. For comprehensive documentation, see the [Custom Checks Guide](docs/custom-checks.md).
 
-Create a check that runs on each statement:
+### Quick Start
+
+1. **Create a Custom Check File**
 
 ```python
-# iam_validator/checks/my_custom_check.py
+# my_checks/mfa_check.py
 from typing import List
-from iam_validator.models import PolicyValidationIssue, PolicyStatement
+from iam_validator.core.models import PolicyValidationIssue, PolicyStatement
 
 def execute(statement: PolicyStatement, policy_document: dict) -> List[PolicyValidationIssue]:
-    """
-    Check for specific security requirements.
-
-    Args:
-        statement: Single policy statement to validate
-        policy_document: Full policy document for context
-
-    Returns:
-        List of validation issues found
-    """
+    """Ensure sensitive IAM actions require MFA."""
     issues = []
 
-    # Example: Require MFA for sensitive actions
     sensitive_actions = ["iam:CreateUser", "iam:DeleteUser", "iam:AttachUserPolicy"]
-
     actions = statement.action if isinstance(statement.action, list) else [statement.action]
 
     for action in actions:
         if action in sensitive_actions:
             # Check if MFA condition exists
-            if not statement.condition or "aws:MultiFactorAuthPresent" not in str(statement.condition):
+            has_mfa = statement.condition and "aws:MultiFactorAuthPresent" in str(statement.condition)
+
+            if not has_mfa:
                 issues.append(
                     PolicyValidationIssue(
                         check_name="mfa_required",
-                        severity="error",
+                        severity="high",
                         message=f"Action '{action}' requires MFA but condition is missing",
                         statement_index=statement.index,
                         action=action,
-                        suggestion="Add Condition: {\"Bool\": {\"aws:MultiFactorAuthPresent\": \"true\"}}"
+                        suggestion='Add: {"Bool": {"aws:MultiFactorAuthPresent": "true"}}'
                     )
                 )
 
     return issues
 ```
 
-### Policy-Level Check
+2. **Use the Custom Check**
 
-Create a check that runs once per policy:
+```bash
+# Use custom checks from a directory
+iam-validator validate --path ./policies/ --custom-checks-dir ./my_checks
 
-```python
-# iam_validator/checks/policy_wide_check.py
-from typing import List
-from iam_validator.models import PolicyValidationIssue
-
-def execute_policy(policy_document: dict, statements: List[dict]) -> List[PolicyValidationIssue]:
-    """
-    Check across all statements in a policy.
-
-    Args:
-        policy_document: Full policy document
-        statements: All statements in the policy
-
-    Returns:
-        List of validation issues found
-    """
-    issues = []
-
-    # Example: Check for conflicting Allow/Deny on same resource
-    resources_allowed = set()
-    resources_denied = set()
-
-    for idx, stmt in enumerate(statements):
-        resources = stmt.get("Resource", [])
-        if not isinstance(resources, list):
-            resources = [resources]
-
-        if stmt.get("Effect") == "Allow":
-            resources_allowed.update(resources)
-        elif stmt.get("Effect") == "Deny":
-            resources_denied.update(resources)
-
-    conflicts = resources_allowed & resources_denied
-    if conflicts:
-        issues.append(
-            PolicyValidationIssue(
-                check_name="conflicting_statements",
-                severity="warning",
-                message=f"Policy has conflicting Allow/Deny for resources: {conflicts}",
-                suggestion="Review policy logic for these resources"
-            )
-        )
-
-    return issues
+# With configuration file
+iam-validator validate --path ./policies/ --config my-config.yaml
 ```
 
-### Register Custom Check
+### Check Types
 
-Add to `iam_validator/checks/__init__.py`:
+**Statement-Level Checks:**
+- Run on each statement in a policy
+- Use `execute(statement, policy_document)` function
+- Ideal for action/resource/condition validation
 
-```python
-from . import my_custom_check
-from . import policy_wide_check
+**Policy-Level Checks:**
+- Run once per complete policy document
+- Use `execute_policy(policy_document, statements)` function
+- Ideal for cross-statement validation
 
-STATEMENT_CHECKS = [
-    # ... existing checks ...
-    my_custom_check,
-]
+### Complete Documentation
 
-POLICY_CHECKS = [
-    # ... existing checks ...
-    policy_wide_check,
-]
-```
+See [docs/custom-checks.md](docs/custom-checks.md) for:
+- Detailed API documentation
+- Multiple complete examples
+- Best practices and patterns
+- Integration with configuration
+- Troubleshooting guide
 
-See `examples/custom_checks/` for complete examples.
+### Examples
+
+The [examples/custom_checks/](examples/custom_checks/) directory contains ready-to-use examples:
+- Privilege escalation detection
+- Tag enforcement
+- IP restriction requirements
+- Time-based access controls
 
 ---
 
@@ -783,13 +972,23 @@ iam-validator validate --path ./policies/ --stream
 
 ### Memory Management
 
+Configuration settings for performance:
+
 ```yaml
-# iam-validator.yaml
-performance:
-  max_file_size_mb: 100
-  stream_mode: auto  # auto, true, false
-  cache_ttl: 3600
-  max_concurrent_checks: 10
+settings:
+  # Maximum number of concurrent policy validations
+  max_concurrent: 10
+
+  # Enable parallel execution of checks
+  parallel_execution: true
+
+  # Cache AWS service definitions locally
+  cache_enabled: true
+  cache_directory: ".cache/aws_services"
+  cache_ttl_hours: 24
+
+# Note: Streaming mode is auto-enabled in CI environments
+# File size limits are enforced automatically (100MB default)
 ```
 
 ### GitHub Action Optimization

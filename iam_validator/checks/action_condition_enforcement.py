@@ -139,8 +139,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # Check each requirement rule
         for requirement in action_condition_requirements:
             # Check if this requirement applies to the statement's actions
-            actions_match, matching_actions = self._check_action_match(
-                statement_actions, requirement
+            actions_match, matching_actions = await self._check_action_match(
+                statement_actions, requirement, fetcher
             )
 
             if not actions_match:
@@ -186,8 +186,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         return issues
 
-    def _check_action_match(
-        self, statement_actions: list[str], requirement: dict[str, Any]
+    async def _check_action_match(
+        self, statement_actions: list[str], requirement: dict[str, Any], fetcher: AWSServiceFetcher
     ) -> tuple[bool, list[str]]:
         """
         Check if statement actions match the requirement.
@@ -208,18 +208,25 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 if stmt_action == "*":
                     continue
 
-                # Check exact matches
-                if stmt_action in actions_config:
-                    matching_actions.append(stmt_action)
+                # Check if this statement action matches any of the required actions or patterns
+                # Use _action_matches which handles wildcards in both statement and config
+                matched = False
 
-                # Check pattern matches
-                for pattern in action_patterns:
-                    try:
-                        if re.match(pattern, stmt_action):
-                            matching_actions.append(stmt_action)
-                            break
-                    except re.error:
-                        continue
+                # Check against configured actions
+                for required_action in actions_config:
+                    if await self._action_matches(
+                        stmt_action, required_action, action_patterns, fetcher
+                    ):
+                        matched = True
+                        break
+
+                # If not matched by actions, check if wildcard overlaps with patterns
+                if not matched and "*" in stmt_action:
+                    # For wildcards, also check pattern overlap directly
+                    matched = await self._action_matches(stmt_action, "", action_patterns, fetcher)
+
+                if matched and stmt_action not in matching_actions:
+                    matching_actions.append(stmt_action)
 
             return len(matching_actions) > 0, matching_actions
 
@@ -231,20 +238,28 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
             # Check all_of: ALL specified actions must be in statement
             if all_of:
-                all_present = all(
-                    any(
-                        self._action_matches(stmt_action, req_action, action_patterns)
-                        for stmt_action in statement_actions
-                    )
-                    for req_action in all_of
-                )
+                all_present = True
+                for req_action in all_of:
+                    found = False
+                    for stmt_action in statement_actions:
+                        if await self._action_matches(
+                            stmt_action, req_action, action_patterns, fetcher
+                        ):
+                            found = True
+                            break
+                    if not found:
+                        all_present = False
+                        break
+
                 if not all_present:
                     return False, []
 
                 # Collect matching actions
                 for stmt_action in statement_actions:
                     for req_action in all_of:
-                        if self._action_matches(stmt_action, req_action, action_patterns):
+                        if await self._action_matches(
+                            stmt_action, req_action, action_patterns, fetcher
+                        ):
                             if stmt_action not in matching_actions:
                                 matching_actions.append(stmt_action)
 
@@ -253,7 +268,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 any_present = False
                 for stmt_action in statement_actions:
                     for req_action in any_of:
-                        if self._action_matches(stmt_action, req_action, action_patterns):
+                        if await self._action_matches(
+                            stmt_action, req_action, action_patterns, fetcher
+                        ):
                             any_present = True
                             if stmt_action not in matching_actions:
                                 matching_actions.append(stmt_action)
@@ -266,7 +283,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 forbidden_actions = []
                 for stmt_action in statement_actions:
                     for forbidden_action in none_of:
-                        if self._action_matches(stmt_action, forbidden_action, action_patterns):
+                        if await self._action_matches(
+                            stmt_action, forbidden_action, action_patterns, fetcher
+                        ):
                             forbidden_actions.append(stmt_action)
 
                 # If forbidden actions are found, this is a match for flagging
@@ -277,15 +296,23 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         return False, []
 
-    def _action_matches(
-        self, statement_action: str, required_action: str, patterns: list[str]
+    async def _action_matches(
+        self,
+        statement_action: str,
+        required_action: str,
+        patterns: list[str],
+        fetcher: AWSServiceFetcher,
     ) -> bool:
         """
         Check if a statement action matches a required action or pattern.
         Supports:
         - Exact matches: "s3:GetObject"
-        - AWS wildcards: "s3:*", "s3:Get*"
+        - AWS wildcards in both statement and required actions: "s3:*", "s3:Get*", "iam:Creat*"
         - Regex patterns: "^s3:Get.*", "^iam:Delete.*"
+
+        This method handles bidirectional wildcard matching using real AWS actions from the fetcher:
+        - statement_action="iam:Create*" matches required_action="iam:CreateUser"
+        - statement_action="iam:C*" matches pattern="^iam:Create" (by checking actual AWS actions)
         """
         if statement_action == "*":
             return False
@@ -303,6 +330,63 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     return True
             except re.error:
                 pass
+
+        # AWS wildcard match in statement_action (e.g., "iam:Creat*" in policy)
+        # Check if this wildcard would grant access to actions matching our patterns
+        if "*" in statement_action:
+            # Convert statement wildcard to regex pattern
+            stmt_wildcard_pattern = statement_action.replace("*", ".*").replace("?", ".")
+
+            # Check if statement wildcard overlaps with required action
+            if "*" not in required_action:
+                # Required action is specific (e.g., "iam:CreateUser")
+                # Check if statement wildcard would grant it
+                try:
+                    if re.match(f"^{stmt_wildcard_pattern}$", required_action):
+                        return True
+                except re.error:
+                    pass
+
+            # Check if statement wildcard overlaps with any of our action patterns
+            # Strategy: Use real AWS actions from the fetcher instead of hardcoded guesses
+            # For example: "iam:C*" should match pattern "^iam:Create" because:
+            # - "iam:C*" grants iam:CreateUser, iam:CreateRole, etc. (from AWS)
+            # - "^iam:Create" pattern is meant to catch iam:CreateUser, iam:CreateRole, etc.
+            # - Therefore they overlap
+            if patterns:
+                try:
+                    # Parse the service from the wildcard action
+                    service_prefix, _ = fetcher.parse_action(statement_action)
+
+                    # Fetch the real list of actions for this service
+                    service_detail = await fetcher.fetch_service_by_name(service_prefix)
+                    available_actions = list(service_detail.actions.keys())
+
+                    # Find which actual AWS actions the wildcard would grant
+                    _, granted_actions = fetcher._match_wildcard_action(
+                        statement_action.split(":", 1)[1],  # Just the action part (e.g., "C*")
+                        available_actions,
+                    )
+
+                    # Check if any of the granted actions match our patterns
+                    for granted_action in granted_actions:
+                        full_granted_action = f"{service_prefix}:{granted_action}"
+                        for pattern in patterns:
+                            try:
+                                if re.match(pattern, full_granted_action):
+                                    return True
+                            except re.error:
+                                continue
+
+                except (ValueError, Exception):
+                    # If we can't fetch the service or parse the action, fall back to prefix matching
+                    stmt_prefix = statement_action.rstrip("*")
+                    for pattern in patterns:
+                        try:
+                            if re.match(pattern, stmt_prefix):
+                                return True
+                        except re.error:
+                            continue
 
         # Regex pattern match (from action_patterns config)
         for pattern in patterns:

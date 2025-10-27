@@ -14,6 +14,7 @@ from rich.text import Text
 from iam_validator.core.formatters import (
     ConsoleFormatter,
     CSVFormatter,
+    EnhancedFormatter,
     HTMLFormatter,
     JSONFormatter,
     MarkdownFormatter,
@@ -43,6 +44,8 @@ class ReportGenerator:
         # Register all built-in formatters
         if not self.formatter_registry.get_formatter("console"):
             self.formatter_registry.register(ConsoleFormatter())
+        if not self.formatter_registry.get_formatter("enhanced"):
+            self.formatter_registry.register(EnhancedFormatter())
         if not self.formatter_registry.get_formatter("json"):
             self.formatter_registry.register(JSONFormatter())
         if not self.formatter_registry.get_formatter("markdown"):
@@ -80,11 +83,27 @@ class ReportGenerator:
         invalid_count = len(results) - valid_count
         total_issues = sum(len(r.issues) for r in results)
 
+        # Count policies with security issues (separate from validity issues)
+        policies_with_security_issues = sum(
+            1 for r in results if any(issue.is_security_severity() for issue in r.issues)
+        )
+
+        # Count validity vs security issues
+        validity_issues = sum(
+            sum(1 for issue in r.issues if issue.is_validity_severity()) for r in results
+        )
+        security_issues = sum(
+            sum(1 for issue in r.issues if issue.is_security_severity()) for r in results
+        )
+
         return ValidationReport(
             total_policies=len(results),
             valid_policies=valid_count,
             invalid_policies=invalid_count,
+            policies_with_security_issues=policies_with_security_issues,
             total_issues=total_issues,
+            validity_issues=validity_issues,
+            security_issues=security_issues,
             results=results,
         )
 
@@ -98,8 +117,31 @@ class ReportGenerator:
         summary_text = Text()
         summary_text.append(f"Total Policies: {report.total_policies}\n")
         summary_text.append(f"Valid: {report.valid_policies} ", style="green")
-        summary_text.append(f"Invalid: {report.invalid_policies}\n", style="red")
-        summary_text.append(f"Total Issues: {report.total_issues}\n")
+
+        # Show invalid policies (IAM validity issues)
+        if report.invalid_policies > 0:
+            summary_text.append(f"Invalid: {report.invalid_policies} ", style="red")
+
+        # Show policies with security findings (separate from validity)
+        if report.policies_with_security_issues > 0:
+            summary_text.append(
+                f"Security Findings: {report.policies_with_security_issues} ", style="yellow"
+            )
+
+        summary_text.append("\n")
+
+        # Breakdown of issue types
+        summary_text.append(f"Total Issues: {report.total_issues}")
+        if report.validity_issues > 0 or report.security_issues > 0:
+            summary_text.append(" (")
+            if report.validity_issues > 0:
+                summary_text.append(f"{report.validity_issues} validity", style="red")
+            if report.validity_issues > 0 and report.security_issues > 0:
+                summary_text.append(", ")
+            if report.security_issues > 0:
+                summary_text.append(f"{report.security_issues} security", style="yellow")
+            summary_text.append(")")
+        summary_text.append("\n")
 
         self.console.print(Panel(summary_text, title="Validation Summary", border_style="blue"))
 
@@ -127,11 +169,11 @@ class ReportGenerator:
             self.console.print("  [dim]No issues found[/dim]")
             return
 
-        # Create issues table
+        # Create issues table with adjusted column widths for better readability
         table = Table(show_header=True, header_style="bold", box=None, padding=(0, 1))
-        table.add_column("Severity", style="cyan", width=10)
-        table.add_column("Type", style="magenta", width=20)
-        table.add_column("Message", style="white")
+        table.add_column("Severity", style="cyan", width=12, no_wrap=False)
+        table.add_column("Type", style="magenta", width=25, no_wrap=False)
+        table.add_column("Message", style="white", no_wrap=False)
 
         for issue in result.issues:
             severity_style = {
@@ -149,6 +191,8 @@ class ReportGenerator:
             location = f"Statement {issue.statement_index}"
             if issue.statement_sid:
                 location += f" ({issue.statement_sid})"
+            if issue.line_number is not None:
+                location += f" @L{issue.line_number}"
 
             message = f"{location}: {issue.message}"
             if issue.suggestion:
@@ -580,22 +624,35 @@ class ReportGenerator:
                     continue
 
                 policy_lines = []
-                policy_lines.append("<details open>")
-                policy_lines.append(
-                    f"<summary><b>{idx}. <code>{result.policy_file}</code></b> - {len(result.issues)} issue(s) found</summary>"
-                )
-                policy_lines.append("")
 
                 # Group issues by severity - support both IAM validity and security severities
                 errors = [i for i in result.issues if i.severity in ("error", "critical", "high")]
                 warnings = [i for i in result.issues if i.severity in ("warning", "medium")]
                 infos = [i for i in result.issues if i.severity in ("info", "low")]
 
+                # Build severity summary for header
+                severity_parts = []
+                if errors:
+                    severity_parts.append(f"🔴 {len(errors)}")
+                if warnings:
+                    severity_parts.append(f"🟡 {len(warnings)}")
+                if infos:
+                    severity_parts.append(f"🔵 {len(infos)}")
+                severity_summary = " · ".join(severity_parts)
+
+                # Only open first 3 policy details by default to avoid wall of text
+                is_open = " open" if policies_shown < 3 else ""
+                policy_lines.append(f"<details{is_open}>")
+                policy_lines.append(
+                    f"<summary><b>{idx}. <code>{result.policy_file}</code></b> - {severity_summary}</summary>"
+                )
+                policy_lines.append("")
+
                 # Add errors (prioritized)
                 if errors:
                     policy_lines.append("### 🔴 Errors")
                     policy_lines.append("")
-                    for issue in errors:
+                    for i, issue in enumerate(errors):
                         issue_content = self._format_issue_markdown(issue)
                         test_length = len("\n".join(details_lines + policy_lines)) + len(
                             issue_content
@@ -605,6 +662,10 @@ class ReportGenerator:
                             break
                         policy_lines.append(issue_content)
                         issues_shown += 1
+                        # Add separator between issues within same severity
+                        if i < len(errors) - 1:
+                            policy_lines.append("---")
+                            policy_lines.append("")
                     policy_lines.append("")
 
                 if truncated:
@@ -614,7 +675,7 @@ class ReportGenerator:
                 if warnings:
                     policy_lines.append("### 🟡 Warnings")
                     policy_lines.append("")
-                    for issue in warnings:
+                    for i, issue in enumerate(warnings):
                         issue_content = self._format_issue_markdown(issue)
                         test_length = len("\n".join(details_lines + policy_lines)) + len(
                             issue_content
@@ -624,6 +685,10 @@ class ReportGenerator:
                             break
                         policy_lines.append(issue_content)
                         issues_shown += 1
+                        # Add separator between issues within same severity
+                        if i < len(warnings) - 1:
+                            policy_lines.append("---")
+                            policy_lines.append("")
                     policy_lines.append("")
 
                 if truncated:
@@ -633,7 +698,7 @@ class ReportGenerator:
                 if infos:
                     policy_lines.append("### 🔵 Info")
                     policy_lines.append("")
-                    for issue in infos:
+                    for i, issue in enumerate(infos):
                         issue_content = self._format_issue_markdown(issue)
                         test_length = len("\n".join(details_lines + policy_lines)) + len(
                             issue_content
@@ -643,12 +708,18 @@ class ReportGenerator:
                             break
                         policy_lines.append(issue_content)
                         issues_shown += 1
+                        # Add separator between issues within same severity
+                        if i < len(infos) - 1:
+                            policy_lines.append("---")
+                            policy_lines.append("")
                     policy_lines.append("")
 
                 if truncated:
                     break
 
                 policy_lines.append("</details>")
+                policy_lines.append("")
+                policy_lines.append("---")
                 policy_lines.append("")
 
                 # Check if adding this policy would exceed limit
@@ -712,7 +783,7 @@ class ReportGenerator:
         parts.append(f"> {issue.message}")
         parts.append("")
 
-        # Details section
+        # Details section - inline format
         details = []
         if issue.action:
             details.append(f"**Action:** `{issue.action}`")
@@ -722,19 +793,27 @@ class ReportGenerator:
             details.append(f"**Condition Key:** `{issue.condition_key}`")
 
         if details:
-            parts.append("<table>")
-            parts.append("<tr><td>")
-            parts.append("")
-            parts.extend(details)
-            parts.append("")
-            parts.append("</td></tr>")
-            parts.append("</table>")
+            parts.append(" · ".join(details))
             parts.append("")
 
-        # Suggestion in highlighted box
+        # Suggestion in highlighted box with code examples
         if issue.suggestion:
-            parts.append(f"> 💡 **Suggestion:** {issue.suggestion}")
-            parts.append("")
+            # Check if suggestion contains "Example:" section
+            if "\nExample:\n" in issue.suggestion:
+                text_part, code_part = issue.suggestion.split("\nExample:\n", 1)
+                parts.append(f"> 💡 **Suggestion:** {text_part}")
+                parts.append("")
+                parts.append("<details>")
+                parts.append("<summary>📖 View Example</summary>")
+                parts.append("")
+                parts.append("```json")
+                parts.append(code_part)
+                parts.append("```")
+                parts.append("</details>")
+                parts.append("")
+            else:
+                parts.append(f"> 💡 **Suggestion:** {issue.suggestion}")
+                parts.append("")
 
         return "\n".join(parts)
 
