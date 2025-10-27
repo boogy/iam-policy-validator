@@ -132,7 +132,7 @@ iam-policy-auditor/
 ├── .github/workflows/          # CI/CD workflows
 ├── pyproject.toml              # Project metadata and dependencies
 ├── Makefile                    # Development commands
-└── example-config.yaml         # Example configuration file
+└── default-config.yaml         # Example configuration file
 ```
 
 ## Development Workflow

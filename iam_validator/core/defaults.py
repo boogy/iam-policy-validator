@@ -5,7 +5,7 @@ This module contains the default configuration that is used when no user
 configuration file is provided. User configuration files will override
 these defaults.
 
-This configuration is synced with the example-config.yaml file.
+This configuration is synced with the default-config.yaml file.
 """
 
 # ============================================================================

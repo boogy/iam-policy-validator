@@ -637,7 +637,7 @@ iam-validator post-to-pr --report report.json --no-summary
 
 ### Configuration File
 
-Create a configuration file (e.g., `my-config.yaml`) based on [example-config.yaml](example-config.yaml):
+Create a configuration file (e.g., `my-config.yaml`) based on [default-config.yaml](default-config.yaml):
 
 ```yaml
 # ============================================================================
@@ -721,7 +721,7 @@ action_condition_enforcement_check:
 
 Use with: `iam-validator validate --path policy.json --config my-config.yaml`
 
-See [example-config.yaml](example-config.yaml) for full documentation with all available options.
+See [default-config.yaml](default-config.yaml) for full documentation with all available options.
 
 ### Severity Levels
 

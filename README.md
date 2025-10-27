@@ -256,14 +256,14 @@ jobs:
 
 ### Choosing the Right Approach
 
-| Feature | Standalone Action | Python Module/CLI |
-|---------|-------------------|-------------------|
-| Setup Required | None - fully automated | Manual (Python, uv, dependencies) |
-| Configuration | YAML inputs | CLI arguments |
-| Advanced Options | Limited to action inputs | Full CLI access (`--log-level`, `--custom-checks-dir`, `--stream`, etc.) |
-| Custom Checks | Via config file only | Via config file or `--custom-checks-dir` |
-| Best For | CI/CD, simple workflows | Development, advanced workflows, testing |
-| Dependency Management | Automatic | Manual |
+| Feature               | Standalone Action        | Python Module/CLI                                                        |
+| --------------------- | ------------------------ | ------------------------------------------------------------------------ |
+| Setup Required        | None - fully automated   | Manual (Python, uv, dependencies)                                        |
+| Configuration         | YAML inputs              | CLI arguments                                                            |
+| Advanced Options      | Limited to action inputs | Full CLI access (`--log-level`, `--custom-checks-dir`, `--stream`, etc.) |
+| Custom Checks         | Via config file only     | Via config file or `--custom-checks-dir`                                 |
+| Best For              | CI/CD, simple workflows  | Development, advanced workflows, testing                                 |
+| Dependency Management | Automatic                | Manual                                                                   |
 
 **Recommendation:** Use the **Standalone Action** for production CI/CD workflows, and the **Python Module/CLI** for development, testing, or when you need advanced features.
 
@@ -341,29 +341,29 @@ action_condition_enforcement_check:
         - condition_key: "iam:PassedToService"
 ```
 
-See [example-config.yaml](example-config.yaml) for a complete configuration example.
+See [default-config.yaml](default-config.yaml) for a complete configuration example.
 
 ### GitHub Action Inputs
 
-| Input                         | Description                                                            | Required | Default            |
-| ----------------------------- | ---------------------------------------------------------------------- | -------- | ------------------ |
-| `path`                        | Path(s) to IAM policy file or directory (newline-separated)            | Yes      | -                  |
-| `config-file`                 | Path to custom configuration file (iam-validator.yaml)                 | No       | ""                 |
-| `fail-on-warnings`            | Fail validation if warnings are found                                  | No       | `false`            |
-| `post-comment`                | Post validation results as PR comment                                  | No       | `true`             |
-| `create-review`               | Create line-specific review comments on PR                             | No       | `true`             |
-| `format`                      | Output format (console, enhanced, json, markdown, sarif, csv, html)    | No       | `console`          |
-| `output-file`                 | Path to save output file                                               | No       | ""                 |
-| `recursive`                   | Recursively search directories for policy files                        | No       | `true`             |
-| `use-access-analyzer`         | Use AWS IAM Access Analyzer for validation                             | No       | `false`            |
-| `access-analyzer-region`      | AWS region for Access Analyzer                                         | No       | `us-east-1`        |
-| `policy-type`                 | Policy type (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY) | No       | `IDENTITY_POLICY`  |
-| `run-all-checks`              | Run custom checks after Access Analyzer                                | No       | `false`            |
-| `check-access-not-granted`    | Actions that should NOT be granted (space-separated)                   | No       | ""                 |
-| `check-access-resources`      | Resources to check with check-access-not-granted                       | No       | ""                 |
-| `check-no-new-access`         | Path to baseline policy to compare against                             | No       | ""                 |
-| `check-no-public-access`      | Check that resource policies do not allow public access                | No       | `false`            |
-| `public-access-resource-type` | Resource type(s) for public access check                               | No       | `AWS::S3::Bucket`  |
+| Input                         | Description                                                            | Required | Default           |
+| ----------------------------- | ---------------------------------------------------------------------- | -------- | ----------------- |
+| `path`                        | Path(s) to IAM policy file or directory (newline-separated)            | Yes      | -                 |
+| `config-file`                 | Path to custom configuration file (iam-validator.yaml)                 | No       | ""                |
+| `fail-on-warnings`            | Fail validation if warnings are found                                  | No       | `false`           |
+| `post-comment`                | Post validation results as PR comment                                  | No       | `true`            |
+| `create-review`               | Create line-specific review comments on PR                             | No       | `true`            |
+| `format`                      | Output format (console, enhanced, json, markdown, sarif, csv, html)    | No       | `console`         |
+| `output-file`                 | Path to save output file                                               | No       | ""                |
+| `recursive`                   | Recursively search directories for policy files                        | No       | `true`            |
+| `use-access-analyzer`         | Use AWS IAM Access Analyzer for validation                             | No       | `false`           |
+| `access-analyzer-region`      | AWS region for Access Analyzer                                         | No       | `us-east-1`       |
+| `policy-type`                 | Policy type (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY) | No       | `IDENTITY_POLICY` |
+| `run-all-checks`              | Run custom checks after Access Analyzer                                | No       | `false`           |
+| `check-access-not-granted`    | Actions that should NOT be granted (space-separated)                   | No       | ""                |
+| `check-access-resources`      | Resources to check with check-access-not-granted                       | No       | ""                |
+| `check-no-new-access`         | Path to baseline policy to compare against                             | No       | ""                |
+| `check-no-public-access`      | Check that resource policies do not allow public access                | No       | `false`           |
+| `public-access-resource-type` | Resource type(s) for public access check                               | No       | `AWS::S3::Bucket` |
 
 See [examples/github-actions/](examples/github-actions/) for more workflow examples.
 

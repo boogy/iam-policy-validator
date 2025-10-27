@@ -43,23 +43,29 @@ def deep_merge(base: dict, override: dict) -> dict:
 class ValidatorConfig:
     """Main configuration object for the validator."""
 
-    def __init__(self, config_dict: dict[str, Any] | None = None):
+    def __init__(self, config_dict: dict[str, Any] | None = None, use_defaults: bool = True):
         """
         Initialize configuration from a dictionary.
 
         Args:
             config_dict: Dictionary loaded from YAML config file.
-                        If None or empty, uses default configuration.
+                        If None, either uses default configuration (if use_defaults=True)
+                        or creates an empty configuration (if use_defaults=False).
                         If provided, merges with defaults (user config takes precedence).
+            use_defaults: Whether to load default configuration. Set to False for testing
+                         or when you want an empty configuration.
         """
-        # Start with default configuration
-        default_config = get_default_config()
-
-        # Merge user config with defaults if provided
-        if config_dict:
-            self.config_dict = deep_merge(default_config, config_dict)
+        # Start with default configuration if requested
+        if use_defaults:
+            default_config = get_default_config()
+            # Merge user config with defaults if provided
+            if config_dict:
+                self.config_dict = deep_merge(default_config, config_dict)
+            else:
+                self.config_dict = default_config
         else:
-            self.config_dict = default_config
+            # No defaults - use provided config or empty dict
+            self.config_dict = config_dict or {}
 
         # Support both nested and flat structure
         # New flat structure: each check is a top-level key ending with "_check"

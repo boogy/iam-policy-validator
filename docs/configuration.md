@@ -8,7 +8,7 @@ The IAM Policy Validator uses a flexible configuration system that combines defa
 
 ### Default Configuration
 
-Default configurations are defined in Python code at [iam_validator/core/defaults.py](../iam_validator/core/defaults.py), which mirrors the example [example-config.yaml](../example-config.yaml) file. This ensures:
+Default configurations are defined in Python code at [iam_validator/core/defaults.py](../iam_validator/core/defaults.py), which mirrors the example [default-config.yaml](../default-config.yaml) file. This ensures:
 - The tool works out-of-the-box without requiring a config file
 - Users only need to specify what they want to change
 - Configuration is versioned with the code
@@ -202,13 +202,13 @@ With specific actions:
 
 If you don't customize messages, the tool uses sensible defaults from [defaults.py](../iam_validator/core/defaults.py). Each check includes both a text suggestion and a code example:
 
-| Sub-Check | Default Message | Default Suggestion | Has Example |
-|-----------|-----------------|-------------------|-------------|
-| `wildcard_action_check` | "Statement allows all actions (*)" | "Replace wildcard with specific actions needed for your use case" | ✅ Shows before/after |
-| `wildcard_resource_check` | "Statement applies to all resources (*)" | "Replace wildcard with specific resource ARNs" | ✅ Shows before/after |
-| `full_wildcard_check` | "Statement allows all actions on all resources - CRITICAL SECURITY RISK" | "This grants full administrative access. Replace both wildcards..." | ✅ Shows before/after |
-| `service_wildcard_check` | "Service-level wildcard '{action}' grants all permissions for {service} service" | "Replace service-level wildcard with specific actions..." | ✅ Shows before/after with {service} placeholder |
-| `sensitive_action_check` | Single: "Sensitive action '{action}' should have conditions..."<br>Multiple: "Sensitive actions '{actions}' should have conditions..." | "Add IAM conditions to limit when this action can be used. Consider: ABAC, IP restrictions, MFA, time-based restrictions" | ✅ Shows ABAC condition example |
+| Sub-Check                 | Default Message                                                                                                                        | Default Suggestion                                                                                                        | Has Example                                     |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `wildcard_action_check`   | "Statement allows all actions (*)"                                                                                                     | "Replace wildcard with specific actions needed for your use case"                                                         | ✅ Shows before/after                            |
+| `wildcard_resource_check` | "Statement applies to all resources (*)"                                                                                               | "Replace wildcard with specific resource ARNs"                                                                            | ✅ Shows before/after                            |
+| `full_wildcard_check`     | "Statement allows all actions on all resources - CRITICAL SECURITY RISK"                                                               | "This grants full administrative access. Replace both wildcards..."                                                       | ✅ Shows before/after                            |
+| `service_wildcard_check`  | "Service-level wildcard '{action}' grants all permissions for {service} service"                                                       | "Replace service-level wildcard with specific actions..."                                                                 | ✅ Shows before/after with {service} placeholder |
+| `sensitive_action_check`  | Single: "Sensitive action '{action}' should have conditions..."<br>Multiple: "Sensitive actions '{actions}' should have conditions..." | "Add IAM conditions to limit when this action can be used. Consider: ABAC, IP restrictions, MFA, time-based restrictions" | ✅ Shows ABAC condition example                  |
 
 ## Best Practices
 
