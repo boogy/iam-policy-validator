@@ -228,19 +228,41 @@ class HTMLFormatter(OutputFormatter):
             text-transform: uppercase;
         }
 
+        /* IAM Validity Severities */
         .severity-error {
-            background: var(--error-color);
+            background: #dc3545;
             color: white;
         }
 
         .severity-warning {
-            background: var(--warning-color);
+            background: #ffc107;
             color: #333;
         }
 
         .severity-info {
-            background: var(--info-color);
+            background: #0dcaf0;
             color: white;
+        }
+
+        /* Security Severities */
+        .severity-critical {
+            background: #8b0000;
+            color: white;
+        }
+
+        .severity-high {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .severity-medium {
+            background: #ffa500;
+            color: #333;
+        }
+
+        .severity-low {
+            background: #90caf9;
+            color: #333;
         }
 
         .chart-container {
@@ -321,24 +343,28 @@ class HTMLFormatter(OutputFormatter):
                     <div class="stat-label">Total Policies</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value">{report.valid_policies}</div>
-                    <div class="stat-label">Valid Policies</div>
+                    <div class="stat-value" style="color: var(--success-color)">{report.valid_policies}</div>
+                    <div class="stat-label">Valid (IAM)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color: var(--error-color)">{report.invalid_policies}</div>
+                    <div class="stat-label">Invalid (IAM)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color: var(--warning-color)">{report.policies_with_security_issues}</div>
+                    <div class="stat-label">Security Findings</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value">{total_issues}</div>
                     <div class="stat-label">Total Issues</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" style="color: var(--error-color)">{error_count}</div>
-                    <div class="stat-label">Errors</div>
+                    <div class="stat-value" style="color: var(--error-color)">{report.validity_issues}</div>
+                    <div class="stat-label">Validity Issues</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" style="color: var(--warning-color)">{warning_count}</div>
-                    <div class="stat-label">Warnings</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value" style="color: var(--info-color)">{info_count}</div>
-                    <div class="stat-label">Info</div>
+                    <div class="stat-value" style="color: var(--warning-color)">{report.security_issues}</div>
+                    <div class="stat-label">Security Issues</div>
                 </div>
             </div>
         """
@@ -370,9 +396,17 @@ class HTMLFormatter(OutputFormatter):
                     <label for="severityFilter">Severity</label>
                     <select id="severityFilter">
                         <option value="">All</option>
-                        <option value="error">Errors</option>
-                        <option value="warning">Warnings</option>
-                        <option value="info">Info</option>
+                        <optgroup label="IAM Validity">
+                            <option value="error">Error</option>
+                            <option value="warning">Warning</option>
+                            <option value="info">Info</option>
+                        </optgroup>
+                        <optgroup label="Security">
+                            <option value="critical">Critical</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </optgroup>
                     </select>
                 </div>
                 <div class="filter-group">
@@ -391,11 +425,38 @@ class HTMLFormatter(OutputFormatter):
         </section>
         """
 
+    def _format_suggestion(self, suggestion: str) -> str:
+        """Format suggestion field to show examples in code blocks."""
+        if not suggestion:
+            return "-"
+
+        # Check if suggestion contains "Example:" section
+        if "\nExample:\n" in suggestion:
+            parts = suggestion.split("\nExample:\n", 1)
+            text_part = html.escape(parts[0])
+            code_part = html.escape(parts[1])
+
+            return f"""
+                <div>
+                    <div>{text_part}</div>
+                    <details style="margin-top: 10px;">
+                        <summary style="cursor: pointer; font-weight: 500; color: var(--text-secondary);">
+                            📖 View Example
+                        </summary>
+                        <pre class="code-block" style="margin-top: 10px; white-space: pre-wrap;">{code_part}</pre>
+                    </details>
+                </div>
+            """
+        else:
+            return html.escape(suggestion)
+
     def _render_issues_table(self, report: ValidationReport) -> str:
         """Render issues table."""
         rows = []
         for policy_result in report.results:
             for issue in policy_result.issues:
+                formatted_suggestion = self._format_suggestion(issue.suggestion)
+
                 row = f"""
                 <tr class="issue-row"
                     data-severity="{issue.severity}"
@@ -407,7 +468,7 @@ class HTMLFormatter(OutputFormatter):
                     <td><span class="severity-badge severity-{issue.severity}">{issue.severity}</span></td>
                     <td>{html.escape(issue.issue_type or "-")}</td>
                     <td>{html.escape(issue.message)}</td>
-                    <td>{html.escape(issue.suggestion or "-")}</td>
+                    <td>{formatted_suggestion}</td>
                 </tr>
                 """
                 rows.append(row)
@@ -519,21 +580,63 @@ class HTMLFormatter(OutputFormatter):
             if (typeof Chart !== 'undefined') {
                 const ctx = document.getElementById('severityChart');
                 if (ctx) {
+                    // Count all severity types
+                    const criticalCount = document.querySelectorAll('[data-severity="critical"]').length;
+                    const highCount = document.querySelectorAll('[data-severity="high"]').length;
+                    const mediumCount = document.querySelectorAll('[data-severity="medium"]').length;
+                    const lowCount = document.querySelectorAll('[data-severity="low"]').length;
                     const errorCount = document.querySelectorAll('[data-severity="error"]').length;
                     const warningCount = document.querySelectorAll('[data-severity="warning"]').length;
                     const infoCount = document.querySelectorAll('[data-severity="info"]').length;
 
+                    // Build labels and data arrays dynamically
+                    const labels = [];
+                    const data = [];
+                    const colors = [];
+
+                    if (criticalCount > 0) {
+                        labels.push('Critical');
+                        data.push(criticalCount);
+                        colors.push('rgba(139, 0, 0, 0.8)');
+                    }
+                    if (highCount > 0) {
+                        labels.push('High');
+                        data.push(highCount);
+                        colors.push('rgba(255, 107, 107, 0.8)');
+                    }
+                    if (errorCount > 0) {
+                        labels.push('Error');
+                        data.push(errorCount);
+                        colors.push('rgba(220, 53, 69, 0.8)');
+                    }
+                    if (mediumCount > 0) {
+                        labels.push('Medium');
+                        data.push(mediumCount);
+                        colors.push('rgba(255, 165, 0, 0.8)');
+                    }
+                    if (warningCount > 0) {
+                        labels.push('Warning');
+                        data.push(warningCount);
+                        colors.push('rgba(255, 193, 7, 0.8)');
+                    }
+                    if (infoCount > 0) {
+                        labels.push('Info');
+                        data.push(infoCount);
+                        colors.push('rgba(13, 202, 240, 0.8)');
+                    }
+                    if (lowCount > 0) {
+                        labels.push('Low');
+                        data.push(lowCount);
+                        colors.push('rgba(144, 202, 249, 0.8)');
+                    }
+
                     new Chart(ctx, {
                         type: 'doughnut',
                         data: {
-                            labels: ['Errors', 'Warnings', 'Info'],
+                            labels: labels,
                             datasets: [{
-                                data: [errorCount, warningCount, infoCount],
-                                backgroundColor: [
-                                    'rgba(220, 53, 69, 0.8)',
-                                    'rgba(255, 193, 7, 0.8)',
-                                    'rgba(13, 202, 240, 0.8)'
-                                ]
+                                data: data,
+                                backgroundColor: colors
                             }]
                         },
                         options: {

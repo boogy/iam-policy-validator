@@ -158,16 +158,57 @@ security_best_practices_check:
   wildcard_action_check:
     enabled: true
     severity: medium # Security issue: medium severity
+    # Customize validation messages (optional)
+    message: "Statement allows all actions (*)"
+    suggestion: "Replace wildcard with specific actions needed for your use case"
+    example: |
+      Replace:
+        "Action": ["*"]
+
+      With specific actions:
+        "Action": [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:ListBucket"
+        ]
 
   # Check for wildcard resources
   wildcard_resource_check:
     enabled: true
     severity: medium # Security issue: medium severity
+    # Customize validation messages (optional)
+    message: "Statement applies to all resources (*)"
+    suggestion: "Replace wildcard with specific resource ARNs"
+    example: |
+      Replace:
+        "Resource": "*"
+
+      With specific ARNs:
+        "Resource": [
+          "arn:aws:service:region:account-id:resource-type/resource-id",
+          "arn:aws:service:region:account-id:resource-type/*"
+        ]
 
   # Critical check for both wildcards together
   full_wildcard_check:
     enabled: true
     severity: critical # Security issue: critical severity (was error)
+    # Customize validation messages (optional)
+    message: "Statement allows all actions on all resources - CRITICAL SECURITY RISK"
+    suggestion: "This grants full administrative access. Replace both wildcards with specific actions and resources to follow least-privilege principle"
+    example: |
+      Replace:
+        "Action": "*",
+        "Resource": "*"
+
+      With specific values:
+        "Action": [
+          "s3:GetObject",
+          "s3:PutObject"
+        ],
+        "Resource": [
+          "arn:aws:s3:::my-bucket/*"
+        ]
 
   # Check for service-level wildcards (e.g., "iam:*", "s3:*", "ec2:*")
   # These grant ALL permissions for a service and are often too permissive
@@ -182,12 +223,39 @@ security_best_practices_check:
       - "cloudwatch" # Allow "cloudwatch:*" for CloudWatch metrics
       # - "xray"      # Uncomment to allow "xray:*" for AWS X-Ray
 
+    # Customize validation messages (optional)
+    # Supports template placeholders: {action}, {service}
+    # message: "Service-level wildcard '{action}' grants all permissions for {service} service"
+    # suggestion: "Replace service-level wildcard with specific actions. Use Get*/List*/Describe* wildcards if needed for read operations"
+    # example: |
+    #   Replace:
+    #     "Action": "{service}:*"
+    #
+    #   With specific actions:
+    #     "Action": [
+    #       "{service}:GetObject",
+    #       "{service}:ListBucket",
+    #       "{service}:DescribeInstances"
+    #     ]
+
   # Check for sensitive actions without conditions
   # NOTE: For specific condition requirements (like iam:PassRole needing iam:PassedToService),
   #       use the action_condition_enforcement built-in check instead (configured below)
   sensitive_action_check:
     enabled: true
     severity: medium # Security issue: medium severity
+
+    # Customize validation messages (optional)
+    # Supports template placeholders: {action} (single), {actions} (multiple)
+    # message_single: "Sensitive action '{action}' should have conditions to limit when it can be used"
+    # message_multiple: "Sensitive actions '{actions}' should have conditions to limit when they can be used"
+    # suggestion: "Add IAM conditions to limit when this action can be used. Consider: ABAC (ResourceTag must match PrincipalTag), IP restrictions (aws:SourceIp), MFA requirements (aws:MultiFactorAuthPresent), or time-based restrictions (aws:CurrentTime)"
+    # example: |
+    #   "Condition": {
+    #     "StringEquals": {
+    #       "aws:ResourceTag/owner": "${aws:PrincipalTag/owner}"
+    #     }
+    #   }
 
     # ========================================================================
     # SENSITIVE ACTIONS - Exact action matches
@@ -387,7 +455,9 @@ action_condition_enforcement_check:
     # This is CRITICAL because missing iam:PassedToService enables privilege escalation
     - actions:
         - "iam:PassRole"
-      severity: critical # Override: this specific requirement is critical
+      action_patterns:
+        - "^iam:Pas?.*$"
+      severity: high # Override: this specific requirement is critical
       required_conditions:
         - condition_key: "iam:PassedToService"
           description: "Specify which AWS services are allowed to use the passed role to prevent privilege escalation"
@@ -406,17 +476,34 @@ action_condition_enforcement_check:
               }
             }
 
-    # Sensitive IAM actions require MFA
-    - action_patterns:
-        - "^iam:Delete.*"
-        - "^iam:Put.*Policy$"
-        - "^iam:Attach.*Policy$"
-        - "^iam:Detach.*Policy$"
-      severity: high # High severity for IAM operations without MFA
+    # Sensitive IAM actions require permissions boundary
+    # Note: This check uses AWS action fetcher to match wildcards intelligently
+    # For example, "iam:P*" will be detected because it grants PutUserPolicy, PutRolePolicy, etc.
+    - actions:
+        - "iam:Create*" # Wildcard: any IAM create action
+        - "iam:CreateRole"
+        - "iam:Put*Policy*" # Wildcard: any put policy action
+        - "iam:PutUserPolicy"
+        - "iam:PutRolePolicy"
+        - "iam:Attach*Policy*" # Wildcard: any attach policy action
+        - "iam:AttachUserPolicy"
+        - "iam:AttachRolePolicy"
+      action_patterns:
+        - "^iam:Create" # Pattern: matches iam:Create*, iam:Creat*, iam:C*, iam:CreateUser, etc.
+        - "^iam:Put.*Policy" # Pattern: matches iam:PutUserPolicy, iam:PutRolePolicy, etc.
+        - "^iam:Attach.*Policy" # Pattern: matches iam:AttachUserPolicy, iam:AttachRolePolicy, etc.
+      severity: high # High severity for IAM operations without permissions boundary
       required_conditions:
-        - condition_key: "aws:MultiFactorAuthPresent"
-          description: "Require MFA authentication for sensitive IAM operations"
-          expected_value: true
+        - condition_key: "iam:PermissionsBoundary"
+          description: "Require permissions boundary for sensitive IAM operations to prevent privilege escalation"
+          expected_value: "arn:aws:iam::*:policy/DeveloperBoundary"
+          example: |
+            # See: https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_boundaries.html
+            "Condition": {
+              "StringEquals": {
+                "iam:PermissionsBoundary": "arn:aws:iam::123456789012:policy/XCompanyBoundaries"
+              }
+            }
 
     # S3 destructive operations require MFA
     - actions:
@@ -548,7 +635,6 @@ action_condition_enforcement_check:
     #       - condition_key: "aws:SourceIp"
     #         expected_value: "0.0.0.0/0"
     #         description: "Do not allow access from any IP address"
-
 # ============================================================================
 # CUSTOM CHECKS - Business Rules
 # These enforce your organization's specific requirements

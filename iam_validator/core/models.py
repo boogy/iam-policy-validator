@@ -251,14 +251,36 @@ class ValidationReport(BaseModel):
 
     total_policies: int
     valid_policies: int
-    invalid_policies: int
+    invalid_policies: int  # Policies with IAM validity issues (error/warning)
+    policies_with_security_issues: int = 0  # Policies with security findings (critical/high/medium/low)
     total_issues: int
+    validity_issues: int = 0  # Count of IAM validity issues (error/warning/info)
+    security_issues: int = 0  # Count of security issues (critical/high/medium/low)
     results: list[PolicyValidationResult] = Field(default_factory=list)
 
     def get_summary(self) -> str:
         """Generate a human-readable summary."""
-        return (
-            f"Validated {self.total_policies} policies: "
-            f"{self.valid_policies} valid, {self.invalid_policies} invalid, "
-            f"{self.total_issues} total issues found"
-        )
+        parts = []
+        parts.append(f"Validated {self.total_policies} policies:")
+
+        # Always show valid/invalid counts
+        parts.append(f"{self.valid_policies} valid")
+
+        if self.invalid_policies > 0:
+            parts.append(f"{self.invalid_policies} invalid (IAM validity)")
+
+        if self.policies_with_security_issues > 0:
+            parts.append(f"{self.policies_with_security_issues} with security findings")
+
+        parts.append(f"{self.total_issues} total issues")
+
+        # Show breakdown if there are issues
+        if self.total_issues > 0 and (self.validity_issues > 0 or self.security_issues > 0):
+            breakdown_parts = []
+            if self.validity_issues > 0:
+                breakdown_parts.append(f"{self.validity_issues} validity")
+            if self.security_issues > 0:
+                breakdown_parts.append(f"{self.security_issues} security")
+            parts.append(f"({', '.join(breakdown_parts)})")
+
+        return " ".join(parts)

@@ -15,8 +15,29 @@ from typing import Any
 import yaml
 
 from iam_validator.core.check_registry import CheckConfig, CheckRegistry, PolicyCheck
+from iam_validator.core.defaults import get_default_config
 
 logger = logging.getLogger(__name__)
+
+
+def deep_merge(base: dict, override: dict) -> dict:
+    """
+    Deep merge two dictionaries, with override taking precedence.
+
+    Args:
+        base: Base dictionary with default values
+        override: Dictionary with override values
+
+    Returns:
+        Merged dictionary where override values take precedence
+    """
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
 
 
 class ValidatorConfig:
@@ -27,9 +48,18 @@ class ValidatorConfig:
         Initialize configuration from a dictionary.
 
         Args:
-            config_dict: Dictionary loaded from YAML config file
+            config_dict: Dictionary loaded from YAML config file.
+                        If None or empty, uses default configuration.
+                        If provided, merges with defaults (user config takes precedence).
         """
-        self.config_dict = config_dict or {}
+        # Start with default configuration
+        default_config = get_default_config()
+
+        # Merge user config with defaults if provided
+        if config_dict:
+            self.config_dict = deep_merge(default_config, config_dict)
+        else:
+            self.config_dict = default_config
 
         # Support both nested and flat structure
         # New flat structure: each check is a top-level key ending with "_check"

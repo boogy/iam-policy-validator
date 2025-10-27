@@ -1,5 +1,5 @@
 name: "IAM Validator"
-description: "Validate AWS IAM policies for correctness and security using AWS Service Reference API"
+description: "Validate AWS IAM policies for correctness and security using AWS Service Reference API. This is a standalone composite action - no setup required! Also available as a Python CLI tool for advanced use cases."
 author: "boogy"
 
 branding:
@@ -32,7 +32,7 @@ inputs:
     default: "true"
 
   format:
-    description: "Output format (console, json, markdown, sarif, csv, html)"
+    description: "Output format (console, enhanced, json, markdown, sarif, csv, html)"
     required: false
     default: "console"
 
@@ -59,7 +59,7 @@ inputs:
   policy-type:
     description: "Policy type for Access Analyzer (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY)"
     required: false
-    default: "RESOURCE_POLICY"
+    default: "IDENTITY_POLICY"
 
   run-all-checks:
     description: "Run custom checks after Access Analyzer (only if use-access-analyzer: true)"

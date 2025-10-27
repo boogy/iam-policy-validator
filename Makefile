@@ -1,4 +1,4 @@
-.PHONY: help install dev clean test lint format type-check build publish publish-test version
+.PHONY: help install dev clean test lint format type-check build publish publish-test version sync-defaults
 
 # Default target
 help:
@@ -8,6 +8,7 @@ help:
 	@echo "  make install          Install production dependencies"
 	@echo "  make dev              Install development dependencies"
 	@echo "  make clean            Clean build artifacts and cache"
+	@echo "  make sync-defaults    Sync defaults.py from default-config.yaml"
 	@echo ""
 	@echo "Quality:"
 	@echo "  make test             Run tests"
@@ -31,6 +32,11 @@ install:
 
 dev:
 	uv sync
+
+# Sync defaults.py from YAML config
+sync-defaults:
+	@echo "Syncing defaults.py from default-config.yaml..."
+	@uv run python scripts/sync_defaults_from_yaml.py
 
 # Clean
 clean:
