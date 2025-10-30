@@ -1,0 +1,32 @@
+# Basic Configuration Example
+# This is a minimal configuration that enables all built-in checks with default settings
+
+settings:
+  # Stop validation on first error (default: false)
+  fail_fast: false
+
+  # Maximum concurrent policy validations (default: 10)
+  max_concurrent: 10
+
+  # Enable all built-in checks (default: true)
+  enable_builtin_checks: true
+
+  # Enable parallel execution of checks (default: true)
+  parallel_execution: true
+
+  # AWS Service Definitions Source
+  # Use local downloaded files for offline validation (default: null = use AWS API)
+  # To download: make download-aws-services
+  aws_services_dir: null
+
+  # Cache AWS service definitions (default: true)
+  cache_enabled: true
+  cache_ttl_hours: 168  # 7 days
+
+  # Fail validation on these severity levels (default: ["error", "critical"])
+  fail_on_severity:
+    - error
+    - critical
+
+# All other checks use their default settings from default-config.yaml
+# This provides a good balance between security and usability

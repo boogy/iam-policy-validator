@@ -1,0 +1,21 @@
+{
+  "Name": "bcm-recommended-actions",
+  "Actions": [
+    {
+      "Name": "ListRecommendedActions",
+      "Annotations": {
+        "Properties": {
+          "IsList": true,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    }
+  ],
+  "Version": "v1.3"
+}

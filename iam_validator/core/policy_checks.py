@@ -481,10 +481,14 @@ async def validate_policies(
         cache_enabled = config.get_setting("cache_enabled", True)
         cache_ttl_hours = config.get_setting("cache_ttl_hours", 168)
         cache_directory = config.get_setting("cache_directory", None)
+        aws_services_dir = config.get_setting("aws_services_dir", None)
         cache_ttl_seconds = cache_ttl_hours * 3600
 
         async with AWSServiceFetcher(
-            enable_cache=cache_enabled, cache_ttl=cache_ttl_seconds, cache_dir=cache_directory
+            enable_cache=cache_enabled,
+            cache_ttl=cache_ttl_seconds,
+            cache_dir=cache_directory,
+            aws_services_dir=aws_services_dir,
         ) as fetcher:
             validator = PolicyValidator(fetcher)
 
@@ -545,11 +549,15 @@ async def validate_policies(
     cache_enabled = config.get_setting("cache_enabled", True)
     cache_ttl_hours = config.get_setting("cache_ttl_hours", 168)  # 7 days default
     cache_directory = config.get_setting("cache_directory", None)
+    aws_services_dir = config.get_setting("aws_services_dir", None)
     cache_ttl_seconds = cache_ttl_hours * 3600
 
     # Validate policies using registry
     async with AWSServiceFetcher(
-        enable_cache=cache_enabled, cache_ttl=cache_ttl_seconds, cache_dir=cache_directory
+        enable_cache=cache_enabled,
+        cache_ttl=cache_ttl_seconds,
+        cache_dir=cache_directory,
+        aws_services_dir=aws_services_dir,
     ) as fetcher:
         tasks = [
             _validate_policy_with_registry(policy, file_path, registry, fetcher, fail_on_severities)

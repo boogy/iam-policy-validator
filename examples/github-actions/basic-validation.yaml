@@ -29,10 +29,13 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v3
 
-      - name: Install dependencies
+      - name: Install IAM Validator
         run: |
-          cd iam-policy-auditor
-          uv sync
+          # Install from PyPI (once published)
+          pip install iam-policy-validator
+          # OR install from source:
+          # git clone https://github.com/boogy/iam-policy-auditor.git
+          # cd iam-policy-auditor && uv sync
 
       - name: Validate IAM Policies
         env:
@@ -40,7 +43,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          uv run iam-validator validate \
+          iam-validator validate \
             --path ./policies/ \
             --github-comment \
             --github-review \

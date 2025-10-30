@@ -7,29 +7,31 @@ This directory contains examples, configurations, and templates for using the IA
 ```
 examples/
 ├── access-analyzer/       # AWS Access Analyzer integration examples
-├── configs/               # Configuration file examples
+├── configs/               # Configuration file examples (3 essential configs)
 ├── custom_checks/         # Custom policy check examples
 ├── github-actions/        # GitHub Actions workflow examples
-├── none-of-feature/       # none_of feature demonstration
-└── policies/              # Sample IAM policies
-    ├── samples/           # Valid sample policies
-    └── test-cases/        # Test policies (invalid/problematic)
+├── iam-test-policies/     # Test IAM policies (invalid/problematic cases)
+└── none-of-feature/       # none_of feature demonstration
 ```
 
 ## Quick Start
 
 ### Basic Validation
 
-Validate a single policy file:
+Validate a single policy file (JSON or YAML):
 ```bash
-iam-validator validate --path examples/policies/samples/sample_policy.json
+# JSON format
+iam-validator validate --path examples/iam-test-policies/sample_policy.json
+
+# YAML format
+iam-validator validate --path examples/iam-test-policies/sample_policy.yaml
 ```
 
-Validate with custom configuration:
+Validate entire directory (both JSON and YAML files):
 ```bash
 iam-validator validate \
-  --path examples/policies/test-cases/ \
-  --config examples/configs/unified-condition-enforcement.yaml
+  --path examples/iam-test-policies/ \
+  --config examples/configs/strict-security.yaml
 ```
 
 ### GitHub Actions Integration
@@ -44,116 +46,121 @@ See [custom_checks/README.md](custom_checks/README.md) for creating custom valid
 
 ### 1. Configuration Files (`configs/`)
 
-- **`unified-condition-enforcement.yaml`** - Comprehensive condition enforcement configuration
-  - MFA requirements
-  - IP/VPC restrictions
-  - Tag enforcement
-  - Time-based access controls
+Three essential configurations covering common use cases:
 
-- **`action-condition-enforcement-advanced.yaml`** - Advanced examples with `all_of`/`any_of` logic
+- **`basic-config.yaml`** - Minimal configuration with defaults
+  - Good starting point for most users
+  - All checks enabled with standard settings
+  - Fails on errors and critical issues
 
-- **`custom-business-rules.yaml`** - Organization-specific business rules
+- **`offline-validation.yaml`** - For environments without internet access
+  - Uses local AWS service definitions
+  - No API calls required
+  - Perfect for CI/CD pipelines and air-gapped environments
 
-### 2. Sample Policies (`policies/`)
+- **`strict-security.yaml`** - Enterprise-grade security enforcement
+  - Fails on medium+ severity issues
+  - Minimal wildcard allowlist
+  - Strict condition requirements for sensitive actions
+  - Elevated severity levels
 
-#### Valid Samples (`policies/samples/`)
-- **`sample_policy.json`** - Basic valid IAM policy example
+### 2. Test IAM Policies (`iam-test-policies/`)
 
-#### Test Cases (`policies/test-cases/`)
-- **`invalid_policy.json`** - Policy with AWS validation errors
-- **`insecure_policy.json`** - Policy with security issues (wildcards, missing MFA)
-- **`policy_with_wildcard_resources.json`** - Overly permissive resource wildcards
-- **`policy_missing_required_tags.json`** - Missing required tag conditions
-- **`policy_tag_enforcement_example.json`** - Tag enforcement examples
+Collection of 36+ test policies in both **JSON and YAML formats** demonstrating various issues and edge cases:
+
+**Common Test Cases (JSON & YAML):**
+- `invalid_policy.*` - Policy with AWS validation errors
+- `insecure_policy.*` - Security issues (wildcards, missing conditions)
+- `sample_policy.*` - Basic valid IAM policy example
+- `wildcard_examples.*` - Various wildcard patterns
+- `lambda_developer.*` - Lambda function permissions
+- `s3_bucket_access.*` - S3 bucket policies with conditions
+
+**Service-Specific Examples:**
+- `lambda_developer.json` - Lambda function permissions
+- `s3_bucket_access.json` - S3 bucket policies
+- `dynamodb_table_access.json` - DynamoDB operations
+- `rds_database_admin.json` - RDS database administration
+- `kms_encryption_keys.json` - KMS key management
+
+**Security Test Cases:**
+- `privilege_escalation_scattered.json` - Privilege escalation patterns
+- `sensitive-action-wildcards.json` - Overly permissive wildcards
+- `policy_missing_required_tags.json` - Missing required conditions
+
+See [docs/privilege-escalation.md](../docs/privilege-escalation.md) for privilege escalation detection examples.
 
 ### 3. Custom Checks (`custom_checks/`)
 
 Reusable custom check implementations:
-- **`mfa_required_check.py`** - Enforce MFA for sensitive actions
-- **`region_restriction_check.py`** - Restrict actions to specific AWS regions
-- **`encryption_required_check.py`** - Enforce encryption requirements
-- **`time_based_access_check.py`** - Time-based access restrictions
-- **`domain_restriction_check.py`** - Restrict access to specific domains
-- **`cross_account_external_id_check.py`** - Validate cross-account access
-- **`tag_enforcement_check.py`** - Custom tag enforcement logic
-- **`advanced_multi_condition_validator.py`** - Complex multi-condition validation
+- `mfa_required_check.py` - Enforce MFA for sensitive actions
+- `region_restriction_check.py` - Restrict actions to specific AWS regions
+- `encryption_required_check.py` - Enforce encryption requirements
+- `time_based_access_check.py` - Time-based access restrictions
+- `domain_restriction_check.py` - Restrict access to specific domains
+- `cross_account_external_id_check.py` - Validate cross-account access
+- `tag_enforcement_check.py` - Custom tag enforcement logic
+- `advanced_multi_condition_validator.py` - Complex multi-condition validation
 
 See [custom_checks/README.md](custom_checks/README.md) for usage details.
 
 ### 4. GitHub Actions Workflows (`github-actions/`)
 
-CI/CD integration examples:
-- **`basic-validation.yaml`** - Simple PR validation workflow
-- **`access-analyzer-only.yaml`** - AWS Access Analyzer only
-- **`two-step-validation.yaml`** - Combined built-in + Access Analyzer
-- **`multi-region-validation.yaml`** - Multi-region policy validation
-- **`resource-policy-validation.yaml`** - S3/SQS resource policies
-- **`sequential-validation.yaml`** - Sequential validation stages
+CI/CD integration examples - 7 ready-to-use workflows:
+- `basic-validation.yaml` - Simple PR validation workflow
+- `sequential-validation.yaml` ⭐ **RECOMMENDED** - Access Analyzer → Custom checks
+- `access-analyzer-only.yaml` - AWS Access Analyzer only
+- `resource-policy-validation.yaml` - S3/SQS resource policies
+- `multi-region-validation.yaml` - Multi-region policy validation
+- `two-step-validation.yaml` - Separate validation & reporting
+- `custom-policy-checks.yml` - Advanced security checks
 
-See [github-actions/README.md](github-actions/README.md) for setup instructions.
+See [github-actions/README.md](github-actions/README.md) for quick start and [docs/github-actions-workflows.md](../docs/github-actions-workflows.md) for detailed setup.
 
 ### 5. AWS Access Analyzer (`access-analyzer/`)
 
 Example resource policies for Access Analyzer validation:
-- **`example1.json`** - S3 bucket policy
-- **`example2.json`** - SQS queue policy
+- `example1.json` - S3 bucket policy
+- `example2.json` - SQS queue policy
 
 Usage:
 ```bash
 iam-validator analyze \
   --path examples/access-analyzer/ \
-  --resource-type AWS::S3::Bucket
+  --policy-type RESOURCE_POLICY
 ```
-
-### 6. none_of Feature (`none-of-feature/`)
-
-Demonstrates the `none_of` logic for forbidding actions and conditions:
-- **`README.md`** - Comprehensive guide to using `none_of`
-- **`none_of_example.yaml`** - Configuration with forbidden rules
-- **`test_none_of_violations.json`** - Policy that violates none_of rules
-- **`test_none_of_valid.json`** - Policy that passes none_of rules
-
-See [none-of-feature/README.md](none-of-feature/README.md) for details.
 
 ## Common Use Cases
 
+### Offline Validation
+
+Validate policies without internet access:
+```bash
+# First, download AWS service definitions
+make download-aws-services
+
+# Then validate using local files
+iam-validator validate \
+  --path ./policies/ \
+  --config examples/configs/offline-validation.yaml
+```
+
 ### Security Hardening
 
-Enforce MFA and IP restrictions:
+Enforce strict security policies:
 ```bash
 iam-validator validate \
   --path ./policies/ \
-  --config examples/configs/unified-condition-enforcement.yaml
+  --config examples/configs/strict-security.yaml
 ```
 
-### Tag Compliance
+### Basic Validation with Defaults
 
-Ensure all resources have required tags:
-```yaml
-# In your config
-checks:
-  action_condition_enforcement:
-    action_condition_requirements:
-      - actions:
-          - "ec2:RunInstances"
-        required_conditions:
-          all_of:
-            - condition_key: "aws:RequestTag/Owner"
-            - condition_key: "aws:RequestTag/CostCenter"
-```
-
-### Forbidden Actions
-
-Block dangerous actions completely:
-```yaml
-checks:
-  action_condition_enforcement:
-    action_condition_requirements:
-      - actions:
-          none_of:
-            - "iam:*"
-            - "s3:DeleteBucket"
-        description: "These actions are forbidden"
+Use standard checks for most cases:
+```bash
+iam-validator validate \
+  --path ./policies/ \
+  --config examples/configs/basic-config.yaml
 ```
 
 ### Custom Business Rules
@@ -162,7 +169,7 @@ Create organization-specific checks:
 ```bash
 iam-validator validate \
   --path ./policies/ \
-  --config examples/configs/custom-business-rules.yaml \
+  --config your-custom-config.yaml \
   --custom-checks-dir examples/custom_checks/
 ```
 
@@ -172,23 +179,21 @@ Run validation on test cases to see different error types:
 
 ```bash
 # Invalid AWS actions
-iam-validator validate --path examples/policies/test-cases/invalid_policy.json
+iam-validator validate --path examples/iam-test-policies/invalid_policy.json
 
 # Security issues
-iam-validator validate --path examples/policies/test-cases/insecure_policy.json
+iam-validator validate --path examples/iam-test-policies/insecure_policy.json
 
-# Missing required tags
-iam-validator validate \
-  --path examples/policies/test-cases/policy_missing_required_tags.json \
-  --config examples/configs/unified-condition-enforcement.yaml
+# Validate entire test suite
+iam-validator validate --path examples/iam-test-policies/
 ```
 
 ## Contributing
 
 When adding new examples:
 
-1. **Policies** → `policies/samples/` (valid) or `policies/test-cases/` (invalid)
-2. **Configurations** → `configs/`
+1. **Test Policies** → `iam-test-policies/`
+2. **Configurations** → `configs/` (only if essential and well-documented)
 3. **Custom checks** → `custom_checks/` with documentation
 4. **Workflows** → `github-actions/`
 5. **Features** → Create a dedicated folder with README
@@ -201,6 +206,9 @@ Include:
 ## Additional Resources
 
 - [Main Documentation](../README.md)
+- [Complete Documentation](../DOCS.md)
 - [Configuration Reference](../docs/configuration.md)
-- [Custom Checks Guide](custom_checks/README.md)
-- [GitHub Actions Integration](github-actions/README.md)
+- [Custom Checks Guide](../docs/custom-checks.md)
+- [AWS Services Backup Guide](../docs/aws-services-backup.md)
+- [Privilege Escalation Detection](../docs/privilege-escalation.md)
+- [GitHub Actions Examples](../docs/github-actions-examples.md)

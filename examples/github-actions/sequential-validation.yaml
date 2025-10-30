@@ -39,8 +39,11 @@ jobs:
 
       - name: Install IAM Validator
         run: |
-          cd iam-policy-auditor
-          uv sync
+          # Install from PyPI (once published)
+          pip install iam-policy-validator
+          # OR install from source:
+          # git clone https://github.com/boogy/iam-policy-auditor.git
+          # cd iam-policy-auditor && uv sync
 
       - name: Sequential Validation (Access Analyzer → Custom Checks)
         env:
@@ -52,7 +55,7 @@ jobs:
           # Two separate comments will be posted to the PR:
           # 1. Access Analyzer results (posted immediately)
           # 2. Custom validation results (posted only if Access Analyzer passes)
-          uv run iam-validator analyze \
+          iam-validator analyze \
             --path ./policies/ \
             --github-comment \
             --run-all-checks \

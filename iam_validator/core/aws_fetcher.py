@@ -182,25 +182,39 @@ class AWSServiceFetcher:
         keepalive_connections: int = 20,
         prefetch_common: bool = True,
         cache_dir: Path | str | None = None,
+        aws_services_dir: Path | str | None = None,
     ):
         """Initialize aws service fetcher.
 
         Args:
             timeout: Request timeout in seconds
-            retries: Number of retry attempts
-            enable_cache: Enable disk caching
-            cache_ttl: Cache time to live in seconds (default: 7 days)
-            memory_cache_size: Max items in memory cache
-            connection_pool_size: Max connections in pool
+            retries: Number of retries for failed requests
+            enable_cache: Enable persistent disk caching
+            cache_ttl: Cache time-to-live in seconds
+            memory_cache_size: Size of in-memory LRU cache
+            connection_pool_size: HTTP connection pool size
             keepalive_connections: Number of keepalive connections
-            prefetch_common: Pre-fetch common services on init
-            cache_dir: Custom cache directory (defaults to platform-specific user cache dir)
+            prefetch_common: Prefetch common AWS services
+            cache_dir: Custom cache directory path
+            aws_services_dir: Directory containing pre-downloaded AWS service JSON files.
+                            When set, the fetcher will load services from local files
+                            instead of making API calls. Directory should contain:
+                            - _services.json: List of all services
+                            - {service}.json: Individual service files (e.g., s3.json)
         """
         self.timeout = timeout
         self.retries = retries
         self.enable_cache = enable_cache
         self.cache_ttl = cache_ttl
         self.prefetch_common = prefetch_common
+
+        # AWS services directory for offline mode
+        self.aws_services_dir: Path | None = None
+        if aws_services_dir:
+            self.aws_services_dir = Path(aws_services_dir)
+            if not self.aws_services_dir.exists():
+                raise ValueError(f"AWS services directory does not exist: {aws_services_dir}")
+            logger.info(f"Using local AWS services from: {self.aws_services_dir}")
 
         self._client: httpx.AsyncClient | None = None
         self._memory_cache = LRUCache(maxsize=memory_cache_size, ttl=cache_ttl)
@@ -470,8 +484,84 @@ class AWSServiceFetcher:
 
         raise last_exception or Exception(f"Failed to fetch {url} after {self.retries} attempts")
 
+    def _load_services_from_file(self) -> list[ServiceInfo]:
+        """Load services list from local _services.json file.
+
+        Returns:
+            List of ServiceInfo objects loaded from _services.json
+
+        Raises:
+            FileNotFoundError: If _services.json doesn't exist
+            ValueError: If _services.json is invalid
+        """
+        if not self.aws_services_dir:
+            raise ValueError("aws_services_dir is not set")
+
+        services_file = self.aws_services_dir / "_services.json"
+        if not services_file.exists():
+            raise FileNotFoundError(f"_services.json not found in {self.aws_services_dir}")
+
+        try:
+            with open(services_file) as f:
+                data = json.load(f)
+
+            if not isinstance(data, list):
+                raise ValueError("Expected list of services from _services.json")
+
+            services: list[ServiceInfo] = []
+            for item in data:
+                if isinstance(item, dict):
+                    service = item.get("service")
+                    url = item.get("url")
+                    if service and url:
+                        services.append(ServiceInfo(service=str(service), url=str(url)))
+
+            logger.info(f"Loaded {len(services)} services from local file: {services_file}")
+            return services
+
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in services.json: {e}")
+
+    def _load_service_from_file(self, service_name: str) -> ServiceDetail:
+        """Load service detail from local JSON file.
+
+        Args:
+            service_name: Name of the service (case-insensitive)
+
+        Returns:
+            ServiceDetail object loaded from {service}.json
+
+        Raises:
+            FileNotFoundError: If service JSON file doesn't exist
+            ValueError: If service JSON is invalid
+        """
+        if not self.aws_services_dir:
+            raise ValueError("aws_services_dir is not set")
+
+        # Normalize filename (lowercase, replace spaces with underscores)
+        filename = f"{service_name.lower().replace(' ', '_')}.json"
+        service_file = self.aws_services_dir / filename
+
+        if not service_file.exists():
+            raise FileNotFoundError(f"Service file not found: {service_file}")
+
+        try:
+            with open(service_file) as f:
+                data = json.load(f)
+
+            service_detail = ServiceDetail.model_validate(data)
+            logger.debug(f"Loaded service {service_name} from local file: {service_file}")
+            return service_detail
+
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in {service_file}: {e}")
+
     async def fetch_services(self) -> list[ServiceInfo]:
-        """Fetch list of AWS services with caching."""
+        """Fetch list of AWS services with caching.
+
+        When aws_services_dir is set, loads from local services.json file.
+        Otherwise, fetches from AWS API.
+        """
         # Check if we have the parsed services list in cache
         services_cache_key = "parsed_services_list"
         cached_services = await self._memory_cache.get(services_cache_key)
@@ -479,7 +569,14 @@ class AWSServiceFetcher:
             logger.debug(f"Retrieved {len(cached_services)} services from parsed cache")
             return cached_services
 
-        # Not in parsed cache, fetch the raw data
+        # Load from local file if aws_services_dir is set
+        if self.aws_services_dir:
+            services = self._load_services_from_file()
+            # Cache the loaded services
+            await self._memory_cache.set(services_cache_key, services)
+            return services
+
+        # Not in parsed cache, fetch the raw data from API
         data = await self._make_request_with_batching(self.BASE_URL)
 
         if not isinstance(data, list):
@@ -501,7 +598,11 @@ class AWSServiceFetcher:
         return services
 
     async def fetch_service_by_name(self, service_name: str) -> ServiceDetail:
-        """Fetch service detail with optimized caching."""
+        """Fetch service detail with optimized caching.
+
+        When aws_services_dir is set, loads from local {service}.json file.
+        Otherwise, fetches from AWS API.
+        """
         # Normalize service name
         service_name_lower = service_name.lower()
 
@@ -512,12 +613,33 @@ class AWSServiceFetcher:
             logger.debug(f"Memory cache hit for service {service_name}")
             return cached_detail
 
-        # Fetch service list and find URL
+        # Load from local file if aws_services_dir is set
+        if self.aws_services_dir:
+            try:
+                service_detail = self._load_service_from_file(service_name_lower)
+                # Cache the loaded service
+                await self._memory_cache.set(cache_key, service_detail)
+                return service_detail
+            except FileNotFoundError:
+                # Try to find the service in services.json to get proper name
+                services = await self.fetch_services()
+                for service in services:
+                    if service.service.lower() == service_name_lower:
+                        # Try with the exact service name from services.json
+                        try:
+                            service_detail = self._load_service_from_file(service.service)
+                            await self._memory_cache.set(cache_key, service_detail)
+                            return service_detail
+                        except FileNotFoundError:
+                            pass
+                raise ValueError(f"Service '{service_name}' not found in {self.aws_services_dir}")
+
+        # Fetch service list and find URL from API
         services = await self.fetch_services()
 
         for service in services:
             if service.service.lower() == service_name_lower:
-                # Fetch service detail
+                # Fetch service detail from API
                 data = await self._make_request_with_batching(service.url)
 
                 # Validate and parse

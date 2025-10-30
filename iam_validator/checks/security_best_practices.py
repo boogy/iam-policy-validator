@@ -7,10 +7,7 @@ from iam_validator.checks.utils.sensitive_action_matcher import (
     DEFAULT_SENSITIVE_ACTIONS,
     check_sensitive_actions,
 )
-from iam_validator.checks.utils.wildcard_expansion import (
-    compile_wildcard_pattern,
-    expand_wildcard_actions,
-)
+from iam_validator.checks.utils.wildcard_expansion import expand_wildcard_actions
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
@@ -86,22 +83,26 @@ class SecurityBestPracticesCheck(PolicyCheck):
         if self._is_sub_check_enabled(config, "wildcard_resource_check"):
             if "*" in resources:
                 # Check if all actions are in the allowed_wildcards list
-                # This allows Resource: "*" when only safe read-only wildcard actions are used
-                allowed_wildcards = self._get_allowed_wildcards_for_resources(config)
+                # allowed_wildcards works by expanding wildcard patterns (like "ec2:Describe*")
+                # to all matching AWS actions using the AWS API, then checking if the policy's
+                # actions are in that expanded list. This ensures only validated AWS actions
+                # are allowed with Resource: "*".
+                allowed_wildcards_expanded = await self._get_expanded_allowed_wildcards(
+                    config, fetcher
+                )
 
-                # Check if ALL actions (excluding full wildcard "*") match allowed patterns
+                # Check if ALL actions (excluding full wildcard "*") are in the expanded list
                 non_wildcard_actions = [a for a in actions if a != "*"]
 
-                if allowed_wildcards and non_wildcard_actions:
-                    # Check if all actions are allowed wildcards
+                if allowed_wildcards_expanded and non_wildcard_actions:
+                    # Check if all actions are in the expanded allowed list (exact match)
                     all_actions_allowed = all(
-                        self._is_action_allowed_wildcard(action, allowed_wildcards)
-                        for action in non_wildcard_actions
+                        action in allowed_wildcards_expanded for action in non_wildcard_actions
                     )
 
-                    # If all actions are in the allowed list, skip the wildcard resource warning
+                    # If all actions are in the expanded list, skip the wildcard resource warning
                     if all_actions_allowed:
-                        # All actions are safe wildcards, Resource: "*" is acceptable
+                        # All actions are safe, Resource: "*" is acceptable
                         pass
                     else:
                         # Some actions are not in allowed list, flag the issue
@@ -443,45 +444,6 @@ class SecurityBestPracticesCheck(PolicyCheck):
 
         return set()
 
-    def _is_action_allowed_wildcard(
-        self, action: str, allowed_wildcards: frozenset[str] | list[str] | set[str]
-    ) -> bool:
-        """Check if an action matches the allowed_wildcards list.
-
-        This method checks if a given action is in the allowed_wildcards configuration
-        from action_validation_check. This is used to determine if wildcard resources
-        are acceptable when only safe wildcard actions are used.
-
-        Args:
-            action: The action to check (e.g., "s3:List*", "ec2:DescribeInstances")
-            allowed_wildcards: Set or list of allowed wildcard patterns
-
-        Returns:
-            True if the action matches any pattern in the allowlist
-
-        Note:
-            Exact matches use O(1) set lookup for performance.
-            Pattern matches (wildcards in allowlist) require O(n) iteration.
-        """
-        # Fast O(1) exact match using set membership
-        if action in allowed_wildcards:
-            return True
-
-        # Pattern match - check if action matches any pattern in allowlist
-        # This is needed when allowlist contains wildcards like "s3:*"
-        # Uses cached compiled patterns for 20-30x speedup
-        for pattern in allowed_wildcards:
-            # Skip exact matches (already checked above)
-            if "*" not in pattern:
-                continue
-
-            # Use cached compiled pattern
-            compiled = compile_wildcard_pattern(pattern)
-            if compiled.match(action):
-                return True
-
-        return False
-
     def _get_allowed_wildcards_for_resources(self, config: CheckConfig) -> frozenset[str]:
         """Get allowed_wildcards for resource check configuration.
 
@@ -513,3 +475,61 @@ class SecurityBestPracticesCheck(PolicyCheck):
 
         # No configuration found, return empty set (flag all Resource: "*")
         return frozenset()
+
+    async def _get_expanded_allowed_wildcards(
+        self, config: CheckConfig, fetcher: AWSServiceFetcher
+    ) -> frozenset[str]:
+        """Get and expand allowed_wildcards configuration.
+
+        This method retrieves wildcard patterns from the allowed_wildcards config
+        and expands them using the AWS API to get all matching actual AWS actions.
+
+        How it works:
+        1. Retrieves patterns from config (e.g., ["ec2:Describe*", "s3:List*"])
+        2. Expands each pattern using AWS API:
+           - "ec2:Describe*" → ["ec2:DescribeInstances", "ec2:DescribeImages", ...]
+           - "s3:List*" → ["s3:ListBucket", "s3:ListObjects", ...]
+        3. Returns a set of all expanded actions
+
+        This allows you to:
+        - Specify patterns like "ec2:Describe*" in config
+        - Have the validator allow specific actions like "ec2:DescribeInstances" with Resource: "*"
+        - Ensure only real AWS actions (validated via API) are allowed
+
+        Example:
+            Config: allowed_wildcards: ["ec2:Describe*"]
+            Expands to: ["ec2:DescribeInstances", "ec2:DescribeImages", ...]
+            Policy: "Action": ["ec2:DescribeInstances"], "Resource": "*"
+            Result: ✅ Allowed (ec2:DescribeInstances is in expanded list)
+
+        Args:
+            config: The check configuration
+            fetcher: AWS service fetcher for expanding wildcards via AWS API
+
+        Returns:
+            A frozenset of all expanded action names from the configured patterns
+        """
+        # Check wildcard_resource_check first for override
+        sub_check_config = config.config.get("wildcard_resource_check", {})
+        patterns_to_expand: list[str] = []
+
+        if isinstance(sub_check_config, dict) and "allowed_wildcards" in sub_check_config:
+            # Explicitly configured in wildcard_resource_check (override)
+            patterns = sub_check_config.get("allowed_wildcards", [])
+            if isinstance(patterns, list):
+                patterns_to_expand = patterns
+        else:
+            # Fall back to parent security_best_practices_check's allowed_wildcards
+            parent_patterns = config.config.get("allowed_wildcards", [])
+            if isinstance(parent_patterns, list):
+                patterns_to_expand = parent_patterns
+
+        # If no patterns configured, return empty set
+        if not patterns_to_expand:
+            return frozenset()
+
+        # Expand the wildcard patterns using the AWS API
+        # This converts patterns like "ec2:Describe*" to actual AWS actions
+        expanded_actions = await expand_wildcard_actions(patterns_to_expand, fetcher)
+
+        return frozenset(expanded_actions)

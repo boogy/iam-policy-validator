@@ -1200,8 +1200,9 @@ class TestSecurityBestPracticesCheck:
         )
 
         # Statement with only allowed wildcard actions and Resource: "*"
+        # Use actual AWS S3 actions: s3:ListAllMyBuckets and s3:DescribeJob
         statement = Statement(
-            Effect="Allow", Action=["s3:ListAllMyBuckets", "s3:DescribeBuckets"], Resource=["*"]
+            Effect="Allow", Action=["s3:ListAllMyBuckets", "s3:DescribeJob"], Resource=["*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
@@ -1289,7 +1290,7 @@ class TestSecurityBestPracticesCheck:
                 "wildcard_resource_check": {
                     "enabled": True
                     # No allowed_wildcards specified - inherits from parent
-                }
+                },
             },
         )
 

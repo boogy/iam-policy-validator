@@ -139,7 +139,7 @@ git push origin v1.1.1
 ```bash
 # Test locally with your changes
 uv sync
-uv run iam-validator validate --path examples/policies/
+uv run iam-validator validate --path examples/iam-test-policies/
 
 # Run full test suite
 make test

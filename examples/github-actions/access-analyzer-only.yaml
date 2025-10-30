@@ -36,8 +36,7 @@ jobs:
 
       - name: Install IAM Validator
         run: |
-          cd iam-policy-auditor
-          uv sync
+          pip install iam-policy-validator
 
       - name: Validate with Access Analyzer
         env:
@@ -45,7 +44,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          uv run iam-validator analyze \
+          iam-validator analyze \
             --path ./policies/ \
             --github-comment \
             --fail-on-warnings

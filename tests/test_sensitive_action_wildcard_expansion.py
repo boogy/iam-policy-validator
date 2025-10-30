@@ -248,11 +248,7 @@ async def test_sensitive_action_with_conditions_passes(fetcher):
         Effect="Allow",
         Action=["iam:*"],
         Resource="*",
-        Condition={
-            "StringEquals": {
-                "aws:RequestedRegion": "us-east-1"
-            }
-        },
+        Condition={"StringEquals": {"aws:RequestedRegion": "us-east-1"}},
     )
 
     issues = await check.execute(statement, 0, fetcher, config)

@@ -793,7 +793,12 @@ By default, validation fails on `error` and `critical` severities. Use `--fail-o
 
 ### Example Configurations
 
-See `examples/configs/` directory:
+See [examples/configs/](examples/configs/) directory for essential configurations:
+- `basic-config.yaml` - Minimal configuration with defaults
+- `offline-validation.yaml` - For environments without internet access
+- `strict-security.yaml` - Enterprise-grade security enforcement
+
+See [examples/configs-old/](examples/configs-old/) for additional example configurations:
 - `config-privilege-escalation.yaml` - Detect privilege escalation patterns
 - `custom-wildcard-config.yaml` - Custom wildcard action validation
 
@@ -1136,9 +1141,13 @@ iam-policy-auditor/
 │       ├── policy_loader.py      # Policy loader
 │       ├── policy_checks.py      # Validation logic
 │       └── report.py             # Report generation
+├── docs/                         # Documentation
+│   ├── aws-services-backup.md    # AWS services backup guide
+│   ├── configuration.md          # Configuration reference
+│   └── custom-checks.md          # Custom checks guide
 └── examples/
-    ├── policies/                 # Example policies
-    ├── configs/                  # Example configs
+    ├── iam-test-policies/        # Test IAM policies
+    ├── configs/                  # Essential example configs (3 files)
     ├── custom_checks/            # Custom check examples
     └── github-actions/           # GitHub workflow examples
 ```

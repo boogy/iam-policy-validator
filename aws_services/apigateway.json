@@ -1,0 +1,1812 @@
+{
+  "Name": "apigateway",
+  "Actions": [
+    {
+      "Name": "AddCertificateToDomain",
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": true,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "DomainName"
+        },
+        {
+          "Name": "DomainNames"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "CreateAccessAssociation",
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": true,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "PrivateDomainName"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "CreateRoutingRule",
+      "ActionConditionKeys": [
+        "apigateway:Request/ConditionBasePaths",
+        "apigateway:Request/Priority",
+        "aws:ResourceTag/${TagKey}"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "RoutingRule",
+          "ConditionKeys": [
+            "apigateway:Request/ConditionBasePaths",
+            "apigateway:Request/Priority"
+          ]
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "DELETE",
+      "ActionConditionKeys": [
+        "aws:RequestTag/${TagKey}",
+        "aws:TagKeys"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "AccessLogSettings"
+        },
+        {
+          "Name": "Api"
+        },
+        {
+          "Name": "ApiKey"
+        },
+        {
+          "Name": "ApiMapping"
+        },
+        {
+          "Name": "Authorizer"
+        },
+        {
+          "Name": "AuthorizersCache"
+        },
+        {
+          "Name": "BasePathMapping"
+        },
+        {
+          "Name": "ClientCertificate"
+        },
+        {
+          "Name": "Cors"
+        },
+        {
+          "Name": "Deployment"
+        },
+        {
+          "Name": "DocumentationPart"
+        },
+        {
+          "Name": "DocumentationVersion"
+        },
+        {
+          "Name": "DomainName"
+        },
+        {
+          "Name": "DomainNameAccessAssociation"
+        },
+        {
+          "Name": "GatewayResponse"
+        },
+        {
+          "Name": "Integration"
+        },
+        {
+          "Name": "IntegrationResponse"
+        },
+        {
+          "Name": "Method"
+        },
+        {
+          "Name": "MethodResponse"
+        },
+        {
+          "Name": "Model"
+        },
+        {
+          "Name": "PrivateBasePathMapping"
+        },
+        {
+          "Name": "PrivateDomainName"
+        },
+        {
+          "Name": "RequestValidator"
+        },
+        {
+          "Name": "Resource"
+        },
+        {
+          "Name": "RestApi"
+        },
+        {
+          "Name": "Route"
+        },
+        {
+          "Name": "RouteRequestParameter"
+        },
+        {
+          "Name": "RouteResponse"
+        },
+        {
+          "Name": "RouteSettings"
+        },
+        {
+          "Name": "Stage"
+        },
+        {
+          "Name": "Tags"
+        },
+        {
+          "Name": "Template"
+        },
+        {
+          "Name": "UsagePlan"
+        },
+        {
+          "Name": "UsagePlanKey"
+        },
+        {
+          "Name": "VpcLink"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "DeleteRoutingRule",
+      "ActionConditionKeys": [
+        "apigateway:Resource/ConditionBasePaths",
+        "apigateway:Resource/Priority",
+        "aws:ResourceTag/${TagKey}"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "RoutingRule",
+          "ConditionKeys": [
+            "apigateway:Resource/ConditionBasePaths",
+            "apigateway:Resource/Priority"
+          ]
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "GET",
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "AccessLogSettings"
+        },
+        {
+          "Name": "Account"
+        },
+        {
+          "Name": "Api"
+        },
+        {
+          "Name": "ApiKey"
+        },
+        {
+          "Name": "ApiKeys"
+        },
+        {
+          "Name": "ApiMapping"
+        },
+        {
+          "Name": "ApiMappings"
+        },
+        {
+          "Name": "Apis"
+        },
+        {
+          "Name": "Authorizer"
+        },
+        {
+          "Name": "Authorizers"
+        },
+        {
+          "Name": "AuthorizersCache"
+        },
+        {
+          "Name": "BasePathMapping"
+        },
+        {
+          "Name": "BasePathMappings"
+        },
+        {
+          "Name": "ClientCertificate"
+        },
+        {
+          "Name": "ClientCertificates"
+        },
+        {
+          "Name": "Cors"
+        },
+        {
+          "Name": "Deployment"
+        },
+        {
+          "Name": "Deployments"
+        },
+        {
+          "Name": "DocumentationPart"
+        },
+        {
+          "Name": "DocumentationParts"
+        },
+        {
+          "Name": "DocumentationVersion"
+        },
+        {
+          "Name": "DocumentationVersions"
+        },
+        {
+          "Name": "DomainName"
+        },
+        {
+          "Name": "DomainNameAccessAssociations"
+        },
+        {
+          "Name": "DomainNames"
+        },
+        {
+          "Name": "ExportedAPI"
+        },
+        {
+          "Name": "GatewayResponse"
+        },
+        {
+          "Name": "GatewayResponses"
+        },
+        {
+          "Name": "Integration"
+        },
+        {
+          "Name": "IntegrationResponse"
+        },
+        {
+          "Name": "IntegrationResponses"
+        },
+        {
+          "Name": "Integrations"
+        },
+        {
+          "Name": "Method"
+        },
+        {
+          "Name": "MethodResponse"
+        },
+        {
+          "Name": "Model"
+        },
+        {
+          "Name": "ModelTemplate"
+        },
+        {
+          "Name": "Models"
+        },
+        {
+          "Name": "PrivateBasePathMapping"
+        },
+        {
+          "Name": "PrivateBasePathMappings"
+        },
+        {
+          "Name": "PrivateDomainName"
+        },
+        {
+          "Name": "RequestValidator"
+        },
+        {
+          "Name": "RequestValidators"
+        },
+        {
+          "Name": "Resource"
+        },
+        {
+          "Name": "Resources"
+        },
+        {
+          "Name": "RestApi"
+        },
+        {
+          "Name": "RestApis"
+        },
+        {
+          "Name": "Route"
+        },
+        {
+          "Name": "RouteRequestParameter"
+        },
+        {
+          "Name": "RouteResponse"
+        },
+        {
+          "Name": "RouteResponses"
+        },
+        {
+          "Name": "RouteSettings"
+        },
+        {
+          "Name": "Routes"
+        },
+        {
+          "Name": "Sdk"
+        },
+        {
+          "Name": "Stage"
+        },
+        {
+          "Name": "Stages"
+        },
+        {
+          "Name": "Tags"
+        },
+        {
+          "Name": "UsagePlan"
+        },
+        {
+          "Name": "UsagePlanKey"
+        },
+        {
+          "Name": "UsagePlanKeys"
+        },
+        {
+          "Name": "UsagePlans"
+        },
+        {
+          "Name": "VpcLink"
+        },
+        {
+          "Name": "VpcLinks"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "GetRoutingRule",
+      "ActionConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "RoutingRule"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "ListRoutingRules",
+      "ActionConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": true,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "RoutingRule"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "PATCH",
+      "ActionConditionKeys": [
+        "aws:RequestTag/${TagKey}",
+        "aws:TagKeys"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "Account"
+        },
+        {
+          "Name": "Api"
+        },
+        {
+          "Name": "ApiKey"
+        },
+        {
+          "Name": "ApiMapping"
+        },
+        {
+          "Name": "Authorizer"
+        },
+        {
+          "Name": "BasePathMapping"
+        },
+        {
+          "Name": "ClientCertificate"
+        },
+        {
+          "Name": "Deployment"
+        },
+        {
+          "Name": "DocumentationPart"
+        },
+        {
+          "Name": "DocumentationVersion"
+        },
+        {
+          "Name": "DomainName"
+        },
+        {
+          "Name": "GatewayResponse"
+        },
+        {
+          "Name": "Integration"
+        },
+        {
+          "Name": "IntegrationResponse"
+        },
+        {
+          "Name": "Method"
+        },
+        {
+          "Name": "MethodResponse"
+        },
+        {
+          "Name": "Model"
+        },
+        {
+          "Name": "PrivateBasePathMapping"
+        },
+        {
+          "Name": "PrivateDomainName"
+        },
+        {
+          "Name": "RequestValidator"
+        },
+        {
+          "Name": "Resource"
+        },
+        {
+          "Name": "RestApi"
+        },
+        {
+          "Name": "Route"
+        },
+        {
+          "Name": "RouteRequestParameter"
+        },
+        {
+          "Name": "RouteResponse"
+        },
+        {
+          "Name": "Stage"
+        },
+        {
+          "Name": "Template"
+        },
+        {
+          "Name": "UsagePlan"
+        },
+        {
+          "Name": "UsagePlanKey"
+        },
+        {
+          "Name": "VpcLink"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "POST",
+      "ActionConditionKeys": [
+        "aws:RequestTag/${TagKey}",
+        "aws:TagKeys"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "ApiKeys"
+        },
+        {
+          "Name": "ApiMappings"
+        },
+        {
+          "Name": "Apis"
+        },
+        {
+          "Name": "Authorizers"
+        },
+        {
+          "Name": "BasePathMappings"
+        },
+        {
+          "Name": "ClientCertificates"
+        },
+        {
+          "Name": "Deployments"
+        },
+        {
+          "Name": "DocumentationParts"
+        },
+        {
+          "Name": "DocumentationVersions"
+        },
+        {
+          "Name": "DomainNameAccessAssociations"
+        },
+        {
+          "Name": "DomainNames"
+        },
+        {
+          "Name": "GatewayResponses"
+        },
+        {
+          "Name": "IntegrationResponse"
+        },
+        {
+          "Name": "IntegrationResponses"
+        },
+        {
+          "Name": "Integrations"
+        },
+        {
+          "Name": "MethodResponse"
+        },
+        {
+          "Name": "Models"
+        },
+        {
+          "Name": "PrivateBasePathMappings"
+        },
+        {
+          "Name": "RequestValidators"
+        },
+        {
+          "Name": "Resources"
+        },
+        {
+          "Name": "RestApis"
+        },
+        {
+          "Name": "RouteResponses"
+        },
+        {
+          "Name": "Routes"
+        },
+        {
+          "Name": "Stages"
+        },
+        {
+          "Name": "UsagePlanKeys"
+        },
+        {
+          "Name": "UsagePlans"
+        },
+        {
+          "Name": "VpcLinks"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "PUT",
+      "ActionConditionKeys": [
+        "aws:RequestTag/${TagKey}",
+        "aws:TagKeys"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "Api"
+        },
+        {
+          "Name": "Apis"
+        },
+        {
+          "Name": "DocumentationPart"
+        },
+        {
+          "Name": "GatewayResponse"
+        },
+        {
+          "Name": "IntegrationResponse"
+        },
+        {
+          "Name": "MethodResponse"
+        },
+        {
+          "Name": "RestApi"
+        },
+        {
+          "Name": "Tags"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "RejectAccessAssociation",
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": true,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "PrivateDomainName"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "RemoveCertificateFromDomain",
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": true,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "DomainName"
+        },
+        {
+          "Name": "DomainNames"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "SetWebACL",
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": true,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "Stage"
+        },
+        {
+          "Name": "Stages"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "UpdateDomainNameManagementPolicy",
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": true,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "PrivateDomainName"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "UpdateDomainNamePolicy",
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": true,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "DomainNames"
+        },
+        {
+          "Name": "PrivateDomainName"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "UpdateRestApiPolicy",
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": true,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "RestApi"
+        },
+        {
+          "Name": "RestApis"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "UpdateRoutingRule",
+      "ActionConditionKeys": [
+        "apigateway:Request/ConditionBasePaths",
+        "apigateway:Request/Priority",
+        "apigateway:Resource/ConditionBasePaths",
+        "apigateway:Resource/Priority",
+        "aws:ResourceTag/${TagKey}"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "RoutingRule",
+          "ConditionKeys": [
+            "apigateway:Request/ConditionBasePaths",
+            "apigateway:Request/Priority",
+            "apigateway:Resource/ConditionBasePaths",
+            "apigateway:Resource/Priority"
+          ]
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    }
+  ],
+  "ConditionKeys": [
+    {
+      "Name": "apigateway:Request/AccessAssociationSource",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/AccessLoggingDestination",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/AccessLoggingFormat",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/ApiKeyRequired",
+      "Types": [
+        "ArrayOfBool"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/ApiName",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/AuthorizerType",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/AuthorizerUri",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/CognitoUserPoolProviderArn",
+      "Types": [
+        "ARN"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/ConditionBasePaths",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/DisableExecuteApiEndpoint",
+      "Types": [
+        "Bool"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/DomainNameArn",
+      "Types": [
+        "ARN"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/EndpointType",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/MtlsTrustStoreUri",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/MtlsTrustStoreVersion",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/Priority",
+      "Types": [
+        "Numeric"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/RouteAuthorizationType",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/RoutingMode",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/SecurityPolicy",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "apigateway:Request/StageName",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/AccessLoggingDestination",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/AccessLoggingFormat",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/ApiKeyRequired",
+      "Types": [
+        "ArrayOfBool"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/ApiName",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/AuthorizerType",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/AuthorizerUri",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/CognitoUserPoolProviderArn",
+      "Types": [
+        "ARN"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/ConditionBasePaths",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/DisableExecuteApiEndpoint",
+      "Types": [
+        "Bool"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/EndpointType",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/MtlsTrustStoreUri",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/MtlsTrustStoreVersion",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/Priority",
+      "Types": [
+        "Numeric"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/RouteAuthorizationType",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/RoutingMode",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "apigateway:Resource/SecurityPolicy",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "aws:RequestTag/${TagKey}",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "aws:ResourceTag/${TagKey}",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "aws:TagKeys",
+      "Types": [
+        "ArrayOfString"
+      ]
+    }
+  ],
+  "Resources": [
+    {
+      "Name": "AccessLogSettings",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/stages/${StageName}/accesslogsettings"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Account",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/account"
+      ]
+    },
+    {
+      "Name": "Api",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/ApiKeyRequired",
+        "apigateway:Request/ApiName",
+        "apigateway:Request/AuthorizerType",
+        "apigateway:Request/AuthorizerUri",
+        "apigateway:Request/DisableExecuteApiEndpoint",
+        "apigateway:Request/EndpointType",
+        "apigateway:Request/RouteAuthorizationType",
+        "apigateway:Resource/ApiKeyRequired",
+        "apigateway:Resource/ApiName",
+        "apigateway:Resource/AuthorizerType",
+        "apigateway:Resource/AuthorizerUri",
+        "apigateway:Resource/DisableExecuteApiEndpoint",
+        "apigateway:Resource/EndpointType",
+        "apigateway:Resource/RouteAuthorizationType",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "ApiKey",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apikeys/${ApiKeyId}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "ApiKeys",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apikeys"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "ApiMapping",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/domainnames/${DomainName}/apimappings/${ApiMappingId}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "ApiMappings",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/domainnames/${DomainName}/apimappings"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Apis",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/ApiKeyRequired",
+        "apigateway:Request/ApiName",
+        "apigateway:Request/AuthorizerType",
+        "apigateway:Request/AuthorizerUri",
+        "apigateway:Request/DisableExecuteApiEndpoint",
+        "apigateway:Request/EndpointType",
+        "apigateway:Request/RouteAuthorizationType",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Authorizer",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/authorizers/${AuthorizerId}",
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/authorizers/${AuthorizerId}"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/AuthorizerType",
+        "apigateway:Request/AuthorizerUri",
+        "apigateway:Request/CognitoUserPoolProviderArn",
+        "apigateway:Resource/AuthorizerType",
+        "apigateway:Resource/AuthorizerUri",
+        "apigateway:Resource/CognitoUserPoolProviderArn",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Authorizers",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/authorizers",
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/authorizers"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/AuthorizerType",
+        "apigateway:Request/AuthorizerUri",
+        "apigateway:Request/CognitoUserPoolProviderArn",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "AuthorizersCache",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/stages/${StageName}/cache/authorizers"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "BasePathMapping",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/domainnames/${DomainName}/basepathmappings/${BasePath}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "BasePathMappings",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/domainnames/${DomainName}/basepathmappings"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "ClientCertificate",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/clientcertificates/${ClientCertificateId}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "ClientCertificates",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/clientcertificates"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Cors",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/cors"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Deployment",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/deployments/${DeploymentId}",
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/deployments/${DeploymentId}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Deployments",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/deployments",
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/deployments"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/StageName",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "DocumentationPart",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/documentation/parts/${DocumentationPartId}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "DocumentationParts",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/documentation/parts"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "DocumentationVersion",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/documentation/versions/${DocumentationVersionId}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "DocumentationVersions",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/documentation/versions"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "DomainName",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/domainnames/${DomainName}"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/EndpointType",
+        "apigateway:Request/MtlsTrustStoreUri",
+        "apigateway:Request/MtlsTrustStoreVersion",
+        "apigateway:Request/SecurityPolicy",
+        "apigateway:Resource/EndpointType",
+        "apigateway:Resource/MtlsTrustStoreUri",
+        "apigateway:Resource/MtlsTrustStoreVersion",
+        "apigateway:Resource/RoutingMode",
+        "apigateway:Resource/SecurityPolicy",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "DomainNameAccessAssociation",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}:${Account}:/domainnameaccessassociations/domainname/${DomainName}/${SourceType}/${SourceId}"
+      ]
+    },
+    {
+      "Name": "DomainNameAccessAssociations",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}:${Account}:/domainnameaccessassociations"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/AccessAssociationSource",
+        "apigateway:Request/DomainNameArn",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "DomainNames",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/domainnames"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/EndpointType",
+        "apigateway:Request/MtlsTrustStoreUri",
+        "apigateway:Request/MtlsTrustStoreVersion",
+        "apigateway:Request/SecurityPolicy",
+        "apigateway:Resource/RoutingMode",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "ExportedAPI",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/exports/${Specification}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "GatewayResponse",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/gatewayresponses/${ResponseType}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "GatewayResponses",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/gatewayresponses"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Integration",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/integrations/${IntegrationId}",
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/resources/${ResourceId}/methods/${HttpMethodType}/integration"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "IntegrationResponse",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/integrations/${IntegrationId}/integrationresponses/${IntegrationResponseId}",
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/resources/${ResourceId}/methods/${HttpMethodType}/integration/responses/${StatusCode}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "IntegrationResponses",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/integrations/${IntegrationId}/integrationresponses"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Integrations",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/integrations"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Method",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/resources/${ResourceId}/methods/${HttpMethodType}"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/ApiKeyRequired",
+        "apigateway:Request/RouteAuthorizationType",
+        "apigateway:Resource/ApiKeyRequired",
+        "apigateway:Resource/RouteAuthorizationType",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "MethodResponse",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/resources/${ResourceId}/methods/${HttpMethodType}/responses/${StatusCode}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Model",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/models/${ModelId}",
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/models/${ModelName}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "ModelTemplate",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/models/${ModelId}/template"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Models",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/models",
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/models"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "PrivateBasePathMapping",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/domainnames/${DomainName}+${DomainIdentifier}/basepathmappings/${BasePath}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "PrivateBasePathMappings",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/domainnames/${DomainName}+${DomainIdentifier}/basepathmappings"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "PrivateDomainName",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}:${Account}:/domainnames/${DomainName}+${DomainIdentifier}"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/EndpointType",
+        "apigateway:Resource/EndpointType",
+        "apigateway:Resource/RoutingMode",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "RequestValidator",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/requestvalidators/${RequestValidatorId}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "RequestValidators",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/requestvalidators"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Resource",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/resources/${ResourceId}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Resources",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/resources"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "RestApi",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/ApiKeyRequired",
+        "apigateway:Request/ApiName",
+        "apigateway:Request/AuthorizerType",
+        "apigateway:Request/AuthorizerUri",
+        "apigateway:Request/DisableExecuteApiEndpoint",
+        "apigateway:Request/EndpointType",
+        "apigateway:Request/RouteAuthorizationType",
+        "apigateway:Resource/ApiKeyRequired",
+        "apigateway:Resource/ApiName",
+        "apigateway:Resource/AuthorizerType",
+        "apigateway:Resource/AuthorizerUri",
+        "apigateway:Resource/DisableExecuteApiEndpoint",
+        "apigateway:Resource/EndpointType",
+        "apigateway:Resource/RouteAuthorizationType",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "RestApis",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/ApiKeyRequired",
+        "apigateway:Request/ApiName",
+        "apigateway:Request/AuthorizerType",
+        "apigateway:Request/AuthorizerUri",
+        "apigateway:Request/DisableExecuteApiEndpoint",
+        "apigateway:Request/EndpointType",
+        "apigateway:Request/RouteAuthorizationType",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Route",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/routes/${RouteId}"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/ApiKeyRequired",
+        "apigateway:Request/RouteAuthorizationType",
+        "apigateway:Resource/ApiKeyRequired",
+        "apigateway:Resource/RouteAuthorizationType",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "RouteRequestParameter",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/routes/${RouteId}/requestparameters/${RequestParameterKey}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "RouteResponse",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/routes/${RouteId}/routeresponses/${RouteResponseId}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "RouteResponses",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/routes/${RouteId}/routeresponses"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "RouteSettings",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/stages/${StageName}/routesettings/${RouteKey}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Routes",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/routes"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/ApiKeyRequired",
+        "apigateway:Request/RouteAuthorizationType",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "RoutingRule",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}:${Account}:/domainnames/${DomainName}/routingrules/${RoutingRuleId}"
+      ],
+      "ConditionKeys": [
+        "apigateway:Resource/ConditionBasePaths",
+        "apigateway:Resource/Priority",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Sdk",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/stages/${StageName}/sdks/${SdkType}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Stage",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/stages/${StageName}",
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/stages/${StageName}"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/AccessLoggingDestination",
+        "apigateway:Request/AccessLoggingFormat",
+        "apigateway:Resource/AccessLoggingDestination",
+        "apigateway:Resource/AccessLoggingFormat",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Stages",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/apis/${ApiId}/stages",
+        "arn:${Partition}:apigateway:${Region}::/restapis/${RestApiId}/stages"
+      ],
+      "ConditionKeys": [
+        "apigateway:Request/AccessLoggingDestination",
+        "apigateway:Request/AccessLoggingFormat",
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "Tags",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/tags/${UrlEncodedResourceARN}"
+      ]
+    },
+    {
+      "Name": "Template",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/restapis/models/${ModelName}/template"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "UsagePlan",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/usageplans/${UsagePlanId}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "UsagePlanKey",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/usageplans/${UsagePlanId}/keys/${Id}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "UsagePlanKeys",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/usageplans/${UsagePlanId}/keys"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "UsagePlans",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/usageplans"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "VpcLink",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/vpclinks/${VpcLinkId}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "VpcLinks",
+      "ARNFormats": [
+        "arn:${Partition}:apigateway:${Region}::/vpclinks"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}"
+      ]
+    }
+  ],
+  "Version": "v1.3"
+}

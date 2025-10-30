@@ -30,9 +30,7 @@ def compile_wildcard_pattern(pattern: str) -> Pattern[str]:
     return re.compile(regex_pattern, re.IGNORECASE)
 
 
-async def expand_wildcard_actions(
-    actions: list[str], fetcher: AWSServiceFetcher
-) -> list[str]:
+async def expand_wildcard_actions(actions: list[str], fetcher: AWSServiceFetcher) -> list[str]:
     """
     Expand wildcard actions to their actual action names using AWS API.
 

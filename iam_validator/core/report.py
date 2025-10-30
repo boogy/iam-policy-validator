@@ -195,7 +195,9 @@ class ReportGenerator:
                 "low": "[cyan]LOW[/cyan]",
             }.get(issue.severity, issue.severity.upper())
 
-            location = f"Statement {issue.statement_index}"
+            # Use 1-indexed statement numbers for user-facing output
+            statement_num = issue.statement_index + 1
+            location = f"Statement {statement_num}"
             if issue.statement_sid:
                 location += f" ({issue.statement_sid})"
             if issue.line_number is not None:
@@ -776,9 +778,11 @@ class ReportGenerator:
 
     def _format_issue_markdown(self, issue: ValidationIssue) -> str:
         """Format a single issue as markdown."""
-        location = f"Statement {issue.statement_index}"
+        # Use 1-indexed statement numbers for user-facing output
+        statement_num = issue.statement_index + 1
+        location = f"Statement {statement_num}"
         if issue.statement_sid:
-            location = f"`{issue.statement_sid}` (index {issue.statement_index})"
+            location = f"`{issue.statement_sid}` (statement #{statement_num})"
 
         parts = []
 
