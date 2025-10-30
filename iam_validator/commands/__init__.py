@@ -2,6 +2,7 @@
 
 from .analyze import AnalyzeCommand
 from .cache import CacheCommand
+from .download_services import DownloadServicesCommand
 from .post_to_pr import PostToPRCommand
 from .validate import ValidateCommand
 
@@ -11,6 +12,14 @@ ALL_COMMANDS = [
     PostToPRCommand(),
     AnalyzeCommand(),
     CacheCommand(),
+    DownloadServicesCommand(),
 ]
 
-__all__ = ["ValidateCommand", "PostToPRCommand", "AnalyzeCommand", "CacheCommand", "ALL_COMMANDS"]
+__all__ = [
+    "ValidateCommand",
+    "PostToPRCommand",
+    "AnalyzeCommand",
+    "CacheCommand",
+    "DownloadServicesCommand",
+    "ALL_COMMANDS",
+]
