@@ -36,6 +36,7 @@ DEFAULT_CONFIG = {
         "max_concurrent": 10,
         "enable_builtin_checks": True,
         "parallel_execution": True,
+        "aws_services_dir": None,
         "cache_enabled": True,
         "cache_ttl_hours": 168,
         "fail_on_severity": ["error", "critical"],
@@ -161,6 +162,15 @@ With specific values:
         "sensitive_action_check": {
             "enabled": True,
             "severity": "medium",
+            "message_single": "Sensitive action '{action}' should have conditions to limit when it can be used",
+            "message_multiple": "Sensitive actions '{actions}' should have conditions to limit when they can be used",
+            "suggestion": "Add IAM conditions to limit when this action can be used. Consider: ABAC (ResourceTag OR RequestTag must match PrincipalTag), IP restrictions (aws:SourceIp), MFA requirements (aws:MultiFactorAuthPresent), or time-based restrictions (aws:CurrentTime)",
+            "example": """"Condition": {
+  "StringEquals": {
+    "aws:ResourceTag/owner": "${aws:PrincipalTag/owner}"
+  }
+}
+""",
             "sensitive_actions": [
                 "iam:AddClientIDToOpenIDConnectProvider",
                 "iam:AttachRolePolicy",
@@ -234,7 +244,6 @@ With specific values:
                 "organizations:LeaveOrganization",
                 "organizations:RemoveAccountFromOrganization",
             ],
-            "sensitive_action_patterns": ["^iam:Delete.*"],
         },
     },
     "action_condition_enforcement_check": {
@@ -244,7 +253,6 @@ With specific values:
         "action_condition_requirements": [
             {
                 "actions": ["iam:PassRole"],
-                "action_patterns": ["^iam:Pas?.*$"],
                 "severity": "high",
                 "required_conditions": [
                     {
@@ -267,7 +275,6 @@ With specific values:
             },
             {
                 "actions": [
-                    "iam:Create*",
                     "iam:CreateRole",
                     "iam:Put*Policy*",
                     "iam:PutUserPolicy",
@@ -276,7 +283,6 @@ With specific values:
                     "iam:AttachUserPolicy",
                     "iam:AttachRolePolicy",
                 ],
-                "action_patterns": ["^iam:Create", "^iam:Put.*Policy", "^iam:Attach.*Policy"],
                 "severity": "high",
                 "required_conditions": [
                     {
@@ -290,6 +296,32 @@ With specific values:
   }
 }
 """,
+                    },
+                ],
+            },
+            {
+                "actions": ["s3:PutObject", "s3:DeleteObject", "s3:CreateBucket"],
+                "severity": "medium",
+                "required_conditions": [
+                    {
+                        "condition_key": "aws:ResourceOrgId",
+                        "description": "Require aws:ResourceOrgId condition for S3 write actions to enforce organization-level access control",
+                        "example": """"Condition": {
+  "StringEquals": {
+    "aws:ResourceOrgId": "${aws:PrincipalOrgID}"
+  }
+}
+""",
+                    },
+                ],
+            },
+            {
+                "action_patterns": ["^s3:.*"],
+                "required_conditions": [
+                    {
+                        "condition_key": "aws:SecureTransport",
+                        "description": "Require HTTPS for all S3 operations",
+                        "expected_value": True,
                     },
                 ],
             },

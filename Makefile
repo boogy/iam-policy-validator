@@ -25,6 +25,9 @@ help:
 	@echo ""
 	@echo "Examples:"
 	@echo "  make validate-example Run validator on example policies"
+	@echo ""
+	@echo "AWS Services Backup:"
+	@echo "  make download-aws-services Download all AWS service definitions"
 
 # Installation
 install:
@@ -96,10 +99,15 @@ publish: build
 
 # Example validation
 validate-example:
-	uv run iam-validator --path examples/sample_policy.json
+	uv run iam-validator validate --path examples/iam-test-policies/sample_policy.json --config examples/configs/basic-config.yaml
 
 validate-invalid:
-	uv run iam-validator --path examples/invalid_policy.json || true
+	uv run iam-validator validate --path examples/iam-test-policies/insecure_policy.json --config examples/configs/basic-config.yaml || true
+
+# Download AWS service definitions for backup
+download-aws-services:
+	@echo "Downloading AWS service definitions..."
+	@uv run python scripts/download_aws_services.py
 
 # CI/CD simulation
 ci: check build

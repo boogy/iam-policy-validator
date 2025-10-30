@@ -275,7 +275,7 @@ class TestSidUniquenessCheck:
 
         # Should have 2 issues (for indices 2 and 3)
         assert len(issues) == 2
-        # Both should mention all three indices [0], [2], [3]
-        assert all("[0]" in issue.message for issue in issues)
-        assert all("[2]" in issue.message for issue in issues)
-        assert all("[3]" in issue.message for issue in issues)
+        # Both should mention all three statement numbers #1, #3, #4 (1-indexed)
+        assert all("#1" in issue.message for issue in issues)
+        assert all("#3" in issue.message for issue in issues)
+        assert all("#4" in issue.message for issue in issues)

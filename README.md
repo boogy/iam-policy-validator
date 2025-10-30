@@ -1,46 +1,128 @@
 # IAM Policy Validator
 
-A high-performance GitHub Action and Python CLI tool that validates AWS IAM policies for correctness and security by checking against the official AWS Service Reference API.
+> **Catch IAM policy errors before they reach production** - A comprehensive security and validation tool for AWS IAM policies that combines AWS's official Access Analyzer with powerful custom security checks.
 
-## ✨ Features
+[![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-Ready-blue)](https://github.com/marketplace/actions/iam-policy-validator)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-### Core Validation
-- **Real-time Validation**: Validates IAM actions against AWS's official service reference API
-- **AWS IAM Access Analyzer Integration**: Validate policies using AWS's official policy validation service
-- **Custom Policy Checks**: Verify policies don't grant specific actions, check for new access, and detect public exposure (29+ resource types supported)
-- **Condition Key Checking**: Verifies that condition keys are valid for each action
-- **ARN Format Validation**: Ensures resource ARNs follow proper AWS format with compiled regex patterns
-- **Security Best Practices**: Identifies overly permissive policies and security risks
+## 🚀 Why IAM Policy Validator?
 
-### Performance Enhancements
-- **Service Pre-fetching**: Common AWS services cached at startup for faster validation
-- **LRU Memory Cache**: Recently accessed services cached with TTL support
-- **Request Coalescing**: Duplicate API requests automatically deduplicated
-- **Parallel Check Execution**: Multiple validation checks run concurrently
-- **HTTP/2 Support**: Multiplexed connections for better API performance
-- **Optimized Connection Pool**: 20 keepalive connections, 50 max connections
+**IAM policy errors are costly and dangerous.** A single misconfigured policy can:
+- ❌ Grant unintended admin access (privilege escalation)
+- ❌ Expose sensitive data to the public
+- ❌ Break production deployments with invalid syntax
+- ❌ Create security vulnerabilities that persist for months
 
-### GitHub Integration
-- **PR Comments**: Post detailed validation reports as PR comments
-- **Line-Specific Reviews**: Add review comments on exact policy lines
-- **Label Management**: Automatically add/remove PR labels based on results
-- **Commit Status**: Set commit status to pass/fail based on validation
-- **Comment Updates**: Update existing comments instead of creating duplicates
+**This tool prevents these issues** by:
+- ✅ **Validating early** - Catch errors in PRs before merge
+- ✅ **Comprehensive checks** - AWS Access Analyzer + 15+ security checks
+- ✅ **Smart filtering** - Auto-detects IAM policies from mixed JSON/YAML files
+- ✅ **Developer-friendly** - Clear error messages with fix suggestions
+- ✅ **Zero setup** - Works as a GitHub Action out of the box
 
-### Output Formats
-- **Console** (default): Clean terminal output with colors and tables
-- **Enhanced**: Modern visual output with progress bars, tree structure, and rich visuals
-- **JSON**: Structured format for programmatic processing
-- **Markdown**: GitHub-flavored markdown for PR comments
-- **SARIF**: GitHub code scanning integration format
-- **CSV**: Spreadsheet-compatible format for analysis
-- **HTML**: Interactive reports with filtering and search
+## ✨ Key Features
 
-### Extensibility
-- **Plugin System**: Easy-to-add custom validation checks
-- **Middleware Support**: Cross-cutting concerns like caching, timing, error handling
-- **Formatter Registry**: Pluggable output format system
-- **Configuration-Driven**: YAML-based configuration for all aspects
+### 🔍 Multi-Layer Validation
+- **AWS IAM Access Analyzer** - Official AWS validation (syntax, permissions, security)
+- **Custom Security Checks** - 15+ specialized checks for best practices
+- **Policy Comparison** - Detect new permissions vs baseline (prevent scope creep)
+- **Public Access Detection** - Check 29+ AWS resource types for public exposure
+- **Privilege Escalation Detection** - Identify dangerous action combinations
+
+### 🎯 Smart & Efficient
+- **Automatic IAM Policy Detection** - Scans mixed repos, filters non-IAM files automatically
+- **Wildcard Expansion** - Expands `s3:Get*` patterns to validate specific actions
+- **Offline Validation** - Download AWS service definitions for air-gapped environments
+- **JSON + YAML Support** - Native support for both formats
+- **Streaming Mode** - Memory-efficient processing for large policy sets
+
+### ⚡ Performance Optimized
+- **Service Pre-fetching** - Common AWS services cached at startup (faster validation)
+- **LRU Memory Cache** - Recently accessed services cached with TTL
+- **Request Coalescing** - Duplicate API requests automatically deduplicated
+- **Parallel Execution** - Multiple checks run concurrently
+- **HTTP/2 Support** - Multiplexed connections for better API performance
+
+### 📊 Output Formats
+- **Console** (default) - Clean terminal output with colors and tables
+- **Enhanced** - Modern visual output with progress bars and tree structure
+- **JSON** - Structured format for programmatic processing
+- **Markdown** - GitHub-flavored markdown for PR comments
+- **SARIF** - GitHub code scanning integration format
+- **CSV** - Spreadsheet-compatible for analysis
+- **HTML** - Interactive reports with filtering and search
+
+### 🔌 Extensibility
+- **Plugin System** - Easy-to-add custom validation checks
+- **Configuration-Driven** - YAML-based configuration for all aspects
+- **CI/CD Ready** - GitHub Actions, GitLab CI, Jenkins, CircleCI
+
+## 📈 Real-World Impact
+
+### Common IAM Policy Issues This Tool Catches
+
+**Before IAM Policy Validator:**
+```json
+{
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "s3:*",            // ❌ Too permissive
+    "Resource": "*"              // ❌ All buckets!
+  }]
+}
+```
+**Issue:** Grants full S3 access to ALL buckets (data breach risk)
+
+**After IAM Policy Validator:**
+```
+❌ MEDIUM: Statement applies to all resources (*)
+❌ HIGH: Wildcard action 's3:*' with resource '*' is overly permissive
+💡 Suggestion: Specify exact actions and bucket ARNs
+```
+
+### Privilege Escalation Detection
+
+**Dangerous combination across multiple statements:**
+```json
+{
+  "Statement": [
+    {"Action": "iam:CreateUser"},      // Seems innocent
+    {"Action": "iam:AttachUserPolicy"} // Also seems innocent
+  ]
+}
+```
+
+**What the validator catches:**
+```
+🚨 CRITICAL: Privilege escalation risk detected!
+Actions ['iam:CreateUser', 'iam:AttachUserPolicy'] allow:
+  1. Create new IAM user
+  2. Attach AdministratorAccess policy to that user
+  3. Gain full AWS account access
+
+💡 Add conditions or separate these permissions
+```
+
+### Public Access Prevention
+
+**Before merge:**
+```json
+{
+  "Principal": "*",  // ❌ Anyone on the internet!
+  "Action": "s3:GetObject",
+  "Resource": "arn:aws:s3:::my-private-data/*"
+}
+```
+
+**Blocked by validator:**
+```
+🛑 CRITICAL: Resource policy allows public access
+29 resource types checked: AWS::S3::Bucket
+Principal "*" grants internet-wide access to private data
+
+💡 Use specific AWS principals or add IP restrictions
+```
 
 ## Quick Start
 
@@ -345,27 +427,56 @@ See [default-config.yaml](default-config.yaml) for a complete configuration exam
 
 ### GitHub Action Inputs
 
-| Input                         | Description                                                            | Required | Default           |
-| ----------------------------- | ---------------------------------------------------------------------- | -------- | ----------------- |
-| `path`                        | Path(s) to IAM policy file or directory (newline-separated)            | Yes      | -                 |
-| `config-file`                 | Path to custom configuration file (iam-validator.yaml)                 | No       | ""                |
-| `fail-on-warnings`            | Fail validation if warnings are found                                  | No       | `false`           |
-| `post-comment`                | Post validation results as PR comment                                  | No       | `true`            |
-| `create-review`               | Create line-specific review comments on PR                             | No       | `true`            |
-| `format`                      | Output format (console, enhanced, json, markdown, sarif, csv, html)    | No       | `console`         |
-| `output-file`                 | Path to save output file                                               | No       | ""                |
-| `recursive`                   | Recursively search directories for policy files                        | No       | `true`            |
-| `use-access-analyzer`         | Use AWS IAM Access Analyzer for validation                             | No       | `false`           |
-| `access-analyzer-region`      | AWS region for Access Analyzer                                         | No       | `us-east-1`       |
-| `policy-type`                 | Policy type (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY) | No       | `IDENTITY_POLICY` |
-| `run-all-checks`              | Run custom checks after Access Analyzer                                | No       | `false`           |
-| `check-access-not-granted`    | Actions that should NOT be granted (space-separated)                   | No       | ""                |
-| `check-access-resources`      | Resources to check with check-access-not-granted                       | No       | ""                |
-| `check-no-new-access`         | Path to baseline policy to compare against                             | No       | ""                |
-| `check-no-public-access`      | Check that resource policies do not allow public access                | No       | `false`           |
-| `public-access-resource-type` | Resource type(s) for public access check                               | No       | `AWS::S3::Bucket` |
+#### Core Options
+| Input              | Description                                                 | Required | Default |
+| ------------------ | ----------------------------------------------------------- | -------- | ------- |
+| `path`             | Path(s) to IAM policy file or directory (newline-separated) | Yes      | -       |
+| `config-file`      | Path to custom configuration file (.yaml)                   | No       | `""`    |
+| `fail-on-warnings` | Fail validation if warnings are found                       | No       | `false` |
+| `recursive`        | Recursively search directories for policy files             | No       | `true`  |
 
-See [examples/github-actions/](examples/github-actions/) for more workflow examples.
+#### GitHub Integration
+| Input           | Description                                | Required | Default |
+| --------------- | ------------------------------------------ | -------- | ------- |
+| `post-comment`  | Post validation results as PR comment      | No       | `true`  |
+| `create-review` | Create line-specific review comments on PR | No       | `true`  |
+
+#### Output Options
+| Input         | Description                                                                      | Required | Default   |
+| ------------- | -------------------------------------------------------------------------------- | -------- | --------- |
+| `format`      | Output format: `console`, `enhanced`, `json`, `markdown`, `sarif`, `csv`, `html` | No       | `console` |
+| `output-file` | Path to save output file (for non-console formats)                               | No       | `""`      |
+
+#### AWS Access Analyzer
+| Input                    | Description                                                                 | Required | Default           |
+| ------------------------ | --------------------------------------------------------------------------- | -------- | ----------------- |
+| `use-access-analyzer`    | Use AWS IAM Access Analyzer for validation                                  | No       | `false`           |
+| `access-analyzer-region` | AWS region for Access Analyzer                                              | No       | `us-east-1`       |
+| `policy-type`            | Policy type: `IDENTITY_POLICY`, `RESOURCE_POLICY`, `SERVICE_CONTROL_POLICY` | No       | `IDENTITY_POLICY` |
+| `run-all-checks`         | Run custom checks after Access Analyzer (sequential mode)                   | No       | `false`           |
+
+#### Custom Policy Checks (Access Analyzer)
+| Input                         | Description                                                                 | Required | Default           |
+| ----------------------------- | --------------------------------------------------------------------------- | -------- | ----------------- |
+| `check-access-not-granted`    | Actions that should NOT be granted (space-separated, max 100)               | No       | `""`              |
+| `check-access-resources`      | Resources to check with check-access-not-granted (space-separated, max 100) | No       | `""`              |
+| `check-no-new-access`         | Path to baseline policy to compare against (detect new permissions)         | No       | `""`              |
+| `check-no-public-access`      | Check that resource policies do not allow public access                     | No       | `false`           |
+| `public-access-resource-type` | Resource type(s) for public access check (29+ types supported, or `all`)    | No       | `AWS::S3::Bucket` |
+
+#### Advanced Options
+| Input               | Description                                                    | Required | Default   |
+| ------------------- | -------------------------------------------------------------- | -------- | --------- |
+| `custom-checks-dir` | Path to directory containing custom validation checks          | No       | `""`      |
+| `log-level`         | Logging level: `debug`, `info`, `warning`, `error`, `critical` | No       | `warning` |
+
+**💡 Pro Tips:**
+- Use `custom-checks-dir` to add organization-specific validation rules
+- Set `log-level: debug` when troubleshooting workflow issues
+- Configure `aws-services-dir` in your config file for offline validation
+- The action automatically filters IAM policies from mixed JSON/YAML files
+
+See [examples/github-actions/](examples/github-actions/) for 8 ready-to-use workflow examples.
 
 ### As a CLI Tool
 
@@ -670,7 +781,8 @@ The comprehensive [DOCS.md](DOCS.md) file contains everything you need:
   - [GitHub Actions Workflows](examples/github-actions/)
   - [Custom Checks](examples/custom_checks/)
   - [Configuration Files](examples/configs/)
-  - [Sample Policies](examples/policies/)
+  - [Test IAM Policies](examples/iam-test-policies/)
+- **[AWS Services Backup Guide](docs/aws-services-backup.md)** - Offline validation
 - **[Contributing Guide](CONTRIBUTING.md)** - Contribution guidelines
 - **[Publishing Guide](docs/development/PUBLISHING.md)** - Release process
 

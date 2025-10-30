@@ -1,0 +1,53 @@
+Version: "2012-10-17"
+Statement:
+  - Sid: LambdaFunctionManagement
+    Effect: Allow
+    Action:
+      - lambda:CreateFunction
+      - lambda:UpdateFunctionCode
+      - lambda:UpdateFunctionConfiguration
+      - lambda:PublishVersion
+      - lambda:CreateAlias
+      - lambda:UpdateAlias
+      - lambda:GetFunction
+      - lambda:GetFunctionConfiguration
+      - lambda:ListFunctions
+      - lambda:ListVersionsByFunction
+      - lambda:ListAliases
+    Resource: arn:aws:lambda:*:*:function:myapp-*
+
+  - Sid: LambdaLayerAccess
+    Effect: Allow
+    Action:
+      - lambda:GetLayerVersion
+      - lambda:ListLayers
+      - lambda:ListLayerVersions
+    Resource: "*"
+
+  - Sid: IAMPassRoleForLambda
+    Effect: Allow
+    Action:
+      - iam:PassRole
+    Resource: arn:aws:iam::*:role/lambda-execution-role
+    Condition:
+      StringEquals:
+        iam:PassedToService: lambda.amazonaws.com
+
+  - Sid: LogsAccess
+    Effect: Allow
+    Action:
+      - logs:CreateLogGroup
+      - logs:CreateLogStream
+      - logs:PutLogEvents
+      - logs:DescribeLogGroups
+      - logs:DescribeLogStreams
+    Resource:
+      - arn:aws:logs:*:*:log-group:/aws/lambda/myapp-*
+      - arn:aws:logs:*:*:log-group:/aws/lambda/myapp-*:*
+
+  - Sid: S3DeploymentBucketAccess
+    Effect: Allow
+    Action:
+      - s3:GetObject
+      - s3:PutObject
+    Resource: arn:aws:s3:::myapp-lambda-deployments/*

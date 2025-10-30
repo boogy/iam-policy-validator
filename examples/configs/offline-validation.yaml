@@ -1,0 +1,29 @@
+# Offline Validation Configuration
+# Use this configuration for environments without internet access
+# or to avoid AWS API throttling
+
+settings:
+  # Use local AWS service definitions instead of API calls
+  # Download services first: make download-aws-services
+  aws_services_dir: ./aws_services
+
+  # Disable API cache since we're using local files
+  cache_enabled: false
+
+  # Standard settings
+  fail_fast: false
+  max_concurrent: 10
+  enable_builtin_checks: true
+  parallel_execution: true
+
+  # Fail on errors and critical issues
+  fail_on_severity:
+    - error
+    - critical
+
+# All checks use default settings
+# This configuration enables:
+# - Completely offline validation (no internet required)
+# - Protection against API throttling
+# - Faster validation (no network latency)
+# - Reproducible results (pinned to downloaded AWS API version)

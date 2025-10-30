@@ -136,33 +136,33 @@ jobs:
           \`\`\`
           EOF
 
-  update-action-versions:
-    name: Update Major/Minor Tag References
-    runs-on: ubuntu-latest
-    needs: build-and-release
+  # update-action-versions:
+  #   name: Update Major/Minor Tag References
+  #   runs-on: ubuntu-latest
+  #   needs: build-and-release
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
 
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+  #     - name: Configure Git
+  #       run: |
+  #         git config user.name "github-actions[bot]"
+  #         git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Update major and minor version tags
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          MAJOR=$(echo $VERSION | cut -d. -f1)
-          MINOR=$(echo $VERSION | cut -d. -f1-2)
+  #     - name: Update major and minor version tags
+  #       run: |
+  #         VERSION=${GITHUB_REF#refs/tags/v}
+  #         MAJOR=$(echo $VERSION | cut -d. -f1)
+  #         MINOR=$(echo $VERSION | cut -d. -f1-2)
 
-          # Update vX tag (e.g., v1) - annotated (unsigned by bot)
-          git tag -fa "v$MAJOR" -m "Update v$MAJOR to $VERSION"
-          git push origin "v$MAJOR" --force
+  #         # Update vX tag (e.g., v1) - annotated (unsigned by bot)
+  #         git tag -fa "v$MAJOR" -m "Update v$MAJOR to $VERSION"
+  #         git push origin "v$MAJOR" --force
 
-          # Update vX.Y tag (e.g., v1.2) - annotated (unsigned by bot)
-          git tag -fa "v$MINOR" -m "Updated v$MINOR to $VERSION"
-          git push origin "v$MINOR" --force
+  #         # Update vX.Y tag (e.g., v1.2) - annotated (unsigned by bot)
+  #         git tag -fa "v$MINOR" -m "Updated v$MINOR to $VERSION"
+  #         git push origin "v$MINOR" --force
 
-          echo "✅ Updated tags: v$MAJOR and v$MINOR to point to $VERSION"
-          echo "ℹ️  Note: Automated tags are annotated but not signed by the bot."
+  #         echo "✅ Updated tags: v$MAJOR and v$MINOR to point to $VERSION"
+  #         echo "ℹ️  Note: Automated tags are annotated but not signed by the bot."

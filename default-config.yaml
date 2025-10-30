@@ -41,7 +41,29 @@ settings:
   # Enable parallel execution of checks (default: true)
   parallel_execution: true
 
+  # AWS Service Definitions Source
+  # Use pre-downloaded AWS service JSON files instead of calling the AWS API
+  # This enables offline validation and avoids API throttling
+  #
+  # When set to a directory path:
+  #   - The validator will load service definitions from JSON files in this directory
+  #   - No API calls will be made to AWS Service Reference API
+  #   - Useful for offline environments or when you have a local backup
+  #
+  # Directory should contain:
+  #   - _services.json: List of all services (underscore prefix for easy discovery)
+  #   - {service}.json: Individual service definition files (e.g., s3.json, ec2.json)
+  #
+  # You can download these files using: make download-aws-services
+  # This will create an aws_services/ directory with all service definitions
+  #
+  # Examples:
+  #   aws_services_dir: ./aws_services      # Use local backup
+  #   aws_services_dir: null                # Use AWS API (default)
+  aws_services_dir: null
+
   # Cache AWS service definitions locally (persists between runs)
+  # Only used when aws_services_dir is not set (i.e., using AWS API)
   # Cache location: Platform-specific user cache directory by default
   #   - macOS: ~/Library/Caches/iam-validator/aws_services
   #   - Linux: ~/.cache/iam-validator/aws_services
@@ -132,9 +154,29 @@ security_best_practices_check:
   enabled: true
   description: "Checks for common security anti-patterns"
 
-  # Default allowed wildcard patterns for read-only non-sensitive actions
-  # These patterns are considered "safe" wildcards that can be used with Resource: "*"
-  # Customize this list to match your organization's security policies
+  # Allowed wildcard patterns for actions that can be used with Resource: "*"
+  #
+  # HOW IT WORKS:
+  # 1. Patterns in this list (e.g., "ec2:Describe*") are expanded using the AWS API
+  #    to get all matching real AWS actions
+  # 2. When validating a policy, if ALL actions in a statement are in the expanded list,
+  #    Resource: "*" is allowed (no warning is raised)
+  # 3. This ensures only validated AWS actions are allowed with wildcard resources
+  #
+  # EXAMPLE:
+  #   Config:  allowed_wildcards: ["ec2:Describe*"]
+  #   Expands: "ec2:Describe*" → ["ec2:DescribeInstances", "ec2:DescribeImages", ...]
+  #   Policy:  "Action": ["ec2:DescribeInstances", "ec2:DescribeImages"], "Resource": "*"
+  #   Result:  ✅ No warning (both actions are in the expanded list)
+  #
+  # WHY USE EXPANSION:
+  # - Validates patterns against actual AWS services (catches typos/invalid patterns)
+  # - More precise than regex pattern matching
+  # - Ensures you're only allowing real AWS actions
+  #
+  # DEFAULT LIST:
+  # These are common read-only actions considered "safe" for wildcard resources.
+  # Customize this list to match your organization's security policies.
   # Note: s3:Get* is intentionally excluded as it can access sensitive data
   allowed_wildcards:
     - autoscaling:Describe*
@@ -282,15 +324,15 @@ security_best_practices_check:
 
     # Customize validation messages (optional)
     # Supports template placeholders: {action} (single), {actions} (multiple)
-    # message_single: "Sensitive action '{action}' should have conditions to limit when it can be used"
-    # message_multiple: "Sensitive actions '{actions}' should have conditions to limit when they can be used"
-    # suggestion: "Add IAM conditions to limit when this action can be used. Consider: ABAC (ResourceTag must match PrincipalTag), IP restrictions (aws:SourceIp), MFA requirements (aws:MultiFactorAuthPresent), or time-based restrictions (aws:CurrentTime)"
-    # example: |
-    #   "Condition": {
-    #     "StringEquals": {
-    #       "aws:ResourceTag/owner": "${aws:PrincipalTag/owner}"
-    #     }
-    #   }
+    message_single: "Sensitive action '{action}' should have conditions to limit when it can be used"
+    message_multiple: "Sensitive actions '{actions}' should have conditions to limit when they can be used"
+    suggestion: "Add IAM conditions to limit when this action can be used. Consider: ABAC (ResourceTag OR RequestTag must match PrincipalTag), IP restrictions (aws:SourceIp), MFA requirements (aws:MultiFactorAuthPresent), or time-based restrictions (aws:CurrentTime)"
+    example: |
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/owner": "${aws:PrincipalTag/owner}"
+        }
+      }
 
     # ========================================================================
     # SENSITIVE ACTIONS - Exact action matches with automatic wildcard expansion
@@ -465,13 +507,13 @@ security_best_practices_check:
     # ========================================================================
 
     # Regex patterns for sensitive actions (optional - use only if needed)
-    sensitive_action_patterns:
-      - "^iam:Delete.*" # All IAM delete actions
-      # - "^iam:Put.*Policy$" # All IAM policy put actions
-      # - ".*:Delete.*"           # Uncomment to flag all delete actions
-      # - "^s3:PutBucket.*" # All S3 bucket modification actions
-      # - "^kms:(Delete|Disable).*" # KMS delete and disable actions
-      # - "^rds:Delete.*" # All RDS delete actions
+    # sensitive_action_patterns:
+    # - "^iam:Delete.*" # All IAM delete actions
+    # - "^iam:Put.*Policy$" # All IAM policy put actions
+    # - ".*:Delete.*"           # Uncomment to flag all delete actions
+    # - "^s3:PutBucket.*" # All S3 bucket modification actions
+    # - "^kms:(Delete|Disable).*" # KMS delete and disable actions
+    # - "^rds:Delete.*" # All RDS delete actions
 
     # ========================================================================
     # EXAMPLES: Using any_of and all_of
@@ -592,8 +634,8 @@ action_condition_enforcement_check:
     # This is CRITICAL because missing iam:PassedToService enables privilege escalation
     - actions:
         - "iam:PassRole"
-      action_patterns:
-        - "^iam:Pas?.*$"
+      # action_patterns:
+      #   - "^iam:Pas?.*$"
       severity: high # Override: this specific requirement is critical
       required_conditions:
         - condition_key: "iam:PassedToService"
@@ -617,7 +659,6 @@ action_condition_enforcement_check:
     # Note: This check uses AWS action fetcher to match wildcards intelligently
     # For example, "iam:P*" will be detected because it grants PutUserPolicy, PutRolePolicy, etc.
     - actions:
-        - "iam:Create*" # Wildcard: any IAM create action
         - "iam:CreateRole"
         - "iam:Put*Policy*" # Wildcard: any put policy action
         - "iam:PutUserPolicy"
@@ -625,10 +666,10 @@ action_condition_enforcement_check:
         - "iam:Attach*Policy*" # Wildcard: any attach policy action
         - "iam:AttachUserPolicy"
         - "iam:AttachRolePolicy"
-      action_patterns:
-        - "^iam:Create" # Pattern: matches iam:Create*, iam:Creat*, iam:C*, iam:CreateUser, etc.
-        - "^iam:Put.*Policy" # Pattern: matches iam:PutUserPolicy, iam:PutRolePolicy, etc.
-        - "^iam:Attach.*Policy" # Pattern: matches iam:AttachUserPolicy, iam:AttachRolePolicy, etc.
+      # action_patterns:
+      #   - "^iam:Create" # Pattern: matches iam:Create*, iam:Creat*, iam:C*, iam:CreateUser, etc.
+      #   - "^iam:Put.*Policy" # Pattern: matches iam:PutUserPolicy, iam:PutRolePolicy, etc.
+      #   - "^iam:Attach.*Policy" # Pattern: matches iam:AttachUserPolicy, iam:AttachRolePolicy, etc.
       severity: high # High severity for IAM operations without permissions boundary
       required_conditions:
         - condition_key: "iam:PermissionsBoundary"
@@ -643,20 +684,25 @@ action_condition_enforcement_check:
             }
 
     # S3 write actions should force aws:ResourceOrgId condition
-    # - action_patterns:
-    #     - "^s3:Put.*$"
-    #     - "^s3:Delete.*$"
-    #     - "^s3:Create.*$"
-    #   severity: info # Medium severity for S3 write actions without ResourceOrgId
-    #   required_conditions:
-    #     - condition_key: "aws:ResourceOrgId"
-    #       description: "Require aws:ResourceOrgId condition for S3 write actions to enforce organization-level access control"
-    #       example: |
-    #         "Condition": {
-    #           "StringEquals": {
-    #             "aws:ResourceOrgId": "o-xxxxxxxxxx"
-    #           }
-    #         }
+    # Prevents cross-organization writes for data exfiltration (when used with AWS Organizations)
+    - actions:
+        - "s3:PutObject"
+        - "s3:DeleteObject"
+        - "s3:CreateBucket"
+      # - action_patterns:
+      #     - "^s3:Put.*$"
+      #     - "^s3:Delete.*$"
+      #     - "^s3:Create.*$"
+      severity: medium # Medium severity for S3 write actions without ResourceOrgId
+      required_conditions:
+        - condition_key: "aws:ResourceOrgId"
+          description: "Require aws:ResourceOrgId condition for S3 write actions to enforce organization-level access control"
+          example: |
+            "Condition": {
+              "StringEquals": {
+                "aws:ResourceOrgId": "${aws:PrincipalOrgID}"
+              }
+            }
 
     # S3 destructive operations require MFA
     # - actions:
@@ -670,12 +716,12 @@ action_condition_enforcement_check:
     #       expected_value: "true"
 
     # All S3 operations must use HTTPS (optional - uncomment if needed)
-    # - action_patterns:
-    #     - "^s3:.*"
-    #   required_conditions:
-    #     - condition_key: "aws:SecureTransport"
-    #       description: "Require HTTPS for all S3 operations"
-    #       expected_value: true
+    - action_patterns:
+        - "^s3:.*"
+      required_conditions:
+        - condition_key: "aws:SecureTransport"
+          description: "Require HTTPS for all S3 operations"
+          expected_value: true
 
     # EC2 instances must be in specific VPCs (optional - uncomment and customize)
     # - actions:

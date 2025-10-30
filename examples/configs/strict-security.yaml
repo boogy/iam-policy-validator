@@ -1,0 +1,104 @@
+# Strict Security Configuration
+# Enforces strict security best practices and fails on warnings
+
+settings:
+  fail_fast: false
+  max_concurrent: 10
+  enable_builtin_checks: true
+  parallel_execution: true
+
+  # AWS services configuration
+  aws_services_dir: null  # Use AWS API (default)
+  cache_enabled: true
+  cache_ttl_hours: 168
+
+  # Fail on more severity levels for strict security
+  fail_on_severity:
+    - error      # IAM validity errors
+    - critical   # Critical security issues
+    - high       # High severity security issues
+    - medium     # Medium severity issues (stricter than default)
+
+# Security Best Practices - Strict Configuration
+security_best_practices_check:
+  enabled: true
+
+  # Minimal allowed wildcards - only truly safe read operations
+  allowed_wildcards:
+    - cloudwatch:Describe*
+    - cloudwatch:Get*
+    - cloudwatch:List*
+    - ec2:Describe*
+    - iam:Get*
+    - iam:List*
+    - logs:Describe*
+    - logs:Get*
+    - s3:List*
+
+  # Wildcard action check - fail on any wildcard actions
+  wildcard_action_check:
+    enabled: true
+    severity: high  # Elevated from default medium
+
+  # Wildcard resource check - fail on Resource: "*" unless explicitly allowed
+  wildcard_resource_check:
+    enabled: true
+    severity: high  # Elevated from default medium
+
+  # Full wildcard check - both Action and Resource are "*"
+  full_wildcard_check:
+    enabled: true
+    severity: critical
+
+  # Service wildcard check - actions like "s3:*", "ec2:*"
+  service_wildcard_check:
+    enabled: true
+    severity: high
+    # Only allow wildcards for these services
+    allowed_services:
+      - logs
+      - cloudwatch
+
+  # Sensitive action check - require conditions for sensitive actions
+  sensitive_action_check:
+    enabled: true
+    severity: high  # Elevated from default medium
+
+# Action Condition Enforcement - Strict Requirements
+action_condition_enforcement_check:
+  enabled: true
+  severity: critical  # Elevated from default high
+
+  action_condition_requirements:
+    # iam:PassRole MUST have iam:PassedToService condition
+    - actions:
+        - iam:PassRole
+      severity: critical
+      required_conditions:
+        - condition_key: iam:PassedToService
+          description: "Restrict which services can use the passed role"
+
+    # IAM write operations MUST have permissions boundary
+    - actions:
+        - iam:CreateRole
+        - iam:PutRolePolicy
+        - iam:AttachRolePolicy
+        - iam:PutUserPolicy
+        - iam:AttachUserPolicy
+      severity: critical
+      required_conditions:
+        - condition_key: iam:PermissionsBoundary
+          description: "Require permissions boundary for privilege escalation prevention"
+
+    # Sensitive S3 operations require conditions
+    - actions:
+        - s3:PutObject
+        - s3:DeleteObject
+        - s3:PutBucketPolicy
+      severity: high
+      required_conditions:
+        - condition_key: aws:SecureTransport
+          description: "Require HTTPS for S3 operations"
+
+# This configuration provides enterprise-grade security enforcement
+# Use this for production IAM policies in high-security environments

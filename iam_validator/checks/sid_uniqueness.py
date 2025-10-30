@@ -46,13 +46,15 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
         # (the first occurrence is "original", subsequent ones are "duplicates")
         for idx in indices[1:]:
             statement = policy.statement[idx]
+            # Convert to 1-indexed statement numbers for user-facing message
+            statement_numbers = ", ".join(f"#{i + 1}" for i in indices)
             issues.append(
                 ValidationIssue(
                     severity=severity,
                     statement_sid=duplicate_sid,
                     statement_index=idx,
                     issue_type="duplicate_sid",
-                    message=f"Statement ID '{duplicate_sid}' is used {count} times in this policy (found in statements {', '.join(f'[{i}]' for i in indices)})",
+                    message=f"Statement ID '{duplicate_sid}' is used {count} times in this policy (found in statements {statement_numbers})",
                     suggestion="Change this SID to a unique value. Statement IDs help identify and reference specific statements, so duplicates can cause confusion.",
                     line_number=statement.line_number,
                 )

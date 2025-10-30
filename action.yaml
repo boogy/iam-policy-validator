@@ -92,6 +92,17 @@ inputs:
     required: false
     default: "AWS::S3::Bucket"
 
+  # Performance & Offline Options
+  custom-checks-dir:
+    description: "Path to directory containing custom validation checks (relative to repository root)"
+    required: false
+    default: ""
+
+  log-level:
+    description: "Logging level (debug, info, warning, error, critical)"
+    required: false
+    default: "warning"
+
 outputs:
   validation-result:
     description: "Validation result (success or failure)"
@@ -117,17 +128,17 @@ runs:
   using: "composite"
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@cfd55ca82492758d853442341ad4d8010466803a # v6.0.0
       with:
         python-version: "3.12"
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v7
+      uses: astral-sh/setup-uv@85856786d1ce8acfbcc2f13a5f3fbd6b938f9f41 # v7.0.0
       with:
         enable-cache: true
 
     - name: Cache dependencies
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.2.0
       with:
         path: ${{ github.action_path }}/.venv
         key: ${{ runner.os }}-uv-${{ hashFiles(format('{0}/pyproject.toml', github.action_path)) }}
@@ -139,8 +150,106 @@ runs:
       run: uv sync --frozen
       shell: bash
 
+    - name: Pre-validate IAM Policy Files
+      id: prevalidate
+      run: |
+        # Function to check if a file is an IAM policy
+        is_iam_policy() {
+          local file="$1"
+
+          # Check if file exists and is readable
+          if [ ! -f "$file" ] || [ ! -r "$file" ]; then
+            return 1
+          fi
+
+          # Check file extension
+          case "${file##*.}" in
+            json|yaml|yml) ;;
+            *) return 1 ;;
+          esac
+
+          # Check if file contains IAM policy markers
+          # Look for "Version" and "Statement" fields (required in IAM policies)
+          if grep -q '"Version"' "$file" 2>/dev/null && grep -q '"Statement"' "$file" 2>/dev/null; then
+            return 0
+          elif grep -q '^Version:' "$file" 2>/dev/null && grep -q '^Statement:' "$file" 2>/dev/null; then
+            return 0
+          elif grep -q '  Version:' "$file" 2>/dev/null && grep -q '  Statement:' "$file" 2>/dev/null; then
+            return 0
+          fi
+
+          return 1
+        }
+
+        # Parse paths and filter IAM policies
+        IAM_POLICIES=""
+        NON_IAM_FILES=""
+        TOTAL_FILES=0
+        IAM_POLICY_COUNT=0
+
+        IFS=$'\n'
+        for path in ${{ inputs.path }}; do
+          path=$(echo "$path" | xargs)
+          [ -z "$path" ] && continue
+
+          full_path="${{ github.workspace }}/$path"
+
+          # Handle directory or file
+          if [ -d "$full_path" ]; then
+            # Find all JSON/YAML files in directory
+            while IFS= read -r -d '' file; do
+              TOTAL_FILES=$((TOTAL_FILES + 1))
+              if is_iam_policy "$file"; then
+                IAM_POLICIES="$IAM_POLICIES$file"$'\n'
+                IAM_POLICY_COUNT=$((IAM_POLICY_COUNT + 1))
+              else
+                NON_IAM_FILES="$NON_IAM_FILES$file"$'\n'
+              fi
+            done < <(find "$full_path" -type f \( -name "*.json" -o -name "*.yaml" -o -name "*.yml" \) -print0)
+          elif [ -f "$full_path" ]; then
+            # Single file
+            TOTAL_FILES=$((TOTAL_FILES + 1))
+            if is_iam_policy "$full_path"; then
+              IAM_POLICIES="$IAM_POLICIES$full_path"$'\n'
+              IAM_POLICY_COUNT=$((IAM_POLICY_COUNT + 1))
+            else
+              NON_IAM_FILES="$NON_IAM_FILES$full_path"$'\n'
+            fi
+          fi
+        done
+        unset IFS
+
+        # Output summary
+        echo "📊 File Analysis Summary:"
+        echo "  Total files found: $TOTAL_FILES"
+        echo "  IAM policies detected: $IAM_POLICY_COUNT"
+        echo "  Non-IAM files skipped: $((TOTAL_FILES - IAM_POLICY_COUNT))"
+
+        if [ -n "$NON_IAM_FILES" ] && [ $((TOTAL_FILES - IAM_POLICY_COUNT)) -gt 0 ]; then
+          echo ""
+          echo "⏭️  Skipped non-IAM files:"
+          echo "$NON_IAM_FILES" | grep -v '^$' | head -10
+          if [ $((TOTAL_FILES - IAM_POLICY_COUNT)) -gt 10 ]; then
+            echo "  ... and $((TOTAL_FILES - IAM_POLICY_COUNT - 10)) more"
+          fi
+        fi
+
+        # Save IAM policies list for next step
+        echo "$IAM_POLICIES" > /tmp/iam_policies_list.txt
+
+        # Set output for conditional execution
+        echo "iam-policy-count=$IAM_POLICY_COUNT" >> $GITHUB_OUTPUT
+
+        if [ $IAM_POLICY_COUNT -eq 0 ]; then
+          echo ""
+          echo "⚠️  No IAM policies found. Skipping validation."
+          exit 0
+        fi
+      shell: bash
+
     - name: Run IAM Policy Validator
       id: validate
+      if: steps.prevalidate.outputs.iam-policy-count > 0
       working-directory: ${{ github.action_path }}
       env:
         GITHUB_TOKEN: ${{ github.token }}
@@ -148,6 +257,17 @@ runs:
         GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         set -e
+
+        # Read validated IAM policies from previous step
+        if [ -f /tmp/iam_policies_list.txt ]; then
+          echo "📋 Using pre-validated IAM policies list"
+        fi
+
+        # Build base command with log-level FIRST (global argument)
+        BASE_CMD=""
+        if [ -n "${{ inputs.log-level }}" ] && [ "${{ inputs.log-level }}" != "warning" ]; then
+          BASE_CMD="--log-level ${{ inputs.log-level }}"
+        fi
 
         # Determine command based on use-access-analyzer flag
         if [ "${{ inputs.use-access-analyzer }}" = "true" ]; then
@@ -168,8 +288,8 @@ runs:
         done
         unset IFS
 
-        # Build arguments
-        ARGS="$CMD $PATH_ARGS"
+        # Build arguments (command comes after global options)
+        ARGS="$BASE_CMD $CMD $PATH_ARGS"
 
         # Add config file if specified
         if [ -n "${{ inputs.config-file }}" ]; then
@@ -232,6 +352,11 @@ runs:
           fi
         fi
 
+        # Add custom-checks-dir if specified
+        if [ -n "${{ inputs.custom-checks-dir }}" ]; then
+          ARGS="$ARGS --custom-checks-dir ${{ github.workspace }}/${{ inputs.custom-checks-dir }}"
+        fi
+
         echo "Running: uv run iam-validator $ARGS"
 
         # Create temp file for JSON metrics extraction
@@ -279,7 +404,7 @@ runs:
 
     - name: Upload validation report
       if: always() && inputs.output-file != ''
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
       with:
         name: iam-policy-validation-report
         path: ${{ github.workspace }}/${{ inputs.output-file }}

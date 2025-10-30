@@ -38,8 +38,7 @@ jobs:
 
       - name: Install IAM Validator
         run: |
-          cd iam-policy-auditor
-          uv sync
+          pip install iam-policy-validator
 
       - name: Validate S3 Bucket Policies
         if: hashFiles('s3-policies/**/*.json') != ''
@@ -48,7 +47,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          uv run iam-validator analyze \
+          iam-validator analyze \
             --path ./s3-policies/ \
             --policy-type RESOURCE_POLICY \
             --github-comment
@@ -60,7 +59,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          uv run iam-validator analyze \
+          iam-validator analyze \
             --path ./resource-policies/ \
             --policy-type RESOURCE_POLICY \
             --github-comment \

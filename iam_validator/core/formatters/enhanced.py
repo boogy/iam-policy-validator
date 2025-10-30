@@ -345,10 +345,11 @@ class EnhancedFormatter(OutputFormatter):
 
     def _add_issue_to_tree(self, branch: Tree, issue, color: str) -> None:
         """Add an issue to a tree branch."""
-        # Build location string
-        location = f"Statement {issue.statement_index}"
+        # Build location string (use 1-indexed statement numbers for user-facing output)
+        statement_num = issue.statement_index + 1
+        location = f"Statement {statement_num}"
         if issue.statement_sid:
-            location = f"{issue.statement_sid} (#{issue.statement_index})"
+            location = f"{issue.statement_sid} (#{statement_num})"
         if issue.line_number is not None:
             location += f" @L{issue.line_number}"
 

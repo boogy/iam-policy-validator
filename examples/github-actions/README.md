@@ -1,266 +1,99 @@
 # GitHub Actions Workflow Examples
 
-This directory contains example GitHub Actions workflows for validating IAM policies using the IAM Policy Auditor.
-
-## Available Workflows
-
-### 1. Basic Validation (`basic-validation.yml`)
-
-Simple workflow that validates IAM policies on every pull request using custom checks.
-
-**Features:**
-- Validates on PR changes to policy files
-- Posts results as PR comment
-- Adds line-specific review comments
-- Fails on warnings
-
-**Use case:** Standard validation for most projects.
-
-### 2. Access Analyzer Only (`access-analyzer-only.yml`)
-
-Uses only AWS IAM Access Analyzer for validation.
-
-**Features:**
-- Official AWS validation service
-- Requires AWS credentials (OIDC recommended)
-- Fast validation
-- Posts results to PR
-
-**Use case:** When you want official AWS validation without custom checks.
-
-### 3. Sequential Validation (`sequential-validation.yml`) ⭐ **RECOMMENDED**
-
-Runs Access Analyzer first, then custom checks if it passes.
-
-**Features:**
-- Two-stage validation (Access Analyzer → Custom Checks)
-- Early exit if Access Analyzer finds errors
-- Two separate PR comments
-- Saves time by skipping custom checks on basic errors
-
-**Use case:** Best of both worlds - official AWS validation followed by custom security checks.
-
-### 4. Two-Step Validation (`two-step-validation.yml`)
-
-Separates validation from PR commenting into two jobs.
-
-**Features:**
-- Generate report in one job
-- Review before posting (optional)
-- Post to PR in separate job
-- Useful for approval workflows
-
-**Use case:** When you need to review validation results before posting to PR.
-
-### 5. Resource Policy Validation (`resource-policy-validation.yml`)
-
-Specialized workflow for validating resource policies (S3 bucket policies, SNS topics, etc.).
-
-**Features:**
-- Validates resource policies (not identity policies)
-- Separate validation for S3 policies
-- Uses `--policy-type RESOURCE_POLICY` flag
-
-**Use case:** Projects with S3 bucket policies, SNS topic policies, or other resource-based policies.
-
-### 6. Multi-Region Validation (`multi-region-validation.yml`)
-
-Validates policies across multiple AWS regions.
-
-**Features:**
-- Matrix strategy for multiple regions
-- Validates in us-east-1, us-west-2, eu-west-1
-- Aggregates results across regions
-- Posts summary to PR
-
-**Use case:** Ensure policies work consistently across regions.
+This directory contains example GitHub Actions workflows for validating IAM policies.
 
 ## Quick Start
 
-1. **Choose a workflow** from the examples above
-2. **Copy to your repository**: `.github/workflows/iam-validation.yml`
-3. **Update paths** to match your repository structure
-4. **Configure AWS credentials** (if using Access Analyzer)
-5. **Commit and push** to trigger the workflow
+Choose one of these workflows and copy it to `.github/workflows/` in your repository:
 
-## AWS Credentials Setup
+### 1. **basic-validation.yaml** - Simple validation
+- Validates IAM policies on every pull request
+- Posts results as PR comments
+- Good starting point for most projects
 
-Most workflows require AWS credentials for Access Analyzer. We recommend using OpenID Connect (OIDC) for secure authentication:
+### 2. **sequential-validation.yaml** ⭐ **RECOMMENDED**
+- Runs AWS Access Analyzer first, then custom checks
+- Two-stage validation with early exit
+- Best of both worlds
 
-### Option 1: OIDC (Recommended)
+### 3. **access-analyzer-only.yaml** - AWS official validation
+- Uses only AWS IAM Access Analyzer
+- Requires AWS credentials
+- Fast validation
 
-1. **Create IAM Role** in AWS:
+### 4. **resource-policy-validation.yaml** - Resource policies
+- For S3 bucket policies, SNS topics, etc.
+- Uses `--policy-type RESOURCE_POLICY`
 
-```bash
-# Create trust policy
-cat > trust-policy.json <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::YOUR_ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:YOUR_ORG/YOUR_REPO:*"
-        }
-      }
-    }
-  ]
-}
-EOF
+### 5. **multi-region-validation.yaml** - Multi-region testing
+- Validates across multiple AWS regions
+- Matrix strategy for parallel execution
 
-# Create the role
-aws iam create-role \
-  --role-name GitHubActionsRole \
-  --assume-role-policy-document file://trust-policy.json
-```
+### 6. **two-step-validation.yaml** - Separate validation & reporting
+- Generate report first
+- Post to PR in separate job
+- Useful for approval workflows
 
-2. **Attach policy** for Access Analyzer:
+### 7. **custom-policy-checks.yml** - Advanced security checks
+- CheckAccessNotGranted - prevent dangerous actions
+- CheckNoNewAccess - compare against baseline
+- CheckNoPublicAccess - prevent public exposure
 
-```bash
-cat > access-analyzer-policy.json <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": "access-analyzer:ValidatePolicy",
-      "Resource": "*"
-    }
-  ]
-}
-EOF
+### 8. **validate-changed-files.yaml** ⭐ **SMART FILTERING**
+- Validates only files changed in PR
+- Automatically detects and filters IAM policies
+- Skips non-IAM JSON/YAML files (configs, data, schemas)
+- Perfect for mixed repositories
 
-aws iam put-role-policy \
-  --role-name GitHubActionsRole \
-  --policy-name AccessAnalyzerValidation \
-  --policy-document file://access-analyzer-policy.json
-```
+## Usage
 
-3. **Use in workflow**:
+1. **Copy a workflow** to your repository: `.github/workflows/iam-validation.yml`
+2. **Update paths** to match your policy directory
+3. **Configure AWS credentials** (if using Access Analyzer) - see below
+4. **Commit and test** on a pull request
 
-```yaml
-- name: Configure AWS Credentials
-  uses: aws-actions/configure-aws-credentials@v4
-  with:
-    role-to-assume: arn:aws:iam::YOUR_ACCOUNT_ID:role/GitHubActionsRole
-    aws-region: us-east-1
-```
+## AWS Credentials Setup (for Access Analyzer)
 
-### Option 2: AWS Access Keys (Not Recommended)
+**Recommended:** Use OpenID Connect (OIDC) for secure authentication.
 
-If you can't use OIDC, store AWS credentials as GitHub Secrets:
-
-1. Add secrets: `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
-2. Use in workflow:
-
-```yaml
-- name: Configure AWS Credentials
-  uses: aws-actions/configure-aws-credentials@v4
-  with:
-    aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-    aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-    aws-region: us-east-1
-```
+See the [GitHub Actions Workflows Guide](../../docs/github-actions-workflows.md) for detailed setup instructions including:
+- OIDC configuration
+- IAM role creation
+- Required permissions
+- Troubleshooting
 
 ## Customization
 
-### Change Policy Paths
-
-Update the `paths` filter and `--path` argument:
-
+### Change policy paths
 ```yaml
 on:
   pull_request:
     paths:
       - 'iam/**/*.json'  # Your policy directory
-
-# ...
-
-run: |
-  uv run iam-validator validate --path ./iam/
 ```
 
-### Adjust Failure Behavior
-
+### Adjust failure behavior
 ```yaml
 # Fail on warnings
 --fail-on-warnings
 
-# Don't fail on warnings (only fail on errors)
-# Remove the --fail-on-warnings flag
+# Only fail on errors (remove the flag above)
 ```
 
-### Change Output Format
-
+### Control PR comments
 ```yaml
-# Console output (default)
---format console
-
-# JSON output
---format json --output report.json
-
-# Markdown output
---format markdown --output report.md
-```
-
-### Control PR Comments
-
-```yaml
-# Post summary comment only (no line-specific comments)
---github-comment
-
-# Post line-specific review comments
+# Summary + line-specific comments
 --github-comment --github-review
 
-# No PR comments (validation only)
-# Remove --github-comment flag
-```
+# Summary only
+--github-comment
 
-## Environment Variables
-
-All workflows support these environment variables:
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `GITHUB_TOKEN` | GitHub API token | Yes (for PR comments) |
-| `GITHUB_REPOSITORY` | Repository (owner/repo) | Yes (for PR comments) |
-| `GITHUB_PR_NUMBER` | Pull request number | Yes (for PR comments) |
-| `AWS_REGION` | AWS region for Access Analyzer | No (default: us-east-1) |
-
-## Troubleshooting
-
-### Workflow fails with "access-analyzer:ValidatePolicy permission denied"
-
-**Solution:** Ensure your AWS role has the `access-analyzer:ValidatePolicy` permission.
-
-### No PR comments appear
-
-**Solution:** Check that the workflow has `pull-requests: write` permission:
-
-```yaml
-permissions:
-  contents: read
-  pull-requests: write
-```
-
-### Line-specific comments on wrong lines
-
-**Solution:** Ensure policy files are well-formatted JSON. Use `jq` to format:
-
-```bash
-jq '.' policy.json > formatted.json
+# No comments (validation only)
+# Remove both flags
 ```
 
 ## Additional Resources
 
-- [CLI Reference](../../docs/reference/CLI.md)
-- [PR Comments Guide](../../docs/guides/PR_COMMENTS.md)
-- [Main README](../../README.md)
+- **[Complete Workflow Documentation](../../docs/github-actions-workflows.md)** - Detailed setup guide
+- **[GitHub Actions Examples](../../docs/github-actions-examples.md)** - Additional examples and patterns
+- **[Main Documentation](../../DOCS.md)** - Full CLI reference

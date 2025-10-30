@@ -1,0 +1,40 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowS3ReadAccess",
+      "Effect": "Allow",
+      "Action": ["s3:Get*"],
+      "Resource": ["arn:aws:s3:::my-bucket/*"]
+    },
+    {
+      "Sid": "AllowEC2Describe",
+      "Effect": "Allow",
+      "Action": ["ec2:DescribeInstances", "ec2:DescribeImages"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "IAMPassRole",
+      "Effect": "Allow",
+      "Action": ["iam:Pas*"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "IAMCreateActions",
+      "Effect": "Allow",
+      "Action": ["iam:Cr*at*"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "IAMCreateActions",
+      "Effect": "Allow",
+      "Action": ["iam:CreateOpenIDConnectProvider"],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/owner": "${aws:PrincipalTag/owner}"
+        }
+      }
+    }
+  ]
+}

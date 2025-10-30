@@ -1,0 +1,728 @@
+{
+  "Name": "sts",
+  "Actions": [
+    {
+      "Name": "AssumeRole",
+      "ActionConditionKeys": [
+        "accounts.google.com:aud",
+        "accounts.google.com:sub",
+        "aws:RequestTag/${TagKey}",
+        "aws:TagKeys",
+        "cognito-identity.amazonaws.com:amr",
+        "cognito-identity.amazonaws.com:aud",
+        "cognito-identity.amazonaws.com:sub",
+        "graph.facebook.com:app_id",
+        "graph.facebook.com:id",
+        "iam:ResourceTag/${TagKey}",
+        "saml:namequalifier",
+        "saml:sub",
+        "saml:sub_type",
+        "sts:ExternalId",
+        "sts:RoleSessionName",
+        "sts:SourceIdentity",
+        "sts:TransitiveTagKeys",
+        "www.amazon.com:app_id",
+        "www.amazon.com:user_id"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "role"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    {
+      "Name": "AssumeRoleWithSAML",
+      "ActionConditionKeys": [
+        "aws:RequestTag/${TagKey}",
+        "aws:TagKeys",
+        "saml:aud",
+        "saml:cn",
+        "saml:commonName",
+        "saml:doc",
+        "saml:eduorghomepageuri",
+        "saml:eduorgidentityauthnpolicyuri",
+        "saml:eduorglegalname",
+        "saml:eduorgsuperioruri",
+        "saml:eduorgwhitepagesuri",
+        "saml:edupersonaffiliation",
+        "saml:edupersonassurance",
+        "saml:edupersonentitlement",
+        "saml:edupersonnickname",
+        "saml:edupersonorgdn",
+        "saml:edupersonorgunitdn",
+        "saml:edupersonprimaryaffiliation",
+        "saml:edupersonprimaryorgunitdn",
+        "saml:edupersonprincipalname",
+        "saml:edupersonscopedaffiliation",
+        "saml:edupersontargetedid",
+        "saml:givenName",
+        "saml:iss",
+        "saml:mail",
+        "saml:name",
+        "saml:namequalifier",
+        "saml:organizationStatus",
+        "saml:primaryGroupSID",
+        "saml:sub",
+        "saml:sub_type",
+        "saml:surname",
+        "saml:uid",
+        "saml:x500UniqueIdentifier",
+        "sts:RoleSessionName",
+        "sts:SourceIdentity",
+        "sts:TransitiveTagKeys"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "role"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    {
+      "Name": "AssumeRoleWithWebIdentity",
+      "ActionConditionKeys": [
+        "accounts.google.com:aud",
+        "accounts.google.com:oaud",
+        "accounts.google.com:sub",
+        "aws:RequestTag/${TagKey}",
+        "aws:TagKeys",
+        "cognito-identity.amazonaws.com:amr",
+        "cognito-identity.amazonaws.com:aud",
+        "cognito-identity.amazonaws.com:sub",
+        "graph.facebook.com:app_id",
+        "graph.facebook.com:id",
+        "sts:RoleSessionName",
+        "sts:SourceIdentity",
+        "sts:TransitiveTagKeys",
+        "www.amazon.com:app_id",
+        "www.amazon.com:user_id"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "role"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    {
+      "Name": "AssumeRoot",
+      "ActionConditionKeys": [
+        "sts:TaskPolicyArn"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "root-user"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "DecodeAuthorizationMessage",
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    {
+      "Name": "GetAccessKeyInfo",
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    {
+      "Name": "GetCallerIdentity",
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    {
+      "Name": "GetFederationToken",
+      "ActionConditionKeys": [
+        "aws:RequestTag/${TagKey}",
+        "aws:TagKeys"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "Resources": [
+        {
+          "Name": "federated-user"
+        },
+        {
+          "Name": "user"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    {
+      "Name": "GetServiceBearerToken",
+      "ActionConditionKeys": [
+        "sts:AWSServiceName",
+        "sts:DurationSeconds"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "GetSessionToken",
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": false
+        }
+      },
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": true
+      }
+    },
+    {
+      "Name": "SetContext",
+      "ActionConditionKeys": [
+        "sts:RequestContext/${ContextKey}",
+        "sts:RequestContextProviders"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "role"
+        },
+        {
+          "Name": "self-session"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": true,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "SetSourceIdentity",
+      "ActionConditionKeys": [
+        "sts:SourceIdentity"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": false,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "role"
+        },
+        {
+          "Name": "user"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    },
+    {
+      "Name": "TagSession",
+      "ActionConditionKeys": [
+        "aws:RequestTag/${TagKey}",
+        "aws:TagKeys",
+        "saml:aud",
+        "sts:TransitiveTagKeys"
+      ],
+      "Annotations": {
+        "Properties": {
+          "IsList": false,
+          "IsPermissionManagement": false,
+          "IsTaggingOnly": true,
+          "IsWrite": true
+        }
+      },
+      "Resources": [
+        {
+          "Name": "role"
+        },
+        {
+          "Name": "user"
+        }
+      ],
+      "SupportedBy": {
+        "IAM Access Analyzer Policy Generation": false,
+        "IAM Action Last Accessed": false
+      }
+    }
+  ],
+  "ConditionKeys": [
+    {
+      "Name": "accounts.google.com:aud",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "accounts.google.com:oaud",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "accounts.google.com:sub",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "aws:RequestTag/${TagKey}",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "aws:ResourceTag/${TagKey}",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "aws:TagKeys",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "cognito-identity.amazonaws.com:amr",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "cognito-identity.amazonaws.com:aud",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "cognito-identity.amazonaws.com:sub",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "graph.facebook.com:app_id",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "graph.facebook.com:id",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "iam:ResourceTag/${TagKey}",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:aud",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:cn",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "saml:commonName",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:doc",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:eduorghomepageuri",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "saml:eduorgidentityauthnpolicyuri",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "saml:eduorglegalname",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "saml:eduorgsuperioruri",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "saml:eduorgwhitepagesuri",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "saml:edupersonaffiliation",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "saml:edupersonassurance",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "saml:edupersonentitlement",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "saml:edupersonnickname",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "saml:edupersonorgdn",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:edupersonorgunitdn",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "saml:edupersonprimaryaffiliation",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:edupersonprimaryorgunitdn",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:edupersonprincipalname",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:edupersonscopedaffiliation",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "saml:edupersontargetedid",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "saml:givenName",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:iss",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:mail",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:name",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:namequalifier",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:organizationStatus",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:primaryGroupSID",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:sub",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:sub_type",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:surname",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:uid",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "saml:x500UniqueIdentifier",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "sts:AWSServiceName",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "sts:DurationSeconds",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "sts:ExternalId",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "sts:RequestContext/${ContextKey}",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "sts:RequestContextProviders",
+      "Types": [
+        "ArrayOfARN"
+      ]
+    },
+    {
+      "Name": "sts:RoleSessionName",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "sts:SourceIdentity",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "sts:TaskPolicyArn",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "sts:TransitiveTagKeys",
+      "Types": [
+        "ArrayOfString"
+      ]
+    },
+    {
+      "Name": "www.amazon.com:app_id",
+      "Types": [
+        "String"
+      ]
+    },
+    {
+      "Name": "www.amazon.com:user_id",
+      "Types": [
+        "String"
+      ]
+    }
+  ],
+  "Resources": [
+    {
+      "Name": "context-provider",
+      "ARNFormats": [
+        "arn:${Partition}:iam::aws:contextProvider/${ContextProviderName}"
+      ]
+    },
+    {
+      "Name": "federated-user",
+      "ARNFormats": [
+        "arn:${Partition}:sts::${Account}:federated-user/${FederatedUserName}"
+      ]
+    },
+    {
+      "Name": "role",
+      "ARNFormats": [
+        "arn:${Partition}:iam::${Account}:role/${RoleNameWithPath}"
+      ],
+      "ConditionKeys": [
+        "aws:ResourceTag/${TagKey}",
+        "iam:ResourceTag/${TagKey}"
+      ]
+    },
+    {
+      "Name": "root-user",
+      "ARNFormats": [
+        "arn:${Partition}:iam::${Account}:root"
+      ]
+    },
+    {
+      "Name": "self-session",
+      "ARNFormats": [
+        "arn:${Partition}:sts::${Account}:self"
+      ]
+    },
+    {
+      "Name": "user",
+      "ARNFormats": [
+        "arn:${Partition}:iam::${Account}:user/${UserNameWithPath}"
+      ]
+    }
+  ],
+  "Version": "v1.3"
+}

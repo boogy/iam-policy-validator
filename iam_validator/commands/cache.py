@@ -223,12 +223,7 @@ Examples:
             size = f.stat().st_size
             mtime = f.stat().st_mtime
 
-            services.append({
-                "name": name,
-                "size": size,
-                "file": f.name,
-                "mtime": mtime
-            })
+            services.append({"name": name, "size": size, "file": f.name, "mtime": mtime})
 
         # Sort by service name
         services.sort(key=lambda x: x["name"])
@@ -256,12 +251,7 @@ Examples:
             size_kb = svc["size"] / 1024
             cached_time = datetime.fromtimestamp(svc["mtime"]).strftime("%Y-%m-%d %H:%M")
 
-            table.add_row(
-                svc["name"],
-                svc["file"],
-                f"{size_kb:.1f} KB",
-                cached_time
-            )
+            table.add_row(svc["name"], svc["file"], f"{size_kb:.1f} KB", cached_time)
 
         console.print(table)
 
