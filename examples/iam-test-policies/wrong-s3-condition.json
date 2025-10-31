@@ -1,0 +1,28 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "WrongS3ConditionWithDeny",
+      "Effect": "Deny",
+      "Action": ["s3:CreateBucket"],
+      "Resource": "arn:aws:s3:::testing-*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/owner": "team-a"
+        }
+      }
+    },
+
+    {
+      "Sid": "WrongS3ConditionWithAllow",
+      "Effect": "Allow",
+      "Action": ["s3:CreateBucket"],
+      "Resource": "arn:aws:s3:::testing-*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/owner": "team-a"
+        }
+      }
+    }
+  ]
+}
