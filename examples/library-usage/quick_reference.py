@@ -2,11 +2,9 @@
 """Quick reference for common IAM Policy Validator library operations."""
 import asyncio
 
-from iam_validator.core.policy_loader import PolicyLoader
 from iam_validator.core.policy_checks import validate_policies
+from iam_validator.core.policy_loader import PolicyLoader
 from iam_validator.core.report import ReportGenerator
-from iam_validator.core.config_loader import ConfigLoader
-
 
 # ============================================================================
 # BASIC USAGE
@@ -99,9 +97,9 @@ async def filter_by_severity():
 
 async def generate_multiple_formats():
     """Generate reports in multiple formats."""
-    from iam_validator.core.formatters.json import JsonFormatter
-    from iam_validator.core.formatters.html import HtmlFormatter
     from iam_validator.core.formatters.csv import CsvFormatter
+    from iam_validator.core.formatters.html import HtmlFormatter
+    from iam_validator.core.formatters.json import JsonFormatter
 
     loader = PolicyLoader()
     policies = loader.load_from_path("./policies/")

@@ -95,7 +95,7 @@ def dict_to_python_literal(obj, indent=0, key_quotes='"'):
             return "[]"
 
         # Check if all items are simple (strings, numbers, bools)
-        all_simple = all(isinstance(item, (str, int, float, bool, type(None))) for item in obj)
+        all_simple = all(isinstance(item, str | int | float | bool | type(None)) for item in obj)
 
         if all_simple and len(obj) <= 3:
             # Inline short simple lists
@@ -121,7 +121,7 @@ def dict_to_python_literal(obj, indent=0, key_quotes='"'):
     elif isinstance(obj, bool):
         return "True" if obj else "False"
 
-    elif isinstance(obj, (int, float)):
+    elif isinstance(obj, int | float):
         return str(obj)
 
     elif obj is None:

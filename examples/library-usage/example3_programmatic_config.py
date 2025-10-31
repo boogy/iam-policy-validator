@@ -2,11 +2,11 @@
 """Example 3: Validate with programmatically created configuration."""
 import asyncio
 
-from iam_validator.core.policy_loader import PolicyLoader
-from iam_validator.core.policy_checks import validate_policies, _validate_policy_with_registry
-from iam_validator.core.config_loader import ValidatorConfig, ConfigLoader
-from iam_validator.core.check_registry import create_default_registry
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.check_registry import create_default_registry
+from iam_validator.core.config_loader import ConfigLoader, ValidatorConfig
+from iam_validator.core.policy_checks import _validate_policy_with_registry
+from iam_validator.core.policy_loader import PolicyLoader
 
 
 async def validate_programmatic():

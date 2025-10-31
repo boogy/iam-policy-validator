@@ -2,16 +2,16 @@
 """Example 2: Validate using an explicit configuration file."""
 import asyncio
 
-from iam_validator.core.policy_loader import PolicyLoader
-from iam_validator.core.policy_checks import validate_policies
 from iam_validator.core.config_loader import ConfigLoader
+from iam_validator.core.policy_checks import validate_policies
+from iam_validator.core.policy_loader import PolicyLoader
 
 
 async def validate_with_config():
     """Validate using an explicit configuration file."""
 
     # Load configuration from file
-    config = ConfigLoader.load_config(
+    ConfigLoader.load_config(
         explicit_path="./iam-validator.yaml",
         allow_missing=False  # Fail if config not found
     )
