@@ -11,11 +11,12 @@ This directory contains comprehensive documentation for the IAM Policy Validator
 ## Documentation Index
 
 ### User Guides
+- **[Python Library Usage](python-library-usage.md)** ⭐ - Using IAM Policy Validator as a Python library
 - **[AWS Services Backup](aws-services-backup.md)** - Download AWS services for offline validation
 - **[Configuration Reference](configuration.md)** - YAML configuration options and examples
 - **[Custom Checks Guide](custom-checks.md)** - Creating custom validation rules
 - **[Privilege Escalation Detection](privilege-escalation.md)** - Policy-level privilege escalation patterns
-- **[Smart Filtering](smart-filtering.md)** ⭐ - Automatic IAM policy detection and filtering
+- **[Smart Filtering](smart-filtering.md)** - Automatic IAM policy detection and filtering
 
 ### Integration Guides
 - **[GitHub Actions Workflows](github-actions-workflows.md)** - Complete workflow setup guide with OIDC

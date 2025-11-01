@@ -804,11 +804,12 @@ class AWSServiceFetcher:
 
             service_prefix, action_name = self.parse_action(action)
 
-            # Check global conditions first (fast)
+            # Check if it's a global condition key
+            is_global_key = False
             if condition_key.startswith("aws:"):
                 global_conditions = get_global_conditions()
                 if global_conditions.is_valid_global_key(condition_key):
-                    return True, None
+                    is_global_key = True
                 else:
                     return (
                         False,
@@ -830,6 +831,19 @@ class AWSServiceFetcher:
                     and condition_key in action_detail.action_condition_keys
                 ):
                     return True, None
+
+                # If it's a global key but the action has specific condition keys defined,
+                # check if the global key is explicitly listed in the action's supported keys
+                if is_global_key and action_detail.action_condition_keys is not None:
+                    return (
+                        False,
+                        f"Condition key '{condition_key}' is not supported by action '{action}'. "
+                        f"This action has a specific set of supported condition keys.",
+                    )
+
+            # If it's a global key and action doesn't define specific keys, allow it
+            if is_global_key:
+                return True, None
 
             return (
                 False,

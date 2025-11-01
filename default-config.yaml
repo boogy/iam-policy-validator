@@ -687,8 +687,6 @@ action_condition_enforcement_check:
     # Prevents cross-organization writes for data exfiltration (when used with AWS Organizations)
     - actions:
         - "s3:PutObject"
-        - "s3:DeleteObject"
-        - "s3:CreateBucket"
       # - action_patterns:
       #     - "^s3:Put.*$"
       #     - "^s3:Delete.*$"

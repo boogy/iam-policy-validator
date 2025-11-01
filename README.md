@@ -609,7 +609,9 @@ Use as a library in your Python applications:
 
 ```python
 import asyncio
-from iam_validator.core import PolicyLoader, validate_policies, ReportGenerator
+from iam_validator.core.policy_loader import PolicyLoader
+from iam_validator.core.policy_checks import validate_policies
+from iam_validator.core.report import ReportGenerator
 
 async def main():
     # Load policies
@@ -626,6 +628,10 @@ async def main():
 
 asyncio.run(main())
 ```
+
+**📚 For comprehensive Python library documentation, see:**
+- **[Python Library Usage Guide](docs/python-library-usage.md)** - Complete guide with examples
+- **[Library Examples](examples/library-usage/)** - Runnable code examples
 
 ## Validation Checks
 
