@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Example 3: Validate with programmatically created configuration."""
+
 import asyncio
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
@@ -34,9 +35,7 @@ async def validate_programmatic():
     config = ValidatorConfig(config_dict, use_defaults=True)
 
     # Create registry and apply config
-    registry = create_default_registry(
-        enable_parallel=True, include_builtin_checks=True
-    )
+    registry = create_default_registry(enable_parallel=True, include_builtin_checks=True)
     ConfigLoader.apply_config_to_registry(config, registry)
 
     # Load policies

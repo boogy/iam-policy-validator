@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Quick reference for common IAM Policy Validator library operations."""
+
 import asyncio
 
 from iam_validator.core.policy_checks import validate_policies
@@ -9,6 +10,7 @@ from iam_validator.core.report import ReportGenerator
 # ============================================================================
 # BASIC USAGE
 # ============================================================================
+
 
 async def basic_validation():
     """Simplest validation with defaults."""
@@ -27,6 +29,7 @@ async def basic_validation():
 # WITH CONFIGURATION
 # ============================================================================
 
+
 async def validation_with_config():
     """Validation with YAML configuration."""
     loader = PolicyLoader()
@@ -34,9 +37,7 @@ async def validation_with_config():
 
     # Load and apply config from file
     results = await validate_policies(
-        policies,
-        config_path="./iam-validator.yaml",
-        use_registry=True
+        policies, config_path="./iam-validator.yaml", use_registry=True
     )
 
     return results
@@ -45,6 +46,7 @@ async def validation_with_config():
 # ============================================================================
 # CUSTOM CHECKS
 # ============================================================================
+
 
 async def validation_with_custom_checks():
     """Validation with custom checks from directory."""
@@ -55,7 +57,7 @@ async def validation_with_custom_checks():
         policies,
         config_path="./iam-validator.yaml",
         use_registry=True,
-        custom_checks_dir="./custom_checks"
+        custom_checks_dir="./custom_checks",
     )
 
     return results
@@ -64,6 +66,7 @@ async def validation_with_custom_checks():
 # ============================================================================
 # FILTERING RESULTS
 # ============================================================================
+
 
 async def filter_by_severity():
     """Filter validation results by severity."""
@@ -78,11 +81,13 @@ async def filter_by_severity():
         for issue in result.issues:
             severity = issue.severity.lower()
             if severity in by_severity:
-                by_severity[severity].append({
-                    "file": result.policy_file,
-                    "message": issue.message,
-                    "line": issue.line_number
-                })
+                by_severity[severity].append(
+                    {
+                        "file": result.policy_file,
+                        "message": issue.message,
+                        "line": issue.line_number,
+                    }
+                )
 
     # Print critical issues only
     for item in by_severity["critical"]:
@@ -94,6 +99,7 @@ async def filter_by_severity():
 # ============================================================================
 # MULTIPLE OUTPUT FORMATS
 # ============================================================================
+
 
 async def generate_multiple_formats():
     """Generate reports in multiple formats."""
@@ -130,6 +136,7 @@ async def generate_multiple_formats():
 # BATCH PROCESSING
 # ============================================================================
 
+
 async def batch_validate_directories():
     """Validate multiple directories."""
     directories = ["./iam-policies/", "./s3-policies/", "./lambda-policies/"]
@@ -153,6 +160,7 @@ async def batch_validate_directories():
 # GET STATISTICS
 # ============================================================================
 
+
 async def get_validation_stats():
     """Get detailed statistics from validation."""
     loader = PolicyLoader()
@@ -171,9 +179,9 @@ async def get_validation_stats():
     print(f"Total Issues: {stats.get('total_issues', 0)}")
 
     # Issues by severity
-    if 'issues_by_severity' in stats:
+    if "issues_by_severity" in stats:
         print("\nIssues by Severity:")
-        for severity, count in stats['issues_by_severity'].items():
+        for severity, count in stats["issues_by_severity"].items():
             print(f"  {severity}: {count}")
 
     return stats

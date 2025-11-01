@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Example 1: Basic validation with default configuration."""
+
 import asyncio
 
 from iam_validator.core.policy_checks import validate_policies

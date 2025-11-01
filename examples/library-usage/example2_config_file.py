@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Example 2: Validate using an explicit configuration file."""
+
 import asyncio
 
 from iam_validator.core.config_loader import ConfigLoader
@@ -13,7 +14,7 @@ async def validate_with_config():
     # Load configuration from file
     ConfigLoader.load_config(
         explicit_path="./iam-validator.yaml",
-        allow_missing=False  # Fail if config not found
+        allow_missing=False,  # Fail if config not found
     )
 
     # Load policies
@@ -24,7 +25,7 @@ async def validate_with_config():
     results = await validate_policies(
         policies,
         config_path="./iam-validator.yaml",
-        use_registry=True  # Use new check registry system
+        use_registry=True,  # Use new check registry system
     )
 
     return results
