@@ -211,18 +211,41 @@ run: |
 --format markdown --output report.md
 ```
 
-### Control PR Comments
+### Control GitHub Output
+
+The validator provides **three independent options** for displaying validation results:
 
 ```yaml
-# Post summary comment only (no line-specific comments)
+# 1. PR Summary Comment - Posts to PR conversation
 --github-comment
 
-# Post line-specific review comments
---github-comment --github-review
+# 2. Line-Specific Review Comments - Posts to "Files changed" tab
+--github-review
 
-# No PR comments (validation only)
-# Remove --github-comment flag
+# 3. GitHub Actions Job Summary - Posts to Actions tab
+--github-summary
+
+# All three for maximum visibility
+--github-comment --github-review --github-summary
+
+# Only inline review comments (clean, minimal)
+--github-review
+
+# Only Actions job summary (no PR interaction)
+--github-summary
+
+# PR comment + Actions summary (no inline comments)
+--github-comment --github-summary
+
+# No GitHub output (local/CI validation only)
+# Remove all GitHub flags
 ```
+
+**Review Status Logic:**
+- Review comments use `fail_on_severity` config to determine status
+- If any issues match severities in config → REQUEST_CHANGES
+- Otherwise → COMMENT
+- Default: REQUEST_CHANGES for `error` and `critical` severities
 
 ## Environment Variables
 

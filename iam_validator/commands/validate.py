@@ -3,8 +3,10 @@
 import argparse
 import logging
 import os
+from typing import cast
 
 from iam_validator.commands.base import Command
+from iam_validator.core.models import PolicyType, ValidationReport
 from iam_validator.core.policy_checks import validate_policies
 from iam_validator.core.policy_loader import PolicyLoader
 from iam_validator.core.report import ReportGenerator
@@ -41,8 +43,20 @@ Examples:
   # Generate JSON output
   iam-validator validate --path ./policies/ --format json --output report.json
 
-  # Post to GitHub PR with line comments
-  iam-validator validate --path ./policies/ --github-comment --github-review
+  # Validate resource policies (S3 bucket policies, SNS topics, etc.)
+  iam-validator validate --path ./bucket-policies/ --policy-type RESOURCE_POLICY
+
+  # GitHub integration - all options (PR comment + review comments + job summary)
+  iam-validator validate --path ./policies/ --github-comment --github-review --github-summary
+
+  # Only line-specific review comments (clean, minimal)
+  iam-validator validate --path ./policies/ --github-review
+
+  # Only PR summary comment
+  iam-validator validate --path ./policies/ --github-comment
+
+  # Only GitHub Actions job summary
+  iam-validator validate --path ./policies/ --github-summary
         """
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
@@ -83,15 +97,36 @@ Examples:
         )
 
         parser.add_argument(
+            "--policy-type",
+            "-t",
+            choices=[
+                "IDENTITY_POLICY",
+                "RESOURCE_POLICY",
+                "SERVICE_CONTROL_POLICY",
+                "RESOURCE_CONTROL_POLICY",
+            ],
+            default="IDENTITY_POLICY",
+            help="Type of IAM policy being validated (default: IDENTITY_POLICY). "
+            "Enables policy-type-specific validation (e.g., requiring Principal for resource policies, "
+            "strict RCP requirements for resource control policies)",
+        )
+
+        parser.add_argument(
             "--github-comment",
             action="store_true",
-            help="Post validation results as GitHub PR comment",
+            help="Post summary comment to PR conversation",
         )
 
         parser.add_argument(
             "--github-review",
             action="store_true",
-            help="Create line-specific review comments on PR (requires --github-comment)",
+            help="Create line-specific review comments on PR files",
+        )
+
+        parser.add_argument(
+            "--github-summary",
+            action="store_true",
+            help="Write summary to GitHub Actions job summary (visible in Actions tab)",
         )
 
         parser.add_argument(
@@ -165,11 +200,13 @@ Examples:
         use_registry = not getattr(args, "no_registry", False)
         config_path = getattr(args, "config", None)
         custom_checks_dir = getattr(args, "custom_checks_dir", None)
+        policy_type = cast(PolicyType, getattr(args, "policy_type", "IDENTITY_POLICY"))
         results = await validate_policies(
             policies,
             config_path=config_path,
             use_registry=use_registry,
             custom_checks_dir=custom_checks_dir,
+            policy_type=policy_type,
         )
 
         # Generate report
@@ -201,18 +238,27 @@ Examples:
                 print(output_content)
 
         # Post to GitHub if configured
-        if args.github_comment:
+        if args.github_comment or getattr(args, "github_review", False):
+            from iam_validator.core.config_loader import ConfigLoader
             from iam_validator.core.pr_commenter import PRCommenter
 
+            # Load config to get fail_on_severity setting
+            config = ConfigLoader.load_config(config_path)
+            fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+
             async with GitHubIntegration() as github:
-                commenter = PRCommenter(github)
+                commenter = PRCommenter(github, fail_on_severities=fail_on_severities)
                 success = await commenter.post_findings_to_pr(
                     report,
-                    create_review=getattr(args, "github_review", True),
-                    add_summary_comment=True,
+                    create_review=getattr(args, "github_review", False),
+                    add_summary_comment=args.github_comment,
                 )
                 if not success:
                     logging.error("Failed to post to GitHub PR")
+
+        # Write to GitHub Actions job summary if configured
+        if getattr(args, "github_summary", False):
+            self._write_github_actions_summary(report)
 
         # Return exit code based on validation results
         if args.fail_on_warnings:
@@ -234,12 +280,13 @@ Examples:
         use_registry = not getattr(args, "no_registry", False)
         config_path = getattr(args, "config", None)
         custom_checks_dir = getattr(args, "custom_checks_dir", None)
+        policy_type = cast(PolicyType, getattr(args, "policy_type", "IDENTITY_POLICY"))
 
         all_results = []
         total_processed = 0
 
         # Clean up old review comments at the start (before posting any new ones)
-        if args.github_comment and getattr(args, "github_review", False):
+        if getattr(args, "github_review", False):
             await self._cleanup_old_comments()
 
         logging.info(f"Starting streaming validation from {len(args.paths)} path(s)")
@@ -257,6 +304,7 @@ Examples:
                 config_path=config_path,
                 use_registry=use_registry,
                 custom_checks_dir=custom_checks_dir,
+                policy_type=policy_type,
             )
 
             if results:
@@ -272,7 +320,7 @@ Examples:
                         # Note: validation_success tracks overall status
 
                 # Post to GitHub immediately for this file (progressive PR comments)
-                if args.github_comment and getattr(args, "github_review", False):
+                if getattr(args, "github_review", False):
                     await self._post_file_review(result, args)
 
         if total_processed == 0:
@@ -308,19 +356,28 @@ Examples:
             else:
                 print(output_content)
 
-        # Post summary comment to GitHub
+        # Post summary comment to GitHub (if requested and not already posted per-file reviews)
         if args.github_comment:
+            from iam_validator.core.config_loader import ConfigLoader
             from iam_validator.core.pr_commenter import PRCommenter
 
+            # Load config to get fail_on_severity setting
+            config = ConfigLoader.load_config(config_path)
+            fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+
             async with GitHubIntegration() as github:
-                commenter = PRCommenter(github)
+                commenter = PRCommenter(github, fail_on_severities=fail_on_severities)
                 success = await commenter.post_findings_to_pr(
                     report,
-                    create_review=False,  # Already posted per-file reviews
+                    create_review=False,  # Already posted per-file reviews in streaming mode
                     add_summary_comment=True,
                 )
                 if not success:
                     logging.error("Failed to post summary to GitHub PR")
+
+        # Write to GitHub Actions job summary if configured
+        if getattr(args, "github_summary", False):
+            self._write_github_actions_summary(report)
 
         # Return exit code based on validation results
         if args.fail_on_warnings:
@@ -353,15 +410,23 @@ Examples:
         This provides progressive feedback in PRs as files are processed.
         """
         try:
+            from iam_validator.core.config_loader import ConfigLoader
             from iam_validator.core.pr_commenter import PRCommenter
 
             async with GitHubIntegration() as github:
                 if not github.is_configured():
                     return
 
+                # Load config to get fail_on_severity setting
+                config_path = getattr(args, "config", None)
+                config = ConfigLoader.load_config(config_path)
+                fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+
                 # In streaming mode, don't cleanup comments (we want to keep earlier files)
                 # Cleanup will happen once at the end
-                commenter = PRCommenter(github, cleanup_old_comments=False)
+                commenter = PRCommenter(
+                    github, cleanup_old_comments=False, fail_on_severities=fail_on_severities
+                )
 
                 # Create a mini-report for just this file
                 generator = ReportGenerator()
@@ -375,3 +440,100 @@ Examples:
                 )
         except Exception as e:
             logging.warning(f"Failed to post review for {result.policy_file}: {e}")
+
+    def _write_github_actions_summary(self, report: ValidationReport) -> None:
+        """Write a high-level summary to GitHub Actions job summary.
+
+        This appears in the Actions tab and provides a quick overview without all details.
+        Uses GITHUB_STEP_SUMMARY environment variable.
+
+        Args:
+            report: Validation report to summarize
+        """
+        summary_file = os.getenv("GITHUB_STEP_SUMMARY")
+        if not summary_file:
+            logging.warning(
+                "--github-summary specified but GITHUB_STEP_SUMMARY env var not found. "
+                "This feature only works in GitHub Actions."
+            )
+            return
+
+        try:
+            # Generate high-level summary (no detailed issue list)
+            summary_parts = []
+
+            # Header with status
+            if report.total_issues == 0:
+                summary_parts.append("# ✅ IAM Policy Validation - Passed")
+            elif report.invalid_policies > 0:
+                summary_parts.append("# ❌ IAM Policy Validation - Failed")
+            else:
+                summary_parts.append("# ⚠️ IAM Policy Validation - Security Issues Found")
+
+            summary_parts.append("")
+
+            # Summary table
+            summary_parts.append("## Summary")
+            summary_parts.append("")
+            summary_parts.append("| Metric | Count |")
+            summary_parts.append("|--------|-------|")
+            summary_parts.append(f"| Total Policies | {report.total_policies} |")
+            summary_parts.append(f"| Valid Policies | {report.valid_policies} |")
+            summary_parts.append(f"| Invalid Policies | {report.invalid_policies} |")
+            summary_parts.append(
+                f"| Policies with Security Issues | {report.policies_with_security_issues} |"
+            )
+            summary_parts.append(f"| **Total Issues** | **{report.total_issues}** |")
+
+            # Issue breakdown by severity if there are issues
+            if report.total_issues > 0:
+                summary_parts.append("")
+                summary_parts.append("## Issues by Severity")
+                summary_parts.append("")
+
+                # Count issues by severity
+                severity_counts: dict[str, int] = {}
+                for result in report.results:
+                    for issue in result.issues:
+                        severity_counts[issue.severity] = severity_counts.get(issue.severity, 0) + 1
+
+                # Sort by severity rank (highest first)
+                from iam_validator.core.models import ValidationIssue
+
+                sorted_severities = sorted(
+                    severity_counts.items(),
+                    key=lambda x: ValidationIssue.SEVERITY_RANK.get(x[0], 0),
+                    reverse=True,
+                )
+
+                summary_parts.append("| Severity | Count |")
+                summary_parts.append("|----------|-------|")
+                for severity, count in sorted_severities:
+                    emoji = {
+                        "error": "❌",
+                        "critical": "🔴",
+                        "high": "🟠",
+                        "warning": "⚠️",
+                        "medium": "🟡",
+                        "low": "🔵",
+                        "info": "ℹ️",
+                    }.get(severity, "•")
+                    summary_parts.append(f"| {emoji} {severity.upper()} | {count} |")
+
+            # Add footer with links
+            summary_parts.append("")
+            summary_parts.append("---")
+            summary_parts.append("")
+            summary_parts.append(
+                "📝 For detailed findings, check the PR comments or review the workflow logs."
+            )
+
+            # Write to summary file (append mode)
+            with open(summary_file, "a", encoding="utf-8") as f:
+                f.write("\n".join(summary_parts))
+                f.write("\n")
+
+            logging.info("Wrote summary to GitHub Actions job summary")
+
+        except Exception as e:
+            logging.warning(f"Failed to write GitHub Actions summary: {e}")

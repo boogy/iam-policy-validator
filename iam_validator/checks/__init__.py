@@ -9,6 +9,7 @@ from iam_validator.checks.action_resource_constraint import ActionResourceConstr
 from iam_validator.checks.action_validation import ActionValidationCheck
 from iam_validator.checks.condition_key_validation import ConditionKeyValidationCheck
 from iam_validator.checks.policy_size import PolicySizeCheck
+from iam_validator.checks.principal_validation import PrincipalValidationCheck
 from iam_validator.checks.resource_validation import ResourceValidationCheck
 from iam_validator.checks.security_best_practices import SecurityBestPracticesCheck
 from iam_validator.checks.sid_uniqueness import SidUniquenessCheck
@@ -19,6 +20,7 @@ __all__ = [
     "ActionValidationCheck",
     "ConditionKeyValidationCheck",
     "PolicySizeCheck",
+    "PrincipalValidationCheck",
     "ResourceValidationCheck",
     "SecurityBestPracticesCheck",
     "SidUniquenessCheck",

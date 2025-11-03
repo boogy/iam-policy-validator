@@ -16,6 +16,7 @@ from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckRegistry
 from iam_validator.core.models import (
     IAMPolicy,
+    PolicyType,
     PolicyValidationResult,
     Statement,
     ValidationIssue,
@@ -112,17 +113,30 @@ class PolicyValidator:
             logger.debug(f"Could not find field line in {policy_file}: {e}")
             return None
 
-    async def validate_policy(self, policy: IAMPolicy, policy_file: str) -> PolicyValidationResult:
+    async def validate_policy(
+        self, policy: IAMPolicy, policy_file: str, policy_type: PolicyType = "IDENTITY_POLICY"
+    ) -> PolicyValidationResult:
         """Validate a complete IAM policy.
 
         Args:
             policy: IAM policy to validate
             policy_file: Path to the policy file
+            policy_type: Type of policy (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY)
 
         Returns:
             PolicyValidationResult with all findings
         """
-        result = PolicyValidationResult(policy_file=policy_file, is_valid=True)
+        result = PolicyValidationResult(
+            policy_file=policy_file, is_valid=True, policy_type=policy_type
+        )
+
+        # Apply automatic policy-type validation (not configurable - always runs)
+        from iam_validator.checks import policy_type_validation
+
+        policy_type_issues = await policy_type_validation.execute_policy(
+            policy, policy_file, policy_type=policy_type
+        )
+        result.issues.extend(policy_type_issues)
 
         for idx, statement in enumerate(policy.statement):
             # Get line number for this statement
@@ -460,6 +474,7 @@ async def validate_policies(
     config_path: str | None = None,
     use_registry: bool = True,
     custom_checks_dir: str | None = None,
+    policy_type: PolicyType = "IDENTITY_POLICY",
 ) -> list[PolicyValidationResult]:
     """Validate multiple policies concurrently.
 
@@ -468,6 +483,7 @@ async def validate_policies(
         config_path: Optional path to configuration file
         use_registry: If True, use CheckRegistry system; if False, use legacy validator
         custom_checks_dir: Optional path to directory containing custom checks for auto-discovery
+        policy_type: Type of policy (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY)
 
     Returns:
         List of validation results
@@ -492,7 +508,10 @@ async def validate_policies(
         ) as fetcher:
             validator = PolicyValidator(fetcher)
 
-            tasks = [validator.validate_policy(policy, file_path) for file_path, policy in policies]
+            tasks = [
+                validator.validate_policy(policy, file_path, policy_type)
+                for file_path, policy in policies
+            ]
 
             results = await asyncio.gather(*tasks)
 
@@ -560,7 +579,9 @@ async def validate_policies(
         aws_services_dir=aws_services_dir,
     ) as fetcher:
         tasks = [
-            _validate_policy_with_registry(policy, file_path, registry, fetcher, fail_on_severities)
+            _validate_policy_with_registry(
+                policy, file_path, registry, fetcher, fail_on_severities, policy_type
+            )
             for file_path, policy in policies
         ]
 
@@ -575,6 +596,7 @@ async def _validate_policy_with_registry(
     registry: CheckRegistry,
     fetcher: AWSServiceFetcher,
     fail_on_severities: list[str] | None = None,
+    policy_type: PolicyType = "IDENTITY_POLICY",
 ) -> PolicyValidationResult:
     """Validate a single policy using the CheckRegistry system.
 
@@ -584,15 +606,26 @@ async def _validate_policy_with_registry(
         registry: CheckRegistry instance with configured checks
         fetcher: AWS service fetcher instance
         fail_on_severities: List of severity levels that should cause validation to fail
+        policy_type: Type of policy (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY)
 
     Returns:
         PolicyValidationResult with all findings
     """
-    result = PolicyValidationResult(policy_file=policy_file, is_valid=True)
+    result = PolicyValidationResult(policy_file=policy_file, is_valid=True, policy_type=policy_type)
+
+    # Apply automatic policy-type validation (not configurable - always runs)
+    from iam_validator.checks import policy_type_validation
+
+    policy_type_issues = await policy_type_validation.execute_policy(
+        policy, policy_file, policy_type=policy_type
+    )
+    result.issues.extend(policy_type_issues)
 
     # Run policy-level checks first (checks that need to see the entire policy)
     # These checks examine relationships between statements, not individual statements
-    policy_level_issues = await registry.execute_policy_checks(policy, policy_file, fetcher)
+    policy_level_issues = await registry.execute_policy_checks(
+        policy, policy_file, fetcher, policy_type
+    )
     result.issues.extend(policy_level_issues)
 
     # Execute all statement-level checks for each statement

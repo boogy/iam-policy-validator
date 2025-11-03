@@ -275,6 +275,7 @@ class SecurityBestPracticesCheck(PolicyCheck):
         policy_file: str,
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
+        **kwargs,
     ) -> list[ValidationIssue]:
         """
         Execute policy-level security checks.

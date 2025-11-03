@@ -1,0 +1,32 @@
+# Relaxed Principal Validation Configuration
+# This config only blocks fully public access
+
+settings:
+  enable_builtin_checks: true
+  fail_on_severity:
+    - error
+    - critical
+
+principal_validation_check:
+  enabled: true
+  severity: medium  # Lower severity for relaxed mode
+
+  # Only block fully public access
+  blocked_principals:
+    - "*"
+
+  # No whitelist (allow all except blocked)
+  allowed_principals: []
+
+  # No condition requirements
+  require_conditions_for: {}
+
+  # Allow AWS service principals
+  allowed_service_principals:
+    - "cloudfront.amazonaws.com"
+    - "s3.amazonaws.com"
+    - "sns.amazonaws.com"
+    - "apigateway.amazonaws.com"
+    - "lambda.amazonaws.com"
+    - "logs.amazonaws.com"
+    - "events.amazonaws.com"

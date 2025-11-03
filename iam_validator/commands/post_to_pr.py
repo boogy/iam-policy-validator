@@ -68,12 +68,19 @@ Examples:
             help="Don't add summary comment",
         )
 
+        parser.add_argument(
+            "--config",
+            "-c",
+            help="Path to configuration file (for fail_on_severity setting)",
+        )
+
     async def execute(self, args: argparse.Namespace) -> int:
         """Execute the post-to-pr command."""
         success = await post_report_to_pr(
             args.report,
             create_review=args.create_review,
             add_summary=args.add_summary,
+            config_path=getattr(args, "config", None),
         )
 
         return 0 if success else 1

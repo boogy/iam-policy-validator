@@ -20,17 +20,25 @@ class PRCommenter:
     # Identifier for bot comments (used for cleanup/updates)
     BOT_IDENTIFIER = "🤖 IAM Policy Validator"
     SUMMARY_IDENTIFIER = "<!-- iam-policy-validator-summary -->"
-    REVIEW_IDENTIFIER = "🤖 IAM Policy Validator"
+    REVIEW_IDENTIFIER = "<!-- iam-policy-validator-review -->"
 
-    def __init__(self, github: GitHubIntegration | None = None, cleanup_old_comments: bool = True):
+    def __init__(
+        self,
+        github: GitHubIntegration | None = None,
+        cleanup_old_comments: bool = True,
+        fail_on_severities: list[str] | None = None,
+    ):
         """Initialize PR commenter.
 
         Args:
             github: GitHubIntegration instance (will create one if None)
             cleanup_old_comments: Whether to clean up old bot comments before posting new ones
+            fail_on_severities: List of severity levels that should trigger REQUEST_CHANGES
+                               (e.g., ["error", "critical", "high"])
         """
         self.github = github
         self.cleanup_old_comments = cleanup_old_comments
+        self.fail_on_severities = fail_on_severities or ["error", "critical"]
 
     async def post_findings_to_pr(
         self,
@@ -136,17 +144,22 @@ class PRCommenter:
         for file_comments in comments_by_file.values():
             all_comments.extend(file_comments)
 
-        # Determine review event based on issues
-        has_errors = any(
-            issue.severity == "error" for result in report.results for issue in result.issues
+        # Determine review event based on fail_on_severities config
+        # Check if any issue has a severity that should trigger REQUEST_CHANGES
+        has_blocking_issues = any(
+            issue.severity in self.fail_on_severities
+            for result in report.results
+            for issue in result.issues
         )
 
-        event = ReviewEvent.REQUEST_CHANGES if has_errors else ReviewEvent.COMMENT
+        # Set review event: request changes if any blocking issues, else comment
+        event = ReviewEvent.REQUEST_CHANGES if has_blocking_issues else ReviewEvent.COMMENT
 
-        # Post review with comments (include identifier in review body for potential future cleanup)
+        # Post review with comments (include identifier in review body for cleanup)
         review_body = (
             f"{self.REVIEW_IDENTIFIER}\n\n"
-            f"## IAM Policy Validation Results\n\n"
+            f"🤖 **IAM Policy Validator**\n\n"
+            f"## Validation Results\n\n"
             f"Found {report.total_issues} issues across {report.total_policies} policies.\n"
             f"See inline comments for details."
         )
@@ -279,6 +292,7 @@ async def post_report_to_pr(
     report_file: str,
     create_review: bool = True,
     add_summary: bool = True,
+    config_path: str | None = None,
 ) -> bool:
     """Post a JSON report to a PR.
 
@@ -286,6 +300,7 @@ async def post_report_to_pr(
         report_file: Path to JSON report file
         create_review: Whether to create line-specific review
         add_summary: Whether to add summary comment
+        config_path: Optional path to config file (to get fail_on_severity)
 
     Returns:
         True if successful, False otherwise
@@ -297,9 +312,15 @@ async def post_report_to_pr(
 
         report = ValidationReport.model_validate(report_data)
 
+        # Load config to get fail_on_severity setting
+        from iam_validator.core.config_loader import ConfigLoader
+
+        config = ConfigLoader.load_config(config_path)
+        fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+
         # Post to PR
         async with GitHubIntegration() as github:
-            commenter = PRCommenter(github)
+            commenter = PRCommenter(github, fail_on_severities=fail_on_severities)
             return await commenter.post_findings_to_pr(
                 report,
                 create_review=create_review,

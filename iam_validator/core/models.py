@@ -4,9 +4,17 @@ This module defines Pydantic models for AWS service information,
 IAM policies, and validation results.
 """
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# Policy Type Constants
+PolicyType = Literal[
+    "IDENTITY_POLICY",
+    "RESOURCE_POLICY",
+    "SERVICE_CONTROL_POLICY",
+    "RESOURCE_CONTROL_POLICY",
+]
 
 
 # AWS Service Reference Models
@@ -202,9 +210,10 @@ class ValidationIssue(BaseModel):
 
         parts = []
 
-        # Add identifier for bot comment cleanup
+        # Add identifier for bot comment cleanup (HTML comment - not visible to users)
         if include_identifier:
-            parts.append("🤖 IAM Policy Validator\n")
+            parts.append("<!-- iam-policy-validator-review -->\n")
+            parts.append("🤖 **IAM Policy Validator**\n")
 
         # Build statement context for better navigation
         statement_context = f"Statement[{self.statement_index}]"
@@ -240,6 +249,7 @@ class PolicyValidationResult(BaseModel):
 
     policy_file: str
     is_valid: bool
+    policy_type: PolicyType = "IDENTITY_POLICY"
     issues: list[ValidationIssue] = Field(default_factory=list)
     actions_checked: int = 0
     condition_keys_checked: int = 0

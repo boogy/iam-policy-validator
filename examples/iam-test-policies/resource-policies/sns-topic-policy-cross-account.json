@@ -1,0 +1,20 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowCrossAccountPublish",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": [
+          "arn:aws:iam::123456789012:root",
+          "arn:aws:iam::987654321098:root"
+        ]
+      },
+      "Action": [
+        "SNS:Publish",
+        "SNS:Subscribe"
+      ],
+      "Resource": "arn:aws:sns:us-east-1:123456789012:my-topic"
+    }
+  ]
+}

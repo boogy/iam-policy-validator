@@ -436,10 +436,11 @@ See [default-config.yaml](default-config.yaml) for a complete configuration exam
 | `recursive`        | Recursively search directories for policy files             | No       | `true`  |
 
 #### GitHub Integration
-| Input           | Description                                | Required | Default |
-| --------------- | ------------------------------------------ | -------- | ------- |
-| `post-comment`  | Post validation results as PR comment      | No       | `true`  |
-| `create-review` | Create line-specific review comments on PR | No       | `true`  |
+| Input              | Description                                          | Required | Default |
+| ------------------ | ---------------------------------------------------- | -------- | ------- |
+| `post-comment`     | Post validation summary as PR conversation comment   | No       | `true`  |
+| `create-review`    | Create line-specific review comments on PR files     | No       | `true`  |
+| `github-summary`   | Write summary to GitHub Actions job summary (Actions tab) | No       | `false` |
 
 #### Output Options
 | Input         | Description                                                                      | Required | Default   |
@@ -452,7 +453,7 @@ See [default-config.yaml](default-config.yaml) for a complete configuration exam
 | ------------------------ | --------------------------------------------------------------------------- | -------- | ----------------- |
 | `use-access-analyzer`    | Use AWS IAM Access Analyzer for validation                                  | No       | `false`           |
 | `access-analyzer-region` | AWS region for Access Analyzer                                              | No       | `us-east-1`       |
-| `policy-type`            | Policy type: `IDENTITY_POLICY`, `RESOURCE_POLICY`, `SERVICE_CONTROL_POLICY` | No       | `IDENTITY_POLICY` |
+| `policy-type`            | Policy type: `IDENTITY_POLICY`, `RESOURCE_POLICY`, `SERVICE_CONTROL_POLICY`, `RESOURCE_CONTROL_POLICY` | No       | `IDENTITY_POLICY` |
 | `run-all-checks`         | Run custom checks after Access Analyzer (sequential mode)                   | No       | `false`           |
 
 #### Custom Policy Checks (Access Analyzer)
@@ -498,6 +499,12 @@ iam-validator validate --path ./policies/
 # Validate multiple paths
 iam-validator validate --path policy1.json --path ./policies/ --path ./more-policies/
 
+# Validate resource policies (S3 bucket policies, SNS topics, etc.)
+iam-validator validate --path ./bucket-policies/ --policy-type RESOURCE_POLICY
+
+# Validate AWS Organizations Resource Control Policies (RCPs)
+iam-validator validate --path ./rcps/ --policy-type RESOURCE_CONTROL_POLICY
+
 # Generate JSON output
 iam-validator validate --path ./policies/ --format json --output report.json
 
@@ -513,6 +520,106 @@ iam-validator analyze \
   --github-comment \
   --run-all-checks \
   --github-review
+```
+
+### Policy Type Validation
+
+The validator supports four AWS policy types, each with specific validation rules:
+
+#### 🔷 IDENTITY_POLICY (Default)
+Standard IAM policies attached to users, groups, or roles.
+
+**Requirements:**
+- Should NOT have `Principal` element (implicit - the attached entity)
+- Must have `Action` and `Resource` elements
+
+**Example:**
+```bash
+iam-validator validate --path ./user-policies/ --policy-type IDENTITY_POLICY
+```
+
+#### 🔶 RESOURCE_POLICY
+Policies attached to AWS resources (S3 buckets, SNS topics, KMS keys, etc.).
+
+**Requirements:**
+- MUST have `Principal` element (who can access)
+- Must have `Action`, `Effect`, and `Resource` elements
+- Can use configurable security checks for principal validation
+
+**Example:**
+```bash
+iam-validator validate --path ./bucket-policies/ --policy-type RESOURCE_POLICY
+```
+
+**Advanced Principal Validation:**
+```yaml
+# config.yaml
+principal_validation_check:
+  enabled: true
+  severity: high
+  # Block public access
+  blocked_principals: ["*"]
+  # Or require specific conditions for public access
+  require_conditions_for:
+    "*":
+      - "aws:SourceArn"
+      - "aws:SourceAccount"
+```
+
+#### 🔷 SERVICE_CONTROL_POLICY
+AWS Organizations SCPs that set permission guardrails.
+
+**Requirements:**
+- Must NOT have `Principal` element (applies to all principals in OU)
+- Typically uses `Deny` effect for guardrails
+- Must have `Action` and `Resource` elements
+
+**Example:**
+```bash
+iam-validator validate --path ./scps/ --policy-type SERVICE_CONTROL_POLICY
+```
+
+#### 🆕 RESOURCE_CONTROL_POLICY
+AWS Organizations RCPs for resource-level access control (released 2024).
+
+**Strict Requirements:**
+- `Effect` MUST be `Deny` (only AWS-managed `RCPFullAWSAccess` can use `Allow`)
+- `Principal` MUST be exactly `"*"` (use `Condition` to restrict)
+- `Action` cannot use `"*"` alone (must be service-specific like `"s3:*"`)
+- Only **5 supported services**: `s3`, `sts`, `sqs`, `secretsmanager`, `kms`
+- `NotAction` and `NotPrincipal` are NOT supported
+- Must have `Resource` or `NotResource` element
+
+**Example:**
+```bash
+iam-validator validate --path ./rcps/ --policy-type RESOURCE_CONTROL_POLICY
+```
+
+**Valid RCP:**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "EnforceEncryptionInTransit",
+    "Effect": "Deny",
+    "Principal": "*",
+    "Action": ["s3:*", "sqs:*"],
+    "Resource": "*",
+    "Condition": {
+      "BoolIfExists": {
+        "aws:SecureTransport": "false"
+      }
+    }
+  }]
+}
+```
+
+**What the validator catches:**
+```
+✓ Effect is "Deny" (required for RCPs)
+✓ Principal is "*" (required - restrictions via Condition)
+✓ Actions from supported services (s3, sqs)
+✓ Uses Condition to scope the deny
 ```
 
 ### Custom Policy Checks
@@ -702,6 +809,44 @@ Identifies potential security risks:
 
 ## GitHub Integration Features
 
+### Flexible Comment Options
+
+The validator provides **three independent ways** to display validation results in GitHub:
+
+#### 1. **PR Summary Comment** (`--github-comment`)
+Posts a high-level summary to the PR conversation with:
+- Overall metrics (total policies, issues, severities)
+- Grouped findings by file
+- Detailed issue descriptions with suggestions
+
+#### 2. **Line-Specific Review Comments** (`--github-review`)
+Creates inline review comments on the "Files changed" tab:
+- Comments appear directly on problematic lines
+- Includes rich context (examples, suggestions)
+- Automatically cleaned up on subsequent runs
+- Review status (REQUEST_CHANGES or COMMENT) based on `fail_on_severity` config
+
+#### 3. **GitHub Actions Job Summary** (`--github-summary`)
+Writes a high-level overview to the Actions tab:
+- Visible in workflow run summary
+- Shows key metrics and severity breakdown
+- Clean dashboard view without overwhelming details
+
+**Mix and Match:** Use any combination of these options:
+```bash
+# All three for maximum visibility
+--github-comment --github-review --github-summary
+
+# Only line-specific review comments (clean, minimal)
+--github-review
+
+# Only PR summary comment
+--github-comment
+
+# Only Actions job summary
+--github-summary
+```
+
 ### Smart PR Comment Management
 
 The validator intelligently manages PR comments to keep your PRs clean:
@@ -715,8 +860,9 @@ The validator intelligently manages PR comments to keep your PRs clean:
 **Behavior:**
 - ✅ **No Duplicates**: Summary comments are updated, not duplicated
 - ✅ **Clean PR**: Old review comments automatically deleted before new validation
-- ✅ **Identifiable**: All bot comments tagged with `🤖 IAM Policy Validator`
+- ✅ **Identifiable**: All bot comments use HTML identifiers (invisible to users)
 - ✅ **Progressive**: In streaming mode, comments appear file-by-file
+- ✅ **Smart Review Status**: Uses `fail_on_severity` config to determine REQUEST_CHANGES vs COMMENT
 
 **Example:**
 ```

@@ -1,0 +1,33 @@
+# Public Access with Conditions Configuration
+# Allows public access (*) but requires strict conditions
+
+settings:
+  enable_builtin_checks: true
+  fail_on_severity:
+    - error
+    - critical
+    - high
+
+principal_validation_check:
+  enabled: true
+  severity: high
+
+  # Don't block public access - we'll require conditions instead
+  blocked_principals: []
+
+  # No whitelist
+  allowed_principals: []
+
+  # Require conditions for public access
+  require_conditions_for:
+    "*":
+      - "aws:SourceArn"  # Must specify source
+      - "aws:SourceAccount"  # Must specify account
+
+  # Allow AWS service principals
+  allowed_service_principals:
+    - "cloudfront.amazonaws.com"
+    - "s3.amazonaws.com"
+    - "sns.amazonaws.com"
+    - "apigateway.amazonaws.com"
+    - "lambda.amazonaws.com"
