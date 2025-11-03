@@ -1,13 +1,17 @@
-"""Statement ID (SID) uniqueness check.
+"""Statement ID (SID) uniqueness and format check.
 
-This check validates that Statement IDs (Sids) are unique within a policy.
+This check validates that Statement IDs (Sids):
+1. Are unique within a policy
+2. Follow AWS naming requirements (alphanumeric, hyphens, underscores only - no spaces)
+
 According to AWS best practices, while not strictly required, having unique SIDs
 makes it easier to reference specific statements and improves policy maintainability.
 
 This is implemented as a policy-level check that runs once when processing the first
-statement, examining all statements in the policy to find duplicates.
+statement, examining all statements in the policy to find duplicates and format issues.
 """
 
+import re
 from collections import Counter
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
@@ -16,21 +20,54 @@ from iam_validator.core.models import IAMPolicy, Statement, ValidationIssue
 
 
 def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[ValidationIssue]:
-    """Implementation of SID uniqueness checking.
+    """Implementation of SID uniqueness and format checking.
 
     Args:
         policy: IAM policy to validate
         severity: Severity level for issues found
 
     Returns:
-        List of ValidationIssue objects for duplicate SIDs
+        List of ValidationIssue objects for duplicate or invalid SIDs
     """
     issues: list[ValidationIssue] = []
 
-    # Collect all SIDs (ignoring None/empty values)
+    # AWS SID requirements: alphanumeric characters, hyphens, and underscores only
+    # No spaces allowed
+    sid_pattern = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+    # Collect all SIDs (ignoring None/empty values) and check format
     sids_with_indices: list[tuple[str, int]] = []
     for idx, statement in enumerate(policy.statement):
         if statement.sid:  # Only check statements that have a SID
+            # Check SID format
+            if not sid_pattern.match(statement.sid):
+                # Identify the issue
+                if " " in statement.sid:
+                    issue_msg = f"Statement ID '{statement.sid}' contains spaces, which are not allowed by AWS"
+                    suggestion = (
+                        f"Remove spaces from the SID. Example: '{statement.sid.replace(' ', '')}'"
+                    )
+                else:
+                    invalid_chars = "".join(
+                        set(c for c in statement.sid if not c.isalnum() and c not in "_-")
+                    )
+                    issue_msg = f"Statement ID '{statement.sid}' contains invalid characters: {invalid_chars}"
+                    suggestion = (
+                        "SIDs must contain only alphanumeric characters, hyphens, and underscores"
+                    )
+
+                issues.append(
+                    ValidationIssue(
+                        severity="error",  # Invalid SID format is an error
+                        statement_sid=statement.sid,
+                        statement_index=idx,
+                        issue_type="invalid_sid_format",
+                        message=issue_msg,
+                        suggestion=suggestion,
+                        line_number=statement.line_number,
+                    )
+                )
+
             sids_with_indices.append((statement.sid, idx))
 
     # Find duplicates
@@ -76,7 +113,7 @@ class SidUniquenessCheck(PolicyCheck):
 
     @property
     def description(self) -> str:
-        return "Validates that Statement IDs (Sids) are unique within the policy"
+        return "Validates that Statement IDs (Sids) are unique and follow AWS naming requirements (no spaces)"
 
     @property
     def default_severity(self) -> str:
@@ -113,6 +150,7 @@ class SidUniquenessCheck(PolicyCheck):
         policy_file: str,
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
+        **kwargs,
     ) -> list[ValidationIssue]:
         """Execute the SID uniqueness check on the entire policy.
 

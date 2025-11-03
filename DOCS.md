@@ -521,8 +521,12 @@ Options:
   --batch-size BATCH_SIZE       Number of policies to process per batch (default: 10, only with --stream)
   --no-recursive                Don't recursively search directories
   --fail-on-warnings            Fail validation if warnings are found (default: only fail on errors)
-  --github-comment              Post validation results as GitHub PR comment
-  --github-review               Create line-specific review comments on PR (requires --github-comment)
+  --policy-type, -t {IDENTITY_POLICY,RESOURCE_POLICY,SERVICE_CONTROL_POLICY}
+                                Type of IAM policy being validated (default: IDENTITY_POLICY)
+                                Enables policy-type-specific validation (e.g., requiring Principal for resource policies)
+  --github-comment              Post summary comment to PR conversation
+  --github-review               Create line-specific review comments on PR files
+  --github-summary              Write summary to GitHub Actions job summary (visible in Actions tab)
   --config CONFIG, -c CONFIG    Path to configuration file (default: auto-discover iam-validator.yaml)
   --custom-checks-dir DIR       Path to directory containing custom checks for auto-discovery
   --no-registry                 Use legacy validation (disable check registry system)
@@ -544,8 +548,52 @@ iam-validator validate --path ./policies/ --format enhanced
 # Streaming mode for large policy sets
 iam-validator validate --path ./policies/ --stream
 
-# GitHub PR integration
-iam-validator validate --path ./policies/ --github-comment --github-review
+# GitHub integration - all options (PR comment + review comments + job summary)
+iam-validator validate --path ./policies/ --github-comment --github-review --github-summary
+
+# Only line-specific review comments (clean, minimal)
+iam-validator validate --path ./policies/ --github-review
+
+# Only PR summary comment
+iam-validator validate --path ./policies/ --github-comment
+
+# Only GitHub Actions job summary
+iam-validator validate --path ./policies/ --github-summary
+
+# Validate resource policies (e.g., S3 bucket policies, SNS topics)
+iam-validator validate --path ./bucket-policies/ --policy-type RESOURCE_POLICY
+```
+
+### Policy Type Validation
+
+The `--policy-type` flag enables policy-type-specific validation:
+
+**IDENTITY_POLICY** (default):
+- Policies attached to IAM users, groups, or roles
+- Should NOT contain Principal element
+- Tool warns if Principal is present
+
+**RESOURCE_POLICY**:
+- Policies attached to AWS resources (S3 buckets, SNS topics, etc.)
+- MUST contain Principal element in all statements
+- Tool errors if Principal is missing
+
+**SERVICE_CONTROL_POLICY**:
+- AWS Organizations SCPs
+- MUST NOT contain Principal element
+- Tool errors if Principal is present
+
+**Examples:**
+
+```bash
+# Validate S3 bucket policy (resource policy)
+iam-validator validate --path bucket-policy.json --policy-type RESOURCE_POLICY
+
+# Validate IAM role policy (identity policy - default)
+iam-validator validate --path role-policy.json --policy-type IDENTITY_POLICY
+
+# Validate AWS Organizations SCP
+iam-validator validate --path scp.json --policy-type SERVICE_CONTROL_POLICY
 ```
 
 ### `analyze` Command
@@ -566,8 +614,9 @@ Options:
   --output OUTPUT, -o OUTPUT    Output file path (only for json/markdown formats)
   --no-recursive                Don't recursively search directories
   --fail-on-warnings            Fail validation if warnings are found (default: only fail on errors)
-  --github-comment              Post validation results as GitHub PR comment
-  --github-review               Create line-specific review comments on PR (requires --github-comment)
+  --github-comment              Post summary comment to PR conversation
+  --github-review               Create line-specific review comments on PR files
+  --github-summary              Write summary to GitHub Actions job summary (visible in Actions tab)
   --run-all-checks              Run full validation checks if Access Analyzer passes
   --verbose, -v                 Enable verbose logging
 
@@ -617,6 +666,7 @@ Options:
   --no-review                   Don't create line-specific review comments
   --add-summary                 Add summary comment (default: True)
   --no-summary                  Don't add summary comment
+  --config, -c CONFIG           Path to configuration file (for fail_on_severity setting)
 ```
 
 **Examples:**
@@ -668,6 +718,112 @@ iam-validator cache prefetch
 
 # Show cache directory location
 iam-validator cache location
+```
+
+---
+
+## GitHub Integration
+
+The IAM Policy Validator provides flexible GitHub integration with **three independent options** for displaying validation results:
+
+### 1. PR Summary Comment (`--github-comment`)
+
+Posts a high-level summary to the PR conversation:
+- Overall metrics (total policies, issues, severities)
+- Grouped findings by file
+- Detailed issue descriptions with suggestions and examples
+- Updated on subsequent runs (no duplicates)
+
+**Example:**
+```bash
+iam-validator validate --path ./policies/ --github-comment
+```
+
+### 2. Line-Specific Review Comments (`--github-review`)
+
+Creates inline review comments on the "Files changed" tab:
+- Comments appear directly on problematic lines in the diff
+- Includes rich context (examples, suggestions from config)
+- Automatically cleaned up on subsequent runs
+- Review status (REQUEST_CHANGES or COMMENT) based on `fail_on_severity` config
+- Works independently of `--github-comment`
+
+**Example:**
+```bash
+iam-validator validate --path ./policies/ --github-review
+```
+
+**Review Status Logic:**
+- If any issues match severities in `fail_on_severity` config → REQUEST_CHANGES
+- Otherwise → COMMENT
+- Default: REQUEST_CHANGES for `error` and `critical` severities
+
+### 3. GitHub Actions Job Summary (`--github-summary`)
+
+Writes a high-level overview to the Actions tab:
+- Visible in workflow run summary (not in PR conversation)
+- Shows key metrics and severity breakdown
+- Clean dashboard view without overwhelming details
+- Perfect for quick status checks
+
+**Example:**
+```bash
+iam-validator validate --path ./policies/ --github-summary
+```
+
+### Mix and Match Options
+
+All three options are **independent** and can be used in any combination:
+
+```bash
+# All three for maximum visibility
+iam-validator validate --path ./policies/ \
+  --github-comment \
+  --github-review \
+  --github-summary
+
+# Only line-specific review comments (clean, minimal)
+iam-validator validate --path ./policies/ --github-review
+
+# Only PR summary + Actions summary (no inline comments)
+iam-validator validate --path ./policies/ --github-comment --github-summary
+
+# Only Actions summary (no PR interaction)
+iam-validator validate --path ./policies/ --github-summary
+```
+
+### Comment Management
+
+**Automatic Cleanup:**
+- Old review comments are automatically deleted before new runs
+- Summary comments are updated (not duplicated)
+- All bot comments use HTML identifiers (invisible to users)
+
+**Streaming Mode:**
+- In CI environments, streaming is auto-enabled
+- Review comments appear progressively as files are validated
+- Provides immediate feedback during long validation runs
+
+### Required Environment Variables
+
+```yaml
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GITHUB_REPOSITORY: ${{ github.repository }}
+  GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+```
+
+For `--github-summary`, also requires:
+- `GITHUB_STEP_SUMMARY` (automatically provided by GitHub Actions)
+
+### Permissions
+
+Ensure your workflow has the required permissions:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write  # Required for --github-comment and --github-review
 ```
 
 ---

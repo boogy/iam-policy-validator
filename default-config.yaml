@@ -81,7 +81,7 @@ settings:
   fail_on_severity:
     - error # IAM policy validity errors
     - critical # Critical security issues
-    # - high     # Uncomment to fail on high security issues
+    - high # Uncomment to fail on high security issues
     # - warning  # Uncomment to fail on IAM validity warnings
 
 # ============================================================================
@@ -95,7 +95,11 @@ settings:
 sid_uniqueness_check:
   enabled: true
   severity: error
-  description: "Validates that Statement IDs (Sids) are unique within the policy"
+  description: "Validates that Statement IDs (Sids) are unique and follow AWS naming requirements"
+  # AWS SID requirements:
+  # - Must be unique within the policy (duplicate_sid)
+  # - Must contain only alphanumeric characters, hyphens, and underscores (invalid_sid_format)
+  # - No spaces or special characters allowed
 
 # Validate policy size against AWS limits
 policy_size_check:
@@ -139,6 +143,56 @@ resource_validation_check:
   # Regex pattern for ARN validation
   # Pattern allows wildcards (*) in region and account fields
   arn_pattern: "^arn:(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f):[a-z0-9\\-]+:[a-z0-9\\-*]*:[0-9*]*:.+$"
+
+# Validate principals in resource policies
+# This check validates Principal elements in resource-based policies (S3 buckets, SNS topics, etc.)
+# Only runs when --policy-type RESOURCE_POLICY is specified
+principal_validation_check:
+  enabled: true
+  severity: high # Security issue, not IAM validity error
+  description: "Validates Principal elements in resource policies for security best practices"
+
+  # Block dangerous/public principals
+  # These principals should never be allowed in your resource policies
+  blocked_principals:
+    - "*" # Public access to everyone
+    # - "arn:aws:iam::*:root"  # All AWS accounts (uncomment to block)
+
+  # Allow only specific principals (optional - leave empty to allow all except blocked)
+  # When specified, ONLY these principals are allowed (whitelist mode)
+  # Supports patterns with wildcards
+  allowed_principals:
+    []
+    # Examples:
+    # - "arn:aws:iam::123456789012:root"  # Specific account
+    # - "arn:aws:iam::123456789012:role/*"  # All roles in account
+    # - "arn:aws:iam::*:role/OrganizationAccountAccessRole"  # Specific role in any account
+
+  # Require conditions for specific principals
+  # These principals must have conditions to limit their access
+  require_conditions_for:
+    # Principal pattern -> Required condition keys
+    "*":
+      - "aws:SourceArn" # Public access must be limited by source ARN
+      - "aws:SourceAccount" # Public access must be limited by source account
+    # "arn:aws:iam::*:root":
+    #   - "aws:PrincipalOrgID"  # Cross-account access must be from same org
+
+  # Organization validation (optional)
+  # Ensure principals belong to your AWS Organization
+  # require_organization_principals: true
+  # allowed_organization_ids:
+  #   - "o-123456789"
+
+  # Service principals that are always allowed (built-in whitelist)
+  # These AWS service principals are commonly used and considered safe
+  allowed_service_principals:
+    - "cloudfront.amazonaws.com"
+    - "s3.amazonaws.com"
+    - "sns.amazonaws.com"
+    - "lambda.amazonaws.com"
+    - "logs.amazonaws.com"
+    - "events.amazonaws.com"
 
 # Validate resource constraints for actions
 # This check ensures that actions without required resource types (account-level operations)
@@ -660,7 +714,7 @@ action_condition_enforcement_check:
     # For example, "iam:P*" will be detected because it grants PutUserPolicy, PutRolePolicy, etc.
     - actions:
         - "iam:CreateRole"
-        - "iam:Put*Policy*" # Wildcard: any put policy action
+        - "iam:PutRolePolicy*" # Wildcard: any put role policy action
         - "iam:PutUserPolicy"
         - "iam:PutRolePolicy"
         - "iam:Attach*Policy*" # Wildcard: any attach policy action
@@ -714,12 +768,12 @@ action_condition_enforcement_check:
     #       expected_value: "true"
 
     # All S3 operations must use HTTPS (optional - uncomment if needed)
-    - action_patterns:
-        - "^s3:.*"
-      required_conditions:
-        - condition_key: "aws:SecureTransport"
-          description: "Require HTTPS for all S3 operations"
-          expected_value: true
+    # - action_patterns:
+    #     - "^s3:.*"
+    #   required_conditions:
+    #     - condition_key: "aws:SecureTransport"
+    #       description: "Require HTTPS for all S3 operations"
+    #       expected_value: true
 
     # EC2 instances must be in specific VPCs (optional - uncomment and customize)
     # - actions:
@@ -821,14 +875,21 @@ action_condition_enforcement_check:
     #   description: "These highly sensitive actions are forbidden in this policy"
 
     # Example 2: Ensure insecure transport is never explicitly allowed
-    # - actions:
-    #     - "s3:GetObject"
-    #     - "s3:PutObject"
-    #   required_conditions:
-    #     none_of:
-    #       - condition_key: "aws:SecureTransport"
-    #         expected_value: false
-    #         description: "Never allow insecure transport to be explicitly permitted"
+    - actions:
+        - "s3:GetObject"
+        - "s3:PutObject"
+      required_conditions:
+        none_of:
+          - condition_key: "aws:SecureTransport"
+            expected_value: false
+            description: "Never allow insecure transport to be explicitly permitted"
+            example: |
+              # Set this condition to true to enforce secure transport or remove it entirely
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "true"
+                }
+              }
 
     # Example 3: Prevent overly permissive IP ranges
     # - action_patterns:

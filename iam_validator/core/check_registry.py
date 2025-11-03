@@ -98,6 +98,7 @@ class PolicyCheck(ABC):
         policy_file: str,
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
+        **kwargs,
     ) -> list[ValidationIssue]:
         """
         Execute the check on the entire policy (optional method).
@@ -113,6 +114,7 @@ class PolicyCheck(ABC):
             policy_file: Path to the policy file (for context/reporting)
             fetcher: AWS service fetcher for validation against AWS APIs
             config: Configuration for this check instance
+            **kwargs: Additional context (policy_type, etc.)
 
         Returns:
             List of ValidationIssue objects found by this check
@@ -353,6 +355,7 @@ class CheckRegistry:
         policy: "IAMPolicy",
         policy_file: str,
         fetcher: AWSServiceFetcher,
+        policy_type: str = "IDENTITY_POLICY",
     ) -> list[ValidationIssue]:
         """
         Execute all enabled policy-level checks.
@@ -364,6 +367,7 @@ class CheckRegistry:
             policy: The complete IAM policy to validate
             policy_file: Path to the policy file (for context/reporting)
             fetcher: AWS service fetcher for API calls
+            policy_type: Type of policy (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY)
 
         Returns:
             List of all ValidationIssue objects from all policy-level checks
@@ -383,7 +387,9 @@ class CheckRegistry:
                 config = self.get_config(check.check_id)
                 if config:
                     try:
-                        issues = await check.execute_policy(policy, policy_file, fetcher, config)
+                        issues = await check.execute_policy(
+                            policy, policy_file, fetcher, config, policy_type=policy_type
+                        )
                         all_issues.extend(issues)
                     except Exception as e:
                         print(f"Warning: Check '{check.check_id}' failed: {e}")
@@ -394,7 +400,9 @@ class CheckRegistry:
         for check in policy_level_checks:
             config = self.get_config(check.check_id)
             if config:
-                task = check.execute_policy(policy, policy_file, fetcher, config)
+                task = check.execute_policy(
+                    policy, policy_file, fetcher, config, policy_type=policy_type
+                )
                 tasks.append(task)
 
         # Wait for all checks to complete
@@ -438,6 +446,7 @@ def create_default_registry(
             ActionValidationCheck,
             ConditionKeyValidationCheck,
             PolicySizeCheck,
+            PrincipalValidationCheck,
             ResourceValidationCheck,
             SecurityBestPracticesCheck,
             SidUniquenessCheck,
@@ -451,6 +460,7 @@ def create_default_registry(
         registry.register(ActionResourceConstraintCheck())
         registry.register(SidUniquenessCheck())
         registry.register(PolicySizeCheck())
+        registry.register(PrincipalValidationCheck())
 
         # Note: SID uniqueness check is registered above but its actual execution
         # happens at the policy level in _validate_policy_with_registry() since it

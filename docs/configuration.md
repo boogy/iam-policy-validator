@@ -120,6 +120,86 @@ This is useful when you want to:
 - Run only custom business rule checks
 - Reduce validation overhead
 
+## Severity-Based Failure Control
+
+The `fail_on_severity` setting controls which severity levels cause validation to fail and determines the GitHub review status:
+
+### Configuration
+
+```yaml
+settings:
+  # Severity levels that cause validation to fail
+  # IAM Validity: error, warning, info
+  # Security: critical, high, medium, low
+  fail_on_severity:
+    - error     # IAM policy validity errors
+    - critical  # Critical security issues
+    - high      # High security issues (optional)
+    # - warning # IAM validity warnings (optional)
+    # - medium  # Medium security issues (optional)
+```
+
+### Impact on Validation
+
+**Exit Code:**
+- If any issues match severities in `fail_on_severity` → Exit code 1 (failure)
+- Otherwise → Exit code 0 (success)
+- Note: `--fail-on-warnings` CLI flag overrides this to fail on all issues
+
+**GitHub Review Status:**
+- If any issues match severities in `fail_on_severity` → REQUEST_CHANGES
+- Otherwise → COMMENT
+- Only applies when using `--github-review` flag
+
+### Common Configurations
+
+**Strict (fail on everything):**
+```yaml
+fail_on_severity:
+  - error
+  - warning
+  - info
+  - critical
+  - high
+  - medium
+  - low
+```
+
+**Moderate (default - fail on serious issues only):**
+```yaml
+fail_on_severity:
+  - error      # IAM validity errors
+  - critical   # Critical security issues
+```
+
+**Relaxed (only fail on IAM errors):**
+```yaml
+fail_on_severity:
+  - error      # Only fail on IAM validity errors
+```
+
+**Security-focused (fail on all security issues):**
+```yaml
+fail_on_severity:
+  - error
+  - critical
+  - high
+  - medium
+```
+
+### Example: Customizing Review Behavior
+
+```yaml
+# Only REQUEST_CHANGES for critical issues
+settings:
+  fail_on_severity:
+    - critical
+
+# Result:
+# - Critical issues → REQUEST_CHANGES (blocks PR)
+# - High/Medium/Low issues → COMMENT (informational)
+```
+
 ## Customizing Messages, Suggestions, and Examples
 
 All security best practices sub-checks support customizable messages, suggestions, and code examples. This allows you to tailor the validation output to match your organization's terminology and guidelines.
@@ -210,6 +290,115 @@ If you don't customize messages, the tool uses sensible defaults from [defaults.
 | `service_wildcard_check`  | "Service-level wildcard '{action}' grants all permissions for {service} service"                                                       | "Replace service-level wildcard with specific actions..."                                                                 | ✅ Shows before/after with {service} placeholder |
 | `sensitive_action_check`  | Single: "Sensitive action '{action}' should have conditions..."<br>Multiple: "Sensitive actions '{actions}' should have conditions..." | "Add IAM conditions to limit when this action can be used. Consider: ABAC, IP restrictions, MFA, time-based restrictions" | ✅ Shows ABAC condition example                  |
 
+## Principal Validation for Resource Policies
+
+The `principal_validation_check` validates Principal elements in resource-based policies to enforce organizational security policies. This check only runs when `--policy-type RESOURCE_POLICY` is specified.
+
+### Configuration
+
+```yaml
+principal_validation_check:
+  enabled: true
+  severity: high
+
+  # Block dangerous principals
+  blocked_principals:
+    - "*"  # Public access
+    - "arn:aws:iam::*:root"  # All AWS accounts
+
+  # Whitelist mode (optional)
+  allowed_principals:
+    - "arn:aws:iam::123456789012:root"
+    - "arn:aws:iam::123456789012:role/*"
+
+  # Require conditions for specific principals
+  require_conditions_for:
+    "*":
+      - "aws:SourceArn"
+      - "aws:SourceAccount"
+    "arn:aws:iam::*:root":
+      - "aws:PrincipalOrgID"
+
+  # Service principals whitelist
+  allowed_service_principals:
+    - "cloudfront.amazonaws.com"
+    - "s3.amazonaws.com"
+```
+
+### Features
+
+**1. Blocked Principals:**
+Block dangerous principals that should never appear in your policies:
+```yaml
+blocked_principals:
+  - "*"  # Block public access
+  - "arn:aws:iam::*:root"  # Block all AWS accounts
+```
+
+**2. Allowed Principals (Whitelist Mode):**
+When configured, ONLY these principals are allowed:
+```yaml
+allowed_principals:
+  - "arn:aws:iam::123456789012:root"  # Specific account
+  - "arn:aws:iam::123456789012:role/*"  # All roles in account
+  - "arn:aws:iam::*:role/OrganizationAccountAccessRole"  # Specific role name
+```
+
+**3. Conditional Requirements:**
+Require specific conditions for certain principals:
+```yaml
+require_conditions_for:
+  "*":  # Public access must have these conditions
+    - "aws:SourceArn"
+    - "aws:SourceAccount"
+  "arn:aws:iam::*:root":  # Cross-account access must have org ID
+    - "aws:PrincipalOrgID"
+```
+
+**4. Service Principal Whitelist:**
+AWS service principals that are always allowed:
+```yaml
+allowed_service_principals:
+  - "cloudfront.amazonaws.com"
+  - "s3.amazonaws.com"
+  - "lambda.amazonaws.com"
+```
+
+### Use Cases
+
+**Prevent Public Access:**
+```yaml
+blocked_principals:
+  - "*"
+```
+
+**Organization-Only Access:**
+```yaml
+allowed_principals:
+  - "arn:aws:iam::123456789012:*"  # Only my account
+  - "arn:aws:iam::987654321098:*"  # Only partner account
+```
+
+**Conditional Public Access:**
+```yaml
+# Allow public access but require it to be limited
+require_conditions_for:
+  "*":
+    - "aws:SourceArn"  # Must specify source resource
+```
+
+### Pattern Matching
+
+All principal lists support fnmatch-style wildcards:
+- `*` matches any characters
+- `?` matches a single character
+- `[abc]` matches any character in brackets
+
+Examples:
+- `arn:aws:iam::123456789012:*` - Any principal in account
+- `arn:aws:iam::*:role/Admin*` - Any role starting with "Admin" in any account
+- `*.amazonaws.com` - Any AWS service principal
+
 ## Best Practices
 
 1. **Start Minimal**: Begin with a minimal config file that only overrides what you need
@@ -218,3 +407,4 @@ If you don't customize messages, the tool uses sensible defaults from [defaults.
 4. **Version Control**: Keep config files in version control
 5. **Reference Defaults**: Check [defaults.py](../iam_validator/core/defaults.py) to see available options
 6. **Customize Messages**: Tailor messages and suggestions to match your organization's security guidelines and terminology
+7. **Principal Validation**: Use `principal_validation_check` to enforce organizational policies for resource-based policies

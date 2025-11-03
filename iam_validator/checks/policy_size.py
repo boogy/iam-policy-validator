@@ -76,6 +76,7 @@ class PolicySizeCheck(PolicyCheck):
         policy_file: str,
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
+        **kwargs,
     ) -> list[ValidationIssue]:
         """Execute the policy size check on the entire policy.
 

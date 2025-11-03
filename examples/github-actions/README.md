@@ -80,17 +80,37 @@ on:
 # Only fail on errors (remove the flag above)
 ```
 
-### Control PR comments
-```yaml
-# Summary + line-specific comments
---github-comment --github-review
+### Control GitHub Output
 
-# Summary only
+The validator provides **three independent options** for displaying validation results:
+
+```yaml
+# 1. PR Summary Comment - Posts to PR conversation
 --github-comment
 
-# No comments (validation only)
-# Remove both flags
+# 2. Line-Specific Review Comments - Posts to "Files changed" tab
+--github-review
+
+# 3. GitHub Actions Job Summary - Posts to Actions tab
+--github-summary
+
+# All three for maximum visibility
+--github-comment --github-review --github-summary
+
+# Only inline review comments (clean, minimal)
+--github-review
+
+# Only Actions job summary (no PR interaction)
+--github-summary
+
+# PR comment + Actions summary (no inline comments)
+--github-comment --github-summary
+
+# No GitHub output (validation only)
+# Remove all GitHub flags
 ```
+
+**Review Status:** Line-specific review comments use the `fail_on_severity` config setting to determine whether to REQUEST_CHANGES or COMMENT. Default: REQUEST_CHANGES for `error` and `critical` severities.
 
 ## Additional Resources
 

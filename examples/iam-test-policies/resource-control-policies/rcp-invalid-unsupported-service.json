@@ -1,0 +1,17 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyEC2Actions",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "ec2:*",
+      "Resource": "*",
+      "Condition": {
+        "StringNotEquals": {
+          "ec2:Region": ["us-east-1", "us-west-2"]
+        }
+      }
+    }
+  ]
+}

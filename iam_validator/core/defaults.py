@@ -39,12 +39,12 @@ DEFAULT_CONFIG = {
         "aws_services_dir": None,
         "cache_enabled": True,
         "cache_ttl_hours": 168,
-        "fail_on_severity": ["error", "critical"],
+        "fail_on_severity": ["error", "critical", "high"],
     },
     "sid_uniqueness_check": {
         "enabled": True,
         "severity": "error",
-        "description": "Validates that Statement IDs (Sids) are unique within the policy",
+        "description": "Validates that Statement IDs (Sids) are unique and follow AWS naming requirements",
     },
     "policy_size_check": {
         "enabled": True,
@@ -68,6 +68,24 @@ DEFAULT_CONFIG = {
         "severity": "error",
         "description": "Validates ARN format for resources",
         "arn_pattern": "^arn:(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f):[a-z0-9\\-]+:[a-z0-9\\-*]*:[0-9*]*:.+$",
+    },
+    "principal_validation_check": {
+        "enabled": True,
+        "severity": "high",
+        "description": "Validates Principal elements in resource policies for security best practices",
+        "blocked_principals": ["*"],
+        "allowed_principals": [],
+        "require_conditions_for": {
+            "*": ["aws:SourceArn", "aws:SourceAccount"],
+        },
+        "allowed_service_principals": [
+            "cloudfront.amazonaws.com",
+            "s3.amazonaws.com",
+            "sns.amazonaws.com",
+            "lambda.amazonaws.com",
+            "logs.amazonaws.com",
+            "events.amazonaws.com",
+        ],
     },
     "action_resource_constraint_check": {
         "enabled": True,
@@ -276,7 +294,7 @@ With specific values:
             {
                 "actions": [
                     "iam:CreateRole",
-                    "iam:Put*Policy*",
+                    "iam:PutRolePolicy*",
                     "iam:PutUserPolicy",
                     "iam:PutRolePolicy",
                     "iam:Attach*Policy*",
@@ -316,16 +334,6 @@ With specific values:
                 ],
             },
             {
-                "action_patterns": ["^s3:.*"],
-                "required_conditions": [
-                    {
-                        "condition_key": "aws:SecureTransport",
-                        "description": "Require HTTPS for all S3 operations",
-                        "expected_value": True,
-                    },
-                ],
-            },
-            {
                 "action_patterns": [
                     "^ssm:StartSession$",
                     "^ssm:Run.*$",
@@ -348,6 +356,25 @@ With specific values:
 """,
                     },
                 ],
+            },
+            {
+                "actions": ["s3:GetObject", "s3:PutObject"],
+                "required_conditions": {
+                    "none_of": [
+                        {
+                            "condition_key": "aws:SecureTransport",
+                            "expected_value": False,
+                            "description": "Never allow insecure transport to be explicitly permitted",
+                            "example": """# Set this condition to true to enforce secure transport or remove it entirely
+"Condition": {
+  "Bool": {
+    "aws:SecureTransport": "true"
+  }
+}
+""",
+                        },
+                    ],
+                },
             },
         ],
     },
