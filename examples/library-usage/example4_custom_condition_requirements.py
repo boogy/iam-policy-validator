@@ -12,7 +12,6 @@ Benefits:
 - Add custom requirements easily
 """
 
-from iam_validator.core.config_loader import ValidatorConfig
 from iam_validator.core.config import (
     get_all_requirement_names,
     get_default_requirements,
@@ -20,6 +19,7 @@ from iam_validator.core.config import (
     get_requirements_by_names,
     get_requirements_by_severity,
 )
+from iam_validator.core.config_loader import ValidatorConfig
 
 # ============================================================================
 # Example 1: Use Default Requirements (Simplest)
