@@ -193,7 +193,7 @@ def main():
     print("✓ Sync complete!")
     print()
     print("Next steps:")
-    print("  1. Review the changes: git diff iam_validator/core/defaults.py")
+    print("  1. Review the changes: git diff iam_validator/core/config/defaults.py")
     print("  2. Run tests: make test")
     print("  3. Commit if everything looks good")
 

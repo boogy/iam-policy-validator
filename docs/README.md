@@ -1,42 +1,43 @@
 # IAM Policy Validator Documentation
 
-This directory contains comprehensive documentation for the IAM Policy Validator.
+Comprehensive documentation for validating AWS IAM policies with confidence.
 
-## Main Documentation
+## Start Here
 
-**[→ Complete Documentation (DOCS.md)](../DOCS.md)** - Start here for comprehensive user documentation
+| Document                      | Purpose                  | Audience  |
+| ----------------------------- | ------------------------ | --------- |
+| **[README.md](../README.md)** | Quick start and overview | New users |
+| **[DOCS.md](../DOCS.md)**     | Complete reference guide | All users |
 
-**[→ Quick Start (README.md)](../README.md)** - Project overview and quick start guide
+## User Guides
 
-## Documentation Index
+### Getting Started
+- **[Python Library Usage](python-library-usage.md)** - Programmatic validation in Python
+- **[Configuration Reference](configuration.md)** - Customize validation rules
+- **[Custom Checks Guide](custom-checks.md)** - Write organization-specific checks
 
-### User Guides
-- **[Python Library Usage](python-library-usage.md)** ⭐ - Using IAM Policy Validator as a Python library
-- **[AWS Services Backup](aws-services-backup.md)** - Download AWS services for offline validation
-- **[Configuration Reference](configuration.md)** - YAML configuration options and examples
-- **[Custom Checks Guide](custom-checks.md)** - Creating custom validation rules
-- **[Privilege Escalation Detection](privilege-escalation.md)** - Policy-level privilege escalation patterns
-- **[Smart Filtering](smart-filtering.md)** - Automatic IAM policy detection and filtering
+### Advanced Topics
+- **[Condition Requirements](condition-requirements.md)** - Enforce IAM conditions on sensitive actions
+- **[Modular Configuration](modular-configuration.md)** - Python-based configuration architecture
+- **[Privilege Escalation Detection](privilege-escalation.md)** - Detect cross-statement risks
+- **[Smart Filtering](smart-filtering.md)** - Automatic IAM policy detection
 
-### Integration Guides
-- **[GitHub Actions Workflows](github-actions-workflows.md)** - Complete workflow setup guide with OIDC
-- **[GitHub Actions Examples](github-actions-examples.md)** - Additional workflow patterns and use cases
+### Integration
+- **[GitHub Actions Workflows](github-actions-workflows.md)** - CI/CD integration guide
+- **[GitHub Actions Examples](github-actions-examples.md)** - Workflow patterns
+- **[AWS Services Backup](aws-services-backup.md)** - Offline validation setup
 
-### Developer Documentation
-- **[Publishing Guide](development/PUBLISHING.md)** - Release process and version management
+## Developer Resources
+
+- **[Roadmap](ROADMAP.md)** - Planned features and improvements
+- **[Publishing Guide](development/PUBLISHING.md)** - Release process
+- **[Contributing Guide](../CONTRIBUTING.md)** - Development guidelines
 
 ## Examples
 
-All practical examples are in the **[examples/](../examples/)** directory:
-- **[GitHub Actions Workflows](../examples/github-actions/)** - 8 ready-to-use workflow examples
-- **[Custom Checks](../examples/custom_checks/)** - 8 custom validation check implementations
-- **[Configuration Files](../examples/configs/)** - 3 essential configuration examples
-- **[Test IAM Policies](../examples/iam-test-policies/)** - 36 test policies (JSON + YAML) covering various scenarios
-
----
-
-**Quick Links:**
-- [Installation Guide](../DOCS.md#installation)
-- [CLI Reference](../DOCS.md#cli-reference)
-- [Custom Policy Checks](../DOCS.md#custom-policy-checks)
-- [Contributing Guide](../CONTRIBUTING.md)
+Find practical examples in [examples/](../examples/):
+- [GitHub Actions](../examples/github-actions/) - 9 workflow examples
+- [Custom Checks](../examples/custom_checks/) - Example implementations
+- [Configurations](../examples/configs/) - 8 configuration files
+- [Test Policies](../examples/iam-test-policies/) - 56 test policies
+- [Library Usage](../examples/library-usage/) - 5 Python examples

@@ -1,0 +1,25 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CrossAccountSubscribeWithMFA",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": [
+          "arn:aws:iam::111111111111:role/NotificationRole",
+          "arn:aws:iam::222222222222:user/admin"
+        ]
+      },
+      "Action": [
+        "SNS:Subscribe",
+        "SNS:Receive"
+      ],
+      "Resource": "arn:aws:sns:us-east-1:123456789012:secure-topic",
+      "Condition": {
+        "Bool": {
+          "aws:MultiFactorAuthPresent": "true"
+        }
+      }
+    }
+  ]
+}

@@ -830,7 +830,7 @@ permissions:
 
 ## Configuration
 
-> **📢 Configuration Change (v1.1.0+):** The `allowed_wildcards` configuration has moved from `action_validation_check` to `security_best_practices_check` for cleaner separation of concerns. If you have a custom config file, update it accordingly. See [Migration Note](#configuration-migration) below.
+> **📢 Configuration Change (v1.1.0+):** The `allowed_wildcards` configuration has moved from `action_validation` to `security_best_practices` for cleaner separation of concerns. If you have a custom config file, update it accordingly. See [Migration Note](#configuration-migration) below.
 
 ### Configuration File
 
@@ -871,29 +871,29 @@ settings:
 # ============================================================================
 
 # Validate Statement ID (Sid) uniqueness
-sid_uniqueness_check:
+sid_uniqueness:
   enabled: true
   severity: error
 
 # Validate IAM actions against AWS service definitions
-action_validation_check:
+action_validation:
   enabled: true
   severity: error
   description: "Validates that actions exist in AWS services"
-  # Note: Wildcard security checks are handled by security_best_practices_check
+  # Note: Wildcard security checks are handled by security_best_practices
 
 # Validate condition keys
-condition_key_validation_check:
+condition_key_validation:
   enabled: true
   severity: error
 
 # Validate resource ARN format
-resource_validation_check:
+resource_validation:
   enabled: true
   severity: error
 
 # Security best practices
-security_best_practices_check:
+security_best_practices:
   enabled: true
   # Define allowed wildcard patterns for safe read-only operations
   allowed_wildcards:
@@ -923,7 +923,7 @@ security_best_practices_check:
     severity: medium
 
 # Action condition enforcement (MFA, IP restrictions, tags, etc.)
-action_condition_enforcement_check:
+action_condition_enforcement:
   enabled: true
   severity: high
 ```
@@ -949,14 +949,15 @@ By default, validation fails on `error` and `critical` severities. Use `--fail-o
 
 ### Example Configurations
 
-See [examples/configs/](examples/configs/) directory for essential configurations:
+See [examples/configs/](examples/configs/) directory for configurations:
 - `basic-config.yaml` - Minimal configuration with defaults
+- `full-reference-config.yaml` - Complete reference with all options
 - `offline-validation.yaml` - For environments without internet access
 - `strict-security.yaml` - Enterprise-grade security enforcement
-
-See [examples/configs-old/](examples/configs-old/) for additional example configurations:
-- `config-privilege-escalation.yaml` - Detect privilege escalation patterns
-- `custom-wildcard-config.yaml` - Custom wildcard action validation
+- `principal-validation-strict.yaml` - Block all public access
+- `principal-validation-relaxed.yaml` - Allow public access with conditions
+- `principal-validation-public-with-conditions.yaml` - Conditional public access
+- `principal-condition-enforcement.yaml` - Advanced principal requirements
 
 ---
 
@@ -985,7 +986,7 @@ Verifies IAM actions exist in AWS service definitions. This check focuses **sole
 ```json
 {
   "Effect": "Allow",
-  "Action": "s3:List*",  // ✅ Valid - wildcards skipped (checked by security_best_practices_check)
+  "Action": "s3:List*",  // ✅ Valid - wildcards skipped (checked by security_best_practices)
   "Resource": "*"
 }
 ```
@@ -1042,10 +1043,10 @@ Ensures Statement IDs are unique within a policy:
 
 ### 6. Wildcard Action Validation
 
-The `security_best_practices_check` handles all wildcard security validation with customizable allowlists:
+The `security_best_practices` handles all wildcard security validation with customizable allowlists:
 
 ```yaml
-security_best_practices_check:
+security_best_practices:
   enabled: true
 
   # Define allowed wildcard patterns (e.g., safe read-only operations)
@@ -1078,7 +1079,7 @@ security_best_practices_check:
       - "cloudwatch"
 ```
 
-**Note:** The `action_validation_check` now focuses solely on validating that actions exist in AWS service definitions. All wildcard security concerns are handled by `security_best_practices_check`.
+**Note:** The `action_validation` now focuses solely on validating that actions exist in AWS service definitions. All wildcard security concerns are handled by `security_best_practices`.
 
 ### Configuration Migration
 
@@ -1086,7 +1087,7 @@ If you have a custom configuration file from before v1.1.0, update it as follows
 
 **Before (v1.0.x):**
 ```yaml
-action_validation_check:
+action_validation:
   enabled: true
   severity: error
   allowed_wildcards:
@@ -1097,13 +1098,13 @@ action_validation_check:
 
 **After (v1.1.0+):**
 ```yaml
-action_validation_check:
+action_validation:
   enabled: true
   severity: error
-  # allowed_wildcards removed - moved to security_best_practices_check
+  # allowed_wildcards removed - moved to security_best_practices
   # disable_wildcard_warnings removed - no longer needed
 
-security_best_practices_check:
+security_best_practices:
   enabled: true
   # Move allowed_wildcards here
   allowed_wildcards:
@@ -1405,8 +1406,18 @@ iam-validator validate --path policy.json --format json --output debug.json
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
+## Future Improvements
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for planned features and enhancements, including:
+- NotResource support
+- NotAction support
+- Enhanced deny statement validation
+- Policy simulation integration
+- Cross-policy analysis
+
 ## Support
 
 - **Documentation**: This file and `examples/` directory
+- **Roadmap**: [Planned features and improvements](docs/ROADMAP.md)
 - **Issues**: [GitHub Issues](https://github.com/boogy/iam-policy-auditor/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/boogy/iam-policy-auditor/discussions)

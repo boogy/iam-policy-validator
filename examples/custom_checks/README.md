@@ -1,10 +1,17 @@
 # Custom Check Examples
 
-This directory contains examples of custom policy checks that demonstrate how to extend the IAM Policy Validator.
+This directory contains **8 production-ready custom check examples** that demonstrate how to extend IAM Policy Validator with your own validation rules.
 
 ## What are Custom Checks?
 
-Custom checks allow you to implement organization-specific validation rules beyond the built-in checks. They are Python classes that inherit from `PolicyCheck` and can be loaded dynamically through configuration.
+Custom checks allow you to implement organization-specific validation rules beyond the built-in checks. They are Python classes that inherit from `PolicyCheck` and can be loaded automatically from a directory or imported explicitly.
+
+**Key Benefits:**
+- Enforce organization-specific security policies
+- Implement compliance requirements (SOC2, PCI-DSS, HIPAA)
+- Add business logic validation
+- No need to modify core code
+- Easy to maintain and share across teams
 
 ## How to Create a Custom Check
 
@@ -12,14 +19,14 @@ Custom checks allow you to implement organization-specific validation rules beyo
 
 Your custom check must:
 - Inherit from `iam_validator.core.check_registry.PolicyCheck`
-- Implement required properties: `check_id`, `description`
-- Implement the `execute()` method to perform your validation
+- Implement required properties: `check_id`, `description`, `default_severity`
+- Implement the `async execute()` method for validation logic
 
+**Minimal Example:**
 ```python
-from typing import List
 from iam_validator.core.check_registry import PolicyCheck, CheckConfig
-from iam_validator.models import ValidationIssue, Statement
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.models import Statement, ValidationIssue
 
 
 class MyCustomCheck(PolicyCheck):
@@ -33,7 +40,7 @@ class MyCustomCheck(PolicyCheck):
 
     @property
     def default_severity(self) -> str:
-        return "warning"  # or "error", "info"
+        return "error"  # or "warning", "info", "critical"
 
     async def execute(
         self,
@@ -41,60 +48,88 @@ class MyCustomCheck(PolicyCheck):
         statement_idx: int,
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
-    ) -> List[ValidationIssue]:
+    ) -> list[ValidationIssue]:
         issues = []
 
         # Your validation logic here
         # Access statement properties:
         # - statement.effect ("Allow" or "Deny")
-        # - statement.get_actions()
-        # - statement.get_resources()
-        # - statement.condition
-        # - statement.sid
+        # - statement.get_actions() -> list of actions
+        # - statement.get_resources() -> list of resources
+        # - statement.condition -> dict of conditions
+        # - statement.principal -> principal info
+        # - statement.sid -> statement ID
 
-        # Create issues when violations found:
-        if some_condition:
-            issues.append(ValidationIssue(
-                severity=self.get_severity(config),
-                statement_sid=statement.sid,
-                statement_index=statement_idx,
-                issue_type="my_issue_type",
-                message="Description of what's wrong",
-                suggestion="How to fix it",
-            ))
+        # Example: Check for wildcard actions
+        actions = statement.get_actions()
+        if "*" in actions:
+            issues.append(
+                ValidationIssue(
+                    severity=self.get_severity(config),
+                    statement_sid=statement.sid,
+                    statement_index=statement_idx,
+                    issue_type="wildcard_action",
+                    message="Statement uses wildcard action",
+                    suggestion="Use specific actions instead of '*'",
+                    line_number=statement.line_number,
+                )
+            )
 
         return issues
 ```
 
-### 2. Configure in .iam-validator.yaml
+### 2. Configure in iam-validator.yaml
 
-Add your custom check to the configuration file:
+**Method A: Auto-Discovery (Easiest)**
+Place your checks in a directory and use `custom_checks_dir`:
 
 ```yaml
-custom_checks:
-  - module: "path.to.your.module.MyCustomCheck"
+settings:
+  custom_checks_dir: "./examples/custom_checks"  # or "./my_checks"
+
+checks:
+  my_custom_check:
     enabled: true
-    config:
-      # Check-specific configuration
-      your_setting: "value"
+    severity: error
+    # Check-specific configuration
+    your_setting: "value"
 ```
 
-### 3. Make Your Module Importable
+**Method B: Explicit Import**
+Import specific check classes:
 
-Ensure your custom check is in Python's import path:
+```yaml
+settings:
+  custom_checks:
+    - module: "path.to.module.MyCustomCheck"
+      enabled: true
 
-**Option A: Install as a package**
-```bash
-pip install -e /path/to/your/checks
+checks:
+  my_custom_check:
+    your_setting: "value"
 ```
 
-**Option B: Add to PYTHONPATH**
-```bash
-export PYTHONPATH=/path/to/your/checks:$PYTHONPATH
+### 3. Directory Structure
+
+Recommended structure for custom checks:
+
+```
+your_project/
+├── iam-validator.yaml
+├── policies/
+│   └── my-policy.json
+└── my_checks/
+    ├── __init__.py  # Can be empty
+    ├── mfa_check.py
+    ├── encryption_check.py
+    └── region_check.py
 ```
 
-**Option C: Place in project directory**
-Place your checks in a directory within your project that's already importable.
+Then in `iam-validator.yaml`:
+```yaml
+settings:
+  custom_checks_dir: "./my_checks"
+```
 
 ## Example Checks in This Directory
 
@@ -106,31 +141,31 @@ This directory contains **8 production-ready custom check examples** ranging fro
    - **Complexity**: ⭐ Basic
    - **Use Case**: Restrict S3 bucket access to specific domains
    - **What it teaches**: Basic condition validation, pattern matching
-   - **Configuration**: Domain whitelist
+   - **Lines of Code**: ~120
 
 2. **[region_restriction_check.py](region_restriction_check.py)** - Region Restriction Check
    - **Complexity**: ⭐ Basic
    - **Use Case**: Enforce approved AWS regions for compliance
-   - **What it teaches**: Condition key validation, list matching
-   - **Configuration**: Allowed regions list
+   - **What it teaches**: Condition key validation, ARN parsing, list matching
+   - **Lines of Code**: ~130
 
 3. **[mfa_required_check.py](mfa_required_check.py)** - MFA Requirement Check
    - **Complexity**: ⭐⭐ Intermediate
    - **Use Case**: Require MFA for sensitive actions
    - **What it teaches**: Action pattern matching, boolean conditions
-   - **Configuration**: Action lists and patterns
+   - **Lines of Code**: ~120
 
 4. **[tag_enforcement_check.py](tag_enforcement_check.py)** - Tag Enforcement Check
    - **Complexity**: ⭐⭐ Intermediate
    - **Use Case**: Enforce tagging for cost allocation and governance
    - **What it teaches**: Tag condition validation, required vs optional tags
-   - **Configuration**: Required tags per action type
+   - **Lines of Code**: ~160
 
 5. **[encryption_required_check.py](encryption_required_check.py)** - Encryption Requirement Check
    - **Complexity**: ⭐⭐ Intermediate
    - **Use Case**: Ensure S3 objects and EBS volumes are encrypted
    - **What it teaches**: Service-specific conditions, security controls
-   - **Configuration**: Encryption methods and algorithms
+   - **Lines of Code**: ~155
 
 ### Advanced Examples
 
@@ -138,6 +173,7 @@ This directory contains **8 production-ready custom check examples** ranging fro
    - **Complexity**: ⭐⭐⭐ Advanced
    - **Use Case**: Restrict deployments to business hours, enforce maintenance windows
    - **What it teaches**: Time condition validation, multiple operator handling
+   - **Lines of Code**: ~250
    - **Features**:
      - Business hours restrictions
      - Maintenance window enforcement
@@ -148,6 +184,7 @@ This directory contains **8 production-ready custom check examples** ranging fro
    - **Complexity**: ⭐⭐⭐⭐ Advanced
    - **Use Case**: Prevent "confused deputy" attacks in cross-account access
    - **What it teaches**: Principal parsing, security best practices, ExternalId validation
+   - **Lines of Code**: ~230
    - **Features**:
      - Account ID extraction from ARNs
      - Trusted account lists
@@ -159,6 +196,7 @@ This directory contains **8 production-ready custom check examples** ranging fro
    - **Complexity**: ⭐⭐⭐⭐⭐ Expert Level
    - **Use Case**: Enterprise-grade policy validation with multiple layered conditions
    - **What it teaches**: Context-aware validation, complex rule engines, exception handling
+   - **Lines of Code**: ~500+
    - **Features**:
      - Action category-based rules
      - "All of" and "Any of" condition logic
@@ -172,41 +210,48 @@ This directory contains **8 production-ready custom check examples** ranging fro
 
 ## Comparison Table
 
-| Check                     | Complexity | Lines of Code | Features                            | Best For                 |
-| ------------------------- | ---------- | ------------- | ----------------------------------- | ------------------------ |
-| Domain Restriction        | ⭐          | ~120          | Basic pattern matching              | Learning basics          |
-| Region Restriction        | ⭐          | ~130          | List validation                     | Simple compliance        |
-| MFA Required              | ⭐⭐         | ~150          | Pattern matching, bool conditions   | Security basics          |
-| Tag Enforcement           | ⭐⭐         | ~160          | Tag validation                      | Governance               |
-| Encryption Required       | ⭐⭐         | ~180          | Service-specific rules              | Data security            |
-| Time-Based Access         | ⭐⭐⭐        | ~250          | Time conditions, multiple operators | Change control           |
-| Cross-Account ExternalId  | ⭐⭐⭐⭐       | ~350          | ARN parsing, trusted lists, regex   | Third-party integrations |
-| Multi-Condition Validator | ⭐⭐⭐⭐⭐      | ~550+         | All of the above + logic engine     | Enterprise security      |
+| Check                     | Complexity | LOC  | Best For                 | Key Features                                       |
+| ------------------------- | ---------- | ---- | ------------------------ | -------------------------------------------------- |
+| Domain Restriction        | ⭐          | ~120 | Learning basics          | Basic pattern matching, fnmatch                    |
+| Region Restriction        | ⭐          | ~130 | Simple compliance        | ARN parsing, list validation                       |
+| MFA Required              | ⭐⭐         | ~120 | Security basics          | Pattern matching, boolean conditions               |
+| Tag Enforcement           | ⭐⭐         | ~160 | Governance               | Tag validation, required tags                      |
+| Encryption Required       | ⭐⭐         | ~155 | Data security            | Service-specific rules, secure transport           |
+| Time-Based Access         | ⭐⭐⭐        | ~250 | Change control           | Time conditions, multiple operators, date parsing  |
+| Cross-Account ExternalId  | ⭐⭐⭐⭐       | ~230 | Third-party integrations | ARN parsing, regex validation, trusted lists       |
+| Multi-Condition Validator | ⭐⭐⭐⭐⭐      | ~500 | Enterprise security      | Full rule engine, exception handling, all of above |
 
 ## Learning Path
 
-### Beginner: Start Here
-1. Read and understand **domain_restriction_check.py**
+### Beginner: Start Here (30 minutes)
+1. Read **[domain_restriction_check.py](domain_restriction_check.py)** - simplest example
 2. Modify it for your use case
-3. Try **region_restriction_check.py** next
+3. Try **[region_restriction_check.py](region_restriction_check.py)** next
 
-### Intermediate: Build on Basics
-4. Study **mfa_required_check.py** for pattern matching
-5. Implement **tag_enforcement_check.py** for governance
-6. Add **encryption_required_check.py** for security
+### Intermediate: Build on Basics (1-2 hours)
+4. Study **[mfa_required_check.py](mfa_required_check.py)** for pattern matching
+5. Implement **[tag_enforcement_check.py](tag_enforcement_check.py)** for governance
+6. Add **[encryption_required_check.py](encryption_required_check.py)** for security
 
-### Advanced: Production-Grade Checks
-7. Analyze **time_based_access_check.py** for complex conditions
-8. Study **cross_account_external_id_check.py** for security patterns
-9. Master **advanced_multi_condition_validator.py** for enterprise needs
+### Advanced: Production-Grade Checks (2-4 hours)
+7. Analyze **[time_based_access_check.py](time_based_access_check.py)** for complex conditions
+8. Study **[cross_account_external_id_check.py](cross_account_external_id_check.py)** for security patterns
+9. Master **[advanced_multi_condition_validator.py](advanced_multi_condition_validator.py)** for enterprise needs
 
 ## Quick Start
 
-### Using Auto-Discovery (Easiest)
+### Step 1: Copy Example Checks
+```bash
+# Copy the examples to your project
+mkdir -p my_checks
+cp examples/custom_checks/*.py my_checks/
+cd my_checks
+```
 
+### Step 2: Configure in iam-validator.yaml
 ```yaml
-# In iam-validator.yaml
-custom_checks_dir: "./examples/custom_checks"
+settings:
+  custom_checks_dir: "./my_checks"
 
 checks:
   mfa_required:
@@ -215,17 +260,35 @@ checks:
     require_mfa_for:
       - "iam:DeleteUser"
       - "s3:DeleteBucket"
+      - "iam:DeleteRole"
+    require_mfa_patterns:
+      - "^iam:Delete.*"
+
+  encryption_required:
+    enabled: true
+    severity: error
+    require_encryption_for:
+      - "s3:PutObject"
+      - "s3:CreateBucket"
+    require_secure_transport: true
 ```
 
-### Using Explicit Module Path
+### Step 3: Run Validation
+```bash
+# CLI
+uv run iam-validator validate --path ./policies/
 
-```yaml
-custom_checks:
-  - module: "examples.custom_checks.mfa_required_check.MFARequiredCheck"
-    enabled: true
-    config:
-      require_mfa_for:
-        - "iam:DeleteUser"
+# Or in Python
+from iam_validator.core.policy_checks import validate_policies
+from iam_validator.core.policy_loader import PolicyLoader
+
+loader = PolicyLoader()
+policies = loader.load_from_path("./policies/")
+results = await validate_policies(
+    policies,
+    config_path="./iam-validator.yaml",
+    use_registry=True
+)
 ```
 
 ## Configuration Examples
@@ -233,7 +296,8 @@ custom_checks:
 ### Example 1: Simple MFA Enforcement
 
 ```yaml
-custom_checks_dir: "./examples/custom_checks"
+settings:
+  custom_checks_dir: "./examples/custom_checks"
 
 checks:
   mfa_required:
@@ -250,7 +314,8 @@ checks:
 ### Example 2: Time-Based Deployment Control
 
 ```yaml
-custom_checks_dir: "./examples/custom_checks"
+settings:
+  custom_checks_dir: "./examples/custom_checks"
 
 checks:
   time_based_access:
@@ -259,16 +324,21 @@ checks:
     time_restricted_actions:
       - actions:
           - "cloudformation:CreateStack"
+          - "cloudformation:UpdateStack"
           - "lambda:UpdateFunctionCode"
         required_conditions:
           - condition_key: "aws:CurrentTime"
             description: "Deployments only 9am-5pm UTC, Mon-Fri"
+            allowed_operators:
+              - "DateGreaterThan"
+              - "DateLessThan"
 ```
 
 ### Example 3: Cross-Account Security
 
 ```yaml
-custom_checks_dir: "./examples/custom_checks"
+settings:
+  custom_checks_dir: "./examples/custom_checks"
 
 checks:
   cross_account_external_id:
@@ -276,13 +346,15 @@ checks:
     severity: error
     trusted_accounts:
       - "123456789012"  # Your org account
+      - "987654321098"  # Dev account
     require_external_id_pattern: "^[a-zA-Z0-9-]{32,}$"
 ```
 
 ### Example 4: Enterprise Multi-Condition (Complex)
 
 ```yaml
-custom_checks_dir: "./examples/custom_checks"
+settings:
+  custom_checks_dir: "./examples/custom_checks"
 
 checks:
   advanced_multi_condition:
@@ -292,6 +364,7 @@ checks:
       critical_operations:
         actions:
           - "cloudformation:CreateStack"
+          - "cloudformation:UpdateStack"
           - "lambda:UpdateFunctionCode"
         required_conditions:
           all_of:
@@ -306,22 +379,29 @@ checks:
 
 ## Common Patterns
 
-### Pattern 1: Action Matching
+### Pattern 1: Action Matching with Wildcards
 ```python
-def _matches_action(self, action: str, patterns: List[str]) -> bool:
+import re
+
+def _matches_action(self, action: str, patterns: list[str]) -> bool:
+    """Match action against wildcard patterns."""
     for pattern in patterns:
         if "*" in pattern:
             regex = pattern.replace("*", ".*")
             if re.match(f"^{regex}$", action):
                 return True
+        elif action == pattern:
+            return True
     return False
 ```
 
 ### Pattern 2: Condition Validation
 ```python
 def _has_condition(self, statement: Statement, key: str) -> bool:
+    """Check if statement has a specific condition key."""
     if not statement.condition:
         return False
+
     for operator in ["StringEquals", "StringLike", "Bool"]:
         if operator in statement.condition:
             if key in statement.condition[operator]:
@@ -329,15 +409,32 @@ def _has_condition(self, statement: Statement, key: str) -> bool:
     return False
 ```
 
-### Pattern 3: Creating Issues
+### Pattern 3: Creating Validation Issues
 ```python
-issues.append(ValidationIssue(
-    severity=self.get_severity(config),
-    message=f"Statement {idx}: Missing required condition",
-    check_id=self.check_id,
-    statement_index=idx,
-    recommendation="Add condition: {...}"
-))
+issues.append(
+    ValidationIssue(
+        severity=self.get_severity(config),
+        statement_sid=statement.sid,
+        statement_index=statement_idx,
+        issue_type="custom_issue_type",
+        message=f"Clear description of the problem",
+        suggestion="Step-by-step fix: add condition X, set value Y",
+        action=action,  # Optional: specific action
+        resource=resource,  # Optional: specific resource
+        line_number=statement.line_number,
+    )
+)
+```
+
+### Pattern 4: Getting Config Values
+```python
+# In execute() method:
+required_tags = config.config.get("required_tags", [])
+severity_override = config.config.get("severity")
+enabled = config.config.get("enabled", True)
+
+# Use default severity or override
+severity = self.get_severity(config)
 ```
 
 ## Testing Your Custom Checks
@@ -345,11 +442,15 @@ issues.append(ValidationIssue(
 Create test policies in your project:
 
 ```bash
-# Test policy
-cat > test-policy.json << EOF
+# Create test directory
+mkdir -p test_policies
+
+# Test policy with issues
+cat > test_policies/test-mfa.json << EOF
 {
   "Version": "2012-10-17",
   "Statement": [{
+    "Sid": "DeleteUserNoMFA",
     "Effect": "Allow",
     "Action": "iam:DeleteUser",
     "Resource": "*"
@@ -359,118 +460,49 @@ EOF
 
 # Run validation
 uv run iam-validator validate \
-  --path test-policy.json \
+  --path test_policies/ \
   --config iam-validator.yaml
 ```
 
-### 1. Domain Restriction Check
+### Unit Testing Custom Checks
 
-**File:** [`domain_restriction_check.py`](domain_restriction_check.py)
+```python
+import asyncio
+import pytest
+from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.check_registry import CheckConfig
+from iam_validator.core.models import Statement
+from my_checks.mfa_required_check import MFARequiredCheck
 
-**Purpose:** Ensures all resources in policies match approved domain patterns.
 
-**Use Case:** Enforce that IAM policies can only grant access to resources in approved namespaces (e.g., production buckets, specific DynamoDB tables).
+@pytest.mark.asyncio
+async def test_mfa_required_check():
+    """Test MFA check detects missing MFA condition."""
+    check = MFARequiredCheck()
 
-**Configuration Example:**
-```yaml
-custom_checks:
-  - module: "examples.custom_checks.domain_restriction_check.DomainRestrictionCheck"
-    enabled: true
-    config:
-      approved_domains:
-        - "arn:aws:s3:::prod-*"
-        - "arn:aws:s3:::shared-*"
-        - "arn:aws:dynamodb:*:*:table/prod-*"
-```
+    # Create test statement without MFA
+    statement = Statement(
+        effect="Allow",
+        action=["iam:DeleteUser"],
+        resource="*",
+        condition=None,
+    )
 
-### 2. MFA Required Check
+    # Configure check
+    config = CheckConfig(
+        check_id="mfa_required",
+        config={
+            "require_mfa_for": ["iam:DeleteUser"]
+        }
+    )
 
-**File:** [`mfa_required_check.py`](mfa_required_check.py)
+    # Run check
+    async with AWSServiceFetcher() as fetcher:
+        issues = await check.execute(statement, 0, fetcher, config)
 
-**Purpose:** Ensures sensitive IAM actions require Multi-Factor Authentication.
-
-**Use Case:** Enforce MFA for sensitive operations like user deletion, role deletion, or bucket deletion to prevent unauthorized access.
-
-**Configuration Example:**
-```yaml
-custom_checks:
-  - module: "examples.custom_checks.mfa_required_check.MFARequiredCheck"
-    enabled: true
-    config:
-      require_mfa_for:
-        - "iam:DeleteUser"
-        - "iam:DeleteRole"
-        - "s3:DeleteBucket"
-      # Or use regex patterns
-      require_mfa_patterns:
-        - "^iam:Delete.*"
-        - "^s3:DeleteBucket.*"
-```
-
-### 3. Region Restriction Check
-
-**File:** [`region_restriction_check.py`](region_restriction_check.py)
-
-**Purpose:** Validates that policies only grant access to resources in approved regions.
-
-**Use Case:** Enforce data residency requirements, cost control, and compliance by limiting resource access to specific AWS regions.
-
-**Configuration Example:**
-```yaml
-custom_checks:
-  - module: "examples.custom_checks.region_restriction_check.RegionRestrictionCheck"
-    enabled: true
-    config:
-      approved_regions:
-        - "us-east-1"
-        - "us-west-2"
-        - "eu-west-1"
-      require_region_condition: true
-```
-
-### 4. Encryption Required Check
-
-**File:** [`encryption_required_check.py`](encryption_required_check.py)
-
-**Purpose:** Ensures policies require encryption for sensitive data operations.
-
-**Use Case:** Enforce encryption-at-rest and encryption-in-transit for data operations to meet compliance requirements (SOC 2, HIPAA, etc.).
-
-**Configuration Example:**
-```yaml
-custom_checks:
-  - module: "examples.custom_checks.encryption_required_check.EncryptionRequiredCheck"
-    enabled: true
-    config:
-      require_encryption_for:
-        - "s3:PutObject"
-        - "s3:CreateBucket"
-        - "dynamodb:CreateTable"
-      require_secure_transport: true
-```
-
-### 5. Tag Enforcement Check
-
-**File:** [`tag_enforcement_check.py`](tag_enforcement_check.py)
-
-**Purpose:** Ensures resource creation/modification actions require specific tags.
-
-**Use Case:** Enforce tagging for cost allocation, compliance tracking, and resource organization. Ensure all resources have required tags like Environment, Owner, CostCenter.
-
-**Configuration Example:**
-```yaml
-custom_checks:
-  - module: "examples.custom_checks.tag_enforcement_check.TagEnforcementCheck"
-    enabled: true
-    config:
-      require_tags_for:
-        - "ec2:RunInstances"
-        - "s3:CreateBucket"
-        - "dynamodb:CreateTable"
-      required_tags:
-        - "Environment"
-        - "Owner"
-        - "CostCenter"
+    # Verify issue was found
+    assert len(issues) == 1
+    assert "MFA" in issues[0].message
 ```
 
 ## Custom Check Best Practices
@@ -494,13 +526,14 @@ custom_checks:
 - Make your checks efficient
 - Avoid unnecessary API calls
 - Consider caching if making external requests
+- Use async/await properly
 
 ### 5. Testing
 - Write unit tests for your custom checks
 - Test with various policy structures
 - Include edge cases
 
-## Advanced Example: Using AWS Fetcher
+## Advanced: Using AWS Fetcher
 
 The `fetcher` parameter gives you access to AWS service definitions:
 
@@ -509,15 +542,25 @@ async def execute(self, statement, statement_idx, fetcher, config):
     issues = []
 
     for action in statement.get_actions():
-        # Validate action exists
+        # Validate action exists in AWS
         is_valid, error_msg, is_wildcard = await fetcher.validate_action(action)
+
+        if not is_valid and not is_wildcard:
+            issues.append(
+                ValidationIssue(
+                    severity="error",
+                    message=f"Invalid action: {action}",
+                    suggestion=error_msg,
+                    # ...
+                )
+            )
 
         # Get service details
         service, action_name = fetcher.parse_action(action)
         service_detail = await fetcher.fetch_service_by_name(service)
 
-        # Access service metadata
         if service_detail:
+            # Access service metadata
             # service_detail.actions - dict of available actions
             # service_detail.condition_keys - available condition keys
             # service_detail.resource_types - available resource types
@@ -529,9 +572,10 @@ async def execute(self, statement, statement_idx, fetcher, config):
 ## Issue Types and Severity
 
 ### Severity Levels
+- `critical`: Severe security issues, must fix immediately
 - `error`: Critical issues that should block deployment
 - `warning`: Important issues that should be reviewed
-- `info`: Informational messages
+- `info`: Informational messages, suggestions
 
 ### Common Issue Types
 - `invalid_action`: Action doesn't exist in AWS
@@ -542,9 +586,38 @@ async def execute(self, statement, statement_idx, fetcher, config):
 - `missing_condition`: Missing recommended conditions
 - Custom types: Use descriptive names for your checks
 
+## Troubleshooting
+
+### Check Not Loading
+1. Verify file is in `custom_checks_dir`
+2. Check class inherits from `PolicyCheck`
+3. Ensure `__init__.py` exists in directory
+4. Check for Python syntax errors
+5. Verify class name doesn't conflict with built-in checks
+
+### Check Not Running
+1. Ensure check is enabled in configuration
+2. Verify `check_id` matches configuration key
+3. Check statement conditions (e.g., only runs on Allow statements)
+4. Add debug logging to `execute()` method
+
+### Configuration Not Applied
+1. Verify YAML syntax is correct
+2. Check configuration key matches `check_id`
+3. Ensure using `use_registry=True` when calling validate_policies
+4. Verify config file path is correct
+
 ## Need Help?
 
-- Review the built-in checks in `iam_validator/core/checks/`
-- Check the `PolicyCheck` base class in `check_registry.py`
-- Look at the `ValidationIssue` model in `models.py`
-- See the configuration loader in `config_loader.py`
+1. Review the 8 example checks in this directory
+2. Check the built-in checks in `iam_validator/checks/`
+3. See `PolicyCheck` base class in [check_registry.py](../../iam_validator/core/check_registry.py)
+4. Check the [configuration docs](../../docs/configuration.md)
+5. Open an issue on GitHub
+
+## Additional Resources
+
+- **[Python Library Usage](../library-usage/README.md)** - How to use the library programmatically
+- **[Configuration Guide](../../docs/configuration.md)** - All configuration options
+- **[Built-in Checks](../../iam_validator/checks/)** - Source code for built-in checks
+- **[API Documentation](../../docs/python-library-usage.md)** - Complete API reference

@@ -33,6 +33,7 @@ from typing import Any
 
 import httpx
 
+from iam_validator.core.config import AWS_SERVICE_REFERENCE_BASE_URL
 from iam_validator.core.models import ServiceDetail, ServiceInfo
 
 logger = logging.getLogger(__name__)
@@ -121,7 +122,7 @@ class CompiledPatterns:
 class AWSServiceFetcher:
     """Fetches AWS service information from the AWS service reference API with enhanced performance features."""
 
-    BASE_URL = "https://servicereference.us-east-1.amazonaws.com/"
+    BASE_URL = AWS_SERVICE_REFERENCE_BASE_URL
 
     # Common AWS services to pre-fetch
     # All other services will be fetched on-demand (lazy loading if found in policies)
@@ -797,8 +798,15 @@ class AWSServiceFetcher:
 
     async def validate_condition_key(
         self, action: str, condition_key: str
-    ) -> tuple[bool, str | None]:
-        """Validate condition key with optimized caching."""
+    ) -> tuple[bool, str | None, str | None]:
+        """Validate condition key with optimized caching.
+
+        Returns:
+            Tuple of (is_valid, error_message, warning_message)
+            - is_valid: True if key is valid (even with warning)
+            - error_message: Error message if invalid (is_valid=False)
+            - warning_message: Warning message if valid but not recommended
+        """
         try:
             from iam_validator.core.aws_global_conditions import get_global_conditions
 
@@ -814,6 +822,7 @@ class AWSServiceFetcher:
                     return (
                         False,
                         f"Invalid AWS global condition key: '{condition_key}'.",
+                        None,
                     )
 
             # Fetch service detail (cached)
@@ -821,7 +830,7 @@ class AWSServiceFetcher:
 
             # Check service-specific condition keys
             if condition_key in service_detail.condition_keys:
-                return True, None
+                return True, None, None
 
             # Check action-specific condition keys
             if action_name in service_detail.actions:
@@ -830,29 +839,33 @@ class AWSServiceFetcher:
                     action_detail.action_condition_keys
                     and condition_key in action_detail.action_condition_keys
                 ):
-                    return True, None
+                    return True, None, None
 
                 # If it's a global key but the action has specific condition keys defined,
-                # check if the global key is explicitly listed in the action's supported keys
+                # AWS allows it but the key may not be available in every request context
                 if is_global_key and action_detail.action_condition_keys is not None:
-                    return (
-                        False,
-                        f"Condition key '{condition_key}' is not supported by action '{action}'. "
-                        f"This action has a specific set of supported condition keys.",
+                    warning_msg = (
+                        f"Global condition key '{condition_key}' is used with action '{action}'. "
+                        f"While global condition keys can be used across all AWS services, "
+                        f"the key may not be available in every request context. "
+                        f"Verify that '{condition_key}' is available for this specific action's request context. "
+                        f"Consider using '*IfExists' operators (e.g., StringEqualsIfExists) if the key might be missing."
                     )
+                    return True, None, warning_msg
 
             # If it's a global key and action doesn't define specific keys, allow it
             if is_global_key:
-                return True, None
+                return True, None, None
 
             return (
                 False,
                 f"Condition key '{condition_key}' is not valid for action '{action}'",
+                None,
             )
 
         except Exception as e:
             logger.error(f"Error validating condition key {condition_key} for {action}: {e}")
-            return False, f"Failed to validate condition key: {str(e)}"
+            return False, f"Failed to validate condition key: {str(e)}", None
 
     async def clear_caches(self) -> None:
         """Clear all caches (memory and disk)."""

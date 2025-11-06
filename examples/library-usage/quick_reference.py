@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Quick reference for common IAM Policy Validator library operations."""
+"""
+Quick Reference: IAM Policy Validator Library
+
+Copy-paste ready code snippets for common operations.
+Each function is self-contained and can be used independently.
+"""
 
 import asyncio
 
@@ -53,11 +58,15 @@ async def validation_with_custom_checks():
     loader = PolicyLoader()
     policies = loader.load_from_path("./policies/")
 
+    # Custom checks are loaded via configuration
+    # Specify custom_checks_dir in your iam-validator.yaml:
+    # settings:
+    #   custom_checks_dir: "./custom_checks"
+
     results = await validate_policies(
         policies,
         config_path="./iam-validator.yaml",
         use_registry=True,
-        custom_checks_dir="./custom_checks",
     )
 
     return results
@@ -192,10 +201,30 @@ async def get_validation_stats():
 # ============================================================================
 
 if __name__ == "__main__":
-    print("IAM Policy Validator - Quick Reference")
-    print("=" * 60)
+    print("""
+╔══════════════════════════════════════════════════════════════════════╗
+║                                                                      ║
+║            IAM Policy Validator - Quick Reference                   ║
+║                                                                      ║
+╚══════════════════════════════════════════════════════════════════════╝
+    """)
 
-    # Run basic validation
-    print("\n1. Basic Validation:")
+    print("\n📖 Quick Reference Guide")
+    print("=" * 70)
+    print("\nAvailable functions (uncomment to run):")
+    print("  • basic_validation() - Simple validation with defaults")
+    print("  • validation_with_config() - Use YAML configuration")
+    print("  • validation_with_custom_checks() - Include custom checks")
+    print("  • filter_by_severity() - Filter results by severity")
+    print("  • generate_multiple_formats() - Export as JSON/HTML/CSV")
+    print("  • batch_validate_directories() - Validate multiple dirs")
+    print("  • get_validation_stats() - Get detailed statistics")
+
+    # Run basic validation example
+    print("\n" + "=" * 70)
+    print("Running: Basic Validation Example")
+    print("=" * 70)
     is_valid = asyncio.run(basic_validation())
-    print(f"   Result: {'✅ Valid' if is_valid else '❌ Invalid'}")
+    print(f"\n📊 Result: {'✅ All policies valid' if is_valid else '❌ Issues found'}")
+
+    print("\n💡 Tip: Edit this file to run different examples")

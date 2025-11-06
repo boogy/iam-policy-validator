@@ -1,0 +1,25 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CrossAccountAccessWithOrgCheck",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::*:root"
+      },
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::shared-org-bucket",
+        "arn:aws:s3:::shared-org-bucket/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalOrgID": "o-123456789"
+        }
+      }
+    }
+  ]
+}

@@ -242,7 +242,7 @@ class TestConfigLoader:
         assert "settings" in config.config_dict
         # Verify some key default settings exist
         assert config.config_dict["settings"]["fail_fast"] is False
-        assert "action_validation_check" in config.config_dict
+        assert "action_validation" in config.config_dict
 
     def test_load_config_not_found_disallow_missing(self, temp_dir):
         """Test loading config when file not found with allow_missing=False."""

@@ -166,6 +166,18 @@ Examples:
             help="Number of policies to process per batch (default: 10, only with --stream)",
         )
 
+        parser.add_argument(
+            "--no-summary",
+            action="store_true",
+            help="Hide Executive Summary section in enhanced format output",
+        )
+
+        parser.add_argument(
+            "--no-severity-breakdown",
+            action="store_true",
+            help="Hide Issue Severity Breakdown section in enhanced format output",
+        )
+
     async def execute(self, args: argparse.Namespace) -> int:
         """Execute the validate command."""
         # Check if streaming mode is enabled
@@ -229,7 +241,14 @@ Examples:
                 print(generator.generate_github_comment(report))
         else:
             # Use formatter registry for other formats (enhanced, html, csv, sarif)
-            output_content = generator.format_report(report, args.format)
+            # Pass options for enhanced format
+            format_options = {}
+            if args.format == "enhanced":
+                format_options["show_summary"] = not getattr(args, "no_summary", False)
+                format_options["show_severity_breakdown"] = not getattr(
+                    args, "no_severity_breakdown", False
+                )
+            output_content = generator.format_report(report, args.format, **format_options)
             if args.output:
                 with open(args.output, "w", encoding="utf-8") as f:
                     f.write(output_content)
@@ -348,7 +367,14 @@ Examples:
                 print(generator.generate_github_comment(report))
         else:
             # Use formatter registry for other formats (enhanced, html, csv, sarif)
-            output_content = generator.format_report(report, args.format)
+            # Pass options for enhanced format
+            format_options = {}
+            if args.format == "enhanced":
+                format_options["show_summary"] = not getattr(args, "no_summary", False)
+                format_options["show_severity_breakdown"] = not getattr(
+                    args, "no_severity_breakdown", False
+                )
+            output_content = generator.format_report(report, args.format, **format_options)
             if args.output:
                 with open(args.output, "w", encoding="utf-8") as f:
                     f.write(output_content)

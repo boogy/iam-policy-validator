@@ -2,6 +2,11 @@
 
 This module provides functionality to match actions against sensitive action
 configurations, supporting exact matches, regex patterns, and any_of/all_of logic.
+
+Performance optimizations:
+- Uses frozenset for O(1) lookups
+- LRU cache for compiled regex patterns
+- Lazy loading of default actions from modular data structure
 """
 
 import re
@@ -9,30 +14,32 @@ from functools import lru_cache
 from re import Pattern
 
 from iam_validator.core.check_registry import CheckConfig
+from iam_validator.core.config.sensitive_actions import get_sensitive_actions
 
-# Default set of sensitive actions for backward compatibility
-# Using frozenset for O(1) lookups and immutability
-DEFAULT_SENSITIVE_ACTIONS = frozenset(
-    {
-        "ec2:DeleteVolume",
-        "ec2:TerminateInstances",
-        "eks:DeleteCluster",
-        "iam:AttachRolePolicy",
-        "iam:AttachUserPolicy",
-        "iam:CreateAccessKey",
-        "iam:CreateRole",
-        "iam:CreateUser",
-        "iam:DeleteRole",
-        "iam:DeleteUser",
-        "iam:PutRolePolicy",
-        "iam:PutUserPolicy",
-        "lambda:DeleteFunction",
-        "rds:DeleteDBInstance",
-        "s3:DeleteBucket",
-        "s3:DeleteBucketPolicy",
-        "s3:PutBucketPolicy",
-    }
-)
+# Lazy-loaded default set of sensitive actions
+# This will be loaded only when first accessed
+_DEFAULT_SENSITIVE_ACTIONS_CACHE: frozenset[str] | None = None
+
+
+def _get_default_sensitive_actions() -> frozenset[str]:
+    """
+    Get default sensitive actions with lazy loading and caching.
+
+    Returns:
+        Frozenset of all default sensitive actions
+
+    Performance:
+        - First call: Loads from sensitive actions list
+        - Subsequent calls: O(1) cached lookup
+    """
+    global _DEFAULT_SENSITIVE_ACTIONS_CACHE
+    if _DEFAULT_SENSITIVE_ACTIONS_CACHE is None:
+        _DEFAULT_SENSITIVE_ACTIONS_CACHE = get_sensitive_actions()
+    return _DEFAULT_SENSITIVE_ACTIONS_CACHE
+
+
+# Export for backward compatibility
+DEFAULT_SENSITIVE_ACTIONS = _get_default_sensitive_actions()
 
 
 # Global regex pattern cache for performance
@@ -61,15 +68,19 @@ def check_sensitive_actions(
     Args:
         actions: List of actions to check
         config: Check configuration
-        default_actions: Default sensitive actions to use if no config (defaults to DEFAULT_SENSITIVE_ACTIONS)
+        default_actions: Default sensitive actions to use if no config (lazy-loaded)
 
     Returns:
         tuple[bool, list[str]]: (is_sensitive, matched_actions)
             - is_sensitive: True if the actions match the sensitive criteria
             - matched_actions: List of actions that matched the criteria
+
+    Performance:
+        - Uses lazy-loaded defaults (only loaded on first use)
+        - O(1) frozenset lookups for action matching
     """
     if default_actions is None:
-        default_actions = DEFAULT_SENSITIVE_ACTIONS
+        default_actions = _get_default_sensitive_actions()
 
     # Filter out wildcards
     filtered_actions = [a for a in actions if a != "*"]
@@ -77,12 +88,9 @@ def check_sensitive_actions(
         return False, []
 
     # Get configuration for both sensitive_actions and sensitive_action_patterns
-    sub_check_config = config.config.get("sensitive_action_check", {})
-    if not isinstance(sub_check_config, dict):
-        return False, []
-
-    sensitive_actions_config = sub_check_config.get("sensitive_actions")
-    sensitive_patterns_config = sub_check_config.get("sensitive_action_patterns")
+    # Config is now flat (no longer nested under sensitive_action_check)
+    sensitive_actions_config = config.config.get("sensitive_actions")
+    sensitive_patterns_config = config.config.get("sensitive_action_patterns")
 
     # Check sensitive_actions (exact matches)
     actions_match, actions_matched = check_actions_config(

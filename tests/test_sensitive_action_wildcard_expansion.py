@@ -2,7 +2,7 @@
 
 import pytest
 
-from iam_validator.checks.security_best_practices import SecurityBestPracticesCheck
+from iam_validator.checks.sensitive_action import SensitiveActionCheck
 from iam_validator.checks.utils.wildcard_expansion import expand_wildcard_actions
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig
@@ -128,19 +128,17 @@ async def test_expand_invalid_service_kept(fetcher):
 @pytest.mark.asyncio
 async def test_sensitive_action_detection_with_service_wildcard(fetcher):
     """Test that service wildcards are detected as containing sensitive actions."""
-    check = SecurityBestPracticesCheck()
+    check = SensitiveActionCheck()
     config = CheckConfig(
-        check_id="security_best_practices",
+        check_id="sensitive_action",
         enabled=True,
         config={
-            "sensitive_action_check": {
-                "enabled": True,
-                "sensitive_actions": [
-                    "iam:CreateUser",
-                    "iam:DeleteUser",
-                    "iam:AttachUserPolicy",
-                ],
-            }
+            "enabled": True,
+            "sensitive_actions": [
+                "iam:CreateUser",
+                "iam:DeleteUser",
+                "iam:AttachUserPolicy",
+            ],
         },
     )
 
@@ -162,18 +160,16 @@ async def test_sensitive_action_detection_with_service_wildcard(fetcher):
 @pytest.mark.asyncio
 async def test_sensitive_action_detection_with_prefix_wildcard(fetcher):
     """Test that prefix wildcards are detected as containing sensitive actions."""
-    check = SecurityBestPracticesCheck()
+    check = SensitiveActionCheck()
     config = CheckConfig(
-        check_id="security_best_practices",
+        check_id="sensitive_action",
         enabled=True,
         config={
-            "sensitive_action_check": {
-                "enabled": True,
+            "enabled": True,
                 "sensitive_actions": [
                     "ec2:DeleteVolume",
                     "ec2:TerminateInstances",
                 ],
-            }
         },
     )
 
@@ -196,18 +192,16 @@ async def test_sensitive_action_detection_with_prefix_wildcard(fetcher):
 @pytest.mark.asyncio
 async def test_sensitive_action_not_detected_for_safe_wildcards(fetcher):
     """Test that safe wildcards don't trigger sensitive action warnings."""
-    check = SecurityBestPracticesCheck()
+    check = SensitiveActionCheck()
     config = CheckConfig(
-        check_id="security_best_practices",
+        check_id="sensitive_action",
         enabled=True,
         config={
-            "sensitive_action_check": {
-                "enabled": True,
+            "enabled": True,
                 "sensitive_actions": [
                     "s3:DeleteBucket",
                     "s3:PutBucketPolicy",
                 ],
-            }
         },
     )
 
@@ -228,18 +222,16 @@ async def test_sensitive_action_not_detected_for_safe_wildcards(fetcher):
 @pytest.mark.asyncio
 async def test_sensitive_action_with_conditions_passes(fetcher):
     """Test that sensitive wildcard actions with conditions pass."""
-    check = SecurityBestPracticesCheck()
+    check = SensitiveActionCheck()
     config = CheckConfig(
-        check_id="security_best_practices",
+        check_id="sensitive_action",
         enabled=True,
         config={
-            "sensitive_action_check": {
-                "enabled": True,
+            "enabled": True,
                 "sensitive_actions": [
                     "iam:CreateUser",
                     "iam:DeleteUser",
                 ],
-            }
         },
     )
 
@@ -261,19 +253,17 @@ async def test_sensitive_action_with_conditions_passes(fetcher):
 @pytest.mark.asyncio
 async def test_multiple_wildcard_patterns_detected(fetcher):
     """Test that multiple wildcard patterns are all expanded and checked."""
-    check = SecurityBestPracticesCheck()
+    check = SensitiveActionCheck()
     config = CheckConfig(
-        check_id="security_best_practices",
+        check_id="sensitive_action",
         enabled=True,
         config={
-            "sensitive_action_check": {
-                "enabled": True,
+            "enabled": True,
                 "sensitive_actions": [
                     "iam:CreateUser",
                     "ec2:TerminateInstances",
                     "s3:DeleteBucket",
                 ],
-            }
         },
     )
 

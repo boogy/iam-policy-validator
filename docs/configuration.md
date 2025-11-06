@@ -1,410 +1,574 @@
-# Configuration System
+# Configuration Guide
 
-## Overview
+The IAM Policy Validator uses intelligent defaults while supporting full customization through YAML configuration files.
 
-The IAM Policy Validator uses a flexible configuration system that combines default configurations (defined in Python code) with user-provided YAML overrides. This ensures the tool works out-of-the-box while allowing full customization.
+## Quick Start
 
-## How It Works
+**No configuration needed!** The validator works out-of-the-box with sensible defaults.
 
-### Default Configuration
-
-Default configurations are defined in Python code at [iam_validator/core/defaults.py](../iam_validator/core/defaults.py), which mirrors the example [default-config.yaml](../default-config.yaml) file. This ensures:
-- The tool works out-of-the-box without requiring a config file
-- Users only need to specify what they want to change
-- Configuration is versioned with the code
-- Defaults stay synchronized with the example YAML file
-
-### User Configuration
-
-Users can provide a YAML configuration file (e.g., `iam-validator.yaml`) to override defaults. The system uses **deep merge** logic:
-- User settings take precedence over defaults
-- Only specified values are overridden
-- Unspecified settings retain their default values
-
-## Examples
-
-### Example 1: No Configuration File
-
-```python
-# No config file provided
-config = ValidatorConfig()
-# Result: All checks enabled with default settings
-```
-
-### Example 2: Disable One Check
+To customize, create `iam-validator.yaml` and override only what you need:
 
 ```yaml
-# iam-validator.yaml
-policy_size_check:
+settings:
+  fail_on_severity: [error, critical, high]
+
+wildcard_action:
+  severity: critical
+```
+
+## How Configuration Works
+
+### Default Behavior
+- Built-in defaults defined in Python code ([full reference](../examples/configs/full-reference-config.yaml))
+- 5-10x faster than YAML-only approach
+- Zero configuration required to start
+
+### YAML Overrides
+- Create `iam-validator.yaml` in your project
+- Override only specific settings you need
+- Deep merge with defaults (unspecified settings unchanged)
+- See [Modular Configuration](modular-configuration.md) for architecture details
+
+## Configuration Examples
+
+### Disable a Check
+
+```yaml
+policy_size:
   enabled: false
 ```
 
-**Result:**
-- `policy_size_check` is disabled
-- All other checks remain enabled with default settings
-- All settings retain default values
-
-### Example 3: Override One Setting
+### Change Severity
 
 ```yaml
-# iam-validator.yaml
-settings:
-  enable_builtin_checks: false
+wildcard_action:
+  severity: critical
 ```
 
-**Result:**
-- All builtin checks are disabled
-- All other settings retain defaults
-- Individual check configs still exist in memory
-
-### Example 4: Deep Nested Override
+### Configure Sub-Checks
 
 ```yaml
-# iam-validator.yaml
-security_best_practices_check:
+security_best_practices:
   wildcard_action_check:
     enabled: false
+  wildcard_resource_check:
+    severity: high
 ```
 
-**Result:**
-- `wildcard_action_check` sub-check is disabled
-- `wildcard_resource_check` and other sub-checks remain enabled
-- Parent `security_best_practices_check` remains enabled
-- Default severity and other settings preserved
-
-### Example 5: Multiple Overrides
+### Multiple Overrides
 
 ```yaml
-# iam-validator.yaml
 settings:
-  max_concurrent: 20  # Override default of 10
+  max_concurrent: 20
+  fail_on_severity: [error, critical, high]
 
-policy_size_check:
-  severity: warning  # Override default of error
+wildcard_action:
+  severity: critical
 
-security_best_practices_check:
-  severity: error  # Override default of warning
-  wildcard_action_check:
-    severity: critical  # Override sub-check severity
+wildcard_resource:
+  severity: high
 ```
 
-**Result:**
-- `max_concurrent` changed to 20
-- `policy_size_check` severity changed to warning
-- `security_best_practices_check` severity changed to error
-- `wildcard_action_check` severity changed to critical
-- All other settings and checks retain defaults
+**Key Points:**
+- Override only what you need
+- Unspecified settings use defaults
+- Deep merge preserves nested structures
 
-## Configuration Loading
+## Configuration File Discovery
 
-The configuration loader searches for config files in this order:
+Auto-discovery search order:
+1. `--config` flag (explicit path)
+2. Current directory: `iam-validator.yaml`, `.iam-validator.yaml`
+3. Parent directories (walks up to root)
+4. Home directory
 
-1. Explicit path (via `--config` flag)
-2. Current directory (`iam-validator.yaml`, `.iam-validator.yaml`, etc.)
-3. Parent directories (walking up to root)
-4. User home directory
+**Tip:** Place `iam-validator.yaml` in project root for automatic discovery.
 
-If no config file is found, the tool uses the built-in defaults.
+## Disabling Built-in Checks
 
-## Disabling All Built-in Checks
-
-To disable all built-in AWS validation checks (useful when using AWS Access Analyzer):
+Disable all built-in checks to use only AWS Access Analyzer or custom checks:
 
 ```yaml
 settings:
   enable_builtin_checks: false
 ```
 
-This is useful when you want to:
-- Use only AWS Access Analyzer for IAM validation
-- Run only custom business rule checks
-- Reduce validation overhead
+## Severity Control
 
-## Severity-Based Failure Control
-
-The `fail_on_severity` setting controls which severity levels cause validation to fail and determines the GitHub review status:
-
-### Configuration
+Configure which severities cause validation failures:
 
 ```yaml
 settings:
-  # Severity levels that cause validation to fail
-  # IAM Validity: error, warning, info
-  # Security: critical, high, medium, low
-  fail_on_severity:
-    - error     # IAM policy validity errors
-    - critical  # Critical security issues
-    - high      # High security issues (optional)
-    # - warning # IAM validity warnings (optional)
-    # - medium  # Medium security issues (optional)
+  fail_on_severity: [error, critical, high]
 ```
 
-### Impact on Validation
+**Severity Levels:**
+- **IAM Validity:** `error`, `warning`, `info`
+- **Security:** `critical`, `high`, `medium`, `low`
 
-**Exit Code:**
-- If any issues match severities in `fail_on_severity` → Exit code 1 (failure)
-- Otherwise → Exit code 0 (success)
-- Note: `--fail-on-warnings` CLI flag overrides this to fail on all issues
-
-**GitHub Review Status:**
-- If any issues match severities in `fail_on_severity` → REQUEST_CHANGES
-- Otherwise → COMMENT
-- Only applies when using `--github-review` flag
-
-### Common Configurations
-
-**Strict (fail on everything):**
-```yaml
-fail_on_severity:
-  - error
-  - warning
-  - info
-  - critical
-  - high
-  - medium
-  - low
-```
-
-**Moderate (default - fail on serious issues only):**
-```yaml
-fail_on_severity:
-  - error      # IAM validity errors
-  - critical   # Critical security issues
-```
-
-**Relaxed (only fail on IAM errors):**
-```yaml
-fail_on_severity:
-  - error      # Only fail on IAM validity errors
-```
-
-**Security-focused (fail on all security issues):**
-```yaml
-fail_on_severity:
-  - error
-  - critical
-  - high
-  - medium
-```
-
-### Example: Customizing Review Behavior
+**Common Presets:**
 
 ```yaml
-# Only REQUEST_CHANGES for critical issues
-settings:
-  fail_on_severity:
-    - critical
+# Strict - Fail on everything
+fail_on_severity: [error, warning, info, critical, high, medium, low]
 
-# Result:
-# - Critical issues → REQUEST_CHANGES (blocks PR)
-# - High/Medium/Low issues → COMMENT (informational)
+# Default - Fail on serious issues
+fail_on_severity: [error, critical]
+
+# Relaxed - IAM errors only
+fail_on_severity: [error]
+
+# Security-focused
+fail_on_severity: [error, critical, high, medium]
 ```
 
-## Customizing Messages, Suggestions, and Examples
+**Impact:**
+- Exit code: 0 (success) or 1 (failure)
+- GitHub review status: `COMMENT` or `REQUEST_CHANGES`
+- Override with `--fail-on-warnings` flag
 
-All security best practices sub-checks support customizable messages, suggestions, and code examples. This allows you to tailor the validation output to match your organization's terminology and guidelines.
+## Customizing Messages
 
-### Available Message Fields
+Tailor validation messages to your organization's guidelines. Each check supports multiple message fields that control what users see when issues are detected.
 
-Each sub-check in `security_best_practices_check` supports:
-- `message`: The issue description shown to users
-- `suggestion`: **Text-only** remediation guidance explaining what to do
-- `example`: **Code snippet** showing how to fix the issue
+### Message Field Reference
 
-The `suggestion` and `example` fields are automatically combined in the output:
-```
-{suggestion}
+When configuring checks, you can customize these fields:
 
-Example:
-{example}
-```
+| Field         | Purpose                                      | When Shown                     | Audience                        |
+| ------------- | -------------------------------------------- | ------------------------------ | ------------------------------- |
+| `description` | Technical description of what the check does | Documentation, check listings  | Developers maintaining the tool |
+| `message`     | Error/warning message when issue is detected | Validation reports, CLI output | End users fixing policies       |
+| `suggestion`  | Guidance on how to fix or mitigate the issue | Validation reports             | Developers implementing fixes   |
+| `example`     | Concrete code example showing before/after   | Validation reports             | Developers writing policy code  |
 
-Some sub-checks also support template placeholders:
+### Field Progression
 
-#### Template Placeholders
+The fields follow a natural progression from detection to resolution:
 
-**service_wildcard_check:**
-- `{action}`: The wildcard action (e.g., "s3:*")
-- `{service}`: The service name (e.g., "s3")
+1. **`description`** - What the check does (internal/documentation)
+2. **`message`** - What's wrong (alert the user)
+3. **`suggestion`** - Why it's bad & how to approach fixing (advise)
+4. **`example`** - Concrete fix with code (demonstrate)
 
-**sensitive_action_check:**
-- `message_single`: Template for single action (supports `{action}`)
-- `message_multiple`: Template for multiple actions (supports `{actions}`)
-
-### Example: Custom Messages with Code Examples
+### Example Configuration
 
 ```yaml
-# iam-validator.yaml
-security_best_practices_check:
-  wildcard_action_check:
-    message: "🚨 SECURITY ALERT: Wildcard actions detected!"
-    suggestion: "Replace wildcard with specific actions needed for your use case"
-    example: |
-      Replace:
-        "Action": ["*"]
+wildcard_action:
+  enabled: true
+  severity: critical
+  description: "Checks for wildcard actions (*)"
+  message: "Statement allows all actions (*) - violates least-privilege principle"
+  suggestion: "Replace wildcard with specific actions needed for your use case. Review AWS documentation to identify minimal required permissions."
+  example: |
+    Replace:
+      "Action": ["*"]
 
-      With specific actions:
-        "Action": [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:ListBucket"
-        ]
+    With specific actions:
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
 
-  sensitive_action_check:
-    message_single: "⚡ Action '{action}' requires additional conditions"
-    suggestion: "Add ABAC conditions to restrict access based on resource tags"
-    example: |
-      "Condition": {
-        "StringEquals": {
-          "aws:ResourceTag/owner": "${aws:PrincipalTag/owner}"
-        }
-      }
+full_wildcard:
+  enabled: true
+  severity: critical
+  description: "Checks for both action and resource wildcards together (critical risk)"
+  message: "Statement allows all actions on all resources - CRITICAL SECURITY RISK"
+  suggestion: |
+    This grants full administrative access equivalent to AdministratorAccess policy.
+    Replace both wildcards with specific actions and resources to follow least-privilege principle.
+    Consider: What specific actions are needed? Which resources should be accessible?
+  example: |
+    Replace:
+      "Action": "*",
+      "Resource": "*"
+
+    With specific values:
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::my-bucket/*"
+      ]
 ```
 
-**Result:**
+### Output Example
+
+When a validation issue is found, the fields appear in reports like this:
+
 ```
-Issue: 🚨 SECURITY ALERT: Wildcard actions detected!
-Suggestion: Replace wildcard with specific actions needed for your use case
+❌ full_wildcard (CRITICAL)
+
+Message:      Statement allows all actions on all resources - CRITICAL SECURITY RISK
+Suggestion:   This grants full administrative access. Replace both wildcards with
+              specific actions and resources to follow least-privilege principle
 
 Example:
 Replace:
-  "Action": ["*"]
+  "Action": "*",
+  "Resource": "*"
 
-With specific actions:
+With specific values:
   "Action": [
     "s3:GetObject",
-    "s3:PutObject",
-    "s3:ListBucket"
+    "s3:PutObject"
+  ],
+  "Resource": [
+    "arn:aws:s3:::my-bucket/*"
   ]
 ```
 
-### Default Messages and Examples
+### Template Placeholders
 
-If you don't customize messages, the tool uses sensible defaults from [defaults.py](../iam_validator/core/defaults.py). Each check includes both a text suggestion and a code example:
+Some checks support dynamic placeholders in messages that get replaced with actual values when issues are detected. This allows you to create flexible, context-aware validation messages.
 
-| Sub-Check                 | Default Message                                                                                                                        | Default Suggestion                                                                                                        | Has Example                                     |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `wildcard_action_check`   | "Statement allows all actions (*)"                                                                                                     | "Replace wildcard with specific actions needed for your use case"                                                         | ✅ Shows before/after                            |
-| `wildcard_resource_check` | "Statement applies to all resources (*)"                                                                                               | "Replace wildcard with specific resource ARNs"                                                                            | ✅ Shows before/after                            |
-| `full_wildcard_check`     | "Statement allows all actions on all resources - CRITICAL SECURITY RISK"                                                               | "This grants full administrative access. Replace both wildcards..."                                                       | ✅ Shows before/after                            |
-| `service_wildcard_check`  | "Service-level wildcard '{action}' grants all permissions for {service} service"                                                       | "Replace service-level wildcard with specific actions..."                                                                 | ✅ Shows before/after with {service} placeholder |
-| `sensitive_action_check`  | Single: "Sensitive action '{action}' should have conditions..."<br>Multiple: "Sensitive actions '{actions}' should have conditions..." | "Add IAM conditions to limit when this action can be used. Consider: ABAC, IP restrictions, MFA, time-based restrictions" | ✅ Shows ABAC condition example                  |
+#### Available Placeholders
 
-## Principal Validation for Resource Policies
+**For `service_wildcard` check:**
+- `{action}` - The specific wildcard action found (e.g., "s3:*")
+- `{service}` - The service name extracted from the action (e.g., "s3")
 
-The `principal_validation_check` validates Principal elements in resource-based policies to enforce organizational security policies. This check only runs when `--policy-type RESOURCE_POLICY` is specified.
+Works in: `message`, `suggestion`, `example`
 
-### Configuration
+**For `sensitive_action` check:**
+- `{action}` - Single sensitive action when only one is found (e.g., "iam:CreateRole")
+- `{actions}` - Comma-separated list of sensitive actions when multiple are found (e.g., "iam:CreateRole', 'iam:PutUserPolicy")
+
+Works in: `message_single`, `message_multiple`, `suggestion`, `example`
+
+Note: `sensitive_action` uses special fields:
+- `message_single` - Used when one sensitive action is detected
+- `message_multiple` - Used when multiple sensitive actions are detected
+
+#### Template Examples
+
+**Service Wildcard with Templates:**
+```yaml
+service_wildcard:
+  enabled: true
+  severity: high
+  message: "⚠️ Service wildcard '{action}' detected for {service} service"
+  suggestion: |
+    The wildcard '{action}' grants ALL permissions for the {service} service.
+    This is overly permissive and violates least-privilege principle.
+
+    Recommended actions:
+    1. Review what specific {service} actions are actually needed
+    2. Replace '{action}' with explicit action list
+    3. If read-only access is sufficient, use '{service}:Get*' and '{service}:List*'
+  example: |
+    ❌ Avoid:
+      "Action": ["{action}"]
+
+    ✅ Better:
+      "Action": [
+        "{service}:GetObject",
+        "{service}:ListBucket",
+        "{service}:PutObject"
+      ]
+
+    ✅ Or use specific wildcards:
+      "Action": [
+        "{service}:Get*",
+        "{service}:List*"
+      ]
+```
+
+**Sensitive Action with Templates:**
+```yaml
+sensitive_action:
+  enabled: true
+  severity: medium
+  # Single action message (uses {action})
+  message_single: "🔐 Sensitive action '{action}' requires conditions"
+  # Multiple actions message (uses {actions})
+  message_multiple: "🔐 Sensitive actions '{actions}' require conditions"
+  suggestion: |
+    Sensitive actions should be restricted with IAM conditions.
+
+    Consider adding conditions for:
+    - ABAC: Match resource/request tags to principal tags
+    - IP restrictions: Limit to corporate IP ranges
+    - MFA: Require multi-factor authentication
+    - Time-based: Restrict to business hours
+  example: |
+    Add a Condition block to your statement:
+
+    "Condition": {
+      "StringEquals": {
+        "aws:ResourceTag/owner": "${aws:PrincipalTag/owner}"
+      }
+    }
+```
+
+#### Template Use Cases
+
+**1. Organization-specific messaging:**
+```yaml
+service_wildcard:
+  message: "Policy violates SEC-{service}-001: No service-level wildcards allowed"
+  suggestion: |
+    Per security policy SEC-{service}-001, the action '{action}' is not permitted.
+    Contact security@company.com with your use case for guidance.
+```
+
+**2. Different severity levels:**
+```yaml
+service_wildcard:
+  message: "Critical security violation: '{action}' grants excessive {service} permissions"
+  suggestion: |
+    The {service} service contains sensitive operations.
+    Using '{action}' could allow unauthorized access to:
+    - {service} data and configurations
+    - Potential privilege escalation vectors
+
+    This must be remediated before deployment.
+```
+
+**3. Contextual examples:**
+```yaml
+sensitive_action:
+  example: |
+    The detected action '{action}' should be constrained.
+
+    Example for development environment:
+    "Condition": {
+      "StringEquals": {
+        "aws:RequestTag/environment": "dev"
+      }
+    }
+
+    Example for production environment:
+    "Condition": {
+      "Bool": {"aws:MultiFactorAuthPresent": "true"}
+    }
+```
+
+#### Template Output Examples
+
+When `s3:*` is detected, with the configuration above:
+
+```
+⚠️ Service wildcard 's3:*' detected for s3 service
+
+Suggestion:
+The wildcard 's3:*' grants ALL permissions for the s3 service.
+This is overly permissive and violates least-privilege principle.
+
+Recommended actions:
+1. Review what specific s3 actions are actually needed
+2. Replace 's3:*' with explicit action list
+3. If read-only access is sufficient, use 's3:Get*' and 's3:List*'
+
+Example:
+❌ Avoid:
+  "Action": ["s3:*"]
+
+✅ Better:
+  "Action": [
+    "s3:GetObject",
+    "s3:ListBucket",
+    "s3:PutObject"
+  ]
+
+✅ Or use specific wildcards:
+  "Action": [
+    "s3:Get*",
+    "s3:List*"
+  ]
+```
+
+#### Important Notes
+
+1. **Placeholder syntax**: Use Python string formatting syntax: `{placeholder_name}`
+2. **Field support**: Not all fields support templates - check the check implementation
+3. **Escaping braces**: To include literal braces, double them: `{{` for `{` and `}}` for `}`
+4. **Case sensitivity**: Placeholder names are case-sensitive
+5. **Missing values**: If a placeholder value is not available, the template rendering will fail with an error
+
+### Best Practices for Custom Messages
+
+1. **Be Specific**: Explain exactly what's wrong and why it's a security risk
+2. **Provide Context**: Include organization-specific policies or compliance requirements
+3. **Show Examples**: Always include concrete before/after code examples
+4. **Be Actionable**: Give clear steps on how to fix the issue
+5. **Use Multiline**: For longer messages, use YAML's `|` multiline syntax
 
 ```yaml
-principal_validation_check:
+wildcard_action:
+  message: "Wildcard actions violate our security policy SEC-001"
+  suggestion: |
+    Per company policy SEC-001, all IAM policies must follow least-privilege principle.
+
+    Steps to fix:
+    1. Review AWS service documentation for your use case
+    2. Identify minimal required actions
+    3. Replace wildcard with specific action list
+    4. Test policy in non-production environment
+
+    Contact security-team@company.com for assistance.
+  example: |
+    # Forbidden (too permissive)
+    "Action": ["*"]
+
+    # Allowed (specific actions only)
+    "Action": [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:ListBucket"
+    ]
+```
+
+### Field Availability by Check
+
+Not all checks support all fields. Most common fields:
+
+- ✅ `description` - Supported by all checks
+- ✅ `severity` - Supported by all checks
+- ✅ `enabled` - Supported by all checks
+- ⚠️ `message` - Supported by most checks (wildcards, sensitive actions, etc.)
+- ⚠️ `suggestion` - Supported by security checks
+- ⚠️ `example` - Supported by security checks
+
+**Default Messages:** See [defaults.py](../iam_validator/core/config/defaults.py) for all built-in messages and fields
+
+## Principal Validation
+
+For resource policies (`--policy-type RESOURCE_POLICY`), validate Principal elements:
+
+### Simple Format (Backward Compatible)
+
+```yaml
+principal_validation:
   enabled: true
   severity: high
 
   # Block dangerous principals
   blocked_principals:
-    - "*"  # Public access
-    - "arn:aws:iam::*:root"  # All AWS accounts
+    - "*"
+    - "arn:aws:iam::*:root"
 
-  # Whitelist mode (optional)
+  # Whitelist (optional)
   allowed_principals:
-    - "arn:aws:iam::123456789012:root"
-    - "arn:aws:iam::123456789012:role/*"
+    - "arn:aws:iam::123456789012:*"
 
-  # Require conditions for specific principals
+  # Require conditions (simple format)
   require_conditions_for:
-    "*":
-      - "aws:SourceArn"
-      - "aws:SourceAccount"
-    "arn:aws:iam::*:root":
-      - "aws:PrincipalOrgID"
+    "*": ["aws:SourceArn", "aws:SourceAccount"]
 
-  # Service principals whitelist
+  # Allow AWS services
   allowed_service_principals:
     - "cloudfront.amazonaws.com"
     - "s3.amazonaws.com"
 ```
 
-### Features
+### Advanced Format (Principal Condition Requirements)
 
-**1. Blocked Principals:**
-Block dangerous principals that should never appear in your policies:
+Similar to `action_condition_enforcement` but for principals. Supports `all_of`, `any_of`, `none_of` logic with rich metadata:
+
 ```yaml
-blocked_principals:
-  - "*"  # Block public access
-  - "arn:aws:iam::*:root"  # Block all AWS accounts
+principal_validation:
+  enabled: true
+  severity: high
+
+  # Advanced condition requirements
+  principal_condition_requirements:
+    # Public access with critical severity
+    - principals:
+        - "*"
+      severity: critical  # Override global severity
+      required_conditions:
+        all_of:
+          - condition_key: "aws:SourceArn"
+            description: "Limit public access by source ARN"
+            example: |
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceArn": "arn:aws:sns:us-east-1:123456789012:my-topic"
+                }
+              }
+          - condition_key: "aws:SourceAccount"
+            description: "Limit public access by source account"
+
+    # Cross-account with expected value validation
+    - principals:
+        - "arn:aws:iam::*:root"
+      required_conditions:
+        - condition_key: "aws:PrincipalOrgID"
+          operator: "StringEquals"
+          expected_value: "o-123456"
+          description: "Must be from same organization"
+
+    # IAM roles with any_of logic
+    - principals:
+        - "arn:aws:iam::*:role/*"
+      required_conditions:
+        any_of:
+          - condition_key: "aws:MultiFactorAuthPresent"
+            expected_value: true
+          - condition_key: "aws:SourceVpce"
+
+    # Prevent insecure transport (none_of)
+    - principals:
+        - "*"
+      required_conditions:
+        none_of:
+          - condition_key: "aws:SecureTransport"
+            expected_value: false
+            description: "Never allow insecure transport"
 ```
 
-**2. Allowed Principals (Whitelist Mode):**
-When configured, ONLY these principals are allowed:
-```yaml
-allowed_principals:
-  - "arn:aws:iam::123456789012:root"  # Specific account
-  - "arn:aws:iam::123456789012:role/*"  # All roles in account
-  - "arn:aws:iam::*:role/OrganizationAccountAccessRole"  # Specific role name
-```
+**Supported Features:**
+- `all_of` - ALL conditions must be present
+- `any_of` - At least ONE condition must be present
+- `none_of` - NONE of these conditions should be present
+- `operator` - Validate specific condition operator (e.g., "IpAddress", "StringEquals")
+- `expected_value` - Validate condition value matches expected value
+- `severity` - Override severity per-requirement or per-condition
+- `description` - Custom description for each condition
+- `example` - Custom example for suggestions
 
-**3. Conditional Requirements:**
-Require specific conditions for certain principals:
+**Common Patterns:**
+
 ```yaml
+# Block public access
+blocked_principals: ["*"]
+
+# Organization-only
+allowed_principals: ["arn:aws:iam::123456789012:*"]
+
+# Conditional public access (simple)
 require_conditions_for:
-  "*":  # Public access must have these conditions
-    - "aws:SourceArn"
-    - "aws:SourceAccount"
-  "arn:aws:iam::*:root":  # Cross-account access must have org ID
-    - "aws:PrincipalOrgID"
+  "*": ["aws:SourceArn"]
+
+# Conditional public access (advanced)
+principal_condition_requirements:
+  - principals: ["*"]
+    severity: critical
+    required_conditions:
+      all_of:
+        - condition_key: "aws:SourceArn"
+        - condition_key: "aws:SourceAccount"
+
+# MFA or VPC endpoint required for roles
+principal_condition_requirements:
+  - principals: ["arn:aws:iam::*:role/*"]
+    required_conditions:
+      any_of:
+        - condition_key: "aws:MultiFactorAuthPresent"
+          expected_value: true
+        - condition_key: "aws:SourceVpce"
 ```
 
-**4. Service Principal Whitelist:**
-AWS service principals that are always allowed:
-```yaml
-allowed_service_principals:
-  - "cloudfront.amazonaws.com"
-  - "s3.amazonaws.com"
-  - "lambda.amazonaws.com"
-```
+**Wildcard Support:** Patterns support `*`, `?`, `[abc]` matching
 
-### Use Cases
-
-**Prevent Public Access:**
-```yaml
-blocked_principals:
-  - "*"
-```
-
-**Organization-Only Access:**
-```yaml
-allowed_principals:
-  - "arn:aws:iam::123456789012:*"  # Only my account
-  - "arn:aws:iam::987654321098:*"  # Only partner account
-```
-
-**Conditional Public Access:**
-```yaml
-# Allow public access but require it to be limited
-require_conditions_for:
-  "*":
-    - "aws:SourceArn"  # Must specify source resource
-```
-
-### Pattern Matching
-
-All principal lists support fnmatch-style wildcards:
-- `*` matches any characters
-- `?` matches a single character
-- `[abc]` matches any character in brackets
-
-Examples:
-- `arn:aws:iam::123456789012:*` - Any principal in account
-- `arn:aws:iam::*:role/Admin*` - Any role starting with "Admin" in any account
-- `*.amazonaws.com` - Any AWS service principal
+**See Also:**
+- [Principal Condition Enforcement Example Config](../examples/configs/principal-condition-enforcement.yaml) - Complete examples
+- [Action Condition Enforcement](#action-condition-enforcement) - Similar feature for actions
 
 ## Best Practices
 
-1. **Start Minimal**: Begin with a minimal config file that only overrides what you need
-2. **Incremental Changes**: Add overrides incrementally as requirements evolve
-3. **Document Overrides**: Add comments explaining why defaults are overridden
-4. **Version Control**: Keep config files in version control
-5. **Reference Defaults**: Check [defaults.py](../iam_validator/core/defaults.py) to see available options
-6. **Customize Messages**: Tailor messages and suggestions to match your organization's security guidelines and terminology
-7. **Principal Validation**: Use `principal_validation_check` to enforce organizational policies for resource-based policies
+- Start with minimal config - override only what you need
+- Add comments to explain custom settings
+- Keep configs in version control
+- Reference [full-reference-config.yaml](../examples/configs/full-reference-config.yaml) for all options
+- See [Modular Configuration](modular-configuration.md) for Python-based configuration

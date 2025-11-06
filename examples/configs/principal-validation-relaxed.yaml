@@ -7,7 +7,7 @@ settings:
     - error
     - critical
 
-principal_validation_check:
+principal_validation:
   enabled: true
   severity: medium  # Lower severity for relaxed mode
 

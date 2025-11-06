@@ -406,13 +406,11 @@ settings:
   enable_builtin_checks: true
 
 # Custom check configurations
-security_best_practices_check:
+wildcard_action:
   enabled: true
-  wildcard_action_check:
-    enabled: true
-    severity: high
+  severity: high
 
-action_condition_enforcement_check:
+action_condition_enforcement:
   enabled: true
   severity: critical
   action_condition_requirements:
@@ -423,7 +421,7 @@ action_condition_enforcement_check:
         - condition_key: "iam:PassedToService"
 ```
 
-See [default-config.yaml](default-config.yaml) for a complete configuration example.
+See [examples/configs/full-reference-config.yaml](examples/configs/full-reference-config.yaml) for a complete configuration reference with all available options.
 
 ### GitHub Action Inputs
 
@@ -436,11 +434,11 @@ See [default-config.yaml](default-config.yaml) for a complete configuration exam
 | `recursive`        | Recursively search directories for policy files             | No       | `true`  |
 
 #### GitHub Integration
-| Input              | Description                                          | Required | Default |
-| ------------------ | ---------------------------------------------------- | -------- | ------- |
-| `post-comment`     | Post validation summary as PR conversation comment   | No       | `true`  |
-| `create-review`    | Create line-specific review comments on PR files     | No       | `true`  |
-| `github-summary`   | Write summary to GitHub Actions job summary (Actions tab) | No       | `false` |
+| Input            | Description                                               | Required | Default |
+| ---------------- | --------------------------------------------------------- | -------- | ------- |
+| `post-comment`   | Post validation summary as PR conversation comment        | No       | `true`  |
+| `create-review`  | Create line-specific review comments on PR files          | No       | `true`  |
+| `github-summary` | Write summary to GitHub Actions job summary (Actions tab) | No       | `false` |
 
 #### Output Options
 | Input         | Description                                                                      | Required | Default   |
@@ -449,12 +447,12 @@ See [default-config.yaml](default-config.yaml) for a complete configuration exam
 | `output-file` | Path to save output file (for non-console formats)                               | No       | `""`      |
 
 #### AWS Access Analyzer
-| Input                    | Description                                                                 | Required | Default           |
-| ------------------------ | --------------------------------------------------------------------------- | -------- | ----------------- |
-| `use-access-analyzer`    | Use AWS IAM Access Analyzer for validation                                  | No       | `false`           |
-| `access-analyzer-region` | AWS region for Access Analyzer                                              | No       | `us-east-1`       |
+| Input                    | Description                                                                                            | Required | Default           |
+| ------------------------ | ------------------------------------------------------------------------------------------------------ | -------- | ----------------- |
+| `use-access-analyzer`    | Use AWS IAM Access Analyzer for validation                                                             | No       | `false`           |
+| `access-analyzer-region` | AWS region for Access Analyzer                                                                         | No       | `us-east-1`       |
 | `policy-type`            | Policy type: `IDENTITY_POLICY`, `RESOURCE_POLICY`, `SERVICE_CONTROL_POLICY`, `RESOURCE_CONTROL_POLICY` | No       | `IDENTITY_POLICY` |
-| `run-all-checks`         | Run custom checks after Access Analyzer (sequential mode)                   | No       | `false`           |
+| `run-all-checks`         | Run custom checks after Access Analyzer (sequential mode)                                              | No       | `false`           |
 
 #### Custom Policy Checks (Access Analyzer)
 | Input                         | Description                                                                 | Required | Default           |
@@ -477,7 +475,7 @@ See [default-config.yaml](default-config.yaml) for a complete configuration exam
 - Configure `aws-services-dir` in your config file for offline validation
 - The action automatically filters IAM policies from mixed JSON/YAML files
 
-See [examples/github-actions/](examples/github-actions/) for 8 ready-to-use workflow examples.
+See [examples/github-actions/](examples/github-actions/) for 9 ready-to-use workflow examples.
 
 ### As a CLI Tool
 
@@ -554,7 +552,7 @@ iam-validator validate --path ./bucket-policies/ --policy-type RESOURCE_POLICY
 **Advanced Principal Validation:**
 ```yaml
 # config.yaml
-principal_validation_check:
+principal_validation:
   enabled: true
   severity: high
   # Block public access
@@ -934,6 +932,7 @@ The comprehensive [DOCS.md](DOCS.md) file contains everything you need:
   - [Custom Checks](examples/custom_checks/)
   - [Configuration Files](examples/configs/)
   - [Test IAM Policies](examples/iam-test-policies/)
+- **[Roadmap](docs/ROADMAP.md)** - Planned features and improvements
 - **[AWS Services Backup Guide](docs/aws-services-backup.md)** - Offline validation
 - **[Contributing Guide](CONTRIBUTING.md)** - Contribution guidelines
 - **[Publishing Guide](docs/development/PUBLISHING.md)** - Release process

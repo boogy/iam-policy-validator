@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowCrossAccountArchive",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::111111111111:root"
+      },
+      "Action": [
+        "glacier:UploadArchive",
+        "glacier:InitiateMultipartUpload",
+        "glacier:CompleteMultipartUpload"
+      ],
+      "Resource": "arn:aws:glacier:us-east-1:123456789012:vaults/backup-vault",
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalOrgID": "o-123456789"
+        }
+      }
+    }
+  ]
+}

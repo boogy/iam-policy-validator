@@ -101,15 +101,15 @@ settings:
   enable_builtin_checks: true
 
 # Configure built-in checks
-security_best_practices_check:
+security_best_practices:
   enabled: true
   severity: high
 
-action_validation_check:
+action_validation:
   enabled: true
   severity: error
 
-action_condition_enforcement_check:
+action_condition_enforcement:
   enabled: true
   severity: critical
   action_condition_requirements:
@@ -171,48 +171,32 @@ async def validate_with_programmatic_config():
             "cache_ttl_hours": 24,
             "parallel_execution": True,
         },
-        "security_best_practices_check": {
+        "security_best_practices": {
             "enabled": True,
             "severity": "high",
         },
-        "action_validation_check": {
+        "action_validation": {
             "enabled": True,
             "severity": "error",
         }
     }
 
-    # Create config object
-    config = ValidatorConfig(config_dict, use_defaults=True)
+    # Save to temp config file
+    import tempfile, yaml
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        yaml.dump(config_dict, f)
+        config_path = f.name
 
-    # Create and configure registry
-    registry = create_default_registry(
-        enable_parallel=True,
-        include_builtin_checks=True
-    )
-    ConfigLoader.apply_config_to_registry(config, registry)
-
-    # Load policies
+    # Load and validate policies
     loader = PolicyLoader()
     policies = loader.load_from_path("./policies/")
 
-    # Get settings
-    cache_enabled = config.get_setting("cache_enabled", True)
-    cache_ttl_hours = config.get_setting("cache_ttl_hours", 168)
-    fail_on_severities = config.get_setting("fail_on_severity", ["error"])
-
-    # Validate with custom configuration
-    async with AWSServiceFetcher(
-        enable_cache=cache_enabled,
-        cache_ttl=cache_ttl_hours * 3600,
-    ) as fetcher:
-        from iam_validator.core.policy_checks import _validate_policy_with_registry
-
-        results = []
-        for file_path, policy in policies:
-            result = await _validate_policy_with_registry(
-                policy, file_path, registry, fetcher, fail_on_severities
-            )
-            results.append(result)
+    # Use public API with custom config
+    results = await validate_policies(
+        policies,
+        config_path=config_path,
+        use_registry=True
+    )
 
     return results
 
@@ -548,82 +532,58 @@ print(f"\nSummary: {summary}")
 
 ## Advanced Usage
 
-### Direct Registry Control
+### Custom Configuration in Code
 
-For fine-grained control over validation checks:
+For fine-grained control, create configuration programmatically:
 
 ```python
 import asyncio
 from iam_validator.core.policy_loader import PolicyLoader
-from iam_validator.core.check_registry import create_default_registry, CheckConfig
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
-from iam_validator.core.models import PolicyValidationResult
+from iam_validator.core.policy_checks import validate_policies
 
 async def advanced_validation():
-    # Create custom registry
-    registry = create_default_registry(
-        enable_parallel=True,
-        include_builtin_checks=True
-    )
-
-    # Disable specific checks
-    registry.configure_check(
-        "policy_size",
-        CheckConfig(check_id="policy_size", enabled=False)
-    )
-
-    # Override check severity
-    registry.configure_check(
-        "security_best_practices",
-        CheckConfig(
-            check_id="security_best_practices",
-            enabled=True,
-            severity="critical",
-            config={
-                "wildcard_action_check": {
-                    "enabled": True,
-                    "severity": "high"
-                }
+    # Create custom configuration dict
+    config_dict = {
+        "settings": {
+            "parallel_execution": True,
+            "enable_builtin_checks": True,
+            "fail_on_severity": ["error", "critical"],
+        },
+        "policy_size": {
+            "enabled": False,  # Disable specific check
+        },
+        "security_best_practices": {
+            "enabled": True,
+            "severity": "critical",
+            "wildcard_action_check": {
+                "enabled": True,
+                "severity": "high"
             }
-        )
-    )
+        }
+    }
 
-    # Load policies
+    # Save to temp config file
+    import tempfile, yaml
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        yaml.dump(config_dict, f)
+        config_path = f.name
+
+    # Load and validate policies
     loader = PolicyLoader()
     policies = loader.load_from_path("./policies/")
 
-    # Manual validation with full control
-    async with AWSServiceFetcher(
-        enable_cache=True,
-        cache_ttl=3600 * 24  # 24 hours
-    ) as fetcher:
-        results = []
-
-        for file_path, policy in policies:
-            result = PolicyValidationResult(
-                policy_file=file_path,
-                is_valid=True
-            )
-
-            # Run all checks for each statement
-            for idx, statement in enumerate(policy.statement):
-                issues = await registry.execute_checks_parallel(
-                    statement, idx, fetcher
-                )
-                result.issues.extend(issues)
-
-            # Determine if valid (only errors fail)
-            result.is_valid = len([
-                i for i in result.issues
-                if i.severity in ["error", "critical"]
-            ]) == 0
-
-            results.append(result)
+    results = await validate_policies(
+        policies,
+        config_path=config_path,
+        use_registry=True
+    )
 
     return results
 
 asyncio.run(advanced_validation())
 ```
+
+**Important:** Always use the public `validate_policies()` API. Internal functions (prefixed with `_`) are not part of the stable API.
 
 ### Streaming Validation
 
@@ -672,47 +632,46 @@ async def streaming_validation():
 asyncio.run(streaming_validation())
 ```
 
-### Custom AWS Service Fetcher Configuration
+### Custom Caching Configuration
 
-Configure caching and offline mode:
+Configure caching and offline mode via config file:
 
 ```python
 import asyncio
 from pathlib import Path
 from iam_validator.core.policy_loader import PolicyLoader
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
-from iam_validator.core.check_registry import create_default_registry
-from iam_validator.core.policy_checks import _validate_policy_with_registry
+from iam_validator.core.policy_checks import validate_policies
 
-async def validate_with_custom_fetcher():
-    # Custom AWS Service Fetcher configuration
-    cache_dir = Path.home() / ".cache" / "iam-validator"
-    aws_services_dir = Path("./aws_services")  # For offline mode
+async def validate_with_custom_cache():
+    # Create config with custom cache settings
+    config_dict = {
+        "settings": {
+            "cache_enabled": True,
+            "cache_ttl_hours": 168,  # 7 days
+            "cache_directory": str(Path.home() / ".cache" / "iam-validator"),
+            "aws_services_dir": "./aws_services",  # For offline mode
+        }
+    }
 
-    async with AWSServiceFetcher(
-        enable_cache=True,
-        cache_ttl=7 * 24 * 3600,  # 7 days in seconds
-        cache_dir=str(cache_dir),
-        aws_services_dir=str(aws_services_dir),  # Use offline definitions
-    ) as fetcher:
-        # Load policies
-        loader = PolicyLoader()
-        policies = loader.load_from_path("./policies/")
+    # Save to temp config file
+    import tempfile, yaml
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        yaml.dump(config_dict, f)
+        config_path = f.name
 
-        # Create registry
-        registry = create_default_registry()
+    # Load and validate with custom cache config
+    loader = PolicyLoader()
+    policies = loader.load_from_path("./policies/")
 
-        # Validate
-        results = []
-        for file_path, policy in policies:
-            result = await _validate_policy_with_registry(
-                policy, file_path, registry, fetcher, ["error"]
-            )
-            results.append(result)
+    results = await validate_policies(
+        policies,
+        config_path=config_path,
+        use_registry=True
+    )
 
     return results
 
-asyncio.run(validate_with_custom_fetcher())
+asyncio.run(validate_with_custom_cache())
 ```
 
 ## API Reference

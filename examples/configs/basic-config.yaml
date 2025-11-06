@@ -21,12 +21,11 @@ settings:
 
   # Cache AWS service definitions (default: true)
   cache_enabled: true
-  cache_ttl_hours: 168  # 7 days
+  cache_ttl_hours: 168 # 7 days
 
   # Fail validation on these severity levels (default: ["error", "critical"])
   fail_on_severity:
     - error
     - critical
-
 # All other checks use their default settings from default-config.yaml
 # This provides a good balance between security and usability

@@ -251,12 +251,12 @@ The validator provides **three independent options** for displaying validation r
 
 All workflows support these environment variables:
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `GITHUB_TOKEN` | GitHub API token | Yes (for PR comments) |
-| `GITHUB_REPOSITORY` | Repository (owner/repo) | Yes (for PR comments) |
-| `GITHUB_PR_NUMBER` | Pull request number | Yes (for PR comments) |
-| `AWS_REGION` | AWS region for Access Analyzer | No (default: us-east-1) |
+| Variable            | Description                    | Required                |
+| ------------------- | ------------------------------ | ----------------------- |
+| `GITHUB_TOKEN`      | GitHub API token               | Yes (for PR comments)   |
+| `GITHUB_REPOSITORY` | Repository (owner/repo)        | Yes (for PR comments)   |
+| `GITHUB_PR_NUMBER`  | Pull request number            | Yes (for PR comments)   |
+| `AWS_REGION`        | AWS region for Access Analyzer | No (default: us-east-1) |
 
 ## Troubleshooting
 

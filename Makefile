@@ -8,7 +8,7 @@ help:
 	@echo "  make install          Install production dependencies"
 	@echo "  make dev              Install development dependencies"
 	@echo "  make clean            Clean build artifacts and cache"
-	@echo "  make sync-defaults    Sync defaults.py from default-config.yaml"
+	@echo "  make sync-defaults    [DEPRECATED] Defaults are now in Python modules"
 	@echo ""
 	@echo "Quality:"
 	@echo "  make test             Run tests"
@@ -36,10 +36,16 @@ install:
 dev:
 	uv sync
 
-# Sync defaults.py from YAML config
-sync-defaults: clean
-	@echo "Syncing defaults.py from default-config.yaml..."
-	@uv run python scripts/sync_defaults_from_yaml.py
+# Sync defaults.py from YAML config [DEPRECATED]
+# Defaults are now defined in Python modules at iam_validator/core/data/
+# This target is kept for backward compatibility but is no longer needed
+sync-defaults:
+	@echo "⚠️  DEPRECATED: Defaults are now defined in Python modules"
+	@echo "   Location: iam_validator/core/data/"
+	@echo "   See: docs/modular-configuration.md"
+	@echo ""
+	@echo "   Running legacy sync script for reference..."
+	@uv run python scripts/sync_defaults_from_yaml.py || echo "   (Script may fail - this is expected)"
 
 # Clean
 clean:

@@ -20,7 +20,6 @@ settings:
   fail_on_severity:
     - error
     - critical
-
 # All checks use default settings
 # This configuration enables:
 # - Completely offline validation (no internet required)

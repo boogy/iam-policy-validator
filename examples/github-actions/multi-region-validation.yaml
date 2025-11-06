@@ -6,7 +6,7 @@ name: Multi-Region Policy Validation
 on:
   pull_request:
     paths:
-      - 'policies/**/*.json'
+      - "policies/**/*.json"
 
 jobs:
   validate-policies:
@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         region: [us-east-1, us-west-2, eu-west-1]
-      fail-fast: false  # Continue testing other regions even if one fails
+      fail-fast: false # Continue testing other regions even if one fails
 
     permissions:
       contents: read
@@ -34,7 +34,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
