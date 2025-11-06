@@ -148,7 +148,9 @@ class SARIFFormatter(OutputFormatter):
             {
                 "id": "invalid-principal",
                 "shortDescription": {"text": "Invalid Principal"},
-                "fullDescription": {"text": "The specified principal is invalid or improperly formatted"},
+                "fullDescription": {
+                    "text": "The specified principal is invalid or improperly formatted"
+                },
                 "helpUri": "https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_principal.html",
                 "defaultConfiguration": {"level": "error"},
             },

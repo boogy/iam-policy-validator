@@ -166,10 +166,10 @@ async def test_sensitive_action_detection_with_prefix_wildcard(fetcher):
         enabled=True,
         config={
             "enabled": True,
-                "sensitive_actions": [
-                    "ec2:DeleteVolume",
-                    "ec2:TerminateInstances",
-                ],
+            "sensitive_actions": [
+                "ec2:DeleteVolume",
+                "ec2:TerminateInstances",
+            ],
         },
     )
 
@@ -198,10 +198,10 @@ async def test_sensitive_action_not_detected_for_safe_wildcards(fetcher):
         enabled=True,
         config={
             "enabled": True,
-                "sensitive_actions": [
-                    "s3:DeleteBucket",
-                    "s3:PutBucketPolicy",
-                ],
+            "sensitive_actions": [
+                "s3:DeleteBucket",
+                "s3:PutBucketPolicy",
+            ],
         },
     )
 
@@ -228,10 +228,10 @@ async def test_sensitive_action_with_conditions_passes(fetcher):
         enabled=True,
         config={
             "enabled": True,
-                "sensitive_actions": [
-                    "iam:CreateUser",
-                    "iam:DeleteUser",
-                ],
+            "sensitive_actions": [
+                "iam:CreateUser",
+                "iam:DeleteUser",
+            ],
         },
     )
 
@@ -259,11 +259,11 @@ async def test_multiple_wildcard_patterns_detected(fetcher):
         enabled=True,
         config={
             "enabled": True,
-                "sensitive_actions": [
-                    "iam:CreateUser",
-                    "ec2:TerminateInstances",
-                    "s3:DeleteBucket",
-                ],
+            "sensitive_actions": [
+                "iam:CreateUser",
+                "ec2:TerminateInstances",
+                "s3:DeleteBucket",
+            ],
         },
     )
 
