@@ -281,7 +281,7 @@ def example7_explore_requirements():
             action_str = action_patterns[0] if action_patterns else "N/A"
 
         severity = req.get("severity", "N/A")
-        desc = req.get("description", "N/A")
+        description = req.get("description", "N/A")
 
         # Get first condition key
         conds = req.get("required_conditions", [])
@@ -303,6 +303,7 @@ def example7_explore_requirements():
         print(f"\n{name}:")
         print(f"  Actions: {action_str}")
         print(f"  Severity: {severity}")
+        print(f"  Description: {description}")
         print(f"  Condition: {cond_key}")
 
 
