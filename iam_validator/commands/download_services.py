@@ -9,20 +9,15 @@ from pathlib import Path
 
 import httpx
 from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    Progress,
-    TaskID,
-    TextColumn,
-    TimeRemainingColumn,
-)
+from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeRemainingColumn
 
 from iam_validator.commands.base import Command
+from iam_validator.core.config import AWS_SERVICE_REFERENCE_BASE_URL
 
 logger = logging.getLogger(__name__)
 console = Console()
 
-BASE_URL = "https://servicereference.us-east-1.amazonaws.com/"
+BASE_URL = AWS_SERVICE_REFERENCE_BASE_URL
 DEFAULT_OUTPUT_DIR = Path("aws_services")
 
 

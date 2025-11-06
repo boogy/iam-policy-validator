@@ -36,13 +36,18 @@ class EnhancedFormatter(OutputFormatter):
 
         Args:
             report: Validation report to format
-            **kwargs: Additional options (color: bool = True)
+            **kwargs: Additional options:
+                - color (bool): Enable color output (default: True)
+                - show_summary (bool): Show Executive Summary panel (default: True)
+                - show_severity_breakdown (bool): Show Issue Severity Breakdown panel (default: True)
 
         Returns:
             Formatted string with ANSI codes for console display
         """
         # Allow disabling color for plain text output
         color = kwargs.get("color", True)
+        show_summary = kwargs.get("show_summary", True)
+        show_severity_breakdown = kwargs.get("show_severity_breakdown", True)
 
         # Use StringIO to capture Rich console output
         string_buffer = StringIO()
@@ -58,11 +63,12 @@ class EnhancedFormatter(OutputFormatter):
         console.print(Panel(title, border_style="bright_blue", padding=(1, 0)))
         console.print()
 
-        # Executive Summary with progress bars
-        self._print_summary_panel(console, report)
+        # Executive Summary with progress bars (optional)
+        if show_summary:
+            self._print_summary_panel(console, report)
 
-        # Severity breakdown if there are issues
-        if report.total_issues > 0:
+        # Severity breakdown if there are issues (optional)
+        if show_severity_breakdown and report.total_issues > 0:
             console.print()
             self._print_severity_breakdown(console, report)
 

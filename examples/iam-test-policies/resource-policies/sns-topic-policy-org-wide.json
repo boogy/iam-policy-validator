@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowOrganizationAccess",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "*"
+      },
+      "Action": [
+        "SNS:Subscribe",
+        "SNS:Publish",
+        "SNS:Receive"
+      ],
+      "Resource": "arn:aws:sns:us-east-1:123456789012:org-wide-notifications",
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalOrgID": "o-123456789"
+        }
+      }
+    }
+  ]
+}

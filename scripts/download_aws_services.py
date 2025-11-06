@@ -15,9 +15,9 @@ The script will:
 
 Directory structure:
     aws_services/
-        _manifest.json         # Metadata about the download (underscore prefix for easy discovery)
-        _services.json         # List of all services (underscore prefix for easy discovery)
-        s3.json                # Individual service definitions
+        _manifest.json  # Metadata about the download (underscore prefix for easy discovery)
+        _services.json  # List of all services (underscore prefix for easy discovery)
+        s3.json         # Individual service definitions
         ec2.json
         iam.json
         ...
@@ -32,6 +32,8 @@ from pathlib import Path
 
 import httpx
 
+from iam_validator.core.config import AWS_SERVICE_REFERENCE_BASE_URL
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -39,7 +41,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://servicereference.us-east-1.amazonaws.com/"
+BASE_URL = AWS_SERVICE_REFERENCE_BASE_URL
 DEFAULT_OUTPUT_DIR = Path("aws_services")
 
 

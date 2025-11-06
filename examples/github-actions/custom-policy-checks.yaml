@@ -3,8 +3,8 @@ name: IAM Policy Validation with Custom Checks
 on:
   pull_request:
     paths:
-      - 'policies/**/*.json'
-      - 'iam/**/*.json'
+      - "policies/**/*.json"
+      - "iam/**/*.json"
 
 jobs:
   # Example 1: Check that policies don't grant dangerous actions

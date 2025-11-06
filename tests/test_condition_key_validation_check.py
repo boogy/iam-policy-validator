@@ -56,7 +56,7 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_valid_condition_key(self, check, fetcher, config):
         """Test valid condition key passes."""
-        fetcher.validate_condition_key.return_value = (True, None)
+        fetcher.validate_condition_key.return_value = (True, None, None)
 
         statement = Statement(
             Effect="Allow",
@@ -75,6 +75,7 @@ class TestConditionKeyValidationCheck:
         fetcher.validate_condition_key.return_value = (
             False,
             "Condition key 's3:invalidKey' is not valid for action 's3:GetObject'",
+            None,
         )
 
         statement = Statement(
@@ -97,9 +98,9 @@ class TestConditionKeyValidationCheck:
 
         async def validate_side_effect(action, key):
             if key == "s3:prefix":
-                return (True, None)
+                return (True, None, None)
             else:
-                return (False, f"Condition key '{key}' is not valid")
+                return (False, f"Condition key '{key}' is not valid", None)
 
         fetcher.validate_condition_key.side_effect = validate_side_effect
 
@@ -118,7 +119,7 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_multiple_operators(self, check, fetcher, config):
         """Test condition keys in multiple operators."""
-        fetcher.validate_condition_key.return_value = (True, None)
+        fetcher.validate_condition_key.return_value = (True, None, None)
 
         statement = Statement(
             Effect="Allow",
@@ -137,7 +138,7 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_multiple_actions(self, check, fetcher, config):
         """Test condition key is validated against multiple actions."""
-        fetcher.validate_condition_key.return_value = (True, None)
+        fetcher.validate_condition_key.return_value = (True, None, None)
 
         statement = Statement(
             Effect="Allow",
@@ -154,7 +155,7 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_wildcard_action_skipped(self, check, fetcher, config):
         """Test wildcard action is skipped in validation."""
-        fetcher.validate_condition_key.return_value = (True, None)
+        fetcher.validate_condition_key.return_value = (True, None, None)
 
         statement = Statement(
             Effect="Allow",
@@ -170,7 +171,7 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_only_reports_once_per_condition_key(self, check, fetcher, config):
         """Test that invalid condition key is only reported once even with multiple actions."""
-        fetcher.validate_condition_key.return_value = (False, "Invalid condition key")
+        fetcher.validate_condition_key.return_value = (False, "Invalid condition key", None)
 
         statement = Statement(
             Effect="Allow",
@@ -187,7 +188,7 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_statement_with_sid(self, check, fetcher, config):
         """Test that statement SID is captured."""
-        fetcher.validate_condition_key.return_value = (False, "Invalid condition key")
+        fetcher.validate_condition_key.return_value = (False, "Invalid condition key", None)
 
         statement = Statement(
             Sid="TestStatement",
@@ -203,7 +204,7 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_statement_index(self, check, fetcher, config):
         """Test that statement index is captured."""
-        fetcher.validate_condition_key.return_value = (False, "Invalid condition key")
+        fetcher.validate_condition_key.return_value = (False, "Invalid condition key", None)
 
         statement = Statement(
             Effect="Allow",
@@ -218,7 +219,7 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_line_number_captured(self, check, fetcher, config):
         """Test that line number is captured when available."""
-        fetcher.validate_condition_key.return_value = (False, "Invalid condition key")
+        fetcher.validate_condition_key.return_value = (False, "Invalid condition key", None)
 
         statement = Statement(
             Effect="Allow",
@@ -235,7 +236,7 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_custom_severity(self, check, fetcher):
         """Test custom severity from config."""
-        fetcher.validate_condition_key.return_value = (False, "Invalid condition key")
+        fetcher.validate_condition_key.return_value = (False, "Invalid condition key", None)
 
         config = CheckConfig(check_id="condition_key_validation", severity="error")
         statement = Statement(
@@ -251,7 +252,7 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_error_message_fallback(self, check, fetcher, config):
         """Test fallback error message when none provided."""
-        fetcher.validate_condition_key.return_value = (False, None)
+        fetcher.validate_condition_key.return_value = (False, None, None)
 
         statement = Statement(
             Effect="Allow",
@@ -267,7 +268,7 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_string_action(self, check, fetcher, config):
         """Test action as string instead of list."""
-        fetcher.validate_condition_key.return_value = (True, None)
+        fetcher.validate_condition_key.return_value = (True, None, None)
 
         statement = Statement(
             Effect="Allow",
@@ -279,3 +280,87 @@ class TestConditionKeyValidationCheck:
 
         assert len(issues) == 0
         fetcher.validate_condition_key.assert_called_once_with("s3:GetObject", "s3:prefix")
+
+    @pytest.mark.asyncio
+    async def test_global_condition_key_with_warning(self, check, fetcher, config):
+        """Test global condition key with action-specific keys generates warning."""
+        fetcher.validate_condition_key.return_value = (
+            True,
+            None,
+            "Global condition key 'aws:PrincipalOrgID' is used with action 'kms:Decrypt'. "
+            "While global condition keys can be used across all AWS services, "
+            "the key may not be available in every request context. "
+            "Verify that 'aws:PrincipalOrgID' is available for this specific action's request context. "
+            "Consider using '*IfExists' operators (e.g., StringEqualsIfExists) if the key might be missing.",
+        )
+
+        statement = Statement(
+            Effect="Allow",
+            Action=["kms:Decrypt"],
+            Resource=["*"],
+            Condition={"StringEquals": {"aws:PrincipalOrgID": "o-123456789"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        assert len(issues) == 1
+        assert issues[0].severity == "warning"
+        assert issues[0].issue_type == "global_condition_key_with_action_specific"
+        assert issues[0].condition_key == "aws:PrincipalOrgID"
+        assert issues[0].action == "kms:Decrypt"
+        assert "Global condition key" in issues[0].message
+        assert "request context" in issues[0].message
+        assert "IfExists" in issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_global_condition_key_warning_disabled(self, check, fetcher):
+        """Test that global condition key warning can be disabled via config."""
+        fetcher.validate_condition_key.return_value = (
+            True,
+            None,
+            "Global condition key 'aws:PrincipalOrgID' is used with action 'kms:Decrypt'. "
+            "While global condition keys can be used across all AWS services, "
+            "the key may not be available in every request context. "
+            "Verify that 'aws:PrincipalOrgID' is available for this specific action's request context. "
+            "Consider using '*IfExists' operators (e.g., StringEqualsIfExists) if the key might be missing.",
+        )
+
+        # Create config with warn_on_global_condition_keys disabled
+        config = CheckConfig(
+            check_id="condition_key_validation",
+            config={"warn_on_global_condition_keys": False},
+        )
+
+        statement = Statement(
+            Effect="Allow",
+            Action=["kms:Decrypt"],
+            Resource=["*"],
+            Condition={"StringEquals": {"aws:PrincipalOrgID": "o-123456789"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should not generate a warning when disabled
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_global_condition_key_warning_enabled_by_default(self, check, fetcher):
+        """Test that global condition key warning is enabled by default."""
+        fetcher.validate_condition_key.return_value = (
+            True,
+            None,
+            "Global condition key warning message",
+        )
+
+        # Create config without explicitly setting warn_on_global_condition_keys
+        config = CheckConfig(check_id="condition_key_validation")
+
+        statement = Statement(
+            Effect="Allow",
+            Action=["kms:Decrypt"],
+            Resource=["*"],
+            Condition={"StringEquals": {"aws:PrincipalOrgID": "o-123456789"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should generate a warning by default
+        assert len(issues) == 1
+        assert issues[0].severity == "warning"

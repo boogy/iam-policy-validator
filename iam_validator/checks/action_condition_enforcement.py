@@ -607,10 +607,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             statement_sid=statement.sid,
             statement_index=statement_idx,
             issue_type="missing_required_condition",
-            message=(
-                f"{message_prefix} Action(s) {matching_actions} require condition '{condition_key}'. "
-                f"{description}"
-            ),
+            message=f"{message_prefix} Action(s) {matching_actions} require condition '{condition_key}'",
             action=", ".join(matching_actions),
             condition_key=condition_key,
             suggestion=self._build_suggestion(
@@ -707,8 +704,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         )
         if expected_value is not None:
             message += f" with value '{expected_value}'"
-        if description:
-            message += f". {description}"
 
         suggestion = f"Remove the '{condition_key}' condition from the statement"
         if description:

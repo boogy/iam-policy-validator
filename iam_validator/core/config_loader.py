@@ -15,7 +15,7 @@ from typing import Any
 import yaml
 
 from iam_validator.core.check_registry import CheckConfig, CheckRegistry, PolicyCheck
-from iam_validator.core.defaults import get_default_config
+from iam_validator.core.config.defaults import get_default_config
 
 logger = logging.getLogger(__name__)
 
@@ -68,18 +68,38 @@ class ValidatorConfig:
             self.config_dict = config_dict or {}
 
         # Support both nested and flat structure
-        # New flat structure: each check is a top-level key ending with "_check"
-        # Old nested structure: all checks under "checks" key
+        # 1. Old nested structure: all checks under "checks" key
+        # 2. New flat structure: each check is a top-level key ending with "_check"
+        # 3. Default config structure: check IDs directly at top level (without "_check" suffix)
         if "checks" in self.config_dict:
             # Old nested structure
             self.checks_config = self.config_dict.get("checks", {})
         else:
-            # New flat structure - extract all keys ending with "_check"
-            self.checks_config = {
-                key.replace("_check", ""): value
-                for key, value in self.config_dict.items()
-                if key.endswith("_check") and isinstance(value, dict)
-            }
+            # New flat structure and default config structure
+            # Extract all keys ending with "_check" OR that look like check configurations
+            self.checks_config = {}
+
+            # First, add keys ending with "_check"
+            for key, value in self.config_dict.items():
+                if key.endswith("_check") and isinstance(value, dict):
+                    self.checks_config[key.replace("_check", "")] = value
+
+            # Then, add top-level keys that look like check configurations
+            # (they have dict values and contain typical check config keys like enabled, severity, etc.)
+            for key, value in self.config_dict.items():
+                if (
+                    key
+                    not in [
+                        "settings",
+                        "custom_checks",
+                        "custom_checks_dir",
+                    ]  # Skip special config keys
+                    and not key.endswith("_check")  # Skip if already processed above
+                    and isinstance(value, dict)  # Must be a dict
+                    and key not in self.checks_config  # Not already added
+                ):
+                    # This looks like a check configuration
+                    self.checks_config[key] = value
 
         self.custom_checks = self.config_dict.get("custom_checks", [])
         self.custom_checks_dir = self.config_dict.get("custom_checks_dir")

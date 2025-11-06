@@ -31,6 +31,11 @@ inputs:
     required: false
     default: "true"
 
+  github-summary:
+    description: "Write summary to GitHub Actions job summary (visible in Actions tab)"
+    required: false
+    default: "false"
+
   format:
     description: "Output format (console, enhanced, json, markdown, sarif, csv, html)"
     required: false
@@ -57,7 +62,7 @@ inputs:
     default: "us-east-1"
 
   policy-type:
-    description: "Policy type for Access Analyzer (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY)"
+    description: "Policy type for Access Analyzer (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY, RESOURCE_CONTROL_POLICY)"
     required: false
     default: "IDENTITY_POLICY"
 
@@ -350,6 +355,11 @@ runs:
           if [ "${{ inputs.create-review }}" = "true" ]; then
             ARGS="$ARGS --github-review"
           fi
+        fi
+
+        # Add github-summary flag (works for all workflow runs)
+        if [ "${{ inputs.github-summary }}" = "true" ]; then
+          ARGS="$ARGS --github-summary"
         fi
 
         # Add custom-checks-dir if specified

@@ -1,0 +1,26 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowCrossAccountRoleAccess",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": [
+          "arn:aws:iam::111111111111:role/DataProcessorRole",
+          "arn:aws:iam::222222222222:role/EventHandlerRole"
+        ]
+      },
+      "Action": [
+        "SQS:SendMessage",
+        "SQS:ReceiveMessage",
+        "SQS:DeleteMessage"
+      ],
+      "Resource": "arn:aws:sqs:us-east-1:123456789012:shared-queue",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceVpce": "vpce-1a2b3c4d"
+        }
+      }
+    }
+  ]
+}

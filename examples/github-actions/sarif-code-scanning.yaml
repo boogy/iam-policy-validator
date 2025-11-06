@@ -1,0 +1,62 @@
+name: IAM Policy Security Scan (SARIF)
+
+# This workflow demonstrates how to use iam-validator with GitHub Code Scanning
+# to automatically detect security issues in IAM policies and display them in
+# the GitHub Security tab.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly security scans
+    - cron: "0 0 * * 0"
+
+jobs:
+  iam-security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # Required for uploading SARIF to Code Scanning
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install IAM Validator
+        run: |
+          pip install iam-validator
+
+      - name: Scan IAM Policies
+        run: |
+          iam-validator validate \
+            --path ./policies/ \
+            --format sarif \
+            --output iam-scan-results.sarif
+        continue-on-error: true # Don't fail workflow on policy issues
+
+      - name: Upload SARIF results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: iam-scan-results.sarif
+          category: iam-policy-validation
+
+      - name: Upload SARIF as artifact (for debugging)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iam-sarif-results
+          path: iam-scan-results.sarif
+          retention-days: 30
+# Notes:
+# - Results will appear in the Security tab under "Code scanning alerts"
+# - Each issue will be displayed inline on the affected policy file
+# - You can filter alerts by severity, rule type, and status
+# - Alerts persist across workflow runs and can be dismissed or resolved
+# - SARIF format supports line-level annotations for precise issue location

@@ -1,0 +1,18 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowEventBridgePublish",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "SNS:Publish",
+      "Resource": "arn:aws:sns:us-east-1:123456789012:eventbridge-notifications",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceArn": "arn:aws:events:us-east-1:123456789012:rule/my-event-rule",
+          "aws:SourceAccount": "123456789012"
+        }
+      }
+    }
+  ]
+}

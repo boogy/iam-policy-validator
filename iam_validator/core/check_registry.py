@@ -440,27 +440,21 @@ def create_default_registry(
 
     if include_builtin_checks:
         # Import and register built-in checks
-        from iam_validator.checks import (
-            ActionConditionEnforcementCheck,
-            ActionResourceConstraintCheck,
-            ActionValidationCheck,
-            ConditionKeyValidationCheck,
-            PolicySizeCheck,
-            PrincipalValidationCheck,
-            ResourceValidationCheck,
-            SecurityBestPracticesCheck,
-            SidUniquenessCheck,
-        )
+        from iam_validator import checks
 
-        registry.register(ActionValidationCheck())
-        registry.register(ConditionKeyValidationCheck())
-        registry.register(ResourceValidationCheck())
-        registry.register(SecurityBestPracticesCheck())
-        registry.register(ActionConditionEnforcementCheck())
-        registry.register(ActionResourceConstraintCheck())
-        registry.register(SidUniquenessCheck())
-        registry.register(PolicySizeCheck())
-        registry.register(PrincipalValidationCheck())
+        registry.register(checks.ActionValidationCheck())
+        registry.register(checks.ConditionKeyValidationCheck())
+        registry.register(checks.ResourceValidationCheck())
+        registry.register(checks.WildcardActionCheck())
+        registry.register(checks.WildcardResourceCheck())
+        registry.register(checks.FullWildcardCheck())
+        registry.register(checks.ServiceWildcardCheck())
+        registry.register(checks.SensitiveActionCheck())
+        registry.register(checks.ActionConditionEnforcementCheck())
+        registry.register(checks.ActionResourceConstraintCheck())
+        registry.register(checks.SidUniquenessCheck())
+        registry.register(checks.PolicySizeCheck())
+        registry.register(checks.PrincipalValidationCheck())
 
         # Note: SID uniqueness check is registered above but its actual execution
         # happens at the policy level in _validate_policy_with_registry() since it

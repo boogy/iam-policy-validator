@@ -1,0 +1,34 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowOrganizationBackup",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "*"
+      },
+      "Action": [
+        "backup:CopyIntoBackupVault",
+        "backup:StartBackupJob"
+      ],
+      "Resource": "arn:aws:backup:us-east-1:123456789012:backup-vault:central-backup-vault",
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalOrgID": "o-123456789"
+        }
+      }
+    },
+    {
+      "Sid": "DenyDeleteBackups",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": [
+        "backup:DeleteBackupVault",
+        "backup:DeleteRecoveryPoint",
+        "backup:PutBackupVaultAccessPolicy",
+        "backup:UpdateRecoveryPointLifecycle"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

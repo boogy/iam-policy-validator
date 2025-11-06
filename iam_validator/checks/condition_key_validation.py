@@ -34,6 +34,9 @@ class ConditionKeyValidationCheck(PolicyCheck):
         if not statement.condition:
             return issues
 
+        # Check if global condition key warnings are enabled (default: True)
+        warn_on_global_keys = config.config.get("warn_on_global_condition_keys", True)
+
         statement_sid = statement.sid
         line_number = statement.line_number
         actions = statement.get_actions()
@@ -47,7 +50,7 @@ class ConditionKeyValidationCheck(PolicyCheck):
                     if action == "*":
                         continue
 
-                    is_valid, error_msg = await fetcher.validate_condition_key(
+                    is_valid, error_msg, warning_msg = await fetcher.validate_condition_key(
                         action, condition_key
                     )
 
@@ -59,6 +62,23 @@ class ConditionKeyValidationCheck(PolicyCheck):
                                 statement_index=statement_idx,
                                 issue_type="invalid_condition_key",
                                 message=error_msg or f"Invalid condition key: {condition_key}",
+                                action=action,
+                                condition_key=condition_key,
+                                line_number=line_number,
+                            )
+                        )
+                        # Only report once per condition key (not per action)
+                        break
+                    elif warning_msg and warn_on_global_keys:
+                        # Add warning for global condition keys with action-specific keys
+                        # Only if warn_on_global_condition_keys is enabled
+                        issues.append(
+                            ValidationIssue(
+                                severity="warning",
+                                statement_sid=statement_sid,
+                                statement_index=statement_idx,
+                                issue_type="global_condition_key_with_action_specific",
+                                message=warning_msg,
                                 action=action,
                                 condition_key=condition_key,
                                 line_number=line_number,

@@ -4,13 +4,40 @@ Validates Principal elements in resource-based policies for security best practi
 This check enforces:
 - Blocked principals (e.g., public access via "*")
 - Allowed principals whitelist (optional)
-- Required conditions for specific principals
+- Required conditions for specific principals (simple format)
+- Rich condition requirements for principals (advanced format with all_of/any_of)
 - Service principal validation
 
 Only runs for RESOURCE_POLICY type policies.
+
+Configuration supports TWO formats:
+
+1. Simple format (backward compatible):
+   require_conditions_for:
+     "*": ["aws:SourceArn", "aws:SourceAccount"]
+     "arn:aws:iam::*:root": ["aws:PrincipalOrgID"]
+
+2. Advanced format with rich condition requirements:
+   principal_condition_requirements:
+     - principals:
+         - "*"
+       severity: critical
+       required_conditions:
+         all_of:
+           - condition_key: "aws:SourceArn"
+             description: "Limit by source ARN"
+           - condition_key: "aws:SourceAccount"
+
+     - principals:
+         - "arn:aws:iam::*:root"
+       required_conditions:
+         - condition_key: "aws:PrincipalOrgID"
+           expected_value: "o-xxxxx"
+           operator: "StringEquals"
 """
 
 import fnmatch
+from typing import Any
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
@@ -22,7 +49,7 @@ class PrincipalValidationCheck(PolicyCheck):
 
     @property
     def check_id(self) -> str:
-        return "principal_validation_check"
+        return "principal_validation"
 
     @property
     def description(self) -> str:
@@ -60,6 +87,7 @@ class PrincipalValidationCheck(PolicyCheck):
         blocked_principals = config.config.get("blocked_principals", ["*"])
         allowed_principals = config.config.get("allowed_principals", [])
         require_conditions_for = config.config.get("require_conditions_for", {})
+        principal_condition_requirements = config.config.get("principal_condition_requirements", [])
         allowed_service_principals = config.config.get(
             "allowed_service_principals",
             [
@@ -114,7 +142,7 @@ class PrincipalValidationCheck(PolicyCheck):
                 )
                 continue
 
-            # Check if principal requires conditions
+            # Check simple format: require_conditions_for (backward compatible)
             required_conditions = self._get_required_conditions(principal, require_conditions_for)
             if required_conditions:
                 missing_conditions = self._check_required_conditions(statement, required_conditions)
@@ -137,6 +165,13 @@ class PrincipalValidationCheck(PolicyCheck):
                             f"}}",
                         )
                     )
+
+        # Check advanced format: principal_condition_requirements
+        if principal_condition_requirements:
+            condition_issues = self._validate_principal_condition_requirements(
+                statement, statement_idx, principals, principal_condition_requirements, config
+            )
+            issues.extend(condition_issues)
 
         return issues
 
@@ -280,3 +315,462 @@ class PrincipalValidationCheck(PolicyCheck):
         # Find missing keys
         missing = [key for key in required_keys if key not in present_keys]
         return missing
+
+    def _validate_principal_condition_requirements(
+        self,
+        statement: Statement,
+        statement_idx: int,
+        principals: list[str],
+        requirements: list[dict[str, Any]],
+        config: CheckConfig,
+    ) -> list[ValidationIssue]:
+        """Validate advanced principal condition requirements.
+
+        Args:
+            statement: The statement to validate
+            statement_idx: Index of the statement
+            principals: List of principals from the statement
+            requirements: List of principal condition requirements
+            config: Check configuration
+
+        Returns:
+            List of validation issues
+        """
+        issues: list[ValidationIssue] = []
+
+        # Check each requirement rule
+        for requirement in requirements:
+            # Check if any principal matches this requirement
+            matching_principals = self._get_matching_principals(principals, requirement)
+
+            if not matching_principals:
+                continue
+
+            # Get required conditions from the requirement
+            required_conditions_config = requirement.get("required_conditions", [])
+            if not required_conditions_config:
+                continue
+
+            # Validate conditions using the same logic as action_condition_enforcement
+            condition_issues = self._validate_conditions(
+                statement,
+                statement_idx,
+                required_conditions_config,
+                matching_principals,
+                config,
+                requirement,
+            )
+
+            issues.extend(condition_issues)
+
+        return issues
+
+    def _get_matching_principals(
+        self, principals: list[str], requirement: dict[str, Any]
+    ) -> list[str]:
+        """Get principals that match the requirement pattern.
+
+        Args:
+            principals: List of principals from the statement
+            requirement: Principal condition requirement config
+
+        Returns:
+            List of matching principals
+        """
+        principal_patterns = requirement.get("principals", [])
+        if not principal_patterns:
+            return []
+
+        matching: list[str] = []
+
+        for principal in principals:
+            for pattern in principal_patterns:
+                # Special case: "*" pattern should only match literal "*"
+                if pattern == "*":
+                    if principal == "*":
+                        matching.append(principal)
+                elif fnmatch.fnmatch(principal, pattern):
+                    matching.append(principal)
+
+        return matching
+
+    def _validate_conditions(
+        self,
+        statement: Statement,
+        statement_idx: int,
+        required_conditions_config: Any,
+        matching_principals: list[str],
+        config: CheckConfig,
+        requirement: dict[str, Any],
+    ) -> list[ValidationIssue]:
+        """Validate that required conditions are present.
+
+        Supports: simple list, all_of, any_of, none_of formats.
+        Similar to action_condition_enforcement logic.
+
+        Args:
+            statement: The statement to validate
+            statement_idx: Index of the statement
+            required_conditions_config: Condition requirements config
+            matching_principals: Principals that matched
+            config: Check configuration
+            requirement: Parent requirement for severity override
+
+        Returns:
+            List of validation issues
+        """
+        issues: list[ValidationIssue] = []
+
+        # Handle simple list format (backward compatibility)
+        if isinstance(required_conditions_config, list):
+            for condition_requirement in required_conditions_config:
+                if not self._has_condition_requirement(statement, condition_requirement):
+                    issues.append(
+                        self._create_condition_issue(
+                            statement,
+                            statement_idx,
+                            condition_requirement,
+                            matching_principals,
+                            config,
+                            requirement,
+                        )
+                    )
+            return issues
+
+        # Handle all_of/any_of/none_of format
+        if isinstance(required_conditions_config, dict):
+            all_of = required_conditions_config.get("all_of", [])
+            any_of = required_conditions_config.get("any_of", [])
+            none_of = required_conditions_config.get("none_of", [])
+
+            # Validate all_of: ALL conditions must be present
+            if all_of:
+                for condition_requirement in all_of:
+                    if not self._has_condition_requirement(statement, condition_requirement):
+                        issues.append(
+                            self._create_condition_issue(
+                                statement,
+                                statement_idx,
+                                condition_requirement,
+                                matching_principals,
+                                config,
+                                requirement,
+                                requirement_type="all_of",
+                            )
+                        )
+
+            # Validate any_of: At least ONE condition must be present
+            if any_of:
+                any_present = any(
+                    self._has_condition_requirement(statement, cond_req) for cond_req in any_of
+                )
+
+                if not any_present:
+                    # Create a combined error for any_of
+                    condition_keys = [cond.get("condition_key", "unknown") for cond in any_of]
+                    severity = requirement.get("severity", self.get_severity(config))
+                    issues.append(
+                        ValidationIssue(
+                            severity=severity,
+                            statement_sid=statement.sid,
+                            statement_index=statement_idx,
+                            issue_type="missing_principal_condition_any_of",
+                            message=(
+                                f"Principals {matching_principals} require at least ONE of these conditions: "
+                                f"{', '.join(condition_keys)}"
+                            ),
+                            suggestion=self._build_any_of_suggestion(any_of),
+                            line_number=statement.line_number,
+                        )
+                    )
+
+            # Validate none_of: NONE of these conditions should be present
+            if none_of:
+                for condition_requirement in none_of:
+                    if self._has_condition_requirement(statement, condition_requirement):
+                        issues.append(
+                            self._create_none_of_condition_issue(
+                                statement,
+                                statement_idx,
+                                condition_requirement,
+                                matching_principals,
+                                config,
+                                requirement,
+                            )
+                        )
+
+        return issues
+
+    def _has_condition_requirement(
+        self, statement: Statement, condition_requirement: dict[str, Any]
+    ) -> bool:
+        """Check if statement has the required condition.
+
+        Args:
+            statement: The statement to check
+            condition_requirement: Condition requirement config
+
+        Returns:
+            True if condition is present and matches requirements
+        """
+        condition_key = condition_requirement.get("condition_key")
+        if not condition_key:
+            return True  # No condition key specified, skip
+
+        operator = condition_requirement.get("operator")
+        expected_value = condition_requirement.get("expected_value")
+
+        return self._has_condition(statement, condition_key, operator, expected_value)
+
+    def _has_condition(
+        self,
+        statement: Statement,
+        condition_key: str,
+        operator: str | None = None,
+        expected_value: Any = None,
+    ) -> bool:
+        """Check if statement has the specified condition key.
+
+        Args:
+            statement: The IAM policy statement
+            condition_key: The condition key to look for
+            operator: Optional specific operator (e.g., "StringEquals")
+            expected_value: Optional expected value for the condition
+
+        Returns:
+            True if condition is present (and matches expected value if specified)
+        """
+        if not statement.condition:
+            return False
+
+        # If operator specified, only check that operator
+        operators_to_check = [operator] if operator else list(statement.condition.keys())
+
+        # Look through specified condition operators
+        for op in operators_to_check:
+            if op not in statement.condition:
+                continue
+
+            conditions = statement.condition[op]
+            if isinstance(conditions, dict):
+                if condition_key in conditions:
+                    # If no expected value specified, just presence is enough
+                    if expected_value is None:
+                        return True
+
+                    # Check if the value matches
+                    actual_value = conditions[condition_key]
+
+                    # Handle boolean values
+                    if isinstance(expected_value, bool):
+                        if isinstance(actual_value, bool):
+                            return actual_value == expected_value
+                        if isinstance(actual_value, str):
+                            return actual_value.lower() == str(expected_value).lower()
+
+                    # Handle exact matches
+                    if actual_value == expected_value:
+                        return True
+
+                    # Handle list values (actual can be string or list)
+                    if isinstance(expected_value, list):
+                        if isinstance(actual_value, list):
+                            return set(expected_value) == set(actual_value)
+                        if actual_value in expected_value:
+                            return True
+
+                    # Handle string matches for variable references like ${aws:PrincipalTag/owner}
+                    if str(actual_value) == str(expected_value):
+                        return True
+
+        return False
+
+    def _create_condition_issue(
+        self,
+        statement: Statement,
+        statement_idx: int,
+        condition_requirement: dict[str, Any],
+        matching_principals: list[str],
+        config: CheckConfig,
+        requirement: dict[str, Any],
+        requirement_type: str = "required",
+    ) -> ValidationIssue:
+        """Create a validation issue for a missing condition.
+
+        Severity precedence:
+        1. Individual condition requirement's severity (condition_requirement['severity'])
+        2. Parent requirement's severity (requirement['severity'])
+        3. Global check severity (config.severity)
+
+        Args:
+            statement: The statement being validated
+            statement_idx: Index of the statement
+            condition_requirement: The condition requirement config
+            matching_principals: Principals that matched
+            config: Check configuration
+            requirement: Parent requirement config
+            requirement_type: Type of requirement (required, all_of)
+
+        Returns:
+            ValidationIssue
+        """
+        condition_key = condition_requirement.get("condition_key", "unknown")
+        description = condition_requirement.get("description", "")
+        expected_value = condition_requirement.get("expected_value")
+        example = condition_requirement.get("example", "")
+        operator = condition_requirement.get("operator", "StringEquals")
+
+        message_prefix = "ALL required:" if requirement_type == "all_of" else "Required:"
+
+        # Determine severity with precedence: condition > requirement > global
+        severity = (
+            condition_requirement.get("severity")
+            or requirement.get("severity")
+            or self.get_severity(config)
+        )
+
+        return ValidationIssue(
+            severity=severity,
+            statement_sid=statement.sid,
+            statement_index=statement_idx,
+            issue_type="missing_principal_condition",
+            message=f"{message_prefix} Principal(s) {matching_principals} require condition '{condition_key}'",
+            suggestion=self._build_condition_suggestion(
+                condition_key, description, example, expected_value, operator
+            ),
+            line_number=statement.line_number,
+        )
+
+    def _build_condition_suggestion(
+        self,
+        condition_key: str,
+        description: str,
+        example: str,
+        expected_value: Any = None,
+        operator: str = "StringEquals",
+    ) -> str:
+        """Build a helpful suggestion for adding the missing condition.
+
+        Args:
+            condition_key: The condition key
+            description: Description of the condition
+            example: Example usage
+            expected_value: Expected value for the condition
+            operator: Condition operator
+
+        Returns:
+            Suggestion string
+        """
+        parts = []
+
+        if description:
+            parts.append(description)
+
+        # Build example based on condition key type
+        if example:
+            parts.append(f"Example:\n{example}")
+        else:
+            # Auto-generate example
+            example_lines = ['Add to "Condition" block:', f'  "{operator}": {{']
+
+            if isinstance(expected_value, list):
+                value_str = (
+                    "["
+                    + ", ".join(
+                        [
+                            f'"{v}"' if not str(v).startswith("${") else f'"{v}"'
+                            for v in expected_value
+                        ]
+                    )
+                    + "]"
+                )
+            elif expected_value is not None:
+                # Don't quote if it's a variable reference like ${aws:PrincipalTag/owner}
+                if str(expected_value).startswith("${"):
+                    value_str = f'"{expected_value}"'
+                elif isinstance(expected_value, bool):
+                    value_str = str(expected_value).lower()
+                else:
+                    value_str = f'"{expected_value}"'
+            else:
+                value_str = '"<value>"'
+
+            example_lines.append(f'    "{condition_key}": {value_str}')
+            example_lines.append("  }")
+
+            parts.append("\n".join(example_lines))
+
+        return ". ".join(parts) if parts else f"Add condition: {condition_key}"
+
+    def _build_any_of_suggestion(self, any_of_conditions: list[dict[str, Any]]) -> str:
+        """Build suggestion for any_of conditions.
+
+        Args:
+            any_of_conditions: List of condition requirements
+
+        Returns:
+            Suggestion string
+        """
+        suggestions = []
+        suggestions.append("Add at least ONE of these conditions:")
+
+        for i, cond in enumerate(any_of_conditions, 1):
+            condition_key = cond.get("condition_key", "unknown")
+            description = cond.get("description", "")
+            expected_value = cond.get("expected_value")
+
+            option = f"\nOption {i}: {condition_key}"
+            if description:
+                option += f" - {description}"
+            if expected_value is not None:
+                option += f" (value: {expected_value})"
+
+            suggestions.append(option)
+
+        return "".join(suggestions)
+
+    def _create_none_of_condition_issue(
+        self,
+        statement: Statement,
+        statement_idx: int,
+        condition_requirement: dict[str, Any],
+        matching_principals: list[str],
+        config: CheckConfig,
+        requirement: dict[str, Any],
+    ) -> ValidationIssue:
+        """Create a validation issue for a forbidden condition that is present.
+
+        Args:
+            statement: The statement being validated
+            statement_idx: Index of the statement
+            condition_requirement: The condition requirement config
+            matching_principals: Principals that matched
+            config: Check configuration
+            requirement: Parent requirement config
+
+        Returns:
+            ValidationIssue
+        """
+        condition_key = condition_requirement.get("condition_key", "unknown")
+        description = condition_requirement.get("description", "")
+        expected_value = condition_requirement.get("expected_value")
+
+        message = f"FORBIDDEN: Principal(s) {matching_principals} must NOT have condition '{condition_key}'"
+        if expected_value is not None:
+            message += f" with value '{expected_value}'"
+
+        suggestion = f"Remove the '{condition_key}' condition from the statement"
+        if description:
+            suggestion += f". {description}"
+
+        severity = requirement.get("severity", self.get_severity(config))
+
+        return ValidationIssue(
+            severity=severity,
+            statement_sid=statement.sid,
+            statement_index=statement_idx,
+            issue_type="forbidden_principal_condition",
+            message=message,
+            suggestion=suggestion,
+            line_number=statement.line_number,
+        )

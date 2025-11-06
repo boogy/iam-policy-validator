@@ -6,9 +6,9 @@ name: Resource Policy Validation
 on:
   pull_request:
     paths:
-      - 'resource-policies/**/*.json'
-      - 's3-policies/**/*.json'
-      - 'sns-policies/**/*.json'
+      - "resource-policies/**/*.json"
+      - "s3-policies/**/*.json"
+      - "sns-policies/**/*.json"
 
 jobs:
   validate-resource-policies:
@@ -31,7 +31,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3

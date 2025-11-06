@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowEventBridgeInvoke",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "events.amazonaws.com"
+      },
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:event-handler",
+      "Condition": {
+        "ArnLike": {
+          "AWS:SourceArn": [
+            "arn:aws:events:us-east-1:123456789012:rule/scheduled-task",
+            "arn:aws:events:us-east-1:123456789012:rule/ec2-state-change",
+            "arn:aws:events:us-east-1:123456789012:rule/s3-events"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -65,7 +65,7 @@ security_best_practices_check:
     severity: high  # Elevated from default medium
 
 # Action Condition Enforcement - Strict Requirements
-action_condition_enforcement_check:
+action_condition_enforcement:
   enabled: true
   severity: critical  # Elevated from default high
 
@@ -76,7 +76,17 @@ action_condition_enforcement_check:
       severity: critical
       required_conditions:
         - condition_key: iam:PassedToService
-          description: "Restrict which services can use the passed role"
+          description: "Restrict which AWS services can assume the passed role to prevent privilege escalation"
+          example: |
+            "Condition": {
+              "StringEquals": {
+                "iam:PassedToService": [
+                  "lambda.amazonaws.com",
+                  "ecs-tasks.amazonaws.com",
+                  "ec2.amazonaws.com"
+                ]
+              }
+            }
 
     # IAM write operations MUST have permissions boundary
     - actions:
@@ -88,9 +98,16 @@ action_condition_enforcement_check:
       severity: critical
       required_conditions:
         - condition_key: iam:PermissionsBoundary
-          description: "Require permissions boundary for privilege escalation prevention"
+          description: "Require permissions boundary for sensitive IAM operations to prevent privilege escalation"
+          expected_value: "arn:aws:iam::*:policy/DeveloperBoundary"
+          example: |
+            "Condition": {
+              "StringEquals": {
+                "iam:PermissionsBoundary": "arn:aws:iam::123456789012:policy/XCompanyBoundaries"
+              }
+            }
 
-    # Sensitive S3 operations require conditions
+    # Sensitive S3 operations require HTTPS
     - actions:
         - s3:PutObject
         - s3:DeleteObject
@@ -98,7 +115,14 @@ action_condition_enforcement_check:
       severity: high
       required_conditions:
         - condition_key: aws:SecureTransport
-          description: "Require HTTPS for S3 operations"
+          description: "Require HTTPS for S3 operations to prevent data interception"
+          expected_value: true
+          example: |
+            "Condition": {
+              "Bool": {
+                "aws:SecureTransport": "true"
+              }
+            }
 
 # This configuration provides enterprise-grade security enforcement
 # Use this for production IAM policies in high-security environments

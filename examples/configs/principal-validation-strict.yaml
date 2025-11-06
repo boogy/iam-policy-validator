@@ -8,7 +8,7 @@ settings:
     - critical
     - high
 
-principal_validation_check:
+principal_validation:
   enabled: true
   severity: critical  # Treat as critical security issue
 

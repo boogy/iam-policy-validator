@@ -1,0 +1,240 @@
+# ============================================================================
+# Principal Condition Enforcement Configuration
+# ============================================================================
+# This configuration demonstrates advanced principal condition requirements
+# for resource-based policies (S3 buckets, SNS topics, SQS queues, etc.).
+#
+# Similar to action_condition_enforcement, but validates that specific
+# principals have required conditions to limit their access.
+#
+# Use case: Enforce security controls on who can access your resources
+# ============================================================================
+
+settings:
+  fail_fast: false
+  enable_builtin_checks: true
+  fail_on_severity:
+    - error
+    - critical
+    - high
+
+# ============================================================================
+# Principal Validation with Advanced Condition Requirements
+# ============================================================================
+principal_validation:
+  enabled: true
+  severity: high
+  description: "Validates principals in resource policies with rich condition requirements"
+
+  # Block public access by default
+  blocked_principals:
+    - "*"
+
+  # Advanced condition requirements for principals
+  principal_condition_requirements:
+    # ==================================================================
+    # CRITICAL: Public Access Prevention
+    # ==================================================================
+    # If public access (*) is allowed (after removing from blocked_principals),
+    # it MUST have both SourceArn and SourceAccount conditions
+    - principals:
+        - "*"
+      severity: critical
+      required_conditions:
+        all_of:
+          - condition_key: "aws:SourceArn"
+            description: "Public access must be scoped to a specific source ARN (e.g., SNS topic, EventBridge rule)"
+            example: |
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceArn": "arn:aws:sns:us-east-1:123456789012:my-topic"
+                }
+              }
+          - condition_key: "aws:SourceAccount"
+            description: "Public access must be limited to a specific AWS account"
+            example: |
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": "123456789012"
+                }
+              }
+
+    # ==================================================================
+    # HIGH: Cross-Account Access (Root Accounts)
+    # ==================================================================
+    # Cross-account root principals must be from same organization
+    - principals:
+        - "arn:aws:iam::*:root"
+      severity: high
+      required_conditions:
+        - condition_key: "aws:PrincipalOrgID"
+          operator: "StringEquals"
+          expected_value: "o-123456789"  # Replace with your org ID
+          description: "Cross-account access must be from principals in the same AWS Organization"
+          example: |
+            "Condition": {
+              "StringEquals": {
+                "aws:PrincipalOrgID": "o-123456789"
+              }
+            }
+
+    # ==================================================================
+    # HIGH: IAM Roles - MFA or VPC Endpoint Required
+    # ==================================================================
+    # IAM roles must either have MFA enabled OR come from a VPC endpoint
+    - principals:
+        - "arn:aws:iam::*:role/*"
+      severity: high
+      required_conditions:
+        any_of:
+          - condition_key: "aws:MultiFactorAuthPresent"
+            expected_value: true
+            description: "Require MFA authentication for IAM role access"
+            example: |
+              "Condition": {
+                "Bool": {
+                  "aws:MultiFactorAuthPresent": "true"
+                }
+              }
+          - condition_key: "aws:SourceVpce"
+            description: "Or require access from a specific VPC endpoint"
+            example: |
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceVpce": "vpce-12345678"
+                }
+              }
+
+    # ==================================================================
+    # MEDIUM: IAM Users - MFA AND IP Restrictions
+    # ==================================================================
+    # IAM users must have MFA AND come from approved IP ranges
+    - principals:
+        - "arn:aws:iam::*:user/*"
+      severity: medium
+      required_conditions:
+        all_of:
+          - condition_key: "aws:MultiFactorAuthPresent"
+            expected_value: true
+            severity: high  # Override for this specific condition
+            description: "IAM users must have MFA enabled"
+          - condition_key: "aws:SourceIp"
+            operator: "IpAddress"
+            description: "IAM users must access from approved IP ranges"
+            example: |
+              "Condition": {
+                "IpAddress": {
+                  "aws:SourceIp": ["10.0.0.0/8", "172.16.0.0/12"]
+                }
+              }
+
+    # ==================================================================
+    # HIGH: Federated Users - Tag-Based Access Control (ABAC)
+    # ==================================================================
+    # Federated users must have tag-based conditions
+    - principals:
+        - "arn:aws:iam::*:federated-user/*"
+      severity: high
+      required_conditions:
+        all_of:
+          - condition_key: "aws:PrincipalTag/Department"
+            description: "Federated users must have Department tag"
+          - condition_key: "aws:RequestTag/Owner"
+            operator: "StringEquals"
+            expected_value: "${aws:PrincipalTag/Owner}"
+            description: "Resource owner must match principal's owner tag (ABAC)"
+            example: |
+              "Condition": {
+                "StringEquals": {
+                  "aws:RequestTag/Owner": "${aws:PrincipalTag/Owner}"
+                }
+              }
+
+    # ==================================================================
+    # CRITICAL: Prevent Insecure Transport
+    # ==================================================================
+    # Ensure aws:SecureTransport=false is never allowed for any principal
+    - principals:
+        - "*"
+        - "arn:aws:iam::*:*"
+      severity: critical
+      required_conditions:
+        none_of:
+          - condition_key: "aws:SecureTransport"
+            expected_value: false
+            description: "Insecure transport (HTTP) must never be explicitly allowed"
+
+    # ==================================================================
+    # HIGH: Assumed Roles - Session Tags Required
+    # ==================================================================
+    # Assumed role sessions must include session tags for auditing
+    - principals:
+        - "arn:aws:sts::*:assumed-role/*"
+      severity: medium
+      required_conditions:
+        - condition_key: "aws:PrincipalTag/SessionName"
+          description: "Assumed role sessions should be tagged with session name for audit trails"
+
+    # ==================================================================
+    # MEDIUM: External Account Access - Time-Based Restrictions
+    # ==================================================================
+    # Access from specific external accounts should have time restrictions
+    - principals:
+        - "arn:aws:iam::999999999999:*"  # Replace with partner account ID
+      severity: medium
+      required_conditions:
+        all_of:
+          - condition_key: "aws:CurrentTime"
+            operator: "DateGreaterThan"
+            description: "Access must be within allowed time window"
+          - condition_key: "aws:CurrentTime"
+            operator: "DateLessThan"
+            description: "Access must be within allowed time window"
+
+  # Service principals that are always allowed (no conditions required)
+  allowed_service_principals:
+    - "cloudfront.amazonaws.com"
+    - "s3.amazonaws.com"
+    - "sns.amazonaws.com"
+    - "lambda.amazonaws.com"
+    - "logs.amazonaws.com"
+    - "events.amazonaws.com"
+    - "elasticloadbalancing.amazonaws.com"
+    - "cloudtrail.amazonaws.com"
+
+# ============================================================================
+# USAGE
+# ============================================================================
+# Use this config when validating resource-based policies:
+#
+# Basic validation:
+#   iam-validator validate \
+#     --path ./resource-policies \
+#     --policy-type RESOURCE_POLICY \
+#     --config examples/configs/principal-condition-enforcement.yaml
+#
+# With AWS Access Analyzer (recommended):
+#   # Step 1: Analyze with Access Analyzer
+#   iam-validator analyze \
+#     --path ./resource-policies \
+#     --policy-type RESOURCE_POLICY \
+#     --post-findings
+#
+#   # Step 2: Run custom checks (including principal conditions)
+#   iam-validator validate \
+#     --path ./resource-policies \
+#     --policy-type RESOURCE_POLICY \
+#     --config examples/configs/principal-condition-enforcement.yaml
+#
+# ============================================================================
+# CUSTOMIZATION
+# ============================================================================
+# To customize for your organization:
+#
+# 1. Update organization ID in Cross-Account Access requirement
+# 2. Add your approved IP ranges for IAM user access
+# 3. Add your VPC endpoint IDs for role access
+# 4. Modify severity levels based on your risk tolerance
+# 5. Add additional requirements for your specific principals
+# 6. Set expected_value for condition keys to enforce specific values
+# ============================================================================

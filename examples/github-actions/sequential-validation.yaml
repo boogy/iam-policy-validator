@@ -8,8 +8,8 @@ name: Sequential IAM Policy Validation
 on:
   pull_request:
     paths:
-      - 'policies/**/*.json'
-      - 'policies/**/*.yaml'
+      - "policies/**/*.json"
+      - "policies/**/*.yaml"
 
 jobs:
   validate:
@@ -17,7 +17,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      id-token: write  # Required for AWS OIDC
+      id-token: write # Required for AWS OIDC
 
     steps:
       - name: Checkout code
@@ -32,7 +32,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
