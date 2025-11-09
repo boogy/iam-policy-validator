@@ -7,6 +7,9 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
+env:
+  DEFAULT_PYTHON_VERSION: "3.13"
+
 jobs:
   lint:
     name: Lint with Ruff
@@ -18,7 +21,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6
         with:
-          python-version: "3.12"
+          python-version: "${{ env.DEFAULT_PYTHON_VERSION }}"
 
       - name: Install uv
         uses: astral-sh/setup-uv@5dbc9fba7434435c4cd0268139340fa3696d98f3 # v7
@@ -40,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - name: Checkout code
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -72,7 +75,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6
         with:
-          python-version: "3.12"
+          python-version: "${{ env.DEFAULT_PYTHON_VERSION }}"
 
       - name: Install uv
         uses: astral-sh/setup-uv@5dbc9fba7434435c4cd0268139340fa3696d98f3 # v7
@@ -96,7 +99,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6
         with:
-          python-version: "3.12"
+          python-version: "${{ env.DEFAULT_PYTHON_VERSION }}"
 
       - name: Install uv
         uses: astral-sh/setup-uv@5dbc9fba7434435c4cd0268139340fa3696d98f3 # v7
@@ -106,16 +109,11 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Run validator on example policies
-        run: |
-          if [ -d "examples" ]; then
-            uv run iam-validator --path examples/ --format console --verbose || true
-          else
-            echo "No examples directory found, skipping integration test"
-          fi
-
       - name: Test CLI help
         run: uv run iam-validator --help
+
+      - name: Test CLI version
+        run: uv run iam-validator --version
 
   all-checks-pass:
     name: All Checks Pass

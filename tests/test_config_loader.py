@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 from iam_validator.core.check_registry import CheckRegistry, PolicyCheck
-from iam_validator.core.config_loader import (
+from iam_validator.core.config.config_loader import (
     ConfigLoader,
     ValidatorConfig,
     load_validator_config,

@@ -10,6 +10,7 @@ from iam_validator.checks.utils.sensitive_action_matcher import (
 from iam_validator.checks.utils.wildcard_expansion import expand_wildcard_actions
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
+from iam_validator.core.config.sensitive_actions import get_category_for_action
 from iam_validator.core.models import Statement, ValidationIssue
 
 if TYPE_CHECKING:
@@ -30,6 +31,69 @@ class SensitiveActionCheck(PolicyCheck):
     @property
     def default_severity(self) -> str:
         return "medium"
+
+    def _get_severity_for_action(self, action: str, config: CheckConfig) -> str:
+        """
+        Get severity for a specific action, considering category-based overrides.
+
+        Args:
+            action: The AWS action to check
+            config: Check configuration
+
+        Returns:
+            Severity level for the action (considers category overrides)
+        """
+        # Check if category severities are configured
+        category_severities = config.config.get("category_severities", {})
+        if not category_severities:
+            return self.get_severity(config)
+
+        # Get the category for this action
+        category = get_category_for_action(action)
+        if category and category in category_severities:
+            return category_severities[category]
+
+        # Fall back to default severity
+        return self.get_severity(config)
+
+    def _get_category_specific_suggestion(
+        self, action: str, config: CheckConfig
+    ) -> tuple[str, str]:
+        """
+        Get category-specific suggestion and example for an action.
+
+        Args:
+            action: The AWS action to check
+            config: Check configuration
+
+        Returns:
+            Tuple of (suggestion_text, example_text) tailored to the action's category
+        """
+        category = get_category_for_action(action)
+
+        # Get category suggestions from config (ABAC-focused by default)
+        # See: iam_validator/core/config/category_suggestions.py
+        category_suggestions = config.config.get("category_suggestions", {})
+
+        # Get category-specific content or fall back to generic ABAC guidance
+        if category and category in category_suggestions:
+            return (
+                category_suggestions[category]["suggestion"],
+                category_suggestions[category]["example"],
+            )
+
+        # Generic ABAC fallback for uncategorized actions
+        return (
+            "Add IAM conditions to limit when this action can be used. Use ABAC for scalability:\n"
+            "• Match principal tags to resource tags (aws:PrincipalTag/X = aws:ResourceTag/X)\n"
+            "• Require MFA (aws:MultiFactorAuthPresent = true)\n"
+            "• Restrict by IP (aws:SourceIp) or VPC (aws:SourceVpc)",
+            '"Condition": {\n'
+            '  "StringEquals": {\n'
+            '    "aws:PrincipalTag/owner": "${aws:ResourceTag/owner}"\n'
+            "  }\n"
+            "}",
+        )
 
     async def execute(
         self,
@@ -72,18 +136,26 @@ class SensitiveActionCheck(PolicyCheck):
                 )
                 message = message_template.format(actions=action_list)
 
-            suggestion_text = config.config.get(
-                "suggestion",
-                "Add IAM conditions to limit when this action can be used. Consider: ABAC (ResourceTag OR RequestTag matching ${aws:PrincipalTag}), IP restrictions (aws:SourceIp), MFA requirements (aws:MultiFactorAuthPresent), or time-based restrictions (aws:CurrentTime)",
+            # Get category-specific suggestion and example (or use config defaults)
+            # Use the first matched action to determine the category
+            suggestion_text, example = self._get_category_specific_suggestion(
+                matched_actions[0], config
             )
-            example = config.config.get("example", "")
 
             # Combine suggestion + example
-            suggestion = f"{suggestion_text}\nExample:\n{example}" if example else suggestion_text
+            suggestion = f"{suggestion_text}\n\nExample:\n{example}" if example else suggestion_text
+
+            # Determine severity based on the highest severity action in the list
+            # If single action, use its category severity
+            # If multiple actions, use the highest severity among them
+            severity = self.get_severity(config)  # Default
+            if matched_actions:
+                # Get severity for first action (or highest if we want to be more sophisticated)
+                severity = self._get_severity_for_action(matched_actions[0], config)
 
             issues.append(
                 ValidationIssue(
-                    severity=self.get_severity(config),
+                    severity=severity,
                     statement_sid=statement.sid,
                     statement_index=statement_idx,
                     issue_type="missing_condition",

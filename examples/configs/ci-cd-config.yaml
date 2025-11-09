@@ -1,0 +1,91 @@
+# CI/CD Pipeline Configuration
+# Strict validation for continuous integration with clear pass/fail criteria
+
+settings:
+  fail_fast: true  # Stop on first error for faster feedback
+  max_concurrent: 20  # Higher concurrency for CI runners
+  enable_builtin_checks: true
+  parallel_execution: true
+
+  # AWS services configuration
+  aws_services_dir: null  # Use AWS API with caching
+  cache_enabled: true
+  cache_ttl_hours: 168
+
+  # Fail on error, critical, and high severity
+  fail_on_severity:
+    - error
+    - critical
+    - high
+
+# AWS Validation - All enabled with default severity
+sid_uniqueness:
+  enabled: true
+policy_size:
+  enabled: true
+action_validation:
+  enabled: true
+condition_key_validation:
+  enabled: true
+condition_type_mismatch:
+  enabled: true
+set_operator_validation:
+  enabled: true
+mfa_condition_antipattern:
+  enabled: true
+resource_validation:
+  enabled: true
+principal_validation:
+  enabled: true
+policy_type_validation:
+  enabled: true
+action_resource_constraint:
+  enabled: true
+action_resource_matching:
+  enabled: true
+
+# Security Best Practices - Strict but pragmatic
+wildcard_action:
+  enabled: true
+  severity: high
+  # Allow wildcards only in explicitly marked test policies
+  ignore_patterns:
+    - filepath_regex: "^test/.*"
+      statement_sid: ".*Test.*"
+
+wildcard_resource:
+  enabled: true
+  severity: high
+  ignore_patterns:
+    - filepath_regex: "^test/.*"
+
+full_wildcard:
+  enabled: true
+  severity: critical
+  # Never allow full wildcards except in marked test policies
+  ignore_patterns:
+    - filepath_regex: "^test/.*-wildcard-test\\.json$"
+
+service_wildcard:
+  enabled: true
+  severity: high
+  # Allow for safe services
+  allowed_services:
+    - logs
+    - cloudwatch
+    - xray
+
+sensitive_action:
+  enabled: true
+  severity: high
+  # Focus on most critical categories
+  categories:
+    - credential_exposure
+    - priv_esc
+
+# Enforce critical conditions
+action_condition_enforcement:
+  enabled: true
+  severity: high
+  # Use Python API to load only critical requirements
+  # Equivalent to: get_requirements_by_names(['iam_pass_role', 's3_secure_transport'])

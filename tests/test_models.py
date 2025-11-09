@@ -78,19 +78,21 @@ class TestResourceType:
         """Test creating a valid ResourceType."""
         resource = ResourceType(
             Name="bucket",
-            ARNPattern="arn:aws:s3:::${BucketName}",
+            ARNFormats=["arn:aws:s3:::${BucketName}"],
             ConditionKeys=["s3:prefix"],
         )
 
         assert resource.name == "bucket"
-        assert resource.arn_pattern == "arn:aws:s3:::${BucketName}"
+        assert resource.arn_formats == ["arn:aws:s3:::${BucketName}"]
+        assert resource.arn_pattern == "arn:aws:s3:::${BucketName}"  # Property returns first format
         assert resource.condition_keys == ["s3:prefix"]
 
     def test_resource_type_defaults(self):
         """Test default values."""
         resource = ResourceType(Name="bucket")
 
-        assert resource.arn_pattern is None
+        assert resource.arn_formats is None
+        assert resource.arn_pattern is None  # Property returns None if no formats
         assert resource.condition_keys == []
 
 

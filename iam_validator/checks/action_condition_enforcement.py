@@ -5,6 +5,7 @@ This built-in check ensures that specific actions have required conditions.
 Supports ALL types of conditions: MFA, IP, VPC, time, tags, encryption, etc.
 
 Supports advanced "all_of" and "any_of" logic for both actions and conditions.
+Supports both STATEMENT-LEVEL and POLICY-LEVEL enforcement.
 
 Common use cases:
 - iam:PassRole must have iam:PassedToService condition
@@ -12,6 +13,7 @@ Common use cases:
 - Actions must have source IP restrictions
 - Resources must have required tags
 - Combine multiple conditions (MFA + IP + Tags)
+- Policy-level: Ensure ALL statements granting certain actions have MFA
 
 Configuration in iam-validator.yaml:
 
@@ -21,6 +23,7 @@ Configuration in iam-validator.yaml:
         severity: error
         description: "Enforce specific conditions for specific actions"
 
+        # STATEMENT-LEVEL: Check individual statements (default)
         action_condition_requirements:
           # BASIC: Simple action with required condition
           - actions:
@@ -90,14 +93,55 @@ Configuration in iam-validator.yaml:
                 - "iam:*"
                 - "s3:DeleteBucket"
             description: "These dangerous actions should never be used"
+
+        # POLICY-LEVEL: Scan entire policy and enforce conditions across all matching statements
+        policy_level_requirements:
+          # Example: If ANY statement grants privilege escalation actions,
+          # then ALL such statements must have MFA
+          - actions:
+              any_of:
+                - "iam:CreateUser"
+                - "iam:AttachUserPolicy"
+                - "iam:PutUserPolicy"
+            scope: "policy"
+            required_conditions:
+              - condition_key: "aws:MultiFactorAuthPresent"
+                expected_value: true
+            description: "Privilege escalation actions require MFA across entire policy"
+            severity: "critical"
+
+          # Example: All admin actions across the policy must have MFA
+          - actions:
+              any_of:
+                - "iam:*"
+                - "s3:*"
+            scope: "policy"
+            required_conditions:
+              all_of:
+                - condition_key: "aws:MultiFactorAuthPresent"
+                  expected_value: true
+                - condition_key: "aws:SourceIp"
+            apply_to: "all_matching_statements"
+
+          # Example: Ensure no statement in the policy allows dangerous combinations
+          - actions:
+              all_of:
+                - "iam:CreateAccessKey"
+                - "iam:UpdateAccessKey"
+            scope: "policy"
+            severity: "critical"
+            description: "Dangerous combination of actions detected in policy"
 """
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
+
+if TYPE_CHECKING:
+    from iam_validator.core.models import IAMPolicy
 
 
 class ActionConditionEnforcementCheck(PolicyCheck):
@@ -122,7 +166,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
     ) -> list[ValidationIssue]:
-        """Execute condition enforcement check."""
+        """Execute statement-level condition enforcement check."""
         issues = []
 
         # Only check Allow statements
@@ -183,6 +227,124 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             )
 
             issues.extend(condition_issues)
+
+        return issues
+
+    async def execute_policy(
+        self,
+        policy: "IAMPolicy",
+        policy_file: str,
+        fetcher: AWSServiceFetcher,
+        config: CheckConfig,
+        **kwargs,
+    ) -> list[ValidationIssue]:
+        """
+        Execute policy-level condition enforcement check.
+
+        This method scans the entire policy and enforces that ALL statements granting
+        certain actions must have specific conditions. This is useful for ensuring
+        consistent security controls across the entire policy.
+
+        Example use case:
+        - "If ANY statement in the policy grants iam:CreateUser, iam:AttachUserPolicy,
+          or iam:PutUserPolicy, then ALL such statements must have MFA condition."
+
+        Args:
+            policy: The complete IAM policy to check
+            policy_file: Path to the policy file (for context/reporting)
+            fetcher: AWS service fetcher for validation against AWS APIs
+            config: Configuration for this check instance
+            **kwargs: Additional context (policy_type, etc.)
+
+        Returns:
+            List of ValidationIssue objects found by this check
+        """
+        del policy_file, kwargs  # Not used in current implementation
+        issues = []
+
+        # Get policy-level requirements from config
+        policy_level_requirements = config.config.get("policy_level_requirements", [])
+        if not policy_level_requirements:
+            return issues
+
+        # Process each policy-level requirement
+        for requirement in policy_level_requirements:
+            # Collect all statements that match the action criteria
+            matching_statements: list[tuple[int, Statement, list[str]]] = []
+
+            for idx, statement in enumerate(policy.statement):
+                # Only check Allow statements
+                if statement.effect != "Allow":
+                    continue
+
+                statement_actions = statement.get_actions()
+
+                # Check if this statement matches the action requirement
+                actions_match, matching_actions = await self._check_action_match(
+                    statement_actions, requirement, fetcher
+                )
+
+                if actions_match and matching_actions:
+                    matching_statements.append((idx, statement, matching_actions))
+
+            # If no statements match, skip this requirement
+            if not matching_statements:
+                continue
+
+            # Now validate that ALL matching statements have the required conditions
+            required_conditions_config = requirement.get("required_conditions", [])
+            if not required_conditions_config:
+                # No conditions specified, just report that actions were found
+                description = requirement.get("description", "")
+                severity = requirement.get("severity", self.get_severity(config))
+
+                # Create a summary issue for all matching statements
+                all_actions = set()
+                statement_refs = []
+                for idx, stmt, actions in matching_statements:
+                    all_actions.update(actions)
+                    sid_info = f" (SID: {stmt.sid})" if stmt.sid else ""
+                    statement_refs.append(f"Statement #{idx + 1}{sid_info}")
+
+                # Use the first matching statement's index for the issue
+                first_idx, first_stmt, _ = matching_statements[0]
+
+                issues.append(
+                    ValidationIssue(
+                        severity=severity,
+                        statement_sid=first_stmt.sid,
+                        statement_index=first_idx,
+                        issue_type="policy_level_action_detected",
+                        message=f"POLICY-LEVEL: Actions {sorted(all_actions)} found in {len(matching_statements)} statement(s). {description}",
+                        action=", ".join(sorted(all_actions)),
+                        suggestion=f"Review these statements: {', '.join(statement_refs)}. {description}",
+                        line_number=first_stmt.line_number,
+                    )
+                )
+                continue
+
+            # Validate conditions for each matching statement
+            for idx, statement, matching_actions in matching_statements:
+                condition_issues = self._validate_conditions(
+                    statement,
+                    idx,
+                    required_conditions_config,
+                    matching_actions,
+                    config,
+                    requirement,
+                )
+
+                # Add policy-level context to each issue
+                for issue in condition_issues:
+                    # Modify the message to indicate this is part of policy-level enforcement
+                    issue.message = f"POLICY-LEVEL: {issue.message}"
+                    issue.suggestion = (
+                        f"{issue.suggestion}\n\n"
+                        f"Note: This is enforced at the policy level. "
+                        f"Found {len(matching_statements)} statement(s) with these actions in the policy."
+                    )
+
+                issues.extend(condition_issues)
 
         return issues
 

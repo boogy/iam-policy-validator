@@ -27,7 +27,6 @@ import os
 import re
 import sys
 import time
-from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -35,55 +34,9 @@ import httpx
 
 from iam_validator.core.config import AWS_SERVICE_REFERENCE_BASE_URL
 from iam_validator.core.models import ServiceDetail, ServiceInfo
+from iam_validator.utils.cache import LRUCache
 
 logger = logging.getLogger(__name__)
-
-
-class LRUCache:
-    """Thread-safe LRU cache implementation with TTL support."""
-
-    def __init__(self, maxsize: int = 128, ttl: int = 3600):
-        """Initialize LRU cache.
-
-        Args:
-            maxsize: Maximum number of items in cache
-            ttl: Time to live in seconds (default: 1 hour)
-        """
-        self.cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
-        self.maxsize = maxsize
-        self.ttl = ttl
-        self._lock = asyncio.Lock()
-
-    async def get(self, key: str) -> Any | None:
-        """Get item from cache if not expired."""
-        async with self._lock:
-            if key in self.cache:
-                value, timestamp = self.cache[key]
-                if time.time() - timestamp < self.ttl:
-                    # Move to end (most recently used)
-                    self.cache.move_to_end(key)
-                    return value
-                else:
-                    # Expired, remove it
-                    del self.cache[key]
-        return None
-
-    async def set(self, key: str, value: Any) -> None:
-        """Set item in cache with current timestamp."""
-        async with self._lock:
-            if key in self.cache:
-                # Move to end if exists
-                self.cache.move_to_end(key)
-            elif len(self.cache) >= self.maxsize:
-                # Remove least recently used
-                self.cache.popitem(last=False)
-
-            self.cache[key] = (value, time.time())
-
-    async def clear(self) -> None:
-        """Clear the cache."""
-        async with self._lock:
-            self.cache.clear()
 
 
 class CompiledPatterns:
@@ -120,7 +73,69 @@ class CompiledPatterns:
 
 
 class AWSServiceFetcher:
-    """Fetches AWS service information from the AWS service reference API with enhanced performance features."""
+    """Fetches AWS service information from the AWS service reference API with enhanced performance features.
+
+    This class provides a comprehensive interface for retrieving AWS service metadata,
+    including actions, resources, and condition keys. It includes multiple layers of
+    caching and optimization for high-performance policy validation.
+
+    Features:
+    - Multi-layer caching (memory LRU + disk with TTL)
+    - Service pre-fetching for common AWS services
+    - Request batching and coalescing
+    - Offline mode support with local AWS service files
+    - HTTP/2 connection pooling
+    - Automatic retry with exponential backoff
+
+    Example:
+        >>> async with AWSServiceFetcher() as fetcher:
+        ...     # Fetch service list
+        ...     services = await fetcher.fetch_services()
+        ...
+        ...     # Fetch specific service details
+        ...     s3_service = await fetcher.fetch_service_by_name("s3")
+        ...
+        ...     # Validate actions
+        ...     is_valid = await fetcher.validate_action("s3:GetObject", s3_service)
+
+    Method Organization:
+        Lifecycle Management:
+            - __init__: Initialize fetcher with configuration
+            - __aenter__, __aexit__: Context manager support
+
+        Caching (Private):
+            - _get_cache_directory: Determine cache location
+            - _get_cache_path: Generate cache file path
+            - _read_from_cache: Read from disk cache
+            - _write_to_cache: Write to disk cache
+            - clear_caches: Clear all caches
+
+        HTTP Operations (Private):
+            - _make_request: Core HTTP request handler
+            - _make_request_with_batching: Request coalescing
+            - _prefetch_common_services: Pre-load common services
+
+        File I/O (Private):
+            - _load_services_from_file: Load service list from local file
+            - _load_service_from_file: Load service details from local file
+
+        Public API - Fetching:
+            - fetch_services: Get list of all AWS services
+            - fetch_service_by_name: Get details for one service
+            - fetch_multiple_services: Batch fetch multiple services
+
+        Public API - Validation:
+            - validate_action: Check if action exists in service
+            - validate_arn: Validate ARN format
+            - validate_condition_key: Check condition key validity
+
+        Public API - Parsing:
+            - parse_action: Split action into service and name
+            - _match_wildcard_action: Match wildcard patterns
+
+        Utilities:
+            - get_stats: Get cache statistics
+    """
 
     BASE_URL = AWS_SERVICE_REFERENCE_BASE_URL
 
@@ -797,9 +812,15 @@ class AWSServiceFetcher:
         return True, None
 
     async def validate_condition_key(
-        self, action: str, condition_key: str
+        self, action: str, condition_key: str, resources: list[str] | None = None
     ) -> tuple[bool, str | None, str | None]:
-        """Validate condition key with optimized caching.
+        """
+        Validate condition key against action and optionally resource types.
+
+        Args:
+            action: IAM action (e.g., "s3:GetObject")
+            condition_key: Condition key to validate (e.g., "s3:prefix")
+            resources: Optional list of resource ARNs to validate against
 
         Returns:
             Tuple of (is_valid, error_message, warning_message)
@@ -808,7 +829,9 @@ class AWSServiceFetcher:
             - warning_message: Warning message if valid but not recommended
         """
         try:
-            from iam_validator.core.aws_global_conditions import get_global_conditions
+            from iam_validator.core.config.aws_global_conditions import (
+                get_global_conditions,
+            )
 
             service_prefix, action_name = self.parse_action(action)
 
@@ -840,6 +863,20 @@ class AWSServiceFetcher:
                     and condition_key in action_detail.action_condition_keys
                 ):
                     return True, None, None
+
+                # Check resource-specific condition keys
+                # Get resource types required by this action
+                if resources and action_detail.resources:
+                    for res_req in action_detail.resources:
+                        resource_name = res_req.get("Name", "")
+                        if not resource_name:
+                            continue
+
+                        # Look up resource type definition
+                        resource_type = service_detail.resources.get(resource_name)
+                        if resource_type and resource_type.condition_keys:
+                            if condition_key in resource_type.condition_keys:
+                                return True, None, None
 
                 # If it's a global key but the action has specific condition keys defined,
                 # AWS allows it but the key may not be available in every request context

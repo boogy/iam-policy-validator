@@ -9,7 +9,7 @@ from rich.table import Table
 
 from iam_validator.commands.base import Command
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
-from iam_validator.core.config_loader import ConfigLoader
+from iam_validator.core.config.config_loader import ConfigLoader
 
 logger = logging.getLogger(__name__)
 console = Console()

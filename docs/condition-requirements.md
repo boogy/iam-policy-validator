@@ -6,26 +6,15 @@ Enforce IAM conditions on sensitive actions using modular, Python-based requirem
 
 - Easy to read and customize
 - Type-safe with IDE support
-- No complex nested YAML
 - Pre-built requirements library
 
 ## Available Requirements
 
 **Default (Enabled):**
 - `iam_pass_role` - Requires `iam:PassedToService` condition
-- `iam_permissions_boundary` - Enforces permissions boundary for IAM operations
 - `s3_org_id` - Requires AWS organization ID for S3 writes
 - `source_ip_restrictions` - Restricts access by IP
 - `s3_secure_transport` - Enforces HTTPS for S3
-
-**Optional (Disabled by default):**
-- `s3_destructive_mfa` - Requires MFA for S3 delete operations
-- `s3_require_https` - Enforces HTTPS for all S3 operations
-- `ec2_vpc_restriction` - Limits EC2 to specific VPCs
-- `ec2_tag_requirements` - Enforces ABAC tags on EC2
-- `rds_tag_requirements` - Enforces tags on RDS resources
-- `s3_bucket_tag_requirements` - Enforces tags on S3 buckets
-- `forbidden_actions` - Blocks specified actions
 - `prevent_public_ip` - Blocks `0.0.0.0/0` IP ranges
 
 ## Quick Start
@@ -34,31 +23,29 @@ Enforce IAM conditions on sensitive actions using modular, Python-based requirem
 
 ```yaml
 action_condition_enforcement:
-  enabled: true  # Uses 5 default requirements
+  enabled: true  # Uses all 5 requirements
 ```
 
 ### Python Customization
 
 ```python
-from iam_validator.core.config import (
-    get_default_requirements,
-    get_requirement,
-    get_requirements_by_names,
+from iam_validator.core.config import CONDITION_REQUIREMENTS
+from iam_validator.core.config.condition_requirements import (
+    IAM_PASS_ROLE_REQUIREMENT,
+    S3_WRITE_ORG_ID,
+    S3_SECURE_TRANSPORT,
 )
+import copy
 
-# Start with defaults
-requirements = get_default_requirements()
-
-# Add optional requirements
-requirements.append(get_requirement('s3_destructive_mfa'))
-requirements.append(get_requirement('ec2_tag_requirements'))
+# Use all requirements
+requirements = copy.deepcopy(CONDITION_REQUIREMENTS)
 
 # Or pick specific ones
-my_reqs = get_requirements_by_names([
-    'iam_pass_role',
-    's3_destructive_mfa',
-    'ec2_tag_requirements',
-])
+my_reqs = [
+    IAM_PASS_ROLE_REQUIREMENT,
+    S3_WRITE_ORG_ID,
+    S3_SECURE_TRANSPORT,
+]
 ```
 
 ### Add Custom Requirement
@@ -73,26 +60,36 @@ custom_requirement = {
     }]
 }
 
-requirements = get_default_requirements()
+import copy
+requirements = copy.deepcopy(CONDITION_REQUIREMENTS)
 requirements.append(custom_requirement)
 ```
 
 ## API Reference
 
 ```python
-from iam_validator.core.config import (
-    get_all_requirement_names,      # List all available
-    get_requirement,                 # Get single requirement
-    get_requirements_by_names,       # Get specific set
-    get_requirements_by_severity,    # Filter by severity
-    describe_requirement,            # Get metadata
+from iam_validator.core.config import CONDITION_REQUIREMENTS
+from iam_validator.core.config.condition_requirements import (
+    IAM_PASS_ROLE_REQUIREMENT,
+    S3_WRITE_ORG_ID,
+    SOURCE_IP_RESTRICTIONS,
+    S3_SECURE_TRANSPORT,
+    PREVENT_PUBLIC_IP,
 )
+import copy
 
-# Examples
-names = get_all_requirement_names()
-req = get_requirement('iam_pass_role')
-my_reqs = get_requirements_by_names(['iam_pass_role', 's3_destructive_mfa'])
-high_risk = get_requirements_by_severity('high')
+# Get all requirements
+requirements = copy.deepcopy(CONDITION_REQUIREMENTS)
+
+# Or pick specific ones
+my_reqs = [IAM_PASS_ROLE_REQUIREMENT, S3_SECURE_TRANSPORT]
+
+# Filter by severity
+high_risk = [req for req in CONDITION_REQUIREMENTS if req.get('severity') in ['high', 'critical']]
+
+# Access requirement metadata
+severity = IAM_PASS_ROLE_REQUIREMENT.get('severity')
+description = IAM_PASS_ROLE_REQUIREMENT['required_conditions'][0]['description']
 ```
 
 ## Requirement Structure
@@ -139,34 +136,26 @@ action_condition_enforcement:
 ## Common Use Cases
 
 ```python
-from iam_validator.core.config import (
-    get_requirements_by_severity,
-    get_requirements_by_names,
+from iam_validator.core.config import CONDITION_REQUIREMENTS
+from iam_validator.core.config.condition_requirements import (
+    IAM_PASS_ROLE_REQUIREMENT,
+    S3_WRITE_ORG_ID,
+    S3_SECURE_TRANSPORT,
+    SOURCE_IP_RESTRICTIONS,
 )
+import copy
 
 # Strict security - all high/critical
-strict = get_requirements_by_severity('high')
+strict = [req for req in CONDITION_REQUIREMENTS if req.get('severity') in ['high', 'critical']]
 
 # Development - essentials only
-dev = get_requirements_by_names([
-    'iam_pass_role',
-    's3_secure_transport',
-])
+dev = [
+    IAM_PASS_ROLE_REQUIREMENT,
+    S3_SECURE_TRANSPORT,
+]
 
-# Production - comprehensive
-prod = get_requirements_by_names([
-    'iam_pass_role',
-    'iam_permissions_boundary',
-    's3_destructive_mfa',
-    'ec2_tag_requirements',
-])
-
-# ABAC - tag enforcement
-abac = get_requirements_by_names([
-    'ec2_tag_requirements',
-    'rds_tag_requirements',
-    's3_bucket_tag_requirements',
-])
+# Production - comprehensive (all requirements)
+prod = copy.deepcopy(CONDITION_REQUIREMENTS)
 ```
 
 ## Performance

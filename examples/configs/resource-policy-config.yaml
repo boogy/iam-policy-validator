@@ -1,0 +1,132 @@
+# Resource Policy Configuration
+# Specialized configuration for validating resource-based policies
+# (S3 bucket policies, SNS topic policies, KMS key policies, etc.)
+#
+# Use with: --policy-type RESOURCE_POLICY
+
+settings:
+  fail_fast: false
+  max_concurrent: 10
+  enable_builtin_checks: true
+  parallel_execution: true
+
+  # AWS services configuration
+  aws_services_dir: null
+  cache_enabled: true
+  cache_ttl_hours: 168
+
+  fail_on_severity:
+    - error
+    - critical
+    - high
+
+# AWS Validation - Standard checks
+sid_uniqueness:
+  enabled: true
+policy_size:
+  enabled: true
+action_validation:
+  enabled: true
+condition_key_validation:
+  enabled: true
+condition_type_mismatch:
+  enabled: true
+set_operator_validation:
+  enabled: true
+mfa_condition_antipattern:
+  enabled: true
+resource_validation:
+  enabled: true
+
+# Policy type validation - critical for resource policies
+policy_type_validation:
+  enabled: true
+  severity: critical
+
+action_resource_constraint:
+  enabled: true
+action_resource_matching:
+  enabled: true
+
+# Principal validation - MOST IMPORTANT for resource policies
+principal_validation:
+  enabled: true
+  severity: critical  # Critical for resource policies
+
+  # Block public access by default
+  blocked_principals:
+    - "*"  # Block public access
+
+  # Require conditions for cross-account access
+  require_conditions_for:
+    "arn:aws:iam::*:root":
+      - "aws:PrincipalOrgID"  # Must be from same organization
+
+  # Advanced: Use principal_condition_requirements for fine-grained control
+  principal_condition_requirements:
+    # Public access MUST have source restrictions
+    - principals:
+        - "*"
+      severity: critical
+      required_conditions:
+        any_of:  # At least one of these
+          - condition_key: "aws:SourceArn"
+            description: "Limit by source ARN (e.g., CloudFront distribution)"
+          - condition_key: "aws:SourceAccount"
+            description: "Limit by source account (e.g., S3 event notifications)"
+          - condition_key: "aws:SourceVpce"
+            description: "Limit to specific VPC endpoint"
+
+    # Cross-account access must be from organization
+    - principals:
+        - "arn:aws:iam::*:root"
+      severity: high
+      required_conditions:
+        - condition_key: "aws:PrincipalOrgID"
+          description: "Cross-account access must be from same AWS Organization"
+          example: |
+            "Condition": {
+              "StringEquals": {
+                "aws:PrincipalOrgID": "o-xxxxxxxxxx"
+              }
+            }
+
+    # Prevent insecure transport
+    - principals:
+        - "*"
+        - "arn:aws:iam::*:root"
+      required_conditions:
+        none_of:
+          - condition_key: "aws:SecureTransport"
+            expected_value: false
+            description: "Must not allow insecure transport"
+
+# Security checks - adjusted for resource policies
+wildcard_action:
+  enabled: true
+  severity: medium  # Less critical for resource policies
+
+wildcard_resource:
+  enabled: false  # N/A for resource policies (no Resource element)
+
+full_wildcard:
+  enabled: true
+  severity: high
+
+service_wildcard:
+  enabled: true
+  severity: medium
+
+sensitive_action:
+  enabled: true
+  severity: medium
+  # Focus on resource exposure for resource policies
+  categories:
+    - resource_exposure
+
+# Condition enforcement - focus on secure transport
+action_condition_enforcement:
+  enabled: true
+  severity: high
+  # Use Python to load specific requirements:
+  #   get_requirements_by_names(['s3_secure_transport', 'prevent_public_ip'])

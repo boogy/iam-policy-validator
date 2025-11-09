@@ -23,7 +23,7 @@ This project follows a code of conduct to ensure a welcoming environment for all
 
 ### Prerequisites
 
-- Python 3.11 or higher
+- Python 3.12 or higher
 - [uv](https://github.com/astral-sh/uv) package manager
 - Git
 - AWS account (optional, for testing AWS integrations)
@@ -33,8 +33,8 @@ This project follows a code of conduct to ensure a welcoming environment for all
 1. **Fork and Clone the Repository**
 
    ```bash
-   git clone https://github.com/YOUR-USERNAME/iam-policy-auditor.git
-   cd iam-policy-auditor
+   git clone https://github.com/boogy/iam-policy-validator.git
+   cd iam-policy-validator
    ```
 
 2. **Install uv (if not already installed)**
@@ -103,36 +103,46 @@ uv run mypy iam_validator
 ```
 iam-policy-auditor/
 ├── iam_validator/              # Main package
-│   ├── cli.py                  # CLI entry point
-│   ├── checks/                 # Built-in validation checks
+│   ├── checks/                 # Built-in validation checks (18 checks)
 │   ├── commands/               # CLI command implementations
 │   ├── core/                   # Core validation engine
+│   │   ├── cli.py              # CLI entry point
 │   │   ├── formatters/         # Output formatters
-│   │   └── data/               # Static data files
-│   └── integrations/           # External integrations
+│   │   ├── config/             # Configuration system (modular Python configs)
+│   │   ├── models.py           # Data models
+│   │   ├── policy_checks.py   # Policy validation orchestrator
+│   │   └── aws_fetcher.py     # AWS service definition fetcher
+│   ├── integrations/           # External integrations (Access Analyzer, PR comments)
+│   ├── sdk/                    # Python SDK for library usage
+│   └── utils/                  # Utility functions
 │
 ├── tests/                      # Test suite
-│   ├── test_policy_checks.py   # Core validation tests
-│   ├── test_aws_fetcher.py     # AWS integration tests
-│   ├── test_cache_and_optimizations.py  # Cache/optimization tests
-│   └── test_benchmarks.py      # Performance benchmarks
+│   ├── test_*.py               # Test files for each check/module
+│   └── conftest.py             # Pytest configuration and fixtures
 │
 ├── docs/                       # Documentation
-│   ├── getting-started/        # Quick start guides
-│   ├── guides/                 # User guides
-│   ├── reference/              # Reference documentation
-│   ├── advanced/               # Advanced topics
-│   └── development/            # Development docs
+│   ├── check-reference.md      # Complete reference for all 18 checks
+│   ├── CHECKS.md               # Deprecated - migration guide
+│   ├── SDK.md                  # Python SDK documentation
+│   ├── configuration.md        # Configuration guide
+│   ├── condition-requirements.md  # Action condition enforcement
+│   ├── privilege-escalation.md    # Privilege escalation detection
+│   ├── custom-checks.md        # Custom check development guide
+│   └── development/            # Development documentation
 │
-├── examples/                   # Example policies and configs
-│   ├── configs/                # Configuration examples
+├── examples/                   # Examples and sample files
+│   ├── configs/                # 9+ configuration examples
 │   ├── custom_checks/          # Custom check examples
-│   └── github-actions/         # GitHub Actions examples
+│   ├── library-usage/          # Python SDK examples
+│   ├── github-actions/         # GitHub Actions workflow examples
+│   └── iam-test-policies/      # Sample IAM policies for testing
 │
+├── scripts/                    # Development and utility scripts
+├── aws_services/               # Cached AWS service definitions
 ├── .github/workflows/          # CI/CD workflows
-├── pyproject.toml              # Project metadata and dependencies
+├── pyproject.toml              # Project metadata and dependencies (uv)
 ├── Makefile                    # Development commands
-└── default-config.yaml         # Example configuration file
+└── CONTRIBUTING.md             # This file
 ```
 
 ## Development Workflow
@@ -293,11 +303,17 @@ This runs linting, type checking, and tests.
 
 ### Documentation Structure
 
-- **Getting Started**: Quick start guides for new users
-- **Guides**: In-depth tutorials and how-tos
-- **Reference**: API and configuration reference
-- **Advanced**: Advanced topics and patterns
-- **Development**: Contributor documentation
+- **README.md**: Project overview, quick start, and feature highlights
+- **DOCS.md**: Complete usage guide, CLI reference, and configuration
+- **docs/check-reference.md**: Complete validation checks reference with pass/fail examples
+- **docs/CHECKS.md**: (Deprecated) Migration guide to new check documentation
+- **docs/SDK.md**: Python library documentation and API reference
+- **docs/**: Additional guides and advanced topics
+  - **configuration.md**: Configuration guide
+  - **condition-requirements.md**: Action condition enforcement
+  - **privilege-escalation.md**: Privilege escalation detection
+  - **custom-checks.md**: Custom check development
+  - **development/**: Contributor documentation
 
 ### Building Documentation
 
@@ -371,6 +387,7 @@ Releases are managed by project maintainers. The process includes:
 1. **Version Bump**
    ```bash
    # Update version in pyproject.toml
+   # Update version in __version__.py
    # Update CHANGELOG.md
    ```
 
@@ -474,9 +491,16 @@ See the comprehensive [Custom Checks Guide](docs/custom-checks.md) for detailed 
 
 ## Getting Help
 
-- **Documentation**: Check [docs/](docs/)
-- **Issues**: Search [existing issues](https://github.com/Boogy/iam-policy-auditor/issues)
-- **Discussions**: Start a [discussion](https://github.com/Boogy/iam-policy-auditor/discussions)
+### Documentation Resources
+- **[Complete Usage Guide](../DOCS.md)** - CLI, GitHub Actions, configuration
+- **[Validation Checks](docs/check-reference.md)** - All 18 checks with examples
+- **[Python SDK](docs/SDK.md)** - Library usage and API reference
+- **[Additional Docs](docs/)** - Guides and advanced topics
+
+### Support Channels
+- **Issues**: Search [existing issues](https://github.com/boogy/iam-policy-validator/issues)
+- **Discussions**: Start a [discussion](https://github.com/boogy/iam-policy-validator/discussions)
+- **Examples**: Check [examples/](examples/) directory for code samples
 
 ## Recognition
 

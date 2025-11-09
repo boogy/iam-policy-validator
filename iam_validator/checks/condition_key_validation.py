@@ -40,6 +40,7 @@ class ConditionKeyValidationCheck(PolicyCheck):
         statement_sid = statement.sid
         line_number = statement.line_number
         actions = statement.get_actions()
+        resources = statement.get_resources()
 
         # Extract all condition keys from all condition operators
         for operator, conditions in statement.condition.items():
@@ -50,8 +51,9 @@ class ConditionKeyValidationCheck(PolicyCheck):
                     if action == "*":
                         continue
 
+                    # Validate against action and resource types
                     is_valid, error_msg, warning_msg = await fetcher.validate_condition_key(
-                        action, condition_key
+                        action, condition_key, resources
                     )
 
                     if not is_valid:

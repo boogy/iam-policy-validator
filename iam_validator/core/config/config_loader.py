@@ -267,6 +267,9 @@ class ConfigLoader:
                 config=check_config_dict,
                 description=check_config_dict.get("description", check.description),
                 root_config=config.config_dict,  # Pass full config for cross-check access
+                ignore_patterns=check_config_dict.get(
+                    "ignore_patterns", []
+                ),  # NEW: Ignore patterns
             )
 
             registry.configure_check(check_id, check_config)

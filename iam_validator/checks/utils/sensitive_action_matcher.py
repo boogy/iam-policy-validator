@@ -38,6 +38,31 @@ def _get_default_sensitive_actions() -> frozenset[str]:
     return _DEFAULT_SENSITIVE_ACTIONS_CACHE
 
 
+def get_sensitive_actions_by_categories(categories: list[str] | None = None) -> frozenset[str]:
+    """
+    Get sensitive actions filtered by categories.
+
+    Args:
+        categories: List of category IDs to include. If None, returns all actions.
+                   Valid categories: 'credential_exposure', 'data_access',
+                   'priv_esc', 'resource_exposure'
+
+    Returns:
+        Frozenset of sensitive actions matching the specified categories
+
+    Examples:
+        >>> # Get all sensitive actions (default behavior)
+        >>> all_actions = get_sensitive_actions_by_categories()
+
+        >>> # Get only privilege escalation actions
+        >>> priv_esc = get_sensitive_actions_by_categories(['priv_esc'])
+
+        >>> # Get credential exposure and data access actions
+        >>> sensitive = get_sensitive_actions_by_categories(['credential_exposure', 'data_access'])
+    """
+    return get_sensitive_actions(categories)
+
+
 # Export for backward compatibility
 DEFAULT_SENSITIVE_ACTIONS = _get_default_sensitive_actions()
 
@@ -79,7 +104,16 @@ def check_sensitive_actions(
         - Uses lazy-loaded defaults (only loaded on first use)
         - O(1) frozenset lookups for action matching
     """
-    if default_actions is None:
+    # Check if categories are specified in config
+    categories = config.config.get("categories")
+    if categories is not None:
+        # If categories is an empty list, disable the check
+        if len(categories) == 0:
+            return False, []
+        # Get sensitive actions filtered by categories
+        default_actions = get_sensitive_actions_by_categories(categories)
+    elif default_actions is None:
+        # Use all categories if no specific categories configured
         default_actions = _get_default_sensitive_actions()
 
     # Filter out wildcards
