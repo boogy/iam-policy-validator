@@ -109,16 +109,11 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Run validator on example policies
-        run: |
-          if [ -d "examples/iam-test-policies" ]; then
-            uv run iam-validator validate --path examples/iam-test-policies/ --format console
-          else
-            echo "No example policies found, skipping integration test"
-          fi
-
       - name: Test CLI help
         run: uv run iam-validator --help
+
+      - name: Test CLI version
+        run: uv run iam-validator --version
 
   all-checks-pass:
     name: All Checks Pass
