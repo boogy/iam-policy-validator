@@ -111,10 +111,10 @@ jobs:
 
       - name: Run validator on example policies
         run: |
-          if [ -d "examples" ]; then
-            uv run iam-validator validate --path examples/ --format console --verbose || true
+          if [ -d "examples/iam-test-policies" ]; then
+            uv run iam-validator validate --path examples/iam-test-policies/ --format console
           else
-            echo "No examples directory found, skipping integration test"
+            echo "No example policies found, skipping integration test"
           fi
 
       - name: Test CLI help
