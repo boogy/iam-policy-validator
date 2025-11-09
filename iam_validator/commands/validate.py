@@ -37,6 +37,10 @@ Examples:
   # Validate multiple paths (files and directories)
   iam-validator validate --path policy1.json --path ./policies/ --path ./more-policies/
 
+  # Read policy from stdin
+  cat policy.json | iam-validator validate --stdin
+  echo '{"Version":"2012-10-17","Statement":[...]}' | iam-validator validate --stdin
+
   # Use custom checks from a directory
   iam-validator validate --path ./policies/ --custom-checks-dir ./my-checks
 
@@ -61,13 +65,21 @@ Examples:
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         """Add validate command arguments."""
-        parser.add_argument(
+        # Create mutually exclusive group for input sources
+        input_group = parser.add_mutually_exclusive_group(required=True)
+
+        input_group.add_argument(
             "--path",
             "-p",
-            required=True,
             action="append",
             dest="paths",
             help="Path to IAM policy file or directory (can be specified multiple times)",
+        )
+
+        input_group.add_argument(
+            "--stdin",
+            action="store_true",
+            help="Read policy from stdin (JSON format)",
         )
 
         parser.add_argument(
@@ -198,15 +210,36 @@ Examples:
 
     async def _execute_batch(self, args: argparse.Namespace) -> int:
         """Execute validation by loading all policies at once (original behavior)."""
-        # Load policies from all specified paths
+        # Load policies from all specified paths or stdin
         loader = PolicyLoader()
-        policies = loader.load_from_paths(args.paths, recursive=not args.no_recursive)
 
-        if not policies:
-            logging.error(f"No valid IAM policies found in: {', '.join(args.paths)}")
-            return 1
+        if args.stdin:
+            # Read from stdin
+            import json
+            import sys
 
-        logging.info(f"Loaded {len(policies)} policies from {len(args.paths)} path(s)")
+            stdin_content = sys.stdin.read()
+            if not stdin_content.strip():
+                logging.error("No policy data provided on stdin")
+                return 1
+
+            try:
+                policy_data = json.loads(stdin_content)
+                # Create a synthetic policy entry
+                policies = [("stdin", policy_data)]
+                logging.info("Loaded policy from stdin")
+            except json.JSONDecodeError as e:
+                logging.error(f"Invalid JSON from stdin: {e}")
+                return 1
+        else:
+            # Load from paths
+            policies = loader.load_from_paths(args.paths, recursive=not args.no_recursive)
+
+            if not policies:
+                logging.error(f"No valid IAM policies found in: {', '.join(args.paths)}")
+                return 1
+
+            logging.info(f"Loaded {len(policies)} policies from {len(args.paths)} path(s)")
 
         # Validate policies
         use_registry = not getattr(args, "no_registry", False)
@@ -258,7 +291,7 @@ Examples:
 
         # Post to GitHub if configured
         if args.github_comment or getattr(args, "github_review", False):
-            from iam_validator.core.config_loader import ConfigLoader
+            from iam_validator.core.config.config_loader import ConfigLoader
             from iam_validator.core.pr_commenter import PRCommenter
 
             # Load config to get fail_on_severity setting
@@ -384,7 +417,7 @@ Examples:
 
         # Post summary comment to GitHub (if requested and not already posted per-file reviews)
         if args.github_comment:
-            from iam_validator.core.config_loader import ConfigLoader
+            from iam_validator.core.config.config_loader import ConfigLoader
             from iam_validator.core.pr_commenter import PRCommenter
 
             # Load config to get fail_on_severity setting
@@ -436,7 +469,7 @@ Examples:
         This provides progressive feedback in PRs as files are processed.
         """
         try:
-            from iam_validator.core.config_loader import ConfigLoader
+            from iam_validator.core.config.config_loader import ConfigLoader
             from iam_validator.core.pr_commenter import PRCommenter
 
             async with GitHubIntegration() as github:

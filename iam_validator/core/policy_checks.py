@@ -491,7 +491,7 @@ async def validate_policies(
     if not use_registry:
         # Legacy path - use old PolicyValidator
         # Load config for cache settings even in legacy mode
-        from iam_validator.core.config_loader import ConfigLoader
+        from iam_validator.core.config.config_loader import ConfigLoader
 
         config = ConfigLoader.load_config(explicit_path=config_path, allow_missing=True)
         cache_enabled = config.get_setting("cache_enabled", True)
@@ -519,7 +519,7 @@ async def validate_policies(
 
     # New path - use CheckRegistry system
     from iam_validator.core.check_registry import create_default_registry
-    from iam_validator.core.config_loader import ConfigLoader
+    from iam_validator.core.config.config_loader import ConfigLoader
 
     # Load configuration
     config = ConfigLoader.load_config(explicit_path=config_path, allow_missing=True)
@@ -630,8 +630,8 @@ async def _validate_policy_with_registry(
 
     # Execute all statement-level checks for each statement
     for idx, statement in enumerate(policy.statement):
-        # Execute all registered checks in parallel
-        issues = await registry.execute_checks_parallel(statement, idx, fetcher)
+        # Execute all registered checks in parallel (with ignore_patterns filtering)
+        issues = await registry.execute_checks_parallel(statement, idx, fetcher, policy_file)
 
         # Add issues to result
         result.issues.extend(issues)

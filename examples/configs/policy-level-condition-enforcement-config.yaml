@@ -1,0 +1,175 @@
+# Example configuration for Policy-Level Condition Enforcement
+#
+# This demonstrates the new policy-level enforcement feature for
+# ActionConditionEnforcementCheck that scans the entire policy and ensures
+# ALL statements granting certain actions have required conditions.
+#
+# Use case: Ensure consistent security controls across the entire policy.
+# Example: "If ANY statement in the policy grants privilege escalation actions,
+#           then ALL such statements must have MFA condition."
+
+checks:
+  action_condition_enforcement:
+    enabled: true
+    severity: error
+    description: "Enforces conditions for specific actions at both statement and policy level"
+
+    # ========================================================================
+    # STATEMENT-LEVEL REQUIREMENTS (existing functionality)
+    # ========================================================================
+    # These check individual statements independently
+    action_condition_requirements:
+      # Basic: iam:PassRole must have iam:PassedToService condition
+      - actions:
+          - "iam:PassRole"
+        required_conditions:
+          - condition_key: "iam:PassedToService"
+            description: "Specify which AWS services can use the passed role"
+
+      # Sensitive actions require MFA
+      - actions:
+          - "iam:DeleteUser"
+          - "iam:DeleteRole"
+        required_conditions:
+          - condition_key: "aws:MultiFactorAuthPresent"
+            expected_value: true
+
+    # ========================================================================
+    # POLICY-LEVEL REQUIREMENTS (new feature)
+    # ========================================================================
+    # These scan the entire policy and enforce conditions across ALL matching statements
+    policy_level_requirements:
+      # Example 1: Privilege escalation actions require MFA
+      # If ANY statement grants these actions, ALL such statements must have MFA
+      - actions:
+          any_of:
+            - "iam:CreateUser"
+            - "iam:AttachUserPolicy"
+            - "iam:PutUserPolicy"
+            - "iam:CreateAccessKey"
+            - "iam:UpdateAccessKey"
+        scope: "policy"
+        required_conditions:
+          - condition_key: "aws:MultiFactorAuthPresent"
+            expected_value: true
+        description: "Privilege escalation actions require MFA across entire policy"
+        severity: "critical"
+
+      # Example 2: Admin actions require MFA + IP restrictions
+      # All admin-level wildcards must have both MFA and IP restrictions
+      - actions:
+          any_of:
+            - "iam:*"
+            - "s3:*"
+            - "ec2:*"
+        scope: "policy"
+        required_conditions:
+          all_of:
+            - condition_key: "aws:MultiFactorAuthPresent"
+              expected_value: true
+            - condition_key: "aws:SourceIp"
+              description: "Limit admin actions to specific IP addresses"
+        description: "Admin wildcards require MFA and IP restrictions"
+        severity: "high"
+
+      # Example 3: Dangerous combination detection
+      # Detect if ANY statement has BOTH dangerous actions together
+      - actions:
+          all_of:
+            - "iam:CreateAccessKey"
+            - "iam:UpdateAccessKey"
+        scope: "policy"
+        severity: "critical"
+        description: "Dangerous combination: Creating and updating access keys in same statement"
+
+      # Example 4: S3 sensitive operations require encryption
+      # All S3 write operations across the policy must enforce encryption
+      - actions:
+          any_of:
+            - "s3:PutObject"
+            - "s3:PutObjectAcl"
+        scope: "policy"
+        required_conditions:
+          - condition_key: "s3:x-amz-server-side-encryption"
+            operator: "StringEquals"
+            expected_value: ["AES256", "aws:kms"]
+        description: "S3 write operations must enforce server-side encryption"
+        severity: "high"
+
+      # Example 5: Resource tag enforcement for EC2
+      # All EC2 RunInstances across the policy must require specific tags
+      - actions:
+          any_of:
+            - "ec2:RunInstances"
+        scope: "policy"
+        required_conditions:
+          all_of:
+            - condition_key: "aws:RequestTag/Environment"
+              operator: "StringEquals"
+              expected_value: ["Production", "Staging", "Development"]
+            - condition_key: "aws:RequestTag/Owner"
+              description: "All EC2 instances must have an Owner tag"
+        description: "EC2 instances require Environment and Owner tags"
+        severity: "medium"
+
+      # Example 6: Cross-account access requires external ID
+      # Any statement allowing cross-account assume role must have ExternalId
+      - actions:
+          any_of:
+            - "sts:AssumeRole"
+        scope: "policy"
+        required_conditions:
+          - condition_key: "sts:ExternalId"
+            description: "Cross-account role assumptions require ExternalId for security"
+        description: "Cross-account AssumeRole requires ExternalId"
+        severity: "high"
+
+      # Example 7: Time-based restrictions for sensitive operations
+      # Sensitive IAM operations can only be performed during business hours
+      - actions:
+          any_of:
+            - "iam:DeleteUser"
+            - "iam:DeleteRole"
+            - "iam:DetachUserPolicy"
+            - "iam:DetachRolePolicy"
+        scope: "policy"
+        required_conditions:
+          all_of:
+            - condition_key: "aws:CurrentTime"
+              operator: "DateGreaterThan"
+            - condition_key: "aws:CurrentTime"
+              operator: "DateLessThan"
+        description: "Sensitive IAM deletions should be time-restricted"
+        severity: "medium"
+
+# ========================================================================
+# How Policy-Level Enforcement Works
+# ========================================================================
+#
+# Traditional (Statement-Level):
+# - Checks each statement independently
+# - If a statement has "iam:CreateUser", it must have MFA
+# - Another statement with "iam:CreateUser" is checked separately
+#
+# New (Policy-Level):
+# - Scans the ENTIRE policy first
+# - Finds ALL statements with matching actions
+# - Ensures ALL of them have required conditions
+# - Reports which statements are non-compliant
+#
+# Example Scenario:
+# ----------------
+# Policy has 5 statements:
+# 1. Allows iam:CreateUser (has MFA) ✓
+# 2. Allows s3:GetObject (no MFA needed) ✓
+# 3. Allows iam:AttachUserPolicy (has MFA) ✓
+# 4. Allows ec2:* (no MFA needed) ✓
+# 5. Allows iam:CreateUser (MISSING MFA) ✗
+#
+# Policy-level check finds:
+# - "Found 2 statements with privilege escalation actions"
+# - "Statement #5 is missing required MFA condition"
+# - "Note: This is enforced at the policy level. Found 2 statement(s)
+#    with these actions in the policy."
+#
+# This helps ensure consistency across the entire policy!

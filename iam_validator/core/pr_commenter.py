@@ -313,7 +313,7 @@ async def post_report_to_pr(
         report = ValidationReport.model_validate(report_data)
 
         # Load config to get fail_on_severity setting
-        from iam_validator.core.config_loader import ConfigLoader
+        from iam_validator.core.config.config_loader import ConfigLoader
 
         config = ConfigLoader.load_config(config_path)
         fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])

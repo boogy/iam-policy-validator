@@ -67,7 +67,9 @@ class TestConditionKeyValidationCheck:
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 0
-        fetcher.validate_condition_key.assert_called_once_with("s3:GetObject", "s3:prefix")
+        fetcher.validate_condition_key.assert_called_once_with(
+            "s3:GetObject", "s3:prefix", ["arn:aws:s3:::bucket/*"]
+        )
 
     @pytest.mark.asyncio
     async def test_invalid_condition_key(self, check, fetcher, config):
@@ -96,7 +98,7 @@ class TestConditionKeyValidationCheck:
     async def test_multiple_condition_keys(self, check, fetcher, config):
         """Test multiple condition keys are validated."""
 
-        async def validate_side_effect(action, key):
+        async def validate_side_effect(action, key, resources):
             if key == "s3:prefix":
                 return (True, None, None)
             else:
@@ -279,7 +281,9 @@ class TestConditionKeyValidationCheck:
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 0
-        fetcher.validate_condition_key.assert_called_once_with("s3:GetObject", "s3:prefix")
+        fetcher.validate_condition_key.assert_called_once_with(
+            "s3:GetObject", "s3:prefix", ["arn:aws:s3:::bucket/*"]
+        )
 
     @pytest.mark.asyncio
     async def test_global_condition_key_with_warning(self, check, fetcher, config):
@@ -364,3 +368,73 @@ class TestConditionKeyValidationCheck:
         # Should generate a warning by default
         assert len(issues) == 1
         assert issues[0].severity == "warning"
+
+    @pytest.mark.asyncio
+    async def test_resource_level_condition_key(self, check, fetcher, config):
+        """Test that resource-level condition keys are validated."""
+        # Simulate a resource-specific condition key that's valid
+        fetcher.validate_condition_key.return_value = (True, None, None)
+
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:us-east-1:123456789012:accesspoint/my-access-point"],
+            Condition={"StringEquals": {"s3:AccessPointNetworkOrigin": "Internet"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        assert len(issues) == 0
+        fetcher.validate_condition_key.assert_called_once_with(
+            "s3:GetObject",
+            "s3:AccessPointNetworkOrigin",
+            ["arn:aws:s3:us-east-1:123456789012:accesspoint/my-access-point"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_invalid_resource_level_condition_key(self, check, fetcher, config):
+        """Test that invalid resource-level condition keys are flagged."""
+        fetcher.validate_condition_key.return_value = (
+            False,
+            "Condition key 's3:InvalidResourceKey' is not valid for resource type",
+            None,
+        )
+
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:us-east-1:123456789012:accesspoint/my-access-point"],
+            Condition={"StringEquals": {"s3:InvalidResourceKey": "value"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        assert len(issues) == 1
+        assert issues[0].severity == "error"
+        assert issues[0].issue_type == "invalid_condition_key"
+        assert issues[0].condition_key == "s3:InvalidResourceKey"
+
+    @pytest.mark.asyncio
+    async def test_multiple_resources_with_condition_keys(self, check, fetcher, config):
+        """Test condition key validation with multiple resource ARNs."""
+        fetcher.validate_condition_key.return_value = (True, None, None)
+
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=[
+                "arn:aws:s3:::bucket1/*",
+                "arn:aws:s3:us-east-1:123456789012:accesspoint/my-access-point",
+            ],
+            Condition={"StringEquals": {"s3:prefix": "documents/"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        assert len(issues) == 0
+        # Should pass all resources to validate_condition_key
+        fetcher.validate_condition_key.assert_called_once_with(
+            "s3:GetObject",
+            "s3:prefix",
+            [
+                "arn:aws:s3:::bucket1/*",
+                "arn:aws:s3:us-east-1:123456789012:accesspoint/my-access-point",
+            ],
+        )

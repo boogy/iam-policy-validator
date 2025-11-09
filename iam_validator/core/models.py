@@ -45,8 +45,21 @@ class ResourceType(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     name: str = Field(alias="Name")
-    arn_pattern: str | None = Field(default=None, alias="ARNPattern")
+    arn_formats: list[str] | None = Field(default=None, alias="ARNFormats")
     condition_keys: list[str] | None = Field(default_factory=list, alias="ConditionKeys")
+
+    @property
+    def arn_pattern(self) -> str | None:
+        """
+        Get the first ARN format for backwards compatibility.
+
+        AWS provides ARN formats as an array (ARNFormats), but most code
+        just needs a single pattern. This property returns the first one.
+
+        Returns:
+            First ARN format string, or None if no formats are defined
+        """
+        return self.arn_formats[0] if self.arn_formats else None
 
 
 class ConditionKey(BaseModel):

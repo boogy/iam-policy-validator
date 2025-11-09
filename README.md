@@ -16,7 +16,7 @@
 
 **This tool prevents these issues** by:
 - ✅ **Validating early** - Catch errors in PRs before merge
-- ✅ **Comprehensive checks** - AWS Access Analyzer + 15+ security checks
+- ✅ **Comprehensive checks** - AWS Access Analyzer + 18 built-in security checks
 - ✅ **Smart filtering** - Auto-detects IAM policies from mixed JSON/YAML files
 - ✅ **Developer-friendly** - Clear error messages with fix suggestions
 - ✅ **Zero setup** - Works as a GitHub Action out of the box
@@ -25,7 +25,7 @@
 
 ### 🔍 Multi-Layer Validation
 - **AWS IAM Access Analyzer** - Official AWS validation (syntax, permissions, security)
-- **Custom Security Checks** - 15+ specialized checks for best practices
+- **18 Built-in Security Checks** - Comprehensive validation across AWS requirements and security best practices
 - **Policy Comparison** - Detect new permissions vs baseline (prevent scope creep)
 - **Public Access Detection** - Check 29+ AWS resource types for public exposure
 - **Privilege Escalation Detection** - Identify dangerous action combinations
@@ -706,7 +706,7 @@ iam-validator analyze \
 - **API**: API Gateway REST API
 - **DevOps**: CodeArtifact Domain, Backup Vault, CloudTrail
 
-See [docs/custom-policy-checks.md](docs/custom-policy-checks.md) for complete documentation.
+See [docs/custom-checks.md](docs/custom-checks.md) for complete documentation.
 
 ### As a Python Package
 
@@ -740,70 +740,96 @@ asyncio.run(main())
 
 ## Validation Checks
 
-### 1. Action Validation
+IAM Policy Validator performs **18 built-in checks** to ensure your policies are secure and valid.
 
-Verifies that IAM actions exist in AWS services:
+**📖 For detailed check documentation with configuration examples and pass/fail scenarios:**
+- **[Check Reference Guide](docs/check-reference.md)** - Complete reference for all 18 checks
+- **[Condition Requirements](docs/condition-requirements.md)** - Action condition enforcement
+- **[Privilege Escalation Detection](docs/privilege-escalation.md)** - Detecting escalation paths
 
+### Quick Overview
+
+**AWS IAM Validation (12 checks)** - Ensure policies work correctly in AWS:
+- Statement ID uniqueness and format
+- Policy size limits
+- Action and condition key validation
+- Condition operator and value type checking
+- Set operator validation
+- MFA anti-pattern detection
+- Resource ARN format validation
+- Principal validation (resource policies)
+- Policy type validation
+- Action-resource constraint and matching
+
+**Security Best Practices (6 checks)** - Identify security risks:
+- Wildcard actions (`Action: "*"`)
+- Wildcard resources (`Resource: "*"`)
+- Full wildcard (CRITICAL: both wildcards together)
+- Service-level wildcards (`iam:*`, `s3:*`, etc.)
+- Sensitive actions without conditions (490 actions across 4 risk categories)
+- Action condition enforcement (MFA, IP restrictions, tags, etc.)
+
+### Quick Examples
+
+**Action Validation:**
 ```json
-{
-  "Effect": "Allow",
-  "Action": "s3:GetObject",  // ✅ Valid
-  "Resource": "*"
-}
-```
-
-```json
-{
-  "Effect": "Allow",
-  "Action": "s3:InvalidAction",  // ❌ Invalid - action doesn't exist
-  "Resource": "*"
-}
-```
-
-### 2. Condition Key Validation
-
-Checks that condition keys are valid for the specified actions:
-
-```json
+// ✅ PASS: Valid S3 action
 {
   "Effect": "Allow",
   "Action": "s3:GetObject",
+  "Resource": "arn:aws:s3:::my-bucket/*"
+}
+
+// ❌ FAIL: Invalid action name
+{
+  "Effect": "Allow",
+  "Action": "s3:InvalidAction",  // ERROR: Action doesn't exist
+  "Resource": "*"
+}
+```
+
+**Full Wildcard (Critical):**
+```json
+// ✅ PASS: Specific actions and resources
+{
+  "Effect": "Allow",
+  "Action": ["s3:GetObject", "s3:PutObject"],
+  "Resource": "arn:aws:s3:::my-bucket/*"
+}
+
+// ❌ FAIL: Administrative access
+{
+  "Effect": "Allow",
+  "Action": "*",        // CRITICAL: All actions
+  "Resource": "*"       // CRITICAL: All resources
+}
+```
+
+**Action Condition Enforcement:**
+```json
+// ✅ PASS: iam:PassRole with required condition
+{
+  "Effect": "Allow",
+  "Action": "iam:PassRole",
   "Resource": "*",
   "Condition": {
     "StringEquals": {
-      "aws:RequestedRegion": "us-east-1"  // ✅ Valid global condition key
+      "iam:PassedToService": ["lambda.amazonaws.com"]
     }
   }
 }
-```
 
-### 3. Resource ARN Validation
-
-Ensures ARNs follow proper AWS format:
-
-```json
+// ❌ FAIL: iam:PassRole without condition
 {
   "Effect": "Allow",
-  "Action": "s3:GetObject",
-  "Resource": "arn:aws:s3:::my-bucket/*"  // ✅ Valid ARN
+  "Action": "iam:PassRole",  // HIGH: Missing iam:PassedToService condition
+  "Resource": "*"
 }
 ```
 
-```json
-{
-  "Effect": "Allow",
-  "Action": "s3:GetObject",
-  "Resource": "not-a-valid-arn"  // ❌ Invalid ARN format
-}
-```
+**📚 For complete documentation of all 18 checks with detailed examples, see [Check Reference Guide](docs/check-reference.md)**
 
-### 4. Security Best Practices
-
-Identifies potential security risks:
-
-- Overly permissive wildcard usage (`*` for both Action and Resource)
-- Sensitive actions without conditions
-- Administrative permissions without restrictions
+_Note: The old [CHECKS.md](docs/CHECKS.md) has been deprecated in favor of the new check-reference.md with better organization and examples._
 
 ## GitHub Integration Features
 
@@ -914,28 +940,27 @@ Result: PR always shows current state, no stale comments
 
 ## 📚 Documentation
 
-**[📖 Complete Documentation →](DOCS.md)**
+### Core Documentation
+- **[📖 Complete Usage Guide (DOCS.md)](DOCS.md)** - Installation, CLI reference, GitHub Actions, configuration
+- **[✅ Validation Checks Reference](docs/check-reference.md)** - All 18 checks with pass/fail examples
+- **[🐍 Python SDK Guide (SDK.md)](docs/SDK.md)** - Use as a Python library in your applications
+- **[🤝 Contributing Guide (CONTRIBUTING.md)](CONTRIBUTING.md)** - How to contribute to the project
 
-The comprehensive [DOCS.md](DOCS.md) file contains everything you need:
-- Installation & Quick Start
-- GitHub Actions Integration
-- CLI Reference & Examples
-- Custom Policy Checks (CheckAccessNotGranted, CheckNoNewAccess, CheckNoPublicAccess)
-- Configuration Guide
-- Creating Custom Validation Rules
-- Performance Optimization
-- Troubleshooting
+### Examples & Resources
+- **[Configuration Examples](examples/configs/)** - 9 configuration files for different use cases
+- **[GitHub Actions Workflows](examples/github-actions/)** - Ready-to-use workflow examples
+- **[Custom Checks](examples/custom_checks/)** - Example custom validation rules
+- **[Library Usage Examples](examples/library-usage/)** - Python SDK examples
+- **[Test IAM Policies](examples/iam-test-policies/)** - Example policies for testing
 
-**Additional Resources:**
-- **[Examples Directory](examples/)** - Real-world examples:
-  - [GitHub Actions Workflows](examples/github-actions/)
-  - [Custom Checks](examples/custom_checks/)
-  - [Configuration Files](examples/configs/)
-  - [Test IAM Policies](examples/iam-test-policies/)
+### Advanced Topics
 - **[Roadmap](docs/ROADMAP.md)** - Planned features and improvements
-- **[AWS Services Backup Guide](docs/aws-services-backup.md)** - Offline validation
-- **[Contributing Guide](CONTRIBUTING.md)** - Contribution guidelines
-- **[Publishing Guide](docs/development/PUBLISHING.md)** - Release process
+- **[AWS Services Backup Guide](docs/aws-services-backup.md)** - Offline validation setup
+- **[Publishing Guide](docs/development/PUBLISHING.md)** - Release process for maintainers
+
+### Quick Links
+- **[GitHub Issues](https://github.com/boogy/iam-policy-validator/issues)** - Report bugs or request features
+- **[GitHub Discussions](https://github.com/boogy/iam-policy-validator/discussions)** - Ask questions and share ideas
 
 ## 🤝 Contributing
 
@@ -971,6 +996,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed instructions.
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+### Third-Party Code
+
+Portions of the ARN pattern matching code in [`iam_validator/sdk/arn_matching.py`](iam_validator/sdk/arn_matching.py) are derived from [Parliament](https://github.com/duo-labs/parliament) (Copyright 2019 Duo Security, [BSD 3-Clause License](https://github.com/duo-labs/parliament/blob/master/LICENSE)). See file header for details.
 
 ## 🆘 Support
 

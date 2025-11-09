@@ -21,15 +21,12 @@ from iam_validator.core.config.aws_api import (
     AWS_SERVICE_REFERENCE_BASE_URL,
     get_service_reference_url,
 )
-from iam_validator.core.config.condition_requirements import (
-    ALL_CONDITION_REQUIREMENTS,
-    DEFAULT_CONDITION_REQUIREMENTS,
-    get_all_requirement_names,
-    get_default_requirements,
-    get_requirement,
-    get_requirements_by_names,
-    get_requirements_by_severity,
+from iam_validator.core.config.aws_global_conditions import (
+    AWS_GLOBAL_CONDITION_KEYS,
+    AWSGlobalConditions,
+    get_global_conditions,
 )
+from iam_validator.core.config.condition_requirements import CONDITION_REQUIREMENTS
 from iam_validator.core.config.defaults import DEFAULT_CONFIG
 from iam_validator.core.config.principal_requirements import (
     ALL_PRINCIPAL_REQUIREMENTS,
@@ -50,23 +47,24 @@ from iam_validator.core.config.wildcards import (
     DEFAULT_SERVICE_WILDCARDS,
 )
 
+# NOTE: ConfigLoader is NOT imported here to avoid circular imports
+# Import it directly from iam_validator.core.config.config_loader when needed
+
 __all__ = [
     # Default configuration
     "DEFAULT_CONFIG",
     # AWS API endpoints
     "AWS_SERVICE_REFERENCE_BASE_URL",
     "get_service_reference_url",
+    # AWS Global Conditions
+    "AWS_GLOBAL_CONDITION_KEYS",
+    "AWSGlobalConditions",
+    "get_global_conditions",
     # Sensitive actions
     "DEFAULT_SENSITIVE_ACTIONS",
     "get_sensitive_actions",
     # Condition requirements (for actions)
-    "DEFAULT_CONDITION_REQUIREMENTS",
-    "ALL_CONDITION_REQUIREMENTS",
-    "get_default_requirements",
-    "get_requirement",
-    "get_all_requirement_names",
-    "get_requirements_by_names",
-    "get_requirements_by_severity",
+    "CONDITION_REQUIREMENTS",
     # Principal requirements (for principals)
     "ALL_PRINCIPAL_REQUIREMENTS",
     "DEFAULT_ENABLED_REQUIREMENTS",

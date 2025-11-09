@@ -1,0 +1,83 @@
+# Development Environment Configuration
+# Balanced configuration for development with helpful warnings but not overly strict
+
+settings:
+  fail_fast: false
+  max_concurrent: 10
+  enable_builtin_checks: true
+  parallel_execution: true
+
+  # AWS services configuration
+  aws_services_dir: null
+  cache_enabled: true
+  cache_ttl_hours: 168
+
+  # Fail on errors and critical issues only (not high/medium)
+  fail_on_severity:
+    - error      # IAM validity errors
+    - critical   # Critical security issues
+    # high and medium are warnings only in development
+
+# Enable all AWS validation checks with default settings
+# These catch syntax errors and IAM validity issues
+sid_uniqueness:
+  enabled: true
+policy_size:
+  enabled: true
+action_validation:
+  enabled: true
+condition_key_validation:
+  enabled: true
+condition_type_mismatch:
+  enabled: true
+set_operator_validation:
+  enabled: true
+mfa_condition_antipattern:
+  enabled: true
+resource_validation:
+  enabled: true
+principal_validation:
+  enabled: true
+policy_type_validation:
+  enabled: true
+action_resource_constraint:
+  enabled: true
+action_resource_matching:
+  enabled: true
+
+# Security checks - relaxed for development
+wildcard_action:
+  enabled: true
+  severity: low  # Downgrade to low in development
+  # Ignore test files
+  ignore_patterns:
+    - filepath_regex: "^(test|tests|examples)/.*"
+
+wildcard_resource:
+  enabled: true
+  severity: low  # Downgrade to low in development
+  ignore_patterns:
+    - filepath_regex: "^(test|tests|examples)/.*"
+
+full_wildcard:
+  enabled: true
+  severity: medium  # Still warn but don't fail
+  ignore_patterns:
+    - filepath_regex: "^(test|tests|examples)/.*"
+
+service_wildcard:
+  enabled: true
+  severity: medium
+  ignore_patterns:
+    - filepath_regex: "^(test|tests|examples)/.*"
+
+sensitive_action:
+  enabled: true
+  severity: low  # Just informational in development
+  ignore_patterns:
+    - filepath_regex: "^(test|tests|examples)/.*"
+
+# Action condition enforcement - disabled in development
+# Enable in staging/production
+action_condition_enforcement:
+  enabled: false  # Too strict for dev

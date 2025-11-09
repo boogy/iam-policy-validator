@@ -16,7 +16,8 @@ Benefits of code-first approach:
 - 5-10x faster than YAML parsing
 """
 
-from iam_validator.core.config.condition_requirements import get_default_requirements
+from iam_validator.core.config.category_suggestions import get_category_suggestions
+from iam_validator.core.config.condition_requirements import CONDITION_REQUIREMENTS
 from iam_validator.core.config.principal_requirements import (
     get_default_principal_requirements,
 )
@@ -76,8 +77,11 @@ DEFAULT_CONFIG = {
         "fail_on_severity": ["error", "critical", "high"],
     },
     # ========================================================================
-    # AWS IAM Validation Checks
+    # AWS IAM Validation Checks (17 checks total)
     # These validate that policies conform to AWS IAM requirements
+    # ========================================================================
+    # ========================================================================
+    # 1. SID UNIQUENESS
     # ========================================================================
     # Validate Statement ID (Sid) uniqueness as per AWS IAM requirements
     # AWS requires:
@@ -89,6 +93,9 @@ DEFAULT_CONFIG = {
         "severity": "error",  # IAM validity error
         "description": "Validates that Statement IDs (Sids) are unique and follow AWS naming requirements",
     },
+    # ========================================================================
+    # 2. POLICY SIZE
+    # ========================================================================
     # Validate policy size against AWS limits
     # Policy type determines which AWS limit to enforce:
     #   - managed: 6144 characters (excluding whitespace)
@@ -101,6 +108,9 @@ DEFAULT_CONFIG = {
         "description": "Validates that IAM policies don't exceed AWS size limits",
         "policy_type": "managed",  # Change based on your policy type
     },
+    # ========================================================================
+    # 3. ACTION VALIDATION
+    # ========================================================================
     # Validate IAM actions against AWS service definitions
     # Uses AWS Service Authorization Reference to validate action names
     # Catches typos like "s3:GetObjekt" or non-existent actions
@@ -109,6 +119,9 @@ DEFAULT_CONFIG = {
         "severity": "error",  # IAM validity error
         "description": "Validates that actions exist in AWS services",
     },
+    # ========================================================================
+    # 4. CONDITION KEY VALIDATION
+    # ========================================================================
     # Validate condition keys for actions against AWS service definitions
     # Ensures condition keys are valid for the specified actions
     # Examples:
@@ -124,8 +137,49 @@ DEFAULT_CONFIG = {
         # While global condition keys can be used across all AWS services, they may not be available
         # in every request context. This warning helps ensure proper validation.
         # Set to False to disable warnings for global condition keys
-        "warn_on_global_condition_keys": True,
+        "warn_on_global_condition_keys": False,
     },
+    # ========================================================================
+    # 5. CONDITION TYPE MISMATCH
+    # ========================================================================
+    # Validate condition type matching
+    # Ensures condition operators match the expected types for condition keys
+    # Examples:
+    #   ✅ StringEquals with string condition key
+    #   ❌ NumericEquals with string condition key (type mismatch)
+    #   ✅ DateGreaterThan with date condition key
+    #   ❌ StringLike with date condition key (type mismatch)
+    "condition_type_mismatch": {
+        "enabled": True,
+        "severity": "error",  # IAM validity error
+        "description": "Validates that condition operators match the expected types for condition keys",
+    },
+    # ========================================================================
+    # 6. SET OPERATOR VALIDATION
+    # ========================================================================
+    # Validate set operator usage (ForAllValues/ForAnyValue)
+    # Ensures set operators are only used with multi-value condition keys
+    # Using them with single-value keys can cause unexpected behavior
+    "set_operator_validation": {
+        "enabled": True,
+        "severity": "error",  # IAM validity error
+        "description": "Validates that set operators are used with multi-value condition keys",
+    },
+    # ========================================================================
+    # 7. MFA CONDITION ANTIPATTERN
+    # ========================================================================
+    # Detect MFA condition anti-patterns
+    # Identifies dangerous MFA-related patterns that may not enforce MFA as intended:
+    #  1. Bool with aws:MultiFactorAuthPresent = false (key may not exist)
+    #  2. Null with aws:MultiFactorAuthPresent = false (only checks existence)
+    "mfa_condition_antipattern": {
+        "enabled": True,
+        "severity": "warning",  # Security concern, not an IAM validity error
+        "description": "Detects dangerous MFA-related condition patterns",
+    },
+    # ========================================================================
+    # 8. RESOURCE VALIDATION
+    # ========================================================================
     # Validate resource ARN formats
     # Ensures ARNs follow the correct format:
     #   arn:partition:service:region:account-id:resource-type/resource-id
@@ -137,7 +191,7 @@ DEFAULT_CONFIG = {
         "arn_pattern": "^arn:(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f):[a-z0-9\\-]+:[a-z0-9\\-*]*:[0-9*]*:.+$",
     },
     # ========================================================================
-    # Principal Validation (Resource Policies)
+    # 9. PRINCIPAL VALIDATION
     # ========================================================================
     # Validates Principal elements in resource-based policies
     # (S3 buckets, SNS topics, SQS queues, etc.)
@@ -193,17 +247,44 @@ DEFAULT_CONFIG = {
         # See: iam_validator/core/config/service_principals.py
         "allowed_service_principals": list(DEFAULT_SERVICE_PRINCIPALS),
     },
-    # Validate resource constraints for actions
-    # Ensures that actions without required resource types (account-level operations)
-    # use Resource: "*" as they cannot target specific resources
-    # Example: iam:ListUsers cannot target a specific user, must use "*"
-    "action_resource_constraint": {
+    # ========================================================================
+    # 10. POLICY TYPE VALIDATION
+    # ========================================================================
+    # Validate policy type requirements (new in v1.3.0)
+    # Ensures policies conform to the declared type (IDENTITY vs RESOURCE_POLICY)
+    # Also enforces RCP (Resource Control Policy) specific requirements
+    # RCP validation includes:
+    #  - Must have Effect: Deny (RCPs are deny-only)
+    #  - Must target specific resource types (no wildcards)
+    #  - Principal must be "*" (applies to all)
+    "policy_type_validation": {
         "enabled": True,
         "severity": "error",  # IAM validity error
-        "description": "Validates that actions without required resource types use Resource: '*'",
+        "description": "Validates policies match declared type and enforces RCP requirements",
     },
     # ========================================================================
-    # Security Best Practices Checks
+    # 11. ACTION-RESOURCE MATCHING
+    # ========================================================================
+    # Validate action-resource matching
+    # Ensures resources match the required resource types for actions
+    # Handles both:
+    #   1. Account-level actions that require Resource: "*" (e.g., iam:ListUsers)
+    #   2. Resource-specific actions with correct ARN types (e.g., s3:GetObject)
+    # Inspired by Parliament's RESOURCE_MISMATCH check
+    # Examples:
+    #   ✅ iam:ListUsers with Resource: "*"
+    #   ❌ iam:ListUsers with arn:aws:iam::123:user/foo (account-level action)
+    #   ✅ s3:GetObject with arn:aws:s3:::bucket/*
+    #   ❌ s3:GetObject with arn:aws:s3:::bucket (missing /*)
+    #   ✅ s3:ListBucket with arn:aws:s3:::bucket
+    #   ❌ s3:ListBucket with arn:aws:s3:::bucket/* (should be bucket, not object)
+    "action_resource_matching": {
+        "enabled": True,
+        "severity": "error",  # IAM validity error
+        "description": "Validates that resource ARNs match the required resource types for actions (including account-level actions)",
+    },
+    # ========================================================================
+    # Security Best Practices Checks (6 checks)
     # ========================================================================
     # Individual checks for security anti-patterns
     #
@@ -221,6 +302,9 @@ DEFAULT_CONFIG = {
     # See: iam_validator/core/config/wildcards.py for allowed wildcards
     # See: iam_validator/core/config/sensitive_actions.py for sensitive actions
     # ========================================================================
+    # ========================================================================
+    # 12. WILDCARD ACTION
+    # ========================================================================
     # Check for wildcard actions (Action: "*")
     # Flags statements that allow all actions
     "wildcard_action": {
@@ -237,6 +321,9 @@ DEFAULT_CONFIG = {
             '  "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]\n'
         ),
     },
+    # ========================================================================
+    # 13. WILDCARD RESOURCE
+    # ========================================================================
     # Check for wildcard resources (Resource: "*")
     # Flags statements that apply to all resources
     # Exception: Allowed if ALL actions are in allowed_wildcards list
@@ -261,6 +348,9 @@ DEFAULT_CONFIG = {
             "  ]\n"
         ),
     },
+    # ========================================================================
+    # 14. FULL WILDCARD (CRITICAL)
+    # ========================================================================
     # Check for BOTH Action: "*" AND Resource: "*" (CRITICAL)
     # This grants full administrative access (AdministratorAccess equivalent)
     "full_wildcard": {
@@ -278,15 +368,13 @@ DEFAULT_CONFIG = {
             '  "Resource": "*"\n'
             "\n"
             "With specific values:\n"
-            '  "Action": [\n'
-            '    "s3:GetObject",\n'
-            '    "s3:PutObject"\n'
-            "  ],\n"
-            '  "Resource": [\n'
-            '    "arn:aws:s3:::my-bucket/*"\n'
-            "  ]\n"
+            '  "Action": ["s3:GetObject", "s3:PutObject"],\n'
+            '  "Resource": ["arn:aws:s3:::my-bucket/*"]\n'
         ),
     },
+    # ========================================================================
+    # 15. SERVICE WILDCARD
+    # ========================================================================
     # Check for service-level wildcards (e.g., "iam:*", "s3:*", "ec2:*")
     # These grant ALL permissions for a service (often too permissive)
     # Exception: Some services like logs, cloudwatch are typically safe
@@ -302,16 +390,38 @@ DEFAULT_CONFIG = {
         # See: iam_validator/core/config/wildcards.py
         "allowed_services": list(DEFAULT_SERVICE_WILDCARDS),
     },
+    # ========================================================================
+    # 16. SENSITIVE ACTION
+    # ========================================================================
     # Check for sensitive actions without IAM conditions
     # Sensitive actions: IAM changes, secrets access, destructive operations
-    # Default: 79 actions across 8 categories
-    # Categories: iam_identity, secrets_credentials, compute_containers,
-    #             database_storage, s3_backup, network_security,
-    #             access_logging, account_organization
+    # Default: 490 actions across 4 security risk categories
+    #
+    # Categories (with action counts):
+    #   - credential_exposure (46):  Actions exposing credentials, secrets, or tokens
+    #   - data_access (109):         Actions retrieving sensitive data
+    #   - priv_esc (27):             Actions enabling privilege escalation
+    #   - resource_exposure (321):   Actions modifying resource policies/permissions
     #
     # Scans at BOTH statement-level AND policy-level for security patterns
     # See: iam_validator/core/config/sensitive_actions.py
-    # Python API: get_actions_by_categories(['iam_identity', 'secrets_credentials'])
+    # Source: https://github.com/primeharbor/sensitive_iam_actions
+    #
+    # Python API:
+    #   from iam_validator.core.config.sensitive_actions import get_sensitive_actions
+    #   # Get all sensitive actions (default)
+    #   all_actions = get_sensitive_actions()
+    #   # Get only specific categories
+    #   priv_esc_only = get_sensitive_actions(['priv_esc'])
+    #   # Get multiple categories
+    #   critical = get_sensitive_actions(['credential_exposure', 'priv_esc'])
+    #
+    # Avoiding Duplicate Alerts:
+    #   If you configure specific actions in action_condition_enforcement,
+    #   use ignore_patterns to prevent duplicate alerts from sensitive_action:
+    #
+    #   ignore_patterns:
+    #     - action_matches: "^(iam:PassRole|iam:CreateUser|s3:PutObject)$"
     #
     # Template placeholders supported:
     # - message_single uses {action}: Single action name (e.g., "iam:CreateRole")
@@ -319,61 +429,84 @@ DEFAULT_CONFIG = {
     # - suggestion and example support both {action} and {actions}
     "sensitive_action": {
         "enabled": True,
-        "severity": "medium",  # Security issue
+        "severity": "medium",  # Security issue (can be overridden per-category)
         "description": "Checks for sensitive actions without conditions",
+        # Categories to check (default: all categories enabled)
+        # Set to specific categories to limit scope:
+        #   categories: ['credential_exposure', 'priv_esc']  # Only check critical actions
+        #   categories: ['data_access']  # Only check data access actions
+        # Set to empty list to disable: categories: []
+        "categories": [
+            "credential_exposure",  # Critical: Credential/secret exposure (46 actions)
+            "data_access",  # High: Sensitive data retrieval (109 actions)
+            "priv_esc",  # Critical: Privilege escalation (27 actions)
+            "resource_exposure",  # High: Resource policy modifications (321 actions)
+        ],
+        # Per-category severity overrides (optional)
+        # If not specified, uses the default severity above
+        "category_severities": {
+            "credential_exposure": "critical",  # Override: credential exposure is critical
+            "priv_esc": "critical",  # Override: privilege escalation is critical
+            "data_access": "high",  # Override: data access is high
+            "resource_exposure": "high",  # Override: resource exposure is high
+        },
+        # Category-specific ABAC suggestions and examples
+        # These provide tailored guidance for each security risk category
+        # See: iam_validator/core/config/category_suggestions.py
+        # Can be overridden to customize suggestions per category
+        "category_suggestions": get_category_suggestions(),
         # Custom message templates (support {action} and {actions} placeholders)
         "message_single": "Sensitive action '{action}' should have conditions to limit when it can be used",
         "message_multiple": "Sensitive actions '{actions}' should have conditions to limit when they can be used",
-        "suggestion": (
-            "Add IAM conditions to limit when this action can be used.\n"
-            "Consider: ABAC (ResourceTag OR RequestTag matching ${aws:PrincipalTag}), "
-            "IP restrictions (aws:SourceIp), MFA requirements (aws:MultiFactorAuthPresent), "
-            "or time-based restrictions (aws:CurrentTime)\n"
-        ),
-        "example": (
-            '"Condition": {\n'
-            '  "StringEquals": {\n'
-            '    "aws:ResourceTag/owner": "${aws:PrincipalTag/owner}"\n'
-            "  }\n"
-            "}\n"
-        ),
+        # Ignore patterns to prevent duplicate alerts
+        # Useful when you have specific condition enforcement for certain actions
+        # Example: Ignore iam:PassRole since it's checked by action_condition_enforcement
+        "ignore_patterns": [
+            {"action_matches": "^iam:PassRole$"},
+        ],
     },
     # ========================================================================
-    # Action Condition Enforcement
+    # 17. ACTION CONDITION ENFORCEMENT
     # ========================================================================
     # Enforce specific IAM condition requirements for actions
     # Examples: iam:PassRole must specify iam:PassedToService,
     #           S3 writes must require MFA, EC2 launches must use tags
     #
-    # Default: 5 enabled requirements out of 13 available
+    # Default: 5 enabled requirements
     # Available requirements:
     #   Default (enabled):
     #     - iam_pass_role: Requires iam:PassedToService
-    #     - iam_permissions_boundary: Requires permissions boundary
     #     - s3_org_id: Requires organization ID for S3 writes
     #     - source_ip_restrictions: Restricts to corporate IPs
     #     - s3_secure_transport: Prevents insecure transport
-    #   Optional (disabled by default):
-    #     - s3_destructive_mfa: Requires MFA for S3 deletes
-    #     - s3_require_https: Requires HTTPS for all S3 operations
-    #     - ec2_vpc_restriction: Restricts EC2 to specific VPCs
-    #     - ec2_tag_requirements: ABAC tag requirements for EC2
-    #     - rds_tag_requirements: Tag requirements for RDS
-    #     - s3_bucket_tag_requirements: Tag requirements for S3 buckets
-    #     - forbidden_actions: Flags forbidden actions
     #     - prevent_public_ip: Prevents 0.0.0.0/0 IP ranges
     #
     # See: iam_validator/core/config/condition_requirements.py
     # Python API:
-    #   from iam_validator.core.config import get_requirements_by_names
-    #   requirements = get_requirements_by_names(['iam_pass_role', 's3_destructive_mfa'])
+    #   from iam_validator.core.config import CONDITION_REQUIREMENTS
+    #   import copy
+    #   requirements = copy.deepcopy(CONDITION_REQUIREMENTS)
     "action_condition_enforcement": {
         "enabled": True,
         "severity": "high",  # Default severity (can be overridden per-requirement)
-        "description": "Enforces conditions (MFA, IP, tags, etc.) for specific actions (supports all_of/any_of)",
-        # Load 5 default requirements from Python module
-        # Returns a deep copy to prevent mutation of the originals
-        "action_condition_requirements": get_default_requirements(),
+        "description": "Enforces conditions (MFA, IP, tags, etc.) for specific actions at both statement and policy level",
+        # STATEMENT-LEVEL: Load 5 requirements from Python module
+        # Deep copy to prevent mutation of the originals
+        # These check individual statements independently
+        "action_condition_requirements": __import__("copy").deepcopy(CONDITION_REQUIREMENTS),
+        # POLICY-LEVEL: Scan entire policy and enforce conditions across ALL matching statements
+        # Example: "If ANY statement grants iam:CreateUser, then ALL such statements must have MFA"
+        # Default: Empty list (opt-in feature)
+        # To enable, add requirements like:
+        #   policy_level_requirements:
+        #     - actions:
+        #         any_of: ["iam:CreateUser", "iam:AttachUserPolicy"]
+        #       scope: "policy"
+        #       required_conditions:
+        #         - condition_key: "aws:MultiFactorAuthPresent"
+        #           expected_value: true
+        #       severity: "critical"
+        "policy_level_requirements": [],
     },
 }
 

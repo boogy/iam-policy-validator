@@ -1,0 +1,61 @@
+# Minimal Validation Configuration
+# Only validates AWS IAM correctness, no security best practices
+# Useful when you only want to catch syntax errors and invalid policies
+
+settings:
+  fail_fast: true
+  max_concurrent: 10
+  enable_builtin_checks: true  # Keep builtin checks enabled
+  parallel_execution: true
+
+  # AWS services configuration
+  aws_services_dir: null
+  cache_enabled: true
+  cache_ttl_hours: 168
+
+  # Only fail on actual IAM validity errors
+  fail_on_severity:
+    - error  # Only IAM validity errors fail
+
+# AWS IAM Validation - Enable only core validation checks
+sid_uniqueness:
+  enabled: true
+policy_size:
+  enabled: true
+action_validation:
+  enabled: true
+condition_key_validation:
+  enabled: true
+condition_type_mismatch:
+  enabled: true
+set_operator_validation:
+  enabled: true
+resource_validation:
+  enabled: true
+policy_type_validation:
+  enabled: true
+action_resource_constraint:
+  enabled: true
+
+# Disable all security best practice checks
+mfa_condition_antipattern:
+  enabled: false
+principal_validation:
+  enabled: false
+action_resource_matching:
+  enabled: false
+wildcard_action:
+  enabled: false
+wildcard_resource:
+  enabled: false
+full_wildcard:
+  enabled: false
+service_wildcard:
+  enabled: false
+sensitive_action:
+  enabled: false
+action_condition_enforcement:
+  enabled: false
+
+# This configuration is equivalent to only checking if policies will work in AWS
+# without any security or best practice recommendations

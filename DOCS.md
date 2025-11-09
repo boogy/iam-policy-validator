@@ -1,8 +1,8 @@
-# IAM Policy Auditor - Complete Documentation
+# IAM Policy Validator - Complete Documentation
 
-> High-performance AWS IAM policy validation using AWS Access Analyzer and custom checks
+> High-performance AWS IAM policy validation using AWS Access Analyzer and 18 built-in security checks
 
-**Quick Links:** [Installation](#installation) • [Quick Start](#quick-start) • [GitHub Actions](#github-actions) • [Custom Checks](#custom-policy-checks) • [CLI Reference](#cli-reference) • [Configuration](#configuration)
+**Quick Links:** [Installation](#installation) • [Quick Start](#quick-start) • [GitHub Actions](#github-actions) • [Validation Checks](#validation-checks) • [CLI Reference](#cli-reference) • [Configuration](#configuration)
 
 ---
 
@@ -11,10 +11,10 @@
 1. [Installation](#installation)
 2. [Quick Start](#quick-start)
 3. [GitHub Actions Integration](#github-actions)
-4. [CLI Usage](#cli-reference)
-5. [Custom Policy Checks](#custom-policy-checks)
-6. [Configuration](#configuration)
-7. [Built-in Checks](#built-in-validation-checks)
+4. [Validation Checks](#validation-checks)
+5. [CLI Usage](#cli-reference)
+6. [Custom Policy Checks (AWS Access Analyzer)](#custom-policy-checks)
+7. [Configuration](#configuration)
 8. [Custom Validation Rules](#creating-custom-checks)
 9. [Performance & Optimization](#performance-optimization)
 10. [Cache Management](#cache-command)
@@ -400,6 +400,62 @@ jobs:
 - ✅ You're developing or testing the validator itself
 
 See `examples/github-actions/` for more workflow examples.
+
+---
+
+## Validation Checks
+
+IAM Policy Validator performs **18 built-in validation checks** to ensure your IAM policies are correct, secure, and follow best practices.
+
+### Check Categories
+
+1. **AWS Validation Checks (6 checks)** - Ensure policies conform to AWS IAM requirements
+   - Action Validation
+   - Condition Key Validation
+   - Condition Type Mismatch
+   - MFA Condition Anti-Patterns
+   - Resource ARN Validation
+   - SID Uniqueness
+
+2. **Security Best Practice Checks (7 checks)** - Identify security anti-patterns
+   - Wildcard Action
+   - Wildcard Resource
+   - Full Wildcard (CRITICAL)
+   - Service Wildcard
+   - Sensitive Action (490 actions across 4 categories)
+   - Principal Validation (resource policies)
+   - Policy Size
+
+3. **Advanced Enforcement Checks (5 checks)** - Enforce org-specific requirements
+   - Action Condition Enforcement (MFA, IP, tags, etc.)
+   - Action-Resource Matching
+   - Action-Resource Constraint
+   - Set Operator Validation
+   - Policy Type Validation
+
+### Quick Examples
+
+```bash
+# Run all built-in checks
+iam-validator validate --path ./policies/
+
+# Run only specific severity levels
+iam-validator validate --path ./policies/ --fail-on-warnings
+
+# Use custom configuration
+iam-validator validate --path ./policies/ --config my-config.yaml
+```
+
+### Detailed Documentation
+
+**📚 For complete documentation of all 18 checks with detailed pass/fail examples, see [Check Reference Guide](docs/check-reference.md)**
+
+The check-reference.md file provides:
+- Detailed explanation of what each check validates
+- Pass examples (valid policies)
+- Fail examples (invalid policies with error messages)
+- Configuration options for each check
+- How to use ignore patterns to filter findings
 
 ---
 
@@ -834,7 +890,7 @@ permissions:
 
 ### Configuration File
 
-Create a configuration file (e.g., `my-config.yaml`) based on [default-config.yaml](default-config.yaml):
+Create a configuration file (e.g., `my-config.yaml`) based on [examples/configs/full-reference-config.yaml](examples/configs/full-reference-config.yaml):
 
 ```yaml
 # ============================================================================
@@ -882,10 +938,14 @@ action_validation:
   description: "Validates that actions exist in AWS services"
   # Note: Wildcard security checks are handled by security_best_practices
 
-# Validate condition keys
+# Validate condition keys (validates against action and resource definitions)
 condition_key_validation:
   enabled: true
   severity: error
+  config:
+    # Warn when global condition keys are used with actions that have specific keys
+    # Set to false to disable these warnings
+    warn_on_global_condition_keys: true
 
 # Validate resource ARN format
 resource_validation:
@@ -930,7 +990,7 @@ action_condition_enforcement:
 
 Use with: `iam-validator validate --path policy.json --config my-config.yaml`
 
-See [default-config.yaml](default-config.yaml) for full documentation with all available options.
+See [examples/configs/full-reference-config.yaml](examples/configs/full-reference-config.yaml) for full documentation with all available options.
 
 ### Severity Levels
 
@@ -963,163 +1023,78 @@ See [examples/configs/](examples/configs/) directory for configurations:
 
 ## Built-in Validation Checks
 
-### 1. Action Validation
+IAM Policy Validator includes **18 comprehensive validation checks** across three categories. Each check can be individually configured, enabled/disabled, and customized to match your organization's security requirements.
 
-Verifies IAM actions exist in AWS service definitions. This check focuses **solely on validity** - security concerns like wildcards are handled by [Security Best Practices](#4-security-best-practices).
+### Overview
 
+- **AWS Validation Checks (6)** - Ensure policies meet AWS IAM requirements
+- **Security Best Practices (7)** - Identify anti-patterns and security risks
+- **Advanced Enforcement (5)** - Enforce organization-specific security policies
+
+### Quick Reference
+
+| Check | Category | Severity | What It Does |
+|-------|----------|----------|--------------|
+| action_validation | AWS | error | Validates actions exist in AWS services |
+| condition_key_validation | AWS | error | Validates condition keys for actions/resources |
+| condition_type_mismatch | AWS | error | Validates operator/key type matching |
+| mfa_condition_antipattern | AWS | warning | Detects dangerous MFA patterns |
+| resource_validation | AWS | error | Validates ARN format |
+| sid_uniqueness | AWS | error | Ensures unique statement IDs |
+| wildcard_action | Security | medium | Detects `Action: "*"` |
+| wildcard_resource | Security | medium | Detects `Resource: "*"` |
+| full_wildcard | Security | **critical** | Detects both wildcards (admin access) |
+| service_wildcard | Security | high | Detects `service:*` patterns |
+| sensitive_action | Security | medium | 490 sensitive actions across 4 categories |
+| principal_validation | Security | high | Validates resource policy principals |
+| policy_size | AWS | error | Validates against AWS size limits |
+| action_condition_enforcement | Enforcement | high | Requires conditions for actions |
+| action_resource_matching | Enforcement | medium | Validates resource types and account-level actions |
+| set_operator_validation | AWS | error | Validates ForAllValues/ForAnyValue |
+| policy_type_validation | Enforcement | error | Validates policy matches declared type |
+
+### Examples
+
+**Pass Example (Specific permissions):**
 ```json
 {
-  "Effect": "Allow",
-  "Action": "s3:GetObject",  // ✅ Valid action
-  "Resource": "*"
-}
-```
-
-```json
-{
-  "Effect": "Allow",
-  "Action": "s3:InvalidAction",  // ❌ Invalid - action doesn't exist
-  "Resource": "*"
-}
-```
-
-```json
-{
-  "Effect": "Allow",
-  "Action": "s3:List*",  // ✅ Valid - wildcards skipped (checked by security_best_practices)
-  "Resource": "*"
-}
-```
-
-### 2. Condition Key Validation
-
-Checks condition keys are valid for specified actions:
-
-```json
-{
-  "Effect": "Allow",
-  "Action": "s3:GetObject",
-  "Resource": "*",
-  "Condition": {
-    "StringEquals": {
-      "aws:RequestedRegion": "us-east-1"  // ✅ Valid global condition
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["s3:GetObject", "s3:PutObject"],
+    "Resource": "arn:aws:s3:::my-bucket/*",
+    "Condition": {
+      "StringEquals": {"aws:RequestedRegion": "us-east-1"}
     }
-  }
+  }]
 }
 ```
 
-### 3. Resource ARN Validation
-
-Ensures ARNs follow proper AWS format:
-
+**Fail Example (Administrative access):**
 ```json
 {
-  "Effect": "Allow",
-  "Action": "s3:GetObject",
-  "Resource": "arn:aws:s3:::my-bucket/*"  // ✅ Valid ARN
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "*",        // ❌ CRITICAL: All actions
+    "Resource": "*"       // ❌ CRITICAL: All resources
+  }]
 }
 ```
 
-### 4. Security Best Practices
+### Complete Documentation
 
-Identifies security risks:
+**📚 For detailed documentation of all 18 checks with comprehensive pass/fail examples:**
 
-- **Overly permissive wildcards**: `Action: "*"` with `Resource: "*"`
-- **Sensitive actions without conditions**: Administrative permissions
-- **Missing MFA requirements**: For privileged operations
+**[→ View Complete Checks Reference](docs/check-reference.md)**
 
-### 5. SID Uniqueness
-
-Ensures Statement IDs are unique within a policy:
-
-```json
-{
-  "Statement": [
-    { "Sid": "AllowRead", "Effect": "Allow", "Action": "s3:GetObject" },
-    { "Sid": "AllowRead", "Effect": "Allow", "Action": "s3:ListBucket" }  // ❌ Duplicate SID
-  ]
-}
-```
-
-### 6. Wildcard Action Validation
-
-The `security_best_practices` handles all wildcard security validation with customizable allowlists:
-
-```yaml
-security_best_practices:
-  enabled: true
-
-  # Define allowed wildcard patterns (e.g., safe read-only operations)
-  # These patterns are considered acceptable and won't trigger warnings
-  allowed_wildcards:
-    - "s3:List*"        # Safe: listing resources
-    - "s3:Describe*"    # Safe: describing configurations
-    - "ec2:Describe*"   # Safe: read-only operations
-    - "iam:Get*"        # Safe: non-sensitive IAM reads
-    - "iam:List*"       # Safe: listing IAM entities
-    - "cloudwatch:Describe*"
-    - "logs:Describe*"
-
-  # Wildcard resource check uses allowed_wildcards
-  # Resource: "*" is acceptable if ALL actions match allowed_wildcards
-  wildcard_resource_check:
-    enabled: true
-    severity: medium
-    # Optionally override parent allowed_wildcards for this check:
-    # allowed_wildcards:
-    #   - "s3:List*"
-
-  # Flag service-level wildcards (e.g., "s3:*")
-  service_wildcard_check:
-    enabled: true
-    severity: high
-    # Allow specific services to use wildcards
-    allowed_services:
-      - "logs"
-      - "cloudwatch"
-```
-
-**Note:** The `action_validation` now focuses solely on validating that actions exist in AWS service definitions. All wildcard security concerns are handled by `security_best_practices`.
-
-### Configuration Migration
-
-If you have a custom configuration file from before v1.1.0, update it as follows:
-
-**Before (v1.0.x):**
-```yaml
-action_validation:
-  enabled: true
-  severity: error
-  allowed_wildcards:
-    - "s3:List*"
-    - "ec2:Describe*"
-  disable_wildcard_warnings: true
-```
-
-**After (v1.1.0+):**
-```yaml
-action_validation:
-  enabled: true
-  severity: error
-  # allowed_wildcards removed - moved to security_best_practices
-  # disable_wildcard_warnings removed - no longer needed
-
-security_best_practices:
-  enabled: true
-  # Move allowed_wildcards here
-  allowed_wildcards:
-    - "s3:List*"
-    - "ec2:Describe*"
-
-  wildcard_resource_check:
-    enabled: true
-    # Automatically inherits allowed_wildcards from parent
-```
-
-**Why this change?**
-- **Clearer separation**: Action validation checks **validity**, security checks handle **safety**
-- **Less confusion**: No overlap between validation and security concerns
-- **Better architecture**: Wildcard security logic is centralized in one place
+The check-reference.md file includes:
+- ✅ What each check validates
+- ✅ Pass examples (valid policies)
+- ✅ Fail examples with error messages
+- ✅ Configuration options
+- ✅ Ignore patterns and filtering
+- ✅ Best practices and recommendations
 
 ---
 

@@ -31,6 +31,112 @@ class CheckConfig:
     config: dict[str, Any] = field(default_factory=dict)  # Check-specific config
     description: str = ""
     root_config: dict[str, Any] = field(default_factory=dict)  # Full config for cross-check access
+    ignore_patterns: list[dict[str, Any]] = field(default_factory=list)  # NEW: Ignore patterns
+    """
+    List of patterns to ignore findings.
+
+    Each pattern is a dict with optional fields:
+    - filepath_regex: Regex to match file path
+    - action_matches: Regex to match action name
+    - resource_matches: Regex to match resource
+    - statement_sid: Exact SID to match (or regex if ends with .*)
+    - condition_key_matches: Regex to match condition key
+
+    Multiple fields in one pattern = AND logic
+    Multiple patterns = OR logic (any pattern matches → ignore)
+
+    Example:
+        ignore_patterns:
+          - filepath_regex: "test/.*|examples/.*"
+          - filepath_regex: "policies/readonly-.*"
+            action_matches: ".*:(Get|List|Describe).*"
+          - statement_sid: "AllowReadOnlyAccess"
+    """
+
+    def should_ignore(self, issue: ValidationIssue, filepath: str = "") -> bool:
+        """
+        Check if issue should be ignored based on ignore patterns.
+
+        Args:
+            issue: The validation issue to check
+            filepath: Path to the policy file
+
+        Returns:
+            True if the issue should be ignored
+        """
+        if not self.ignore_patterns:
+            return False
+
+        import re
+
+        for pattern in self.ignore_patterns:
+            if self._matches_pattern(pattern, issue, filepath, re):
+                return True
+
+        return False
+
+    def _matches_pattern(
+        self,
+        pattern: dict[str, Any],
+        issue: ValidationIssue,
+        filepath: str,
+        re_module: Any,
+    ) -> bool:
+        """
+        Check if issue matches a single ignore pattern.
+
+        All fields in pattern must match (AND logic).
+
+        Args:
+            pattern: Pattern dict with optional fields
+            issue: ValidationIssue to check
+            filepath: Path to policy file
+            re_module: re module for regex matching
+
+        Returns:
+            True if all fields in pattern match the issue
+        """
+        for field_name, regex_pattern in pattern.items():
+            actual_value = None
+
+            if field_name == "filepath_regex":
+                actual_value = filepath
+            elif field_name == "action_matches":
+                actual_value = issue.action or ""
+            elif field_name == "resource_matches":
+                actual_value = issue.resource or ""
+            elif field_name == "statement_sid":
+                # For SID, support both exact match and regex
+                if isinstance(regex_pattern, str) and "*" in regex_pattern:
+                    # Treat as regex if contains wildcard
+                    actual_value = issue.statement_sid or ""
+                else:
+                    # Exact match
+                    if issue.statement_sid != regex_pattern:
+                        return False
+                    continue
+            elif field_name == "condition_key_matches":
+                actual_value = issue.condition_key or ""
+            else:
+                # Unknown field, skip
+                continue
+
+            # Check regex match (case-insensitive)
+            if actual_value is None:
+                return False
+
+            try:
+                if not re_module.search(
+                    str(regex_pattern),
+                    str(actual_value),
+                    re_module.IGNORECASE,
+                ):
+                    return False
+            except re_module.error:
+                # Invalid regex, don't match
+                return False
+
+        return True  # All fields matched
 
 
 class PolicyCheck(ABC):
@@ -264,6 +370,7 @@ class CheckRegistry:
         statement: Statement,
         statement_idx: int,
         fetcher: AWSServiceFetcher,
+        filepath: str = "",
     ) -> list[ValidationIssue]:
         """
         Execute all enabled checks in parallel for maximum performance.
@@ -275,9 +382,10 @@ class CheckRegistry:
             statement: The IAM policy statement to validate
             statement_idx: Index of the statement in the policy
             fetcher: AWS service fetcher for API calls
+            filepath: Path to the policy file (for ignore_patterns filtering)
 
         Returns:
-            List of all ValidationIssue objects from all checks
+            List of all ValidationIssue objects from all checks (filtered by ignore_patterns)
         """
         enabled_checks = self.get_enabled_checks()
 
@@ -291,21 +399,27 @@ class CheckRegistry:
                 config = self.get_config(check.check_id)
                 if config:
                     issues = await check.execute(statement, statement_idx, fetcher, config)
-                    all_issues.extend(issues)
+                    # Filter issues based on ignore_patterns
+                    filtered_issues = [
+                        issue for issue in issues if not config.should_ignore(issue, filepath)
+                    ]
+                    all_issues.extend(filtered_issues)
             return all_issues
 
         # Execute all checks in parallel
         tasks = []
+        configs = []
         for check in enabled_checks:
             config = self.get_config(check.check_id)
             if config:
                 task = check.execute(statement, statement_idx, fetcher, config)
                 tasks.append(task)
+                configs.append(config)
 
         # Wait for all checks to complete
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Collect all issues, handling any exceptions
+        # Collect all issues, handling any exceptions and applying ignore_patterns
         all_issues = []
         for idx, result in enumerate(results):
             if isinstance(result, Exception):
@@ -313,7 +427,12 @@ class CheckRegistry:
                 check = enabled_checks[idx]
                 print(f"Warning: Check '{check.check_id}' failed: {result}")
             elif isinstance(result, list):
-                all_issues.extend(result)
+                config = configs[idx]
+                # Filter issues based on ignore_patterns
+                filtered_issues = [
+                    issue for issue in result if not config.should_ignore(issue, filepath)
+                ]
+                all_issues.extend(filtered_issues)
 
         return all_issues
 
@@ -442,22 +561,47 @@ def create_default_registry(
         # Import and register built-in checks
         from iam_validator import checks
 
-        registry.register(checks.ActionValidationCheck())
-        registry.register(checks.ConditionKeyValidationCheck())
-        registry.register(checks.ResourceValidationCheck())
-        registry.register(checks.WildcardActionCheck())
-        registry.register(checks.WildcardResourceCheck())
-        registry.register(checks.FullWildcardCheck())
-        registry.register(checks.ServiceWildcardCheck())
-        registry.register(checks.SensitiveActionCheck())
-        registry.register(checks.ActionConditionEnforcementCheck())
-        registry.register(checks.ActionResourceConstraintCheck())
-        registry.register(checks.SidUniquenessCheck())
-        registry.register(checks.PolicySizeCheck())
-        registry.register(checks.PrincipalValidationCheck())
+        # 1. POLICY STRUCTURE (Checks that examine the entire policy, not individual statements)
+        registry.register(
+            checks.SidUniquenessCheck()
+        )  # Policy-level: Duplicate SID detection across statements
+        registry.register(checks.PolicySizeCheck())  # Policy-level: Size limit validation
 
-        # Note: SID uniqueness check is registered above but its actual execution
-        # happens at the policy level in _validate_policy_with_registry() since it
-        # needs to see all statements together to find duplicates
+        # 2. IAM VALIDITY (AWS syntax validation - must pass before deeper checks)
+        registry.register(checks.ActionValidationCheck())  # Validate actions against AWS API
+        registry.register(checks.ResourceValidationCheck())  # Validate resource ARNs
+        registry.register(checks.ConditionKeyValidationCheck())  # Validate condition keys
+
+        # 3. TYPE VALIDATION (Condition operator type checking)
+        registry.register(checks.ConditionTypeMismatchCheck())  # Operator-value type compatibility
+        registry.register(checks.SetOperatorValidationCheck())  # ForAllValues/ForAnyValue usage
+
+        # 4. RESOURCE MATCHING (Action-resource relationship validation)
+        registry.register(
+            checks.ActionResourceMatchingCheck()
+        )  # ARN type matching and resource constraints
+
+        # 5. SECURITY - WILDCARDS (Security best practices for wildcards)
+        registry.register(checks.WildcardActionCheck())  # Wildcard action detection
+        registry.register(checks.WildcardResourceCheck())  # Wildcard resource detection
+        registry.register(checks.FullWildcardCheck())  # Full wildcard (*) detection
+        registry.register(checks.ServiceWildcardCheck())  # Service-level wildcard detection
+
+        # 6. SECURITY - ADVANCED (Sensitive actions and condition enforcement)
+        registry.register(
+            checks.SensitiveActionCheck()
+        )  # Policy-level: Privilege escalation detection (all_of across statements)
+        registry.register(
+            checks.ActionConditionEnforcementCheck()
+        )  # Statement + Policy-level: Condition enforcement (any_of/all_of/none_of)
+        registry.register(checks.MFAConditionCheck())  # MFA anti-pattern detection
+
+        # 7. PRINCIPAL VALIDATION (Resource policy specific)
+        registry.register(
+            checks.PrincipalValidationCheck()
+        )  # Principal validation (resource policies)
+
+        # Note: policy_type_validation is a standalone function (not a class-based check)
+        # and is called separately in the validation flow
 
     return registry

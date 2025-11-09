@@ -1,0 +1,26 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InvokeFunctionWithLayerARN",
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:layer:my-layer:*",
+      "Comment": "WRONG: lambda:InvokeFunction requires function ARN, not layer ARN"
+    },
+    {
+      "Sid": "GetLayerVersionWithFunctionARN",
+      "Effect": "Allow",
+      "Action": "lambda:GetLayerVersion",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:my-function",
+      "Comment": "WRONG: lambda:GetLayerVersion requires layer version ARN"
+    },
+    {
+      "Sid": "DeleteFunctionWithEventSourceARN",
+      "Effect": "Allow",
+      "Action": "lambda:DeleteFunction",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:event-source-mapping:*",
+      "Comment": "WRONG: lambda:DeleteFunction requires function ARN"
+    }
+  ]
+}

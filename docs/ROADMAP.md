@@ -218,8 +218,8 @@ custom_action_groups:
 
 Have ideas for improvements? We'd love to hear them!
 
-1. **Check existing issues:** [GitHub Issues](https://github.com/boogy/iam-policy-validator/issues)
-2. **Discuss proposals:** [GitHub Discussions](https://github.com/boogy/iam-policy-validator/discussions)
+1. **Check existing issues:** [GitHub Issues](https://github.com/boogy/iam-policy-auditor/issues)
+2. **Discuss proposals:** [GitHub Discussions](https://github.com/boogy/iam-policy-auditor/discussions)
 3. **Submit PRs:** See [CONTRIBUTING.md](../CONTRIBUTING.md)
 
 ### How to Propose a Feature
@@ -302,6 +302,6 @@ Releases follow semantic versioning (MAJOR.MINOR.PATCH):
 
 ## 🤝 Support
 
-- **Questions:** [GitHub Discussions](https://github.com/boogy/iam-policy-validator/discussions)
-- **Bug Reports:** [GitHub Issues](https://github.com/boogy/iam-policy-validator/issues)
-- **Feature Requests:** [GitHub Issues](https://github.com/boogy/iam-policy-validator/issues/new?template=feature_request.md)
+- **Questions:** [GitHub Discussions](https://github.com/boogy/iam-policy-auditor/discussions)
+- **Bug Reports:** [GitHub Issues](https://github.com/boogy/iam-policy-auditor/issues)
+- **Feature Requests:** [GitHub Issues](https://github.com/boogy/iam-policy-auditor/issues/new?template=feature_request.md)

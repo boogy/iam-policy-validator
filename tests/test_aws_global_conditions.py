@@ -2,7 +2,7 @@
 
 import pytest
 
-from iam_validator.core.aws_global_conditions import (
+from iam_validator.core.config.aws_global_conditions import (
     AWS_GLOBAL_CONDITION_KEYS,
     AWSGlobalConditions,
     get_global_conditions,
@@ -72,15 +72,37 @@ class TestAWSGlobalConditions:
         assert conditions.is_valid_global_key("ec2:ResourceTag/Name") is False
 
     def test_get_all_keys(self, conditions):
-        """Test getting all explicit global condition keys."""
+        """Test getting all explicit global condition keys with types."""
         keys = conditions.get_all_keys()
-        assert isinstance(keys, set)
+        assert isinstance(keys, dict)
         assert len(keys) > 0
         assert "aws:SourceIp" in keys
         assert "aws:PrincipalArn" in keys
+        # Check that types are present
+        assert keys["aws:SourceIp"] == "IPAddress"
+        assert keys["aws:PrincipalArn"] == "ARN"
         # Ensure it's a copy, not the original
-        keys.add("test:key")
+        keys["test:key"] = "String"
         assert "test:key" not in conditions._global_keys
+
+    def test_get_key_type(self, conditions):
+        """Test getting the type for a global condition key."""
+        # Exact matches
+        assert conditions.get_key_type("aws:SourceIp") == "IPAddress"
+        assert conditions.get_key_type("aws:PrincipalArn") == "ARN"
+        assert conditions.get_key_type("aws:CurrentTime") == "Date"
+        assert conditions.get_key_type("aws:SecureTransport") == "Bool"
+        assert conditions.get_key_type("aws:MultiFactorAuthAge") == "Numeric"
+        assert conditions.get_key_type("aws:username") == "String"
+
+        # Pattern matches (tags) - all tag keys are String type
+        assert conditions.get_key_type("aws:RequestTag/Environment") == "String"
+        assert conditions.get_key_type("aws:ResourceTag/Name") == "String"
+        assert conditions.get_key_type("aws:PrincipalTag/Department") == "String"
+
+        # Invalid keys
+        assert conditions.get_key_type("invalid:key") is None
+        assert conditions.get_key_type("s3:prefix") is None
 
     def test_get_patterns(self, conditions):
         """Test getting all condition key patterns."""
