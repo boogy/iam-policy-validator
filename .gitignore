@@ -69,3 +69,4 @@ dmypy.json
 *.temp
 temp/
 tmp/
+CLAUDE.md

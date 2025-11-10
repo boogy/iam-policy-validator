@@ -1,0 +1,160 @@
+name: Cleanup Old Pre-Releases
+
+on:
+  schedule:
+    # Run daily at 00:00 UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (show what would be deleted without deleting)'
+        required: false
+        type: boolean
+        default: true
+      days_old:
+        description: 'Delete pre-releases older than X days'
+        required: false
+        type: number
+        default: 30
+
+permissions: read-all
+
+jobs:
+  cleanup:
+    name: Delete Old Pre-Releases
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required for deleting releases and tags
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+      - name: Cleanup old pre-releases
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Configuration
+          # For scheduled runs, inputs are empty, so default to 30 days and active cleanup
+          DAYS_OLD=${{ inputs.days_old || 30 }}
+          DRY_RUN=${{ inputs.dry_run == true && 'true' || 'false' }}
+
+          echo "🧹 Cleaning up pre-releases older than $DAYS_OLD days"
+          echo "🔍 Dry run: $DRY_RUN"
+          echo ""
+
+          # Calculate cutoff date (Unix timestamp)
+          CUTOFF_DATE=$(date -u -d "$DAYS_OLD days ago" +%s 2>/dev/null || date -u -v-${DAYS_OLD}d +%s)
+          CUTOFF_DATE_HUMAN=$(date -u -d "@$CUTOFF_DATE" +%Y-%m-%d 2>/dev/null || date -u -r $CUTOFF_DATE +%Y-%m-%d)
+
+          echo "📅 Cutoff date: $CUTOFF_DATE_HUMAN"
+          echo ""
+
+          # Get all releases
+          RELEASES=$(gh release list --repo ${{ github.repository }} --limit 1000 --json tagName,isPrerelease,publishedAt,name)
+
+          echo "📋 Pre-releases found:"
+          echo "$RELEASES" | jq -r '.[] | select(.isPrerelease == true) | "\(.tagName) - \(.publishedAt) - \(.name)"'
+          echo ""
+
+          # Create temp files for counters (avoid subshell issue)
+          TEMP_DIR=$(mktemp -d)
+          echo "0" > "$TEMP_DIR/deleted_count"
+          echo "0" > "$TEMP_DIR/kept_count"
+
+          # Process each pre-release
+          echo "$RELEASES" | jq -c '.[] | select(.isPrerelease == true)' | while read -r release; do
+            TAG=$(echo "$release" | jq -r '.tagName')
+            PUBLISHED_AT=$(echo "$release" | jq -r '.publishedAt')
+            NAME=$(echo "$release" | jq -r '.name')
+
+            # Convert published date to Unix timestamp
+            RELEASE_DATE=$(date -u -d "$PUBLISHED_AT" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$PUBLISHED_AT" +%s)
+
+            # Calculate age in days
+            AGE_SECONDS=$((CUTOFF_DATE - RELEASE_DATE))
+            AGE_DAYS=$((AGE_SECONDS / 86400))
+
+            if [ $RELEASE_DATE -lt $CUTOFF_DATE ]; then
+              echo "🗑️  DELETE: $TAG (age: $((AGE_DAYS * -1)) days) - $NAME"
+
+              if [ "$DRY_RUN" = "false" ]; then
+                # Delete the release
+                gh release delete "$TAG" --repo ${{ github.repository }} --yes --cleanup-tag
+
+                echo "   ✅ Deleted release and tag: $TAG"
+              else
+                echo "   ⏭️  Dry run - would delete: $TAG"
+              fi
+
+              # Increment deleted counter
+              DELETED_COUNT=$(cat "$TEMP_DIR/deleted_count")
+              echo "$((DELETED_COUNT + 1))" > "$TEMP_DIR/deleted_count"
+            else
+              echo "✅ KEEP: $TAG (age: $((AGE_DAYS * -1)) days) - $NAME"
+
+              # Increment kept counter
+              KEPT_COUNT=$(cat "$TEMP_DIR/kept_count")
+              echo "$((KEPT_COUNT + 1))" > "$TEMP_DIR/kept_count"
+            fi
+          done
+
+          # Read final counts
+          DELETED_COUNT=$(cat "$TEMP_DIR/deleted_count")
+          KEPT_COUNT=$(cat "$TEMP_DIR/kept_count")
+          rm -rf "$TEMP_DIR"
+
+          echo ""
+          echo "📊 Summary:"
+          echo "  - Pre-releases to delete: $DELETED_COUNT"
+          echo "  - Pre-releases to keep: $KEPT_COUNT"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo ""
+            echo "ℹ️  This was a dry run. No releases were actually deleted."
+            echo "   To delete releases, set dry_run=false"
+          fi
+
+      - name: Create cleanup summary
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DAYS_OLD=${{ inputs.days_old || 30 }}
+          DRY_RUN=${{ inputs.dry_run == true && 'true' || 'false' }}
+
+          # Get current pre-release count
+          TOTAL_PRERELEASES=$(gh release list --repo ${{ github.repository }} --limit 1000 --json isPrerelease | jq '[.[] | select(.isPrerelease == true)] | length')
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          # 🧹 Pre-Release Cleanup Summary
+
+          ## Configuration
+          - **Retention Period**: Delete pre-releases older than $DAYS_OLD days
+          - **Mode**: $(if [ "$DRY_RUN" = "true" ]; then echo "🔍 Dry Run (no deletions)"; else echo "🗑️ Active (deleting releases)"; fi)
+
+          ## Statistics
+          - **Total Pre-releases**: $TOTAL_PRERELEASES
+          - **Cutoff Date**: $(date -u -d "$DAYS_OLD days ago" +%Y-%m-%d 2>/dev/null || date -u -v-${DAYS_OLD}d +%Y-%m-%d)
+
+          ## Policy
+          Pre-releases are automatically cleaned up based on:
+          - ✅ Alpha releases: Deleted after $DAYS_OLD days
+          - ✅ Beta releases: Deleted after $DAYS_OLD days
+          - ✅ RC releases: Deleted after $DAYS_OLD days
+          - ⛔ Stable releases: Never deleted automatically
+
+          ## Next Steps
+          $(if [ "$DRY_RUN" = "true" ]; then echo "Run this workflow with \`dry_run=false\` to actually delete old pre-releases."; else echo "Pre-release cleanup is active. Old pre-releases have been removed."; fi)
+
+          ---
+          *This workflow runs daily at 00:00 UTC or can be triggered manually.*
+          EOF
+
+      - name: List remaining pre-releases
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "📦 Remaining pre-releases:"
+          gh release list --repo ${{ github.repository }} --limit 50 | grep -E "(alpha|beta|rc)" || echo "No pre-releases found"

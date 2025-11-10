@@ -11,7 +11,6 @@ Performance optimizations:
 
 import re
 from functools import lru_cache
-from re import Pattern
 
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.config.sensitive_actions import get_sensitive_actions
@@ -69,7 +68,7 @@ DEFAULT_SENSITIVE_ACTIONS = _get_default_sensitive_actions()
 
 # Global regex pattern cache for performance
 @lru_cache(maxsize=256)
-def compile_pattern(pattern: str) -> Pattern[str] | None:
+def compile_pattern(pattern: str) -> re.Pattern[str] | None:
     """Compile and cache regex patterns.
 
     Args:

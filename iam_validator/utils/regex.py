@@ -13,13 +13,12 @@ Performance benefits:
 import re
 from collections.abc import Callable
 from functools import wraps
-from re import Pattern
 
 
 def cached_pattern(
     flags: int = 0,
     maxsize: int = 128,
-) -> Callable[[Callable[[], str]], Callable[[], Pattern]]:
+) -> Callable[[Callable[[], str]], Callable[[], re.Pattern]]:
     r"""Decorator that caches compiled regex patterns.
 
     This decorator transforms a function that returns a regex pattern string
@@ -60,12 +59,12 @@ def cached_pattern(
         Cached calls: ~0.1-0.5μs (cache lookup) → 20-100x faster
     """
 
-    def decorator(func: Callable[[], str]) -> Callable[[], Pattern]:
+    def decorator(func: Callable[[], str]) -> Callable[[], re.Pattern]:
         # Use a cache per function to avoid key collisions
         cache = {}
 
         @wraps(func)
-        def wrapper() -> Pattern:
+        def wrapper() -> re.Pattern:
             # Use function name as cache key (since each decorated function
             # returns the same pattern string)
             cache_key = func.__name__
@@ -84,7 +83,7 @@ def cached_pattern(
     return decorator
 
 
-def compile_and_cache(pattern: str, flags: int = 0, maxsize: int = 512) -> Pattern:
+def compile_and_cache(pattern: str, flags: int = 0, maxsize: int = 512) -> re.Pattern:
     """Compile a regex pattern with automatic caching.
 
     This is a functional interface (not a decorator) that compiles and caches
@@ -116,17 +115,17 @@ def compile_and_cache(pattern: str, flags: int = 0, maxsize: int = 512) -> Patte
     from functools import lru_cache
 
     @lru_cache(maxsize=maxsize)
-    def _compile(pattern_str: str, flags: int) -> Pattern:
+    def _compile(pattern_str: str, flags: int) -> re.Pattern:
         return re.compile(pattern_str, flags)
 
     return _compile(pattern, flags)
 
 
 # Singleton instance for shared pattern compilation
-_pattern_cache: dict[tuple[str, int], Pattern] = {}
+_pattern_cache: dict[tuple[str, int], re.Pattern] = {}
 
 
-def get_cached_pattern(pattern: str, flags: int = 0) -> Pattern:
+def get_cached_pattern(pattern: str, flags: int = 0) -> re.Pattern:
     """Get a compiled pattern from the shared cache.
 
     This provides a simple, stateless way to get cached patterns without

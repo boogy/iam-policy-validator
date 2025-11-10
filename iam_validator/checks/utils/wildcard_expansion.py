@@ -6,7 +6,6 @@ to their actual action names using the AWS Service Reference API.
 
 import re
 from functools import lru_cache
-from re import Pattern
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 
@@ -14,7 +13,7 @@ from iam_validator.core.aws_fetcher import AWSServiceFetcher
 # Global cache for compiled wildcard patterns (shared across checks)
 # Using lru_cache for O(1) pattern reuse and 20-30x performance improvement
 @lru_cache(maxsize=512)
-def compile_wildcard_pattern(pattern: str) -> Pattern[str]:
+def compile_wildcard_pattern(pattern: str) -> re.Pattern[str]:
     """Compile and cache wildcard patterns for O(1) reuse.
 
     Args:
