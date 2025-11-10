@@ -284,7 +284,7 @@ def normalize_template_variables(arn: str) -> str:
 
     def save_variable(match):
         variables.append(match.group(0))
-        return f"__VAR{len(variables)-1}__"
+        return f"__VAR{len(variables) - 1}__"
 
     # Save all template variables (including those with colons, dots, slashes, etc.)
     temp_arn = re.sub(r"\$\{[^}]+\}", save_variable, arn)

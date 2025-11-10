@@ -44,9 +44,7 @@ class ResourceValidationCheck(PolicyCheck):
 
         # Get ARN pattern from config, or use default
         # Pattern allows wildcards (*) in region and account fields
-        arn_pattern_str = config.config.get(
-            "arn_pattern", DEFAULT_ARN_VALIDATION_PATTERN
-        )
+        arn_pattern_str = config.config.get("arn_pattern", DEFAULT_ARN_VALIDATION_PATTERN)
 
         # Compile pattern
         try:

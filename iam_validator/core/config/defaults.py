@@ -493,9 +493,7 @@ DEFAULT_CONFIG = {
         # STATEMENT-LEVEL: Load 5 requirements from Python module
         # Deep copy to prevent mutation of the originals
         # These check individual statements independently
-        "action_condition_requirements": __import__("copy").deepcopy(
-            CONDITION_REQUIREMENTS
-        ),
+        "action_condition_requirements": __import__("copy").deepcopy(CONDITION_REQUIREMENTS),
         # POLICY-LEVEL: Scan entire policy and enforce conditions across ALL matching statements
         # Example: "If ANY statement grants iam:CreateUser, then ALL such statements must have MFA"
         # Default: Empty list (opt-in feature)

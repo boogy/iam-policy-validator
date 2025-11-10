@@ -138,9 +138,7 @@ class PRCommenter:
 
             for issue in result.issues:
                 # Determine the line number for this issue
-                line_number = self._find_issue_line(
-                    issue, result.policy_file, line_mapping
-                )
+                line_number = self._find_issue_line(issue, result.policy_file, line_mapping)
 
                 if line_number:
                     comment = {
@@ -187,9 +185,7 @@ class PRCommenter:
         )
 
         # Set review event: request changes if any blocking issues, else comment
-        event = (
-            ReviewEvent.REQUEST_CHANGES if has_blocking_issues else ReviewEvent.COMMENT
-        )
+        event = ReviewEvent.REQUEST_CHANGES if has_blocking_issues else ReviewEvent.COMMENT
         logger.info(f"Creating PR review with event: {event.value}")
 
         # Post review with comments (use minimal body since summary comment has the details)
@@ -203,9 +199,7 @@ class PRCommenter:
         )
 
         if success:
-            logger.info(
-                f"Successfully created PR review with {len(all_comments)} comments"
-            )
+            logger.info(f"Successfully created PR review with {len(all_comments)} comments")
         else:
             logger.error("Failed to create PR review")
 
@@ -253,9 +247,7 @@ class PRCommenter:
                 relative = abs_file_path.relative_to(cwd)
                 return str(relative).replace("\\", "/")
         except (ValueError, OSError) as e:
-            logger.debug(
-                f"Could not compute relative path from CWD for {policy_file}: {e}"
-            )
+            logger.debug(f"Could not compute relative path from CWD for {policy_file}: {e}")
 
         # If all else fails, return None
         logger.warning(
@@ -327,9 +319,7 @@ class PRCommenter:
         # Fallback: try to find specific field in file
         search_term = issue.action or issue.resource or issue.condition_key
         if search_term:
-            return self._search_for_field_line(
-                policy_file, issue.statement_index, search_term
-            )
+            return self._search_for_field_line(policy_file, issue.statement_index, search_term)
 
         return None
 
@@ -412,9 +402,7 @@ async def post_report_to_pr(
         from iam_validator.core.config.config_loader import ConfigLoader
 
         config = ConfigLoader.load_config(config_path)
-        fail_on_severities = config.get_setting(
-            "fail_on_severity", ["error", "critical"]
-        )
+        fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
 
         # Post to PR
         async with GitHubIntegration() as github:

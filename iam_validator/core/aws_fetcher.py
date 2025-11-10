@@ -239,9 +239,7 @@ class AWSServiceFetcher:
         if aws_services_dir:
             self.aws_services_dir = Path(aws_services_dir)
             if not self.aws_services_dir.exists():
-                raise ValueError(
-                    f"AWS services directory does not exist: {aws_services_dir}"
-                )
+                raise ValueError(f"AWS services directory does not exist: {aws_services_dir}")
             logger.info(f"Using local AWS services from: {self.aws_services_dir}")
 
         self._client: httpx.AsyncClient | None = None
@@ -290,9 +288,7 @@ class AWSServiceFetcher:
             base_cache = Path.home() / "Library" / "Caches"
         elif sys.platform == "win32":
             # Windows
-            base_cache = Path(
-                os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")
-            )
+            base_cache = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
         else:
             # Linux and other Unix-like systems
             base_cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
@@ -346,9 +342,7 @@ class AWSServiceFetcher:
             batch = self.COMMON_SERVICES[i : i + batch_size]
             await asyncio.gather(*[fetch_service(name) for name in batch])
 
-        logger.info(
-            f"Pre-fetched {len(self._prefetched_services)} services successfully"
-        )
+        logger.info(f"Pre-fetched {len(self._prefetched_services)} services successfully")
 
     def _get_cache_path(self, url: str) -> Path:
         """Get cache file path with timestamp for TTL checking."""
@@ -514,9 +508,7 @@ class AWSServiceFetcher:
                 logger.info(f"Retrying in {wait_time} seconds...")
                 await asyncio.sleep(wait_time)
 
-        raise last_exception or Exception(
-            f"Failed to fetch {url} after {self.retries} attempts"
-        )
+        raise last_exception or Exception(f"Failed to fetch {url} after {self.retries} attempts")
 
     def _load_services_from_file(self) -> list[ServiceInfo]:
         """Load services list from local _services.json file.
@@ -533,9 +525,7 @@ class AWSServiceFetcher:
 
         services_file = self.aws_services_dir / "_services.json"
         if not services_file.exists():
-            raise FileNotFoundError(
-                f"_services.json not found in {self.aws_services_dir}"
-            )
+            raise FileNotFoundError(f"_services.json not found in {self.aws_services_dir}")
 
         try:
             with open(services_file) as f:
@@ -552,9 +542,7 @@ class AWSServiceFetcher:
                     if service and url:
                         services.append(ServiceInfo(service=str(service), url=str(url)))
 
-            logger.info(
-                f"Loaded {len(services)} services from local file: {services_file}"
-            )
+            logger.info(f"Loaded {len(services)} services from local file: {services_file}")
             return services
 
         except json.JSONDecodeError as e:
@@ -588,9 +576,7 @@ class AWSServiceFetcher:
                 data = json.load(f)
 
             service_detail = ServiceDetail.model_validate(data)
-            logger.debug(
-                f"Loaded service {service_name} from local file: {service_file}"
-            )
+            logger.debug(f"Loaded service {service_name} from local file: {service_file}")
             return service_detail
 
         except json.JSONDecodeError as e:
@@ -667,16 +653,12 @@ class AWSServiceFetcher:
                     if service.service.lower() == service_name_lower:
                         # Try with the exact service name from services.json
                         try:
-                            service_detail = self._load_service_from_file(
-                                service.service
-                            )
+                            service_detail = self._load_service_from_file(service.service)
                             await self._memory_cache.set(cache_key, service_detail)
                             return service_detail
                         except FileNotFoundError:
                             pass
-                raise ValueError(
-                    f"Service '{service_name}' not found in {self.aws_services_dir}"
-                )
+                raise ValueError(f"Service '{service_name}' not found in {self.aws_services_dir}")
 
         # Fetch service list and find URL from API
         services = await self.fetch_services()
@@ -696,9 +678,7 @@ class AWSServiceFetcher:
 
         raise ValueError(f"Service '{service_name}' not found")
 
-    async def fetch_multiple_services(
-        self, service_names: list[str]
-    ) -> dict[str, ServiceDetail]:
+    async def fetch_multiple_services(self, service_names: list[str]) -> dict[str, ServiceDetail]:
         """Fetch multiple services concurrently with optimized batching."""
 
         async def fetch_single(name: str) -> tuple[str, ServiceDetail]:
@@ -732,9 +712,7 @@ class AWSServiceFetcher:
 
         return match.group("service").lower(), match.group("action")
 
-    def _match_wildcard_action(
-        self, pattern: str, actions: list[str]
-    ) -> tuple[bool, list[str]]:
+    def _match_wildcard_action(self, pattern: str, actions: list[str]) -> tuple[bool, list[str]]:
         """Match wildcard pattern against list of actions.
 
         Args:
@@ -811,17 +789,13 @@ class AWSServiceFetcher:
                     )
 
             # Check if exact action exists (case-insensitive)
-            action_exists = any(
-                a.lower() == action_name.lower() for a in available_actions
-            )
+            action_exists = any(a.lower() == action_name.lower() for a in available_actions)
 
             if action_exists:
                 return True, None, False
             else:
                 # Suggest similar actions
-                similar = [
-                    a for a in available_actions if action_name.lower() in a.lower()
-                ][:3]
+                similar = [a for a in available_actions if action_name.lower() in a.lower()][:3]
 
                 suggestion = f" Did you mean: {', '.join(similar)}?" if similar else ""
                 return (
@@ -937,9 +911,7 @@ class AWSServiceFetcher:
             )
 
         except Exception as e:
-            logger.error(
-                f"Error validating condition key {condition_key} for {action}: {e}"
-            )
+            logger.error(f"Error validating condition key {condition_key} for {action}: {e}")
             return False, f"Failed to validate condition key: {str(e)}", None
 
     async def clear_caches(self) -> None:

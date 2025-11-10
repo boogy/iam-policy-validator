@@ -110,9 +110,7 @@ class SensitiveActionCheck(PolicyCheck):
             return issues
 
         actions = statement.get_actions()
-        has_conditions = (
-            statement.condition is not None and len(statement.condition) > 0
-        )
+        has_conditions = statement.condition is not None and len(statement.condition) > 0
 
         # Expand wildcards to actual actions using AWS API
         expanded_actions = await expand_wildcard_actions(actions, fetcher)
@@ -202,9 +200,9 @@ class SensitiveActionCheck(PolicyCheck):
 
         # Collect all actions from all Allow statements across the entire policy
         all_actions: set[str] = set()
-        statement_map: dict[str, list[tuple[int, str | None]]] = (
-            {}
-        )  # action -> [(stmt_idx, sid), ...]
+        statement_map: dict[
+            str, list[tuple[int, str | None]]
+        ] = {}  # action -> [(stmt_idx, sid), ...]
 
         for idx, statement in enumerate(policy.statement):
             if statement.effect == "Allow":

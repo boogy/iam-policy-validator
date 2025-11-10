@@ -172,9 +172,7 @@ class ActionResourceMatchingCheck(PolicyCheck):
                     if allow_template_variables and has_template_variables(resource):
                         validation_resource = normalize_template_variables(resource)
 
-                    if arn_strictly_valid(
-                        wildcard_pattern, validation_resource, resource_name
-                    ):
+                    if arn_strictly_valid(wildcard_pattern, validation_resource, resource_name):
                         match_found = True
                         break
 
@@ -202,12 +200,8 @@ class ActionResourceMatchingCheck(PolicyCheck):
                 issues.append(
                     self._create_mismatch_issue(
                         action=action,
-                        required_format=(
-                            required_formats[0]["format"] if required_formats else ""
-                        ),
-                        required_type=(
-                            required_formats[0]["type"] if required_formats else ""
-                        ),
+                        required_format=(required_formats[0]["format"] if required_formats else ""),
+                        required_type=(required_formats[0]["type"] if required_formats else ""),
                         provided_resources=resources,
                         statement_idx=statement_idx,
                         statement_sid=statement_sid,
@@ -238,7 +232,9 @@ class ActionResourceMatchingCheck(PolicyCheck):
             message = reason
         elif all_required_formats and len(all_required_formats) > 1:
             types = ", ".join(f["type"] for f in all_required_formats)
-            message = f"No resources match for action '{action}'. This action requires one of: {types}"
+            message = (
+                f"No resources match for action '{action}'. This action requires one of: {types}"
+            )
         else:
             message = (
                 f"No resources match for action '{action}'. "
@@ -301,9 +297,7 @@ class ActionResourceMatchingCheck(PolicyCheck):
         suggestion_parts = []
 
         # Add action description
-        suggestion_parts.append(
-            f"Action {action} requires {resource_type} resource type."
-        )
+        suggestion_parts.append(f"Action {action} requires {resource_type} resource type.")
 
         # Add expected format
         suggestion_parts.append(f"  Expected format: {required_format}")
@@ -314,9 +308,7 @@ class ActionResourceMatchingCheck(PolicyCheck):
             suggestion_parts.append(f"  Example: {example}")
 
         # Add helpful context for common patterns
-        context = self._get_resource_context(
-            action_name, resource_type, required_format
-        )
+        context = self._get_resource_context(action_name, resource_type, required_format)
         if context:
             suggestion_parts.append(f"  {context}")
 
@@ -403,9 +395,7 @@ class ActionResourceMatchingCheck(PolicyCheck):
 
         return example
 
-    def _get_resource_context(
-        self, action_name: str, resource_type: str, pattern: str
-    ) -> str:
+    def _get_resource_context(self, action_name: str, resource_type: str, pattern: str) -> str:
         """
         Provide helpful context about resource requirements.
 
@@ -420,14 +410,10 @@ class ActionResourceMatchingCheck(PolicyCheck):
             parts = pattern.split("/")
             if len(parts) > 1 and "${" in parts[-1]:
                 # Last part is a variable like ${ObjectName}, ${InstanceId}
-                contexts.append(
-                    "ARN must include path separator (/) with resource identifier"
-                )
+                contexts.append("ARN must include path separator (/) with resource identifier")
 
         # Detect colon-separated resource identifiers
-        resource_part = (
-            ":".join(pattern.split(":")[5:]) if pattern.count(":") >= 5 else ""
-        )
+        resource_part = ":".join(pattern.split(":")[5:]) if pattern.count(":") >= 5 else ""
         if resource_part.count(":") > 0 and "${" in resource_part:
             # Resource section uses colons, like function:version or layer:version
             contexts.append("ARN uses colon (:) separators in resource section")
@@ -441,9 +427,7 @@ class ActionResourceMatchingCheck(PolicyCheck):
             # Some Get/List actions require specific resources, others need "*"
             # Only suggest wildcard if pattern is actually "*"
             if pattern == "*":
-                contexts.append(
-                    "This action does not support resource-level permissions"
-                )
+                contexts.append("This action does not support resource-level permissions")
 
         # Generic resource type matching hint
         if resource_type and resource_type != "resource":

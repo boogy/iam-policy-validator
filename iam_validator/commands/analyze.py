@@ -269,9 +269,7 @@ Examples:
                 async with GitHubIntegration() as github:
                     success = await self._post_to_github(github, report, formatter)
                     if not success:
-                        logging.error(
-                            "Failed to post Access Analyzer results to GitHub PR"
-                        )
+                        logging.error("Failed to post Access Analyzer results to GitHub PR")
 
             # Write to GitHub Actions job summary if configured
             if getattr(args, "github_summary", False):
@@ -293,9 +291,7 @@ Examples:
             logging.error(f"Validation error: {e}")
             return 1
         except Exception as e:
-            logging.error(
-                f"Access Analyzer validation failed: {e}", exc_info=args.verbose
-            )
+            logging.error(f"Access Analyzer validation failed: {e}", exc_info=args.verbose)
             return 1
 
     def _build_custom_checks(self, args: argparse.Namespace) -> dict | None:
@@ -315,9 +311,7 @@ Examples:
                 "actions": args.check_access_not_granted,
             }
             if hasattr(args, "check_access_resources") and args.check_access_resources:
-                custom_checks["access_not_granted"][
-                    "resources"
-                ] = args.check_access_resources
+                custom_checks["access_not_granted"]["resources"] = args.check_access_resources
 
         # Check no new access
         if hasattr(args, "check_no_new_access") and args.check_no_new_access:
@@ -335,19 +329,13 @@ Examples:
                     file_path: policy.model_dump(by_alias=True, exclude_none=True)
                     for file_path, policy in existing_policies_loaded
                 }
-                custom_checks["no_new_access"] = {
-                    "existing_policies": existing_policies_dict
-                }
+                custom_checks["no_new_access"] = {"existing_policies": existing_policies_dict}
             else:
-                logging.warning(
-                    f"Could not load existing policy from {args.check_no_new_access}"
-                )
+                logging.warning(f"Could not load existing policy from {args.check_no_new_access}")
 
         # Check no public access
         if hasattr(args, "check_no_public_access") and args.check_no_public_access:
-            resource_types = getattr(
-                args, "public_access_resource_type", ["AWS::S3::Bucket"]
-            )
+            resource_types = getattr(args, "public_access_resource_type", ["AWS::S3::Bucket"])
             # Support both single string and list
             if isinstance(resource_types, str):
                 resource_types = [resource_types]
@@ -367,9 +355,7 @@ Examples:
 
     async def _run_full_validation(self, args: argparse.Namespace) -> int:
         """Run full validation after Access Analyzer passes."""
-        logging.info(
-            "Access Analyzer validation passed. Running full validation checks..."
-        )
+        logging.info("Access Analyzer validation passed. Running full validation checks...")
 
         # Load policies again for full validation
         loader = PolicyLoader()
@@ -445,9 +431,7 @@ Examples:
             # Split into multiple parts
             # For simplicity, we use a basic split for Access Analyzer reports
             # TODO: Implement proper multi-part splitting for Access Analyzer reports
-            logging.warning(
-                "Access Analyzer report is large, posting as single comment"
-            )
+            logging.warning("Access Analyzer report is large, posting as single comment")
 
         # Post or update comment
         logging.info("Posting Access Analyzer results to PR...")
@@ -485,17 +469,11 @@ Examples:
 
             # Header with status
             if report.total_findings == 0:
-                summary_parts.append(
-                    "# ✅ IAM Policy Validation (Access Analyzer) - Passed"
-                )
+                summary_parts.append("# ✅ IAM Policy Validation (Access Analyzer) - Passed")
             elif report.total_errors > 0:
-                summary_parts.append(
-                    "# ❌ IAM Policy Validation (Access Analyzer) - Failed"
-                )
+                summary_parts.append("# ❌ IAM Policy Validation (Access Analyzer) - Failed")
             else:
-                summary_parts.append(
-                    "# ⚠️ IAM Policy Validation (Access Analyzer) - Issues Found"
-                )
+                summary_parts.append("# ⚠️ IAM Policy Validation (Access Analyzer) - Issues Found")
 
             summary_parts.append("")
 
@@ -504,12 +482,8 @@ Examples:
             summary_parts.append("")
             summary_parts.append("| Metric | Count |")
             summary_parts.append("|--------|-------|")
-            summary_parts.append(
-                f"| Total Policies Analyzed | {report.total_policies} |"
-            )
-            summary_parts.append(
-                f"| Policies with Findings | {report.policies_with_findings} |"
-            )
+            summary_parts.append(f"| Total Policies Analyzed | {report.total_policies} |")
+            summary_parts.append(f"| Policies with Findings | {report.policies_with_findings} |")
             summary_parts.append(f"| Total Findings | {report.total_findings} |")
             summary_parts.append(f"| Errors | {report.total_errors} |")
             summary_parts.append(f"| Warnings | {report.total_warnings} |")
@@ -526,14 +500,10 @@ Examples:
                 for result in report.results:
                     for finding in result.findings:
                         finding_type = finding.finding_type
-                        finding_types[finding_type] = (
-                            finding_types.get(finding_type, 0) + 1
-                        )
+                        finding_types[finding_type] = finding_types.get(finding_type, 0) + 1
 
                 # Sort by count (highest first)
-                sorted_types = sorted(
-                    finding_types.items(), key=lambda x: x[1], reverse=True
-                )
+                sorted_types = sorted(finding_types.items(), key=lambda x: x[1], reverse=True)
 
                 summary_parts.append("| Finding Type | Count |")
                 summary_parts.append("|--------------|-------|")
