@@ -1,5 +1,5 @@
 name: "IAM Validator"
-description: "Validate AWS IAM policies for correctness and security using AWS Service Reference API. This is a standalone composite action - no setup required! Also available as a Python CLI tool for advanced use cases."
+description: "Validate AWS IAM policies for correctness and security. Standalone action with built-in checks and AWS Access Analyzer."
 author: "boogy"
 
 branding:
