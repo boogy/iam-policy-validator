@@ -384,4 +384,3 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## 🆘 Support
 
 - **Issues**: [GitHub Issues](https://github.com/boogy/iam-policy-validator/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/boogy/iam-policy-validator/discussions)
