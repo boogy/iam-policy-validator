@@ -491,6 +491,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 if re.match(f"^{wildcard_pattern}$", statement_action):
                     return True
             except re.error:
+                # Invalid regex pattern - skip this match attempt
                 pass
 
         # AWS wildcard match in statement_action (e.g., "iam:Creat*" in policy)
@@ -507,6 +508,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     if re.match(f"^{stmt_wildcard_pattern}$", required_action):
                         return True
                 except re.error:
+                    # Invalid regex pattern - skip this match attempt
                     pass
 
             # Check if statement wildcard overlaps with any of our action patterns

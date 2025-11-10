@@ -1,7 +1,6 @@
 """Tests for iam_validator.utils.regex module."""
 
 import re
-import pytest
 
 from iam_validator.utils.regex import (
     cached_pattern,

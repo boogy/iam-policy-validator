@@ -1,0 +1,239 @@
+name: Pre-Release (RC/Alpha/Beta)
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to create pre-release from"
+        required: true
+        type: number
+      release_type:
+        description: "Type of pre-release"
+        required: true
+        type: choice
+        options:
+          - alpha
+          - beta
+          - rc
+      version_increment:
+        description: "Which version part to increment"
+        required: true
+        type: choice
+        default: "minor"
+        options:
+          - major
+          - minor
+          - patch
+      pre_release_number:
+        description: "Pre-release number (e.g., 1 for alpha.1)"
+        required: false
+        type: number
+        default: 1
+      python_version:
+        description: "Python version to use for building"
+        required: false
+        type: string
+        default: "3.13"
+
+permissions: read-all
+
+jobs:
+  build-pre-release:
+    name: Build and Create Pre-Release
+    runs-on: ubuntu-latest
+    environment: prerelease # Requires approval from environment reviewers
+    permissions:
+      contents: write # Required for creating releases and tags
+      pull-requests: read # Required for reading PR info
+      id-token: write # Required for PyPI trusted publishing (test.pypi.org)
+
+    steps:
+      - name: Get PR information
+        id: pr_info
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_DATA=$(gh pr view ${{ inputs.pr_number }} --repo ${{ github.repository }} --json headRefName,title,state)
+
+          STATE=$(echo "$PR_DATA" | jq -r '.state')
+          if [ "$STATE" != "OPEN" ]; then
+            echo "❌ PR #${{ inputs.pr_number }} is not open (state: $STATE)"
+            exit 1
+          fi
+
+          BRANCH=$(echo "$PR_DATA" | jq -r '.headRefName')
+          TITLE=$(echo "$PR_DATA" | jq -r '.title')
+
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+          echo "✅ PR #${{ inputs.pr_number }}: $TITLE (branch: $BRANCH)"
+
+      - name: Checkout PR branch
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        with:
+          ref: ${{ steps.pr_info.outputs.branch }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@5a7eac68fb9809dea845d802897dc5c723910fa3 # v7
+        with:
+          enable-cache: true
+
+      - name: Calculate pre-release version
+        id: version
+        run: |
+          # Get current version from __version__.py
+          CURRENT_VERSION=$(grep -E "^__version__" iam_validator/__version__.py | cut -d'"' -f2)
+          echo "Current version: $CURRENT_VERSION"
+
+          # Parse version parts
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+
+          # Increment based on input
+          case "${{ inputs.version_increment }}" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          # Build pre-release version
+          PRE_VERSION="${MAJOR}.${MINOR}.${PATCH}-${{ inputs.release_type }}.${{ inputs.pre_release_number }}"
+          TAG="v${PRE_VERSION}"
+
+          echo "version=$PRE_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "base_version=${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
+
+          echo "📦 Pre-release version: $PRE_VERSION"
+          echo "🏷️  Tag: $TAG"
+
+      - name: Update version in __version__.py
+        run: |
+          # Create backup and update version (portable across macOS/Linux)
+          cp iam_validator/__version__.py iam_validator/__version__.py.bak
+          sed 's/__version__ = ".*"/__version__ = "${{ steps.version.outputs.version }}"/' iam_validator/__version__.py.bak > iam_validator/__version__.py
+          rm iam_validator/__version__.py.bak
+
+          echo "✅ Updated __version__.py to ${{ steps.version.outputs.version }}"
+          cat iam_validator/__version__.py
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run tests
+        run: uv run pytest --verbose
+        continue-on-error: false
+
+      - name: Build package
+        run: uv build
+
+      - name: Generate pre-release notes
+        id: release_notes
+        run: |
+          cat > PRERELEASE_NOTES.md << EOF
+          # Pre-Release: ${{ steps.version.outputs.tag }}
+
+          ## 🧪 Testing Release
+
+          This is a **${{ inputs.release_type }}** pre-release built from PR #${{ inputs.pr_number }}.
+
+          **⚠️ Not recommended for production use.**
+
+          ### PR Information
+          - **PR**: #${{ inputs.pr_number }} - ${{ steps.pr_info.outputs.title }}
+          - **Branch**: \`${{ steps.pr_info.outputs.branch }}\`
+          - **Base Version**: \`${{ steps.version.outputs.base_version }}\`
+          - **Pre-release**: \`${{ inputs.release_type }}.${{ inputs.pre_release_number }}\`
+
+          ### Installation
+          \`\`\`bash
+          # Install from GitHub release
+          pip install https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/iam_policy_validator-${{ steps.version.outputs.version }}-py3-none-any.whl
+          \`\`\`
+
+          ### Recent Changes
+          EOF
+
+          # Add commits from the PR branch
+          git log --pretty=format:"- %s (%h by %an)" --no-merges -10 >> PRERELEASE_NOTES.md
+
+          cat PRERELEASE_NOTES.md
+
+      - name: Create GitHub Pre-Release
+        uses: softprops/action-gh-release@5be0e66d93ac7ed76da52eca8bb058f665c3a5fe # v2
+        with:
+          name: "${{ steps.version.outputs.tag }} (Pre-release)"
+          tag_name: ${{ steps.version.outputs.tag }}
+          body_path: PRERELEASE_NOTES.md
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+          draft: false
+          prerelease: true
+          generate_release_notes: false
+          target_commitish: ${{ steps.pr_info.outputs.branch }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ inputs.pr_number }} --repo ${{ github.repository }} --body \
+          "## 🚀 Pre-Release Created
+
+          A **${{ inputs.release_type }}** pre-release has been created from this PR.
+
+          - **Version**: \`${{ steps.version.outputs.version }}\`
+          - **Tag**: [\`${{ steps.version.outputs.tag }}\`](https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }})
+          - **Release**: [View Release](https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }})
+
+          ### Install & Test
+          \`\`\`bash
+          pip install https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/iam_policy_validator-${{ steps.version.outputs.version }}-py3-none-any.whl
+          \`\`\`
+
+          ⚠️ This is a pre-release and should not be used in production."
+
+      - name: Create Summary
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          # 🧪 Pre-Release Summary
+
+          ## 📦 Pre-Release Information
+          - **Type**: ${{ inputs.release_type }}
+          - **Version**: \`${{ steps.version.outputs.version }}\`
+          - **Tag**: \`${{ steps.version.outputs.tag }}\`
+          - **PR**: [#${{ inputs.pr_number }}](https://github.com/${{ github.repository }}/pull/${{ inputs.pr_number }}) - ${{ steps.pr_info.outputs.title }}
+          - **Branch**: \`${{ steps.pr_info.outputs.branch }}\`
+
+          ## 🔗 Links
+          - [📦 GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }})
+          - [🔀 Pull Request](https://github.com/${{ github.repository }}/pull/${{ inputs.pr_number }})
+
+          ## 📥 Installation
+          \`\`\`bash
+          pip install https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/iam_policy_validator-${{ steps.version.outputs.version }}-py3-none-any.whl
+          \`\`\`
+
+          ## ⚠️ Important Notes
+          - This is a **pre-release** for testing purposes only
+          - Not published to PyPI
+          - Will be automatically cleaned up after 30 days
+          - Do not use in production
+          EOF
