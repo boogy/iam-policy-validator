@@ -40,12 +40,17 @@ class WildcardActionCheck(PolicyCheck):
         if "*" in actions:
             message = config.config.get("message", "Statement allows all actions (*)")
             suggestion_text = config.config.get(
-                "suggestion", "Replace wildcard with specific actions needed for your use case"
+                "suggestion",
+                "Replace wildcard with specific actions needed for your use case",
             )
             example = config.config.get("example", "")
 
             # Combine suggestion + example
-            suggestion = f"{suggestion_text}\nExample:\n{example}" if example else suggestion_text
+            suggestion = (
+                f"{suggestion_text}\nExample:\n```json\n{example}\n```"
+                if example
+                else suggestion_text
+            )
 
             issues.append(
                 ValidationIssue(

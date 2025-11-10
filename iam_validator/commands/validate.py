@@ -233,13 +233,19 @@ Examples:
                 return 1
         else:
             # Load from paths
-            policies = loader.load_from_paths(args.paths, recursive=not args.no_recursive)
+            policies = loader.load_from_paths(
+                args.paths, recursive=not args.no_recursive
+            )
 
             if not policies:
-                logging.error(f"No valid IAM policies found in: {', '.join(args.paths)}")
+                logging.error(
+                    f"No valid IAM policies found in: {', '.join(args.paths)}"
+                )
                 return 1
 
-            logging.info(f"Loaded {len(policies)} policies from {len(args.paths)} path(s)")
+            logging.info(
+                f"Loaded {len(policies)} policies from {len(args.paths)} path(s)"
+            )
 
         # Validate policies
         use_registry = not getattr(args, "no_registry", False)
@@ -281,7 +287,9 @@ Examples:
                 format_options["show_severity_breakdown"] = not getattr(
                     args, "no_severity_breakdown", False
                 )
-            output_content = generator.format_report(report, args.format, **format_options)
+            output_content = generator.format_report(
+                report, args.format, **format_options
+            )
             if args.output:
                 with open(args.output, "w", encoding="utf-8") as f:
                     f.write(output_content)
@@ -296,7 +304,9 @@ Examples:
 
             # Load config to get fail_on_severity setting
             config = ConfigLoader.load_config(config_path)
-            fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+            fail_on_severities = config.get_setting(
+                "fail_on_severity", ["error", "critical"]
+            )
 
             async with GitHubIntegration() as github:
                 commenter = PRCommenter(github, fail_on_severities=fail_on_severities)
@@ -368,7 +378,9 @@ Examples:
                     if result.is_valid:
                         logging.info(f"  ✓ {file_path}: Valid")
                     else:
-                        logging.warning(f"  ✗ {file_path}: {len(result.issues)} issue(s) found")
+                        logging.warning(
+                            f"  ✗ {file_path}: {len(result.issues)} issue(s) found"
+                        )
                         # Note: validation_success tracks overall status
 
                 # Post to GitHub immediately for this file (progressive PR comments)
@@ -407,7 +419,9 @@ Examples:
                 format_options["show_severity_breakdown"] = not getattr(
                     args, "no_severity_breakdown", False
                 )
-            output_content = generator.format_report(report, args.format, **format_options)
+            output_content = generator.format_report(
+                report, args.format, **format_options
+            )
             if args.output:
                 with open(args.output, "w", encoding="utf-8") as f:
                     f.write(output_content)
@@ -422,7 +436,9 @@ Examples:
 
             # Load config to get fail_on_severity setting
             config = ConfigLoader.load_config(config_path)
-            fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+            fail_on_severities = config.get_setting(
+                "fail_on_severity", ["error", "critical"]
+            )
 
             async with GitHubIntegration() as github:
                 commenter = PRCommenter(github, fail_on_severities=fail_on_severities)
@@ -457,7 +473,9 @@ Examples:
                     return
 
                 logging.info("Cleaning up old review comments from previous runs...")
-                deleted = await github.cleanup_bot_review_comments(PRCommenter.REVIEW_IDENTIFIER)
+                deleted = await github.cleanup_bot_review_comments(
+                    PRCommenter.REVIEW_IDENTIFIER
+                )
                 if deleted > 0:
                     logging.info(f"Removed {deleted} old comment(s)")
         except Exception as e:
@@ -479,12 +497,16 @@ Examples:
                 # Load config to get fail_on_severity setting
                 config_path = getattr(args, "config", None)
                 config = ConfigLoader.load_config(config_path)
-                fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+                fail_on_severities = config.get_setting(
+                    "fail_on_severity", ["error", "critical"]
+                )
 
                 # In streaming mode, don't cleanup comments (we want to keep earlier files)
                 # Cleanup will happen once at the end
                 commenter = PRCommenter(
-                    github, cleanup_old_comments=False, fail_on_severities=fail_on_severities
+                    github,
+                    cleanup_old_comments=False,
+                    fail_on_severities=fail_on_severities,
                 )
 
                 # Create a mini-report for just this file
@@ -527,7 +549,9 @@ Examples:
             elif report.invalid_policies > 0:
                 summary_parts.append("# ❌ IAM Policy Validation - Failed")
             else:
-                summary_parts.append("# ⚠️ IAM Policy Validation - Security Issues Found")
+                summary_parts.append(
+                    "# ⚠️ IAM Policy Validation - Security Issues Found"
+                )
 
             summary_parts.append("")
 
@@ -547,14 +571,16 @@ Examples:
             # Issue breakdown by severity if there are issues
             if report.total_issues > 0:
                 summary_parts.append("")
-                summary_parts.append("## Issues by Severity")
+                summary_parts.append("## 📊 Issues by Severity")
                 summary_parts.append("")
 
                 # Count issues by severity
                 severity_counts: dict[str, int] = {}
                 for result in report.results:
                     for issue in result.issues:
-                        severity_counts[issue.severity] = severity_counts.get(issue.severity, 0) + 1
+                        severity_counts[issue.severity] = (
+                            severity_counts.get(issue.severity, 0) + 1
+                        )
 
                 # Sort by severity rank (highest first)
                 from iam_validator.core.models import ValidationIssue

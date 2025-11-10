@@ -32,7 +32,8 @@ async def execute_policy(
 
     # Check if any statement has Principal
     has_any_principal = any(
-        stmt.principal is not None or stmt.not_principal is not None for stmt in policy.statement
+        stmt.principal is not None or stmt.not_principal is not None
+        for stmt in policy.statement
     )
 
     # If policy has Principal but type is IDENTITY_POLICY (default), provide helpful info
@@ -56,7 +57,9 @@ async def execute_policy(
     # Resource policies MUST have Principal
     if policy_type == "RESOURCE_POLICY":
         for idx, statement in enumerate(policy.statement):
-            has_principal = statement.principal is not None or statement.not_principal is not None
+            has_principal = (
+                statement.principal is not None or statement.not_principal is not None
+            )
 
             if not has_principal:
                 issues.append(
@@ -71,6 +74,7 @@ async def execute_policy(
                         line_number=statement.line_number,
                         suggestion="Add a Principal element to specify who can access this resource.\n"
                         "Example:\n"
+                        "```json\n"
                         "{\n"
                         '  "Effect": "Allow",\n'
                         '  "Principal": {\n'
@@ -78,14 +82,17 @@ async def execute_policy(
                         "  },\n"
                         '  "Action": "s3:GetObject",\n'
                         '  "Resource": "arn:aws:s3:::bucket/*"\n'
-                        "}",
+                        "}\n"
+                        "```",
                     )
                 )
 
     # Identity policies should NOT have Principal (warning, not error)
     elif policy_type == "IDENTITY_POLICY":
         for idx, statement in enumerate(policy.statement):
-            has_principal = statement.principal is not None or statement.not_principal is not None
+            has_principal = (
+                statement.principal is not None or statement.not_principal is not None
+            )
 
             if has_principal:
                 issues.append(
@@ -101,18 +108,22 @@ async def execute_policy(
                         line_number=statement.line_number,
                         suggestion="Remove the Principal element from this identity policy statement.\n"
                         "Example:\n"
+                        "```json\n"
                         "{\n"
                         '  "Effect": "Allow",\n'
                         '  "Action": "s3:GetObject",\n'
                         '  "Resource": "arn:aws:s3:::bucket/*"\n'
-                        "}",
+                        "}\n"
+                        "```",
                     )
                 )
 
     # Service Control Policies (SCPs) should not have Principal
     elif policy_type == "SERVICE_CONTROL_POLICY":
         for idx, statement in enumerate(policy.statement):
-            has_principal = statement.principal is not None or statement.not_principal is not None
+            has_principal = (
+                statement.principal is not None or statement.not_principal is not None
+            )
 
             if has_principal:
                 issues.append(
@@ -127,6 +138,7 @@ async def execute_policy(
                         line_number=statement.line_number,
                         suggestion="Remove the Principal element from this SCP statement.\n"
                         "Example:\n"
+                        "```json\n"
                         "{\n"
                         '  "Effect": "Deny",\n'
                         '  "Action": "ec2:*",\n'
@@ -136,7 +148,8 @@ async def execute_policy(
                         '      "ec2:Region": ["us-east-1", "us-west-2"]\n'
                         "    }\n"
                         "  }\n"
-                        "}",
+                        "}\n"
+                        "```",
                     )
                 )
 
@@ -216,7 +229,9 @@ async def execute_policy(
             # 3. Check for unsupported actions (actions not in supported services)
             if statement.action:
                 actions = (
-                    statement.action if isinstance(statement.action, list) else [statement.action]
+                    statement.action
+                    if isinstance(statement.action, list)
+                    else [statement.action]
                 )
                 unsupported_actions = []
 
@@ -244,7 +259,10 @@ async def execute_policy(
                             # Handle wildcards in service name
                             service_base = service.rstrip("*")
 
-                            if service_base and service_base not in rcp_supported_services:
+                            if (
+                                service_base
+                                and service_base not in rcp_supported_services
+                            ):
                                 unsupported_actions.append(action)
 
                 if unsupported_actions:

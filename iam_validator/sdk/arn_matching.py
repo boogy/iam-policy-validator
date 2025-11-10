@@ -245,6 +245,114 @@ def _strip_variables_from_arn(arn: str, replace_with: str = "") -> str:
     return re.sub(r"\$\{aws[\.:][\w\/]+\}", replace_with, arn)
 
 
+def normalize_template_variables(arn: str) -> str:
+    """
+    Normalize template variables in ARN to valid placeholders for validation.
+
+    This function is POSITION-AWARE and handles ANY variable name by determining
+    the appropriate replacement based on where the variable appears in the ARN structure.
+    It correctly handles variables with colons inside them (e.g., ${AWS::AccountId}).
+
+    Supports template variables from:
+    - Terraform/Terragrunt: ${var.name}, ${local.value}, ${data.source.attr}, etc.
+    - CloudFormation: ${AWS::AccountId}, ${AWS::Region}, ${MyParameter}, etc.
+    - AWS policy variables: ${aws:username}, ${aws:PrincipalTag/tag-key}, etc.
+
+    Args:
+        arn: ARN string that may contain template variables
+
+    Returns:
+        ARN with template variables replaced with valid placeholders based on position
+
+    Examples:
+        >>> normalize_template_variables("arn:aws:iam::${my_account}:role/name")
+        'arn:aws:iam::123456789012:role/name'
+
+        >>> normalize_template_variables("arn:aws:iam::${AWS::AccountId}:role/name")
+        'arn:aws:iam::123456789012:role/name'
+
+        >>> normalize_template_variables("arn:${var.partition}:s3:::${var.bucket}/*")
+        'arn:aws:s3:::placeholder/*'
+    """
+    # Strategy: Use a simpler, more robust approach
+    # First protect template variables by temporarily replacing them with markers,
+    # then split the ARN, then replace based on position
+
+    # Step 1: Find all template variables and temporarily replace them with position markers
+    # This handles variables with colons inside them (like ${AWS::AccountId})
+    variables = []
+
+    def save_variable(match):
+        variables.append(match.group(0))
+        return f"__VAR{len(variables)-1}__"
+
+    # Save all template variables (including those with colons, dots, slashes, etc.)
+    temp_arn = re.sub(r"\$\{[^}]+\}", save_variable, arn)
+
+    # Step 2: Now we can safely split by colons
+    parts = temp_arn.split(":", 5)
+
+    if len(parts) < 6:
+        # Not a valid ARN format, restore variables with generic placeholder
+        result = arn
+        for var in variables:
+            if re.match(r"\$\{aws[\.:]", var, re.IGNORECASE):
+                result = result.replace(var, "placeholder", 1)
+            else:
+                result = result.replace(var, "placeholder", 1)
+        return result
+
+    # Step 3: Restore variables based on their position in the ARN
+    # ARN format: arn:partition:service:region:account:resource
+    replacements = {
+        1: "aws",  # partition
+        2: "s3",  # service (generic placeholder)
+        3: "us-east-1",  # region
+        4: "123456789012",  # account
+        5: "placeholder",  # resource
+    }
+
+    for i, part in enumerate(parts):
+        if "__VAR" in part:
+            # Find all variable markers in this part
+            for j, var in enumerate(variables):
+                marker = f"__VAR{j}__"
+                if marker in part:
+                    # Determine replacement based on position
+                    if i in replacements:
+                        parts[i] = parts[i].replace(marker, replacements[i])
+                    else:
+                        parts[i] = parts[i].replace(marker, "placeholder")
+
+    # Reconstruct ARN
+    return ":".join(parts)
+
+
+def has_template_variables(arn: str) -> bool:
+    """
+    Check if an ARN contains template variables.
+
+    Detects template variables from:
+    - Terraform/Terragrunt: ${var_name}
+    - CloudFormation: ${AWS::AccountId}
+    - AWS policy variables: ${aws:username}
+
+    Args:
+        arn: ARN string to check
+
+    Returns:
+        True if ARN contains template variables, False otherwise
+
+    Examples:
+        >>> has_template_variables("arn:aws:iam::${aws_account_id}:role/name")
+        True
+
+        >>> has_template_variables("arn:aws:iam::123456789012:role/name")
+        False
+    """
+    return bool(re.search(r"\$\{[\w\-\.\_:\/]+\}", arn))
+
+
 def convert_aws_pattern_to_wildcard(pattern: str) -> str:
     """
     Convert AWS ARN pattern format to wildcard pattern for matching.

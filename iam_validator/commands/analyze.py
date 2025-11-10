@@ -137,6 +137,12 @@ Examples:
         )
 
         parser.add_argument(
+            "--github-summary",
+            action="store_true",
+            help="Write validation summary to GitHub Actions job summary (works for all workflow runs)",
+        )
+
+        parser.add_argument(
             "--run-all-checks",
             action="store_true",
             help="Run full validation checks if Access Analyzer passes",
@@ -263,7 +269,13 @@ Examples:
                 async with GitHubIntegration() as github:
                     success = await self._post_to_github(github, report, formatter)
                     if not success:
-                        logging.error("Failed to post Access Analyzer results to GitHub PR")
+                        logging.error(
+                            "Failed to post Access Analyzer results to GitHub PR"
+                        )
+
+            # Write to GitHub Actions job summary if configured
+            if getattr(args, "github_summary", False):
+                self._write_github_actions_summary(report)
 
             # Determine exit code based on validation results
             if args.fail_on_warnings:
@@ -281,7 +293,9 @@ Examples:
             logging.error(f"Validation error: {e}")
             return 1
         except Exception as e:
-            logging.error(f"Access Analyzer validation failed: {e}", exc_info=args.verbose)
+            logging.error(
+                f"Access Analyzer validation failed: {e}", exc_info=args.verbose
+            )
             return 1
 
     def _build_custom_checks(self, args: argparse.Namespace) -> dict | None:
@@ -301,7 +315,9 @@ Examples:
                 "actions": args.check_access_not_granted,
             }
             if hasattr(args, "check_access_resources") and args.check_access_resources:
-                custom_checks["access_not_granted"]["resources"] = args.check_access_resources
+                custom_checks["access_not_granted"][
+                    "resources"
+                ] = args.check_access_resources
 
         # Check no new access
         if hasattr(args, "check_no_new_access") and args.check_no_new_access:
@@ -319,13 +335,19 @@ Examples:
                     file_path: policy.model_dump(by_alias=True, exclude_none=True)
                     for file_path, policy in existing_policies_loaded
                 }
-                custom_checks["no_new_access"] = {"existing_policies": existing_policies_dict}
+                custom_checks["no_new_access"] = {
+                    "existing_policies": existing_policies_dict
+                }
             else:
-                logging.warning(f"Could not load existing policy from {args.check_no_new_access}")
+                logging.warning(
+                    f"Could not load existing policy from {args.check_no_new_access}"
+                )
 
         # Check no public access
         if hasattr(args, "check_no_public_access") and args.check_no_public_access:
-            resource_types = getattr(args, "public_access_resource_type", ["AWS::S3::Bucket"])
+            resource_types = getattr(
+                args, "public_access_resource_type", ["AWS::S3::Bucket"]
+            )
             # Support both single string and list
             if isinstance(resource_types, str):
                 resource_types = [resource_types]
@@ -345,7 +367,9 @@ Examples:
 
     async def _run_full_validation(self, args: argparse.Namespace) -> int:
         """Run full validation after Access Analyzer passes."""
-        logging.info("Access Analyzer validation passed. Running full validation checks...")
+        logging.info(
+            "Access Analyzer validation passed. Running full validation checks..."
+        )
 
         # Load policies again for full validation
         loader = PolicyLoader()
@@ -405,7 +429,8 @@ Examples:
         if not github.is_configured():
             logging.error(
                 "GitHub integration not configured. "
-                "Set GITHUB_TOKEN, GITHUB_REPOSITORY, and GITHUB_PR_NUMBER"
+                "Required: GITHUB_TOKEN, GITHUB_REPOSITORY, and GITHUB_PR_NUMBER environment variables. "
+                "Ensure your workflow is triggered by a pull_request event."
             )
             return False
 
@@ -420,7 +445,9 @@ Examples:
             # Split into multiple parts
             # For simplicity, we use a basic split for Access Analyzer reports
             # TODO: Implement proper multi-part splitting for Access Analyzer reports
-            logging.warning("Access Analyzer report is large, posting as single comment")
+            logging.warning(
+                "Access Analyzer report is large, posting as single comment"
+            )
 
         # Post or update comment
         logging.info("Posting Access Analyzer results to PR...")
@@ -432,3 +459,103 @@ Examples:
             logging.error("Failed to post Access Analyzer results to PR")
 
         return success
+
+    def _write_github_actions_summary(self, report: AccessAnalyzerReport) -> None:
+        """Write a high-level summary to GitHub Actions job summary.
+
+        This appears in the Actions tab and provides a quick overview of Access Analyzer results.
+        Uses GITHUB_STEP_SUMMARY environment variable.
+
+        Args:
+            report: Access Analyzer report to summarize
+        """
+        import os
+
+        summary_file = os.getenv("GITHUB_STEP_SUMMARY")
+        if not summary_file:
+            logging.warning(
+                "--github-summary specified but GITHUB_STEP_SUMMARY env var not found. "
+                "This feature only works in GitHub Actions."
+            )
+            return
+
+        try:
+            # Generate high-level summary
+            summary_parts = []
+
+            # Header with status
+            if report.total_findings == 0:
+                summary_parts.append(
+                    "# ✅ IAM Policy Validation (Access Analyzer) - Passed"
+                )
+            elif report.total_errors > 0:
+                summary_parts.append(
+                    "# ❌ IAM Policy Validation (Access Analyzer) - Failed"
+                )
+            else:
+                summary_parts.append(
+                    "# ⚠️ IAM Policy Validation (Access Analyzer) - Issues Found"
+                )
+
+            summary_parts.append("")
+
+            # Summary table
+            summary_parts.append("## Summary")
+            summary_parts.append("")
+            summary_parts.append("| Metric | Count |")
+            summary_parts.append("|--------|-------|")
+            summary_parts.append(
+                f"| Total Policies Analyzed | {report.total_policies} |"
+            )
+            summary_parts.append(
+                f"| Policies with Findings | {report.policies_with_findings} |"
+            )
+            summary_parts.append(f"| Total Findings | {report.total_findings} |")
+            summary_parts.append(f"| Errors | {report.total_errors} |")
+            summary_parts.append(f"| Warnings | {report.total_warnings} |")
+            summary_parts.append(f"| Suggestions | {report.total_suggestions} |")
+
+            # Finding breakdown by type if there are findings
+            if report.total_findings > 0:
+                summary_parts.append("")
+                summary_parts.append("## 📊 Findings by Type")
+                summary_parts.append("")
+
+                # Count findings by type
+                finding_types: dict[str, int] = {}
+                for result in report.results:
+                    for finding in result.findings:
+                        finding_type = finding.finding_type
+                        finding_types[finding_type] = (
+                            finding_types.get(finding_type, 0) + 1
+                        )
+
+                # Sort by count (highest first)
+                sorted_types = sorted(
+                    finding_types.items(), key=lambda x: x[1], reverse=True
+                )
+
+                summary_parts.append("| Finding Type | Count |")
+                summary_parts.append("|--------------|-------|")
+                for finding_type, count in sorted_types:
+                    summary_parts.append(f"| {finding_type} | {count} |")
+
+            # Add footer with links
+            summary_parts.append("")
+            summary_parts.append("---")
+            summary_parts.append("")
+            summary_parts.append(
+                "📝 For detailed findings, check the PR comments or review the workflow logs."
+            )
+            summary_parts.append("")
+            summary_parts.append("*Powered by AWS IAM Access Analyzer*")
+
+            # Write to summary file (append mode)
+            with open(summary_file, "a", encoding="utf-8") as f:
+                f.write("\n".join(summary_parts))
+                f.write("\n")
+
+            logging.info("Wrote Access Analyzer summary to GitHub Actions job summary")
+
+        except Exception as e:
+            logging.warning(f"Failed to write GitHub Actions summary: {e}")

@@ -34,7 +34,9 @@ class ActionDetail(BaseModel):
     action_condition_keys: list[str] | None = Field(
         default_factory=list, alias="ActionConditionKeys"
     )
-    resources: list[dict[str, Any]] | None = Field(default_factory=list, alias="Resources")
+    resources: list[dict[str, Any]] | None = Field(
+        default_factory=list, alias="Resources"
+    )
     annotations: dict[str, Any] | None = Field(default=None, alias="Annotations")
     supported_by: dict[str, Any] | None = Field(default=None, alias="SupportedBy")
 
@@ -46,7 +48,9 @@ class ResourceType(BaseModel):
 
     name: str = Field(alias="Name")
     arn_formats: list[str] | None = Field(default=None, alias="ARNFormats")
-    condition_keys: list[str] | None = Field(default_factory=list, alias="ConditionKeys")
+    condition_keys: list[str] | None = Field(
+        default_factory=list, alias="ConditionKeys"
+    )
 
     @property
     def arn_pattern(self) -> str | None:
@@ -87,7 +91,9 @@ class ServiceDetail(BaseModel):
     # Raw API data
     actions_list: list[ActionDetail] = Field(default_factory=list, alias="Actions")
     resources_list: list[ResourceType] = Field(default_factory=list, alias="Resources")
-    condition_keys_list: list[ConditionKey] = Field(default_factory=list, alias="ConditionKeys")
+    condition_keys_list: list[ConditionKey] = Field(
+        default_factory=list, alias="ConditionKeys"
+    )
 
     def model_post_init(self, __context: Any) -> None:
         """Convert lists to dictionaries for easier lookup."""
@@ -114,7 +120,9 @@ class Statement(BaseModel):
     not_resource: list[str] | str | None = Field(default=None, alias="NotResource")
     condition: dict[str, dict[str, Any]] | None = Field(default=None, alias="Condition")
     principal: dict[str, Any] | str | None = Field(default=None, alias="Principal")
-    not_principal: dict[str, Any] | str | None = Field(default=None, alias="NotPrincipal")
+    not_principal: dict[str, Any] | str | None = Field(
+        default=None, alias="NotPrincipal"
+    )
     # Line number metadata (populated during parsing)
     line_number: int | None = Field(default=None, exclude=True)
 
@@ -155,7 +163,9 @@ class ValidationIssue(BaseModel):
     severity: str  # "error", "warning", "info" OR "critical", "high", "medium", "low"
     statement_sid: str | None = None
     statement_index: int
-    issue_type: str  # "invalid_action", "invalid_condition_key", "invalid_resource", etc.
+    issue_type: (
+        str  # "invalid_action", "invalid_condition_key", "invalid_resource", etc.
+    )
     message: str
     action: str | None = None
     resource: str | None = None
@@ -236,23 +246,41 @@ class ValidationIssue(BaseModel):
         # Main issue header with statement context
         parts.append(f"{emoji} **{self.severity.upper()}** in **{statement_context}**")
         parts.append("")
+
+        # Show message immediately (not collapsed)
         parts.append(self.message)
 
-        # Add affected fields section if any are present
-        if self.action or self.resource or self.condition_key:
-            parts.append("")
-            parts.append("**Affected Fields:**")
-            if self.action:
-                parts.append(f"  - Action: `{self.action}`")
-            if self.resource:
-                parts.append(f"  - Resource: `{self.resource}`")
-            if self.condition_key:
-                parts.append(f"  - Condition Key: `{self.condition_key}`")
+        # Put additional details in collapsible section if there are any
+        has_details = bool(
+            self.action or self.resource or self.condition_key or self.suggestion
+        )
 
-        # Add suggestion if present
-        if self.suggestion:
+        if has_details:
             parts.append("")
-            parts.append(f"💡 **Suggestion**: {self.suggestion}")
+            parts.append("<details>")
+            parts.append("<summary>📋 <b>View Details</b></summary>")
+            parts.append("")
+            parts.append("")  # Extra spacing after opening
+
+            # Add affected fields section if any are present
+            if self.action or self.resource or self.condition_key:
+                parts.append("**Affected Fields:**")
+                if self.action:
+                    parts.append(f"  - Action: `{self.action}`")
+                if self.resource:
+                    parts.append(f"  - Resource: `{self.resource}`")
+                if self.condition_key:
+                    parts.append(f"  - Condition Key: `{self.condition_key}`")
+                parts.append("")
+
+            # Add suggestion if present
+            if self.suggestion:
+                parts.append("**💡 Suggested Fix:**")
+                parts.append("")
+                parts.append(self.suggestion)
+
+            parts.append("")
+            parts.append("</details>")
 
         return "\n".join(parts)
 
@@ -300,7 +328,9 @@ class ValidationReport(BaseModel):
         parts.append(f"{self.total_issues} total issues")
 
         # Show breakdown if there are issues
-        if self.total_issues > 0 and (self.validity_issues > 0 or self.security_issues > 0):
+        if self.total_issues > 0 and (
+            self.validity_issues > 0 or self.security_issues > 0
+        ):
             breakdown_parts = []
             if self.validity_issues > 0:
                 breakdown_parts.append(f"{self.validity_issues} validity")

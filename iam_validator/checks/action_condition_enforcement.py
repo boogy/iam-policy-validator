@@ -794,7 +794,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         # Build example based on condition key type
         if example:
-            parts.append(f"Example:\n{example}")
+            parts.append(f"Example:\n```json\n{example}\n```")
         else:
             # Auto-generate example
             example_lines = ['Add to "Condition" block:', f'  "{operator}": {{']

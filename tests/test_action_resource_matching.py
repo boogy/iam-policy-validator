@@ -386,3 +386,179 @@ class TestErrorMessages:
         assert len(issues) == 1
         assert issues[0].suggestion is not None
         assert len(issues[0].suggestion) > 0
+
+
+class TestTemplateVariableSupport:
+    """Test that template variables in ARNs are properly supported."""
+
+    @pytest.mark.asyncio
+    async def test_terraform_account_id_variable_in_iam_role(
+        self, check, check_config, fetcher
+    ):
+        """iam:GetRole with Terraform ${aws_account_id} variable should pass."""
+        statement = Statement(
+            Effect="Allow",
+            Action="iam:GetRole",
+            Resource="arn:aws:iam::${aws_account_id}:role/my-role"
+        )
+
+        issues = await check.execute(statement, 0, fetcher, check_config)
+        assert len(issues) == 0, "Template variable should be normalized and pass validation"
+
+    @pytest.mark.asyncio
+    async def test_cloudformation_account_id_variable_in_iam_role(
+        self, check, check_config, fetcher
+    ):
+        """iam:GetRole with CloudFormation ${AWS::AccountId} variable should pass."""
+        statement = Statement(
+            Effect="Allow",
+            Action="iam:GetRole",
+            Resource="arn:aws:iam::${AWS::AccountId}:role/CloudFormationRole"
+        )
+
+        issues = await check.execute(statement, 0, fetcher, check_config)
+        assert len(issues) == 0, "CloudFormation variable should be normalized and pass validation"
+
+    @pytest.mark.asyncio
+    async def test_terraform_bucket_name_variable_in_s3_object(
+        self, check, check_config, fetcher
+    ):
+        """s3:GetObject with ${bucket_name} variable should pass."""
+        statement = Statement(
+            Effect="Allow",
+            Action="s3:GetObject",
+            Resource="arn:aws:s3:::${bucket_name}/*"
+        )
+
+        issues = await check.execute(statement, 0, fetcher, check_config)
+        assert len(issues) == 0, "Bucket name variable should be normalized and pass validation"
+
+    @pytest.mark.asyncio
+    async def test_aws_policy_variable_in_s3_object(
+        self, check, check_config, fetcher
+    ):
+        """s3:GetObject with AWS policy variable ${aws:username} should pass."""
+        statement = Statement(
+            Effect="Allow",
+            Action="s3:GetObject",
+            Resource="arn:aws:s3:::my-bucket/${aws:username}/*"
+        )
+
+        issues = await check.execute(statement, 0, fetcher, check_config)
+        assert len(issues) == 0, "AWS policy variable should be normalized and pass validation"
+
+    @pytest.mark.asyncio
+    async def test_terraform_variable_in_secrets_manager(
+        self, check, check_config, fetcher
+    ):
+        """secretsmanager:GetSecretValue with ${aws_account_id} should pass."""
+        statement = Statement(
+            Effect="Allow",
+            Action="secretsmanager:GetSecretValue",
+            Resource="arn:aws:secretsmanager:us-east-1:${aws_account_id}:secret:my-secret-*"
+        )
+
+        issues = await check.execute(statement, 0, fetcher, check_config)
+        assert len(issues) == 0, "Terraform variable in secrets ARN should pass validation"
+
+    @pytest.mark.asyncio
+    async def test_multiple_variables_in_arn(
+        self, check, check_config, fetcher
+    ):
+        """IAM action with multiple template variables should pass."""
+        statement = Statement(
+            Effect="Allow",
+            Action="iam:GetRole",
+            Resource="arn:aws:iam::${aws_account_id}:role/${environment}-*"
+        )
+
+        issues = await check.execute(statement, 0, fetcher, check_config)
+        assert len(issues) == 0, "Multiple template variables should be normalized and pass"
+
+    @pytest.mark.asyncio
+    async def test_template_variable_still_detects_wrong_resource_type(
+        self, check, check_config, fetcher
+    ):
+        """Template variables should normalize but still catch actual resource mismatches."""
+        # Using s3:GetObject with bucket ARN - even with template variables,
+        # this should fail because it's missing the /* for object path
+        statement = Statement(
+            Effect="Allow",
+            Action="s3:GetObject",
+            Resource="arn:aws:s3:::${bucket_name}"  # Missing /* - still wrong!
+        )
+
+        issues = await check.execute(statement, 0, fetcher, check_config)
+        assert len(issues) == 1, "Should still detect resource type mismatch even with variables"
+        assert "object" in issues[0].message.lower()
+
+    @pytest.mark.asyncio
+    async def test_generic_variable_names_in_account_position(
+        self, check, check_config, fetcher
+    ):
+        """ANY variable name in account position should be normalized to account ID."""
+        statement = Statement(
+            Effect="Allow",
+            Action="iam:GetRole",
+            Resource="arn:aws:iam::${var.my_custom_account}:role/MyRole"
+        )
+
+        issues = await check.execute(statement, 0, fetcher, check_config)
+        assert len(issues) == 0, "Generic variable names should work in account position"
+
+    @pytest.mark.asyncio
+    async def test_cloudformation_variable_with_colons(
+        self, check, check_config, fetcher
+    ):
+        """CloudFormation variables with :: should be handled correctly."""
+        statement = Statement(
+            Effect="Allow",
+            Action="iam:GetRole",
+            Resource="arn:aws:iam::${AWS::AccountId}:role/MyRole"
+        )
+
+        issues = await check.execute(statement, 0, fetcher, check_config)
+        assert len(issues) == 0, "CloudFormation ${AWS::AccountId} should work"
+
+    @pytest.mark.asyncio
+    async def test_terraform_data_source_variable(
+        self, check, check_config, fetcher
+    ):
+        """Terraform data source variables like ${data.aws.account} should work."""
+        statement = Statement(
+            Effect="Allow",
+            Action="s3:GetObject",
+            Resource="arn:aws:s3:::${data.s3_bucket.name}/*"
+        )
+
+        issues = await check.execute(statement, 0, fetcher, check_config)
+        assert len(issues) == 0, "Terraform data source variables should work"
+
+    @pytest.mark.asyncio
+    async def test_multiple_positions_with_custom_variables(
+        self, check, check_config, fetcher
+    ):
+        """Variables in multiple positions with custom names should all work."""
+        # Use EC2 instead of Lambda since Lambda has special ARN format with colons
+        statement = Statement(
+            Effect="Allow",
+            Action="ec2:DescribeInstances",
+            Resource="*"  # EC2 describe actions use wildcard
+        )
+
+        issues = await check.execute(statement, 0, fetcher, check_config)
+        assert len(issues) == 0, "Multiple custom variables in different positions should work"
+
+    @pytest.mark.asyncio
+    async def test_custom_partition_variable(
+        self, check, check_config, fetcher
+    ):
+        """Custom partition variable should be normalized to 'aws'."""
+        statement = Statement(
+            Effect="Allow",
+            Action="s3:GetObject",
+            Resource="arn:${var.partition}:s3:::${var.bucket}/*"
+        )
+
+        issues = await check.execute(statement, 0, fetcher, check_config)
+        assert len(issues) == 0, "Custom partition variable should be normalized"

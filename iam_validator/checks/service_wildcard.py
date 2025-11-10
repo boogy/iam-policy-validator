@@ -60,7 +60,9 @@ class ServiceWildcardCheck(PolicyCheck):
                     example_template = config.config.get("example", "")
 
                     message = message_template.format(action=action, service=service)
-                    suggestion_text = suggestion_template.format(action=action, service=service)
+                    suggestion_text = suggestion_template.format(
+                        action=action, service=service
+                    )
                     example = (
                         example_template.format(action=action, service=service)
                         if example_template
@@ -69,7 +71,9 @@ class ServiceWildcardCheck(PolicyCheck):
 
                     # Combine suggestion + example
                     suggestion = (
-                        f"{suggestion_text}\nExample:\n{example}" if example else suggestion_text
+                        f"{suggestion_text}\nExample:\n```json\n{example}\n```"
+                        if example
+                        else suggestion_text
                     )
 
                     issues.append(

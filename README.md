@@ -170,6 +170,12 @@ jobs:
 - ✅ Simple, declarative configuration
 - ✅ Perfect for CI/CD workflows
 
+**Note:** The action uses the automatic `github.token` by default. If you need to use a custom token (e.g., for cross-repo comments or fine-grained permissions), add:
+```yaml
+        with:
+          github-token: ${{ secrets.MY_CUSTOM_TOKEN }}
+```
+
 #### With AWS Access Analyzer (Standalone Action)
 
 Use AWS's official policy validation service:
@@ -434,11 +440,12 @@ See [examples/configs/full-reference-config.yaml](examples/configs/full-referenc
 | `recursive`        | Recursively search directories for policy files             | No       | `true`  |
 
 #### GitHub Integration
-| Input            | Description                                               | Required | Default |
-| ---------------- | --------------------------------------------------------- | -------- | ------- |
-| `post-comment`   | Post validation summary as PR conversation comment        | No       | `true`  |
-| `create-review`  | Create line-specific review comments on PR files          | No       | `true`  |
-| `github-summary` | Write summary to GitHub Actions job summary (Actions tab) | No       | `false` |
+| Input            | Description                                               | Required | Default        |
+| ---------------- | --------------------------------------------------------- | -------- | -------------- |
+| `github-token`   | GitHub token for posting comments and reviews             | No       | `github.token` |
+| `post-comment`   | Post validation summary as PR conversation comment        | No       | `true`         |
+| `create-review`  | Create line-specific review comments on PR files          | No       | `true`         |
+| `github-summary` | Write summary to GitHub Actions job summary (Actions tab) | No       | `false`        |
 
 #### Output Options
 | Input         | Description                                                                      | Required | Default   |

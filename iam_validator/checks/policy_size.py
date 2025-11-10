@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
+from iam_validator.core.constants import AWS_POLICY_SIZE_LIMITS
 from iam_validator.core.models import Statement, ValidationIssue
 
 if TYPE_CHECKING:
@@ -25,13 +26,8 @@ if TYPE_CHECKING:
 class PolicySizeCheck(PolicyCheck):
     """Validates that IAM policies don't exceed AWS size limits."""
 
-    # AWS IAM policy size limits (in characters, excluding whitespace)
-    DEFAULT_LIMITS = {
-        "managed": 6144,
-        "inline_user": 2048,
-        "inline_group": 5120,
-        "inline_role": 10240,
-    }
+    # AWS IAM policy size limits (loaded from constants module)
+    DEFAULT_LIMITS = AWS_POLICY_SIZE_LIMITS
 
     @property
     def check_id(self) -> str:

@@ -238,7 +238,27 @@ class GitHubIntegration:
         Returns:
             True if all required environment variables are set
         """
-        return all([self.token, self.repository, self.pr_number])
+        is_valid = all([self.token, self.repository, self.pr_number])
+
+        # Provide helpful debug info when not configured
+        if not is_valid:
+            missing = []
+            if not self.token:
+                missing.append("GITHUB_TOKEN")
+            if not self.repository:
+                missing.append("GITHUB_REPOSITORY")
+            if not self.pr_number:
+                missing.append("GITHUB_PR_NUMBER")
+
+            logger.debug(f"GitHub integration missing: {', '.join(missing)}")
+            if not self.pr_number and self.token and self.repository:
+                logger.info(
+                    "GitHub PR integration requires GITHUB_PR_NUMBER. "
+                    "This is only available when running on pull request events. "
+                    "Current event may not have PR context."
+                )
+
+        return is_valid
 
     async def _make_request(
         self, method: str, endpoint: str, **kwargs: Any
