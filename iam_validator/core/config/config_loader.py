@@ -15,8 +15,8 @@ from typing import Any
 import yaml
 
 from iam_validator.core.check_registry import CheckConfig, CheckRegistry, PolicyCheck
-from iam_validator.core.constants import DEFAULT_CONFIG_FILENAMES
 from iam_validator.core.config.defaults import get_default_config
+from iam_validator.core.constants import DEFAULT_CONFIG_FILENAMES
 
 logger = logging.getLogger(__name__)
 
