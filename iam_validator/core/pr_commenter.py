@@ -8,6 +8,11 @@ import json
 import logging
 from typing import Any
 
+from iam_validator.core.constants import (
+    BOT_IDENTIFIER,
+    REVIEW_IDENTIFIER,
+    SUMMARY_IDENTIFIER,
+)
 from iam_validator.core.models import ValidationIssue, ValidationReport
 from iam_validator.integrations.github_integration import GitHubIntegration, ReviewEvent
 
@@ -17,10 +22,10 @@ logger = logging.getLogger(__name__)
 class PRCommenter:
     """Posts validation findings as PR comments."""
 
-    # Identifier for bot comments (used for cleanup/updates)
-    BOT_IDENTIFIER = "🤖 IAM Policy Validator"
-    SUMMARY_IDENTIFIER = "<!-- iam-policy-validator-summary -->"
-    REVIEW_IDENTIFIER = "<!-- iam-policy-validator-review -->"
+    # Load identifiers from constants module for consistency
+    BOT_IDENTIFIER = BOT_IDENTIFIER
+    SUMMARY_IDENTIFIER = SUMMARY_IDENTIFIER
+    REVIEW_IDENTIFIER = REVIEW_IDENTIFIER
 
     def __init__(
         self,
@@ -60,7 +65,11 @@ class PRCommenter:
             self.github = GitHubIntegration()
 
         if not self.github.is_configured():
-            logger.error("GitHub integration not configured")
+            logger.error(
+                "GitHub integration not configured. "
+                "Required: GITHUB_TOKEN, GITHUB_REPOSITORY, and GITHUB_PR_NUMBER environment variables. "
+                "Ensure your workflow is triggered by a pull_request event."
+            )
             return False
 
         success = True
@@ -116,6 +125,14 @@ class PRCommenter:
             if not result.issues:
                 continue
 
+            # Convert absolute path to relative path for GitHub
+            relative_path = self._make_relative_path(result.policy_file)
+            if not relative_path:
+                logger.warning(
+                    f"Could not determine relative path for {result.policy_file}, skipping review comments"
+                )
+                continue
+
             # Try to determine line numbers from the policy file
             line_mapping = self._get_line_mapping(result.policy_file)
 
@@ -125,14 +142,21 @@ class PRCommenter:
 
                 if line_number:
                     comment = {
-                        "path": result.policy_file,
+                        "path": relative_path,  # Use relative path for GitHub
                         "line": line_number,
                         "body": issue.to_pr_comment(),
                     }
 
-                    if result.policy_file not in comments_by_file:
-                        comments_by_file[result.policy_file] = []
-                    comments_by_file[result.policy_file].append(comment)
+                    if relative_path not in comments_by_file:
+                        comments_by_file[relative_path] = []
+                    comments_by_file[relative_path].append(comment)
+                    logger.debug(
+                        f"Prepared review comment for {relative_path}:{line_number} - {issue.issue_type}"
+                    )
+                else:
+                    logger.debug(
+                        f"Could not determine line number for issue in {relative_path}: {issue.issue_type}"
+                    )
 
         # If no line-specific comments, skip
         if not comments_by_file:
@@ -144,6 +168,14 @@ class PRCommenter:
         for file_comments in comments_by_file.values():
             all_comments.extend(file_comments)
 
+        logger.info(
+            f"Posting {len(all_comments)} review comments across {len(comments_by_file)} file(s)"
+        )
+
+        # Log files that will receive comments (for debugging)
+        for file_path, file_comments in comments_by_file.items():
+            logger.debug(f"  {file_path}: {len(file_comments)} comment(s)")
+
         # Determine review event based on fail_on_severities config
         # Check if any issue has a severity that should trigger REQUEST_CHANGES
         has_blocking_issues = any(
@@ -154,21 +186,75 @@ class PRCommenter:
 
         # Set review event: request changes if any blocking issues, else comment
         event = ReviewEvent.REQUEST_CHANGES if has_blocking_issues else ReviewEvent.COMMENT
+        logger.info(f"Creating PR review with event: {event.value}")
 
-        # Post review with comments (include identifier in review body for cleanup)
-        review_body = (
-            f"{self.REVIEW_IDENTIFIER}\n\n"
-            f"🤖 **IAM Policy Validator**\n\n"
-            f"## Validation Results\n\n"
-            f"Found {report.total_issues} issues across {report.total_policies} policies.\n"
-            f"See inline comments for details."
-        )
+        # Post review with comments (use minimal body since summary comment has the details)
+        # Only include the identifier for cleanup purposes
+        review_body = f"{self.REVIEW_IDENTIFIER}"
 
-        return await self.github.create_review_with_comments(
+        success = await self.github.create_review_with_comments(
             comments=all_comments,
             body=review_body,
             event=event,
         )
+
+        if success:
+            logger.info(f"Successfully created PR review with {len(all_comments)} comments")
+        else:
+            logger.error("Failed to create PR review")
+
+        return success
+
+    def _make_relative_path(self, policy_file: str) -> str | None:
+        """Convert absolute path to relative path for GitHub.
+
+        GitHub PR review comments require paths relative to the repository root.
+
+        Args:
+            policy_file: Absolute or relative path to policy file
+
+        Returns:
+            Relative path from repository root, or None if cannot be determined
+        """
+        import os
+        from pathlib import Path
+
+        # If already relative, use as-is
+        if not os.path.isabs(policy_file):
+            return policy_file
+
+        # Try to get workspace path from environment
+        workspace = os.getenv("GITHUB_WORKSPACE")
+        if workspace:
+            try:
+                # Convert to Path objects for proper path handling
+                abs_file_path = Path(policy_file).resolve()
+                workspace_path = Path(workspace).resolve()
+
+                # Check if file is within workspace
+                if abs_file_path.is_relative_to(workspace_path):
+                    relative = abs_file_path.relative_to(workspace_path)
+                    # Use forward slashes for GitHub (works on all platforms)
+                    return str(relative).replace("\\", "/")
+            except (ValueError, OSError) as e:
+                logger.debug(f"Could not compute relative path for {policy_file}: {e}")
+
+        # Fallback: try current working directory
+        try:
+            cwd = Path.cwd()
+            abs_file_path = Path(policy_file).resolve()
+            if abs_file_path.is_relative_to(cwd):
+                relative = abs_file_path.relative_to(cwd)
+                return str(relative).replace("\\", "/")
+        except (ValueError, OSError) as e:
+            logger.debug(f"Could not compute relative path from CWD for {policy_file}: {e}")
+
+        # If all else fails, return None
+        logger.warning(
+            f"Could not determine relative path for {policy_file}. "
+            "Ensure GITHUB_WORKSPACE is set or file is in current directory."
+        )
+        return None
 
     def _get_line_mapping(self, policy_file: str) -> dict[int, int]:
         """Get mapping of statement indices to line numbers.

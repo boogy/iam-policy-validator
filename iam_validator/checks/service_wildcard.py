@@ -69,7 +69,9 @@ class ServiceWildcardCheck(PolicyCheck):
 
                     # Combine suggestion + example
                     suggestion = (
-                        f"{suggestion_text}\nExample:\n{example}" if example else suggestion_text
+                        f"{suggestion_text}\nExample:\n```json\n{example}\n```"
+                        if example
+                        else suggestion_text
                     )
 
                     issues.append(

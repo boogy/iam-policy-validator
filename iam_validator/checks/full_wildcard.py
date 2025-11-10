@@ -50,7 +50,11 @@ class FullWildcardCheck(PolicyCheck):
             example = config.config.get("example", "")
 
             # Combine suggestion + example
-            suggestion = f"{suggestion_text}\nExample:\n{example}" if example else suggestion_text
+            suggestion = (
+                f"{suggestion_text}\nExample:\n```json\n{example}\n```"
+                if example
+                else suggestion_text
+            )
 
             issues.append(
                 ValidationIssue(

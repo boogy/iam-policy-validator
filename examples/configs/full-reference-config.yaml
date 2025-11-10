@@ -134,6 +134,34 @@ settings:
     # - medium  # Uncomment to fail on medium severity
     # - warning  # Uncomment to fail on IAM validity warnings
 
+  # Template Variable Support (applies to all ARN validation checks)
+  #
+  # When enabled, the validator is POSITION-AWARE and supports ANY variable name
+  # in template variables, not just predefined ones. Variables are normalized based
+  # on their position in the ARN structure:
+  #
+  # Supported IaC Tools:
+  #   - Terraform/Terragrunt: ${var.name}, ${local.value}, ${data.source.attr}
+  #   - CloudFormation: ${AWS::AccountId}, ${AWS::Region}, ${MyParameter}
+  #   - Pulumi: ${myVariable}, ${myStack.output}
+  #   - AWS Policy Variables: ${aws:username}, ${aws:PrincipalTag/tag-key}
+  #
+  # Position-aware normalization examples:
+  #   Partition:   ${var.partition} → aws
+  #   Service:     ${var.service} → s3
+  #   Region:      ${var.region} → us-east-1
+  #   Account ID:  ${var.account_id} → 123456789012
+  #   Resource:    ${var.bucket_name} → placeholder
+  #
+  # Example ARNs that work:
+  #   arn:aws:iam::${var.account}:role/MyRole ✓
+  #   arn:aws:iam::${AWS::AccountId}:role/MyRole ✓
+  #   arn:${local.partition}:s3:::${data.bucket.name}/* ✓
+  #   arn:aws:s3:::${MY_CUSTOM_VAR}/* ✓
+  #
+  # Set to false to strictly validate ARN format without template support (default: true)
+  allow_template_variables: true
+
 # ============================================================================
 # BUILT-IN CHECKS - AWS Validation (17 checks total)
 # ============================================================================
@@ -259,9 +287,13 @@ resource_validation:
   enabled: true
   severity: error
   description: "Validates ARN format for resources"
-  # Regex pattern for ARN validation
-  # Pattern allows wildcards (*) in region and account fields
-  arn_pattern: "^arn:(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f):[a-z0-9\\-]+:[a-z0-9\\-*]*:[0-9*]*:.+$"
+
+  # Regex pattern for ARN validation (optional - override default if needed)
+  # Default pattern defined in: iam_validator/core/constants.py (DEFAULT_ARN_VALIDATION_PATTERN)
+  # Pattern allows wildcards (*) in region and account fields for flexibility
+  # Only override if you need stricter or more lenient validation
+  # arn_pattern: "^arn:(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f):[a-z0-9\\-]+:[a-z0-9\\-*]*:[0-9*]*:.+$"
+
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
@@ -423,7 +455,7 @@ policy_type_validation:
 #   - s3:ListBucket with object ARN (needs bucket ARN without /)
 action_resource_matching:
   enabled: true
-  severity: error  # IAM validity error - these policies won't work as expected
+  severity: error # IAM validity error - these policies won't work as expected
   description: "Validates that resources match required types for actions (including account-level actions)"
 
   # Example ignore patterns (commented out by default)

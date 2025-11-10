@@ -197,6 +197,11 @@ class AccessAnalyzerReport:
         """Total number of suggestions across all policies."""
         return sum(r.suggestion_count for r in self.results)
 
+    @property
+    def policies_with_findings(self) -> int:
+        """Number of policies that have at least one finding."""
+        return sum(1 for r in self.results if r.findings)
+
 
 class AccessAnalyzerValidator:
     """Validates IAM policies using AWS IAM Access Analyzer."""

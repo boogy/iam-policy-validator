@@ -143,7 +143,11 @@ class SensitiveActionCheck(PolicyCheck):
             )
 
             # Combine suggestion + example
-            suggestion = f"{suggestion_text}\n\nExample:\n{example}" if example else suggestion_text
+            suggestion = (
+                f"{suggestion_text}\n\nExample:\n```json\n{example}\n```"
+                if example
+                else suggestion_text
+            )
 
             # Determine severity based on the highest severity action in the list
             # If single action, use its category severity

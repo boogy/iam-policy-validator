@@ -108,6 +108,11 @@ inputs:
     required: false
     default: "warning"
 
+  github-token:
+    description: "GitHub token for posting comments and reviews. Defaults to automatic github.token"
+    required: false
+    default: ${{ github.token }}
+
 outputs:
   validation-result:
     description: "Validation result (success or failure)"
@@ -141,18 +146,37 @@ runs:
       uses: astral-sh/setup-uv@85856786d1ce8acfbcc2f13a5f3fbd6b938f9f41 # v7.0.0
       with:
         enable-cache: true
-
-    - name: Cache dependencies
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.2.0
-      with:
-        path: ${{ github.action_path }}/.venv
-        key: ${{ runner.os }}-uv-${{ hashFiles(format('{0}/pyproject.toml', github.action_path)) }}
-        restore-keys: |
-          ${{ runner.os }}-uv-
+        cache-suffix: ci # Prune cache in CI to reduce bloat
 
     - name: Sync dependencies
       working-directory: ${{ github.action_path }}
       run: uv sync --frozen
+      shell: bash
+
+    - name: Get current week for cache key
+      id: week
+      run: echo "week=$(date +%Y-W%V)" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Restore AWS service definitions cache
+      id: cache-aws-services
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.cache/iam-validator/aws_services
+        # Cache key refreshes weekly to get latest AWS service updates
+        key: aws-services-${{ runner.os }}-${{ steps.week.outputs.week }}
+        restore-keys: |
+          aws-services-${{ runner.os }}-
+
+    - name: Check cache status
+      run: |
+        if [ -d ~/.cache/iam-validator/aws_services ]; then
+          echo "✅ Cache directory exists"
+          echo "📁 Cache files: $(ls -1 ~/.cache/iam-validator/aws_services | wc -l)"
+          ls -lh ~/.cache/iam-validator/aws_services | head -5
+        else
+          echo "❌ Cache directory does not exist - will fetch from API"
+        fi
       shell: bash
 
     - name: Pre-validate IAM Policy Files
@@ -257,9 +281,11 @@ runs:
       if: steps.prevalidate.outputs.iam-policy-count > 0
       working-directory: ${{ github.action_path }}
       env:
-        GITHUB_TOKEN: ${{ github.token }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
-        GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        GITHUB_WORKSPACE: ${{ github.workspace }}
+        # Try multiple ways to get PR number for different event types
+        GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.number }}
       run: |
         set -e
 
@@ -411,6 +437,13 @@ runs:
         # Exit with the validation result
         exit ${EXIT_CODE:-0}
       shell: bash
+
+    - name: Save AWS service definitions cache
+      if: always()
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.cache/iam-validator/aws_services
+        key: aws-services-${{ runner.os }}-${{ steps.week.outputs.week }}
 
     - name: Upload validation report
       if: always() && inputs.output-file != ''

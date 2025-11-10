@@ -40,18 +40,28 @@ logger = logging.getLogger(__name__)
 
 
 class CompiledPatterns:
-    """Pre-compiled regex patterns for validation."""
+    """Pre-compiled regex patterns for validation.
+
+    This class implements the Singleton pattern to ensure patterns are compiled only once
+    and reused across all instances for better performance.
+    """
 
     _instance = None
+    _initialized = False
 
     def __new__(cls) -> "CompiledPatterns":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._initialize()
         return cls._instance
 
-    def _initialize(self) -> None:
-        """Initialize compiled patterns."""
+    def __init__(self) -> None:
+        """Initialize compiled patterns (only once due to Singleton pattern)."""
+        # Only initialize once, even if __init__ is called multiple times
+        if CompiledPatterns._initialized:
+            return
+
+        CompiledPatterns._initialized = True
+
         # ARN validation pattern
         self.arn_pattern = re.compile(
             r"^arn:(?P<partition>(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f)):"

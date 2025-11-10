@@ -27,6 +27,8 @@ from iam_validator.core.models import Statement, ValidationIssue
 from iam_validator.sdk.arn_matching import (
     arn_strictly_valid,
     convert_aws_pattern_to_wildcard,
+    has_template_variables,
+    normalize_template_variables,
 )
 
 
@@ -70,6 +72,13 @@ class ActionResourceMatchingCheck(PolicyCheck):
             List of ValidationIssue objects for resource mismatches
         """
         issues = []
+
+        # Check if template variable support is enabled (default: true)
+        # Try global settings first, then check-specific config
+        allow_template_variables = config.root_config.get("settings", {}).get(
+            "allow_template_variables",
+            config.config.get("allow_template_variables", True),
+        )
 
         # Get actions and resources
         actions = statement.get_actions()
@@ -157,7 +166,13 @@ class ActionResourceMatchingCheck(PolicyCheck):
 
                 # Check if any policy resource matches this ARN pattern
                 for resource in resources:
-                    if arn_strictly_valid(wildcard_pattern, resource, resource_name):
+                    # Normalize template variables (Terraform/CloudFormation) before matching
+                    # This allows policies with ${aws_account_id}, ${AWS::AccountId}, etc.
+                    validation_resource = resource
+                    if allow_template_variables and has_template_variables(resource):
+                        validation_resource = normalize_template_variables(resource)
+
+                    if arn_strictly_valid(wildcard_pattern, validation_resource, resource_name):
                         match_found = True
                         break
 
@@ -185,8 +200,8 @@ class ActionResourceMatchingCheck(PolicyCheck):
                 issues.append(
                     self._create_mismatch_issue(
                         action=action,
-                        required_format=required_formats[0]["format"] if required_formats else "",
-                        required_type=required_formats[0]["type"] if required_formats else "",
+                        required_format=(required_formats[0]["format"] if required_formats else ""),
+                        required_type=(required_formats[0]["type"] if required_formats else ""),
                         provided_resources=resources,
                         statement_idx=statement_idx,
                         statement_sid=statement_sid,
@@ -236,9 +251,11 @@ class ActionResourceMatchingCheck(PolicyCheck):
             issue_type="resource_mismatch",
             message=message,
             action=action,
-            resource=", ".join(provided_resources)
-            if len(provided_resources) <= 3
-            else f"{provided_resources[0]}...",
+            resource=(
+                ", ".join(provided_resources)
+                if len(provided_resources) <= 3
+                else f"{provided_resources[0]}..."
+            ),
             suggestion=suggestion,
             line_number=line_number,
         )

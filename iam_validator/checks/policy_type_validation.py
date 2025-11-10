@@ -71,6 +71,7 @@ async def execute_policy(
                         line_number=statement.line_number,
                         suggestion="Add a Principal element to specify who can access this resource.\n"
                         "Example:\n"
+                        "```json\n"
                         "{\n"
                         '  "Effect": "Allow",\n'
                         '  "Principal": {\n'
@@ -78,7 +79,8 @@ async def execute_policy(
                         "  },\n"
                         '  "Action": "s3:GetObject",\n'
                         '  "Resource": "arn:aws:s3:::bucket/*"\n'
-                        "}",
+                        "}\n"
+                        "```",
                     )
                 )
 
@@ -101,11 +103,13 @@ async def execute_policy(
                         line_number=statement.line_number,
                         suggestion="Remove the Principal element from this identity policy statement.\n"
                         "Example:\n"
+                        "```json\n"
                         "{\n"
                         '  "Effect": "Allow",\n'
                         '  "Action": "s3:GetObject",\n'
                         '  "Resource": "arn:aws:s3:::bucket/*"\n'
-                        "}",
+                        "}\n"
+                        "```",
                     )
                 )
 
@@ -127,6 +131,7 @@ async def execute_policy(
                         line_number=statement.line_number,
                         suggestion="Remove the Principal element from this SCP statement.\n"
                         "Example:\n"
+                        "```json\n"
                         "{\n"
                         '  "Effect": "Deny",\n'
                         '  "Action": "ec2:*",\n'
@@ -136,7 +141,8 @@ async def execute_policy(
                         '      "ec2:Region": ["us-east-1", "us-west-2"]\n'
                         "    }\n"
                         "  }\n"
-                        "}",
+                        "}\n"
+                        "```",
                     )
                 )
 

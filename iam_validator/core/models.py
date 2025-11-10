@@ -236,23 +236,39 @@ class ValidationIssue(BaseModel):
         # Main issue header with statement context
         parts.append(f"{emoji} **{self.severity.upper()}** in **{statement_context}**")
         parts.append("")
+
+        # Show message immediately (not collapsed)
         parts.append(self.message)
 
-        # Add affected fields section if any are present
-        if self.action or self.resource or self.condition_key:
-            parts.append("")
-            parts.append("**Affected Fields:**")
-            if self.action:
-                parts.append(f"  - Action: `{self.action}`")
-            if self.resource:
-                parts.append(f"  - Resource: `{self.resource}`")
-            if self.condition_key:
-                parts.append(f"  - Condition Key: `{self.condition_key}`")
+        # Put additional details in collapsible section if there are any
+        has_details = bool(self.action or self.resource or self.condition_key or self.suggestion)
 
-        # Add suggestion if present
-        if self.suggestion:
+        if has_details:
             parts.append("")
-            parts.append(f"💡 **Suggestion**: {self.suggestion}")
+            parts.append("<details>")
+            parts.append("<summary>📋 <b>View Details</b></summary>")
+            parts.append("")
+            parts.append("")  # Extra spacing after opening
+
+            # Add affected fields section if any are present
+            if self.action or self.resource or self.condition_key:
+                parts.append("**Affected Fields:**")
+                if self.action:
+                    parts.append(f"  - Action: `{self.action}`")
+                if self.resource:
+                    parts.append(f"  - Resource: `{self.resource}`")
+                if self.condition_key:
+                    parts.append(f"  - Condition Key: `{self.condition_key}`")
+                parts.append("")
+
+            # Add suggestion if present
+            if self.suggestion:
+                parts.append("**💡 Suggested Fix:**")
+                parts.append("")
+                parts.append(self.suggestion)
+
+            parts.append("")
+            parts.append("</details>")
 
         return "\n".join(parts)
 

@@ -16,6 +16,7 @@ import yaml
 
 from iam_validator.core.check_registry import CheckConfig, CheckRegistry, PolicyCheck
 from iam_validator.core.config.defaults import get_default_config
+from iam_validator.core.constants import DEFAULT_CONFIG_FILENAMES
 
 logger = logging.getLogger(__name__)
 
@@ -127,12 +128,8 @@ class ValidatorConfig:
 class ConfigLoader:
     """Loads configuration from various sources."""
 
-    DEFAULT_CONFIG_NAMES = [
-        "iam-validator.yaml",
-        "iam-validator.yml",
-        ".iam-validator.yaml",  # Support hidden files as fallback
-        ".iam-validator.yml",
-    ]
+    # Load default config names from constants module
+    DEFAULT_CONFIG_NAMES = DEFAULT_CONFIG_FILENAMES
 
     @staticmethod
     def find_config_file(

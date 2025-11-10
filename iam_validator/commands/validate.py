@@ -484,7 +484,9 @@ Examples:
                 # In streaming mode, don't cleanup comments (we want to keep earlier files)
                 # Cleanup will happen once at the end
                 commenter = PRCommenter(
-                    github, cleanup_old_comments=False, fail_on_severities=fail_on_severities
+                    github,
+                    cleanup_old_comments=False,
+                    fail_on_severities=fail_on_severities,
                 )
 
                 # Create a mini-report for just this file
@@ -547,7 +549,7 @@ Examples:
             # Issue breakdown by severity if there are issues
             if report.total_issues > 0:
                 summary_parts.append("")
-                summary_parts.append("## Issues by Severity")
+                summary_parts.append("## 📊 Issues by Severity")
                 summary_parts.append("")
 
                 # Count issues by severity
