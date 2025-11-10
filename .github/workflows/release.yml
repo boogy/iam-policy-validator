@@ -5,9 +5,7 @@ on:
     tags:
       - "v*.*.*"
 
-permissions:
-  contents: write
-  id-token: write
+permissions: read-all
 
 env:
   PYTHON_VERSION: "3.13"
@@ -17,6 +15,9 @@ jobs:
     name: Build and Create Release
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: write  # Required for creating GitHub releases
+      id-token: write  # Required for PyPI trusted publishing
 
     steps:
       - name: Checkout code
