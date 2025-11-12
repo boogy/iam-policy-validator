@@ -1081,4 +1081,5 @@ class TestPrincipalConditionRequirements:
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 1
-        assert "arn:aws:s3:::my-bucket" in issues[0].suggestion
+        assert issues[0].example is not None
+        assert "arn:aws:s3:::my-bucket" in issues[0].example

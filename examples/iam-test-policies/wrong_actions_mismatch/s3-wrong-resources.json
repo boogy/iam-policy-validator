@@ -5,36 +5,31 @@
       "Sid": "GetObjectWithBucketARN",
       "Effect": "Allow",
       "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::my-bucket",
-      "Comment": "WRONG: s3:GetObject requires object ARN (arn:aws:s3:::my-bucket/*)"
+      "Resource": "arn:aws:s3:::my-bucket"
     },
     {
       "Sid": "ListBucketWithObjectARN",
       "Effect": "Allow",
       "Action": "s3:ListBucket",
-      "Resource": "arn:aws:s3:::my-bucket/*",
-      "Comment": "WRONG: s3:ListBucket requires bucket ARN (arn:aws:s3:::my-bucket)"
+      "Resource": "arn:aws:s3:::my-bucket/*"
     },
     {
       "Sid": "PutObjectWithBucketARN",
       "Effect": "Allow",
       "Action": "s3:PutObject",
-      "Resource": "arn:aws:s3:::my-bucket",
-      "Comment": "WRONG: s3:PutObject requires object ARN (arn:aws:s3:::my-bucket/*)"
+      "Resource": "arn:aws:s3:::my-bucket"
     },
     {
       "Sid": "DeleteObjectWithBucketARN",
       "Effect": "Allow",
       "Action": "s3:DeleteObject",
-      "Resource": "arn:aws:s3:::my-bucket",
-      "Comment": "WRONG: s3:DeleteObject requires object ARN"
+      "Resource": "arn:aws:s3:::my-bucket"
     },
     {
       "Sid": "DeleteBucketWithObjectARN",
       "Effect": "Allow",
       "Action": "s3:DeleteBucket",
-      "Resource": "arn:aws:s3:::my-bucket/*",
-      "Comment": "WRONG: s3:DeleteBucket requires bucket ARN (no trailing /*)"
+      "Resource": "arn:aws:s3:::my-bucket/*"
     }
   ]
 }

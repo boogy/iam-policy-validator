@@ -284,8 +284,8 @@ class TestWildcardResourceCheck:
 
         assert len(issues) == 1
         assert "Use specific resource ARNs" in issues[0].suggestion
-        assert "Example:" in issues[0].suggestion
-        assert "Resource: 'arn:aws:s3:::my-bucket/*'" in issues[0].suggestion
+        assert issues[0].example is not None
+        assert "Resource: 'arn:aws:s3:::my-bucket/*'" in issues[0].example
 
     @pytest.mark.asyncio
     async def test_wildcard_action_with_allowed_config(self, check, fetcher):

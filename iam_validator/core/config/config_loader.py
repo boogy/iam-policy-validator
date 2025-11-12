@@ -5,6 +5,7 @@ Loads and parses configuration from YAML files, environment variables,
 and command-line arguments.
 """
 
+import importlib
 import importlib.util
 import inspect
 import logging
@@ -314,8 +315,6 @@ class ConfigLoader:
                 module_name, class_name = parts
 
                 # Import the module
-                import importlib
-
                 module = importlib.import_module(module_name)
                 check_class = getattr(module, class_name)
 

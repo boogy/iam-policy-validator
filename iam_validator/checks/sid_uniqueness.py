@@ -91,7 +91,7 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
                     statement_sid=duplicate_sid,
                     statement_index=idx,
                     issue_type="duplicate_sid",
-                    message=f"Statement ID '{duplicate_sid}' is used {count} times in this policy (found in statements {statement_numbers})",
+                    message=f"Statement ID `{duplicate_sid}` is used **{count} times** in this policy (found in statements {statement_numbers})",
                     suggestion="Change this SID to a unique value. Statement IDs help identify and reference specific statements, so duplicates can cause confusion.",
                     line_number=statement.line_number,
                 )

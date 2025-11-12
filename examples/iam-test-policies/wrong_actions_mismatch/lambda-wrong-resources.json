@@ -5,22 +5,19 @@
       "Sid": "InvokeFunctionWithLayerARN",
       "Effect": "Allow",
       "Action": "lambda:InvokeFunction",
-      "Resource": "arn:aws:lambda:us-east-1:123456789012:layer:my-layer:*",
-      "Comment": "WRONG: lambda:InvokeFunction requires function ARN, not layer ARN"
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:layer:my-layer:*"
     },
     {
       "Sid": "GetLayerVersionWithFunctionARN",
       "Effect": "Allow",
       "Action": "lambda:GetLayerVersion",
-      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:my-function",
-      "Comment": "WRONG: lambda:GetLayerVersion requires layer version ARN"
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:my-function"
     },
     {
       "Sid": "DeleteFunctionWithEventSourceARN",
       "Effect": "Allow",
       "Action": "lambda:DeleteFunction",
-      "Resource": "arn:aws:lambda:us-east-1:123456789012:event-source-mapping:*",
-      "Comment": "WRONG: lambda:DeleteFunction requires function ARN"
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:event-source-mapping:*"
     }
   ]
 }

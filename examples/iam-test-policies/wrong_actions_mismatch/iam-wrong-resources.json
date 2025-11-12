@@ -5,36 +5,31 @@
       "Sid": "GetUserWithRoleARN",
       "Effect": "Allow",
       "Action": "iam:GetUser",
-      "Resource": "arn:aws:iam::123456789012:role/*",
-      "Comment": "WRONG: iam:GetUser requires user ARN, not role ARN"
+      "Resource": "arn:aws:iam::123456789012:role/*"
     },
     {
       "Sid": "GetRoleWithUserARN",
       "Effect": "Allow",
       "Action": "iam:GetRole",
-      "Resource": "arn:aws:iam::123456789012:user/*",
-      "Comment": "WRONG: iam:GetRole requires role ARN, not user ARN"
+      "Resource": "arn:aws:iam::123456789012:user/*"
     },
     {
       "Sid": "GetPolicyWithUserARN",
       "Effect": "Allow",
       "Action": "iam:GetPolicy",
-      "Resource": "arn:aws:iam::123456789012:user/TestUser",
-      "Comment": "WRONG: iam:GetPolicy requires policy ARN"
+      "Resource": "arn:aws:iam::123456789012:user/TestUser"
     },
     {
       "Sid": "CreateUserWithSpecificARN",
       "Effect": "Allow",
       "Action": "iam:CreateUser",
-      "Resource": "arn:aws:iam::123456789012:user/SpecificUser",
-      "Comment": "WRONG: iam:CreateUser should use wildcard pattern (arn:aws:iam::*:user/*)"
+      "Resource": "arn:aws:iam::123456789012:user/SpecificUser"
     },
     {
       "Sid": "DeleteRoleWithGroupARN",
       "Effect": "Allow",
       "Action": "iam:DeleteRole",
-      "Resource": "arn:aws:iam::123456789012:group/*",
-      "Comment": "WRONG: iam:DeleteRole requires role ARN, not group ARN"
+      "Resource": "arn:aws:iam::123456789012:group/*"
     }
   ]
 }

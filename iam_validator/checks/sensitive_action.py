@@ -85,7 +85,7 @@ class SensitiveActionCheck(PolicyCheck):
         # Generic ABAC fallback for uncategorized actions
         return (
             "Add IAM conditions to limit when this action can be used. Use ABAC for scalability:\n"
-            "• Match principal tags to resource tags (aws:PrincipalTag/X = aws:ResourceTag/X)\n"
+            "• Match principal tags to resource tags (aws:PrincipalTag/<tag-name> = aws:ResourceTag/<tag-name>)\n"
             "• Require MFA (aws:MultiFactorAuthPresent = true)\n"
             "• Restrict by IP (aws:SourceIp) or VPC (aws:SourceVpc)",
             '"Condition": {\n'
@@ -142,13 +142,6 @@ class SensitiveActionCheck(PolicyCheck):
                 matched_actions[0], config
             )
 
-            # Combine suggestion + example
-            suggestion = (
-                f"{suggestion_text}\n\nExample:\n```json\n{example}\n```"
-                if example
-                else suggestion_text
-            )
-
             # Determine severity based on the highest severity action in the list
             # If single action, use its category severity
             # If multiple actions, use the highest severity among them
@@ -165,7 +158,8 @@ class SensitiveActionCheck(PolicyCheck):
                     issue_type="missing_condition",
                     message=message,
                     action=(matched_actions[0] if len(matched_actions) == 1 else None),
-                    suggestion=suggestion,
+                    suggestion=suggestion_text,
+                    example=example if example else None,
                     line_number=statement.line_number,
                 )
             )

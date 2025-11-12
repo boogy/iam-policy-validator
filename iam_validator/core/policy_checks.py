@@ -12,6 +12,7 @@ import logging
 import re
 from pathlib import Path
 
+from iam_validator.core import constants
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckRegistry
 from iam_validator.core.models import (
@@ -495,10 +496,10 @@ async def validate_policies(
 
         config = ConfigLoader.load_config(explicit_path=config_path, allow_missing=True)
         cache_enabled = config.get_setting("cache_enabled", True)
-        cache_ttl_hours = config.get_setting("cache_ttl_hours", 168)
+        cache_ttl_hours = config.get_setting("cache_ttl_hours", constants.DEFAULT_CACHE_TTL_HOURS)
         cache_directory = config.get_setting("cache_directory", None)
         aws_services_dir = config.get_setting("aws_services_dir", None)
-        cache_ttl_seconds = cache_ttl_hours * 3600
+        cache_ttl_seconds = cache_ttl_hours * constants.SECONDS_PER_HOUR
 
         async with AWSServiceFetcher(
             enable_cache=cache_enabled,
@@ -566,10 +567,10 @@ async def validate_policies(
 
     # Get cache settings from config
     cache_enabled = config.get_setting("cache_enabled", True)
-    cache_ttl_hours = config.get_setting("cache_ttl_hours", 168)  # 7 days default
+    cache_ttl_hours = config.get_setting("cache_ttl_hours", constants.DEFAULT_CACHE_TTL_HOURS)
     cache_directory = config.get_setting("cache_directory", None)
     aws_services_dir = config.get_setting("aws_services_dir", None)
-    cache_ttl_seconds = cache_ttl_hours * 3600
+    cache_ttl_seconds = cache_ttl_hours * constants.SECONDS_PER_HOUR
 
     # Validate policies using registry
     async with AWSServiceFetcher(

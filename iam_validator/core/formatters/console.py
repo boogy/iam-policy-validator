@@ -39,8 +39,17 @@ class ConsoleFormatter(OutputFormatter):
         color = kwargs.get("color", True)
 
         # Capture the output from print_console_report
+        from iam_validator.utils import get_terminal_width
+
         string_buffer = StringIO()
-        console = Console(file=string_buffer, force_terminal=color, width=120)
+        # Get terminal width for proper table column spacing
+        terminal_width = get_terminal_width()
+        console = Console(
+            file=string_buffer,
+            force_terminal=color,
+            width=terminal_width,
+            legacy_windows=False,
+        )
 
         # Create a generator instance with our custom console
         generator = ReportGenerator()

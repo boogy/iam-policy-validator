@@ -250,5 +250,5 @@ class TestFullWildcardCheck:
 
         assert len(issues) == 1
         assert "Fix this issue" in issues[0].suggestion
-        assert "Example:" in issues[0].suggestion
-        assert "Use specific actions like s3:GetObject" in issues[0].suggestion
+        assert issues[0].example is not None
+        assert "Use specific actions like s3:GetObject" in issues[0].example

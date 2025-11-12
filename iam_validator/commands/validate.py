@@ -254,9 +254,9 @@ Examples:
             policy_type=policy_type,
         )
 
-        # Generate report
+        # Generate report (include parsing errors if any)
         generator = ReportGenerator()
-        report = generator.generate_report(results)
+        report = generator.generate_report(results, parsing_errors=loader.parsing_errors)
 
         # Output results
         if args.format is None:

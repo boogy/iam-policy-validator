@@ -4,6 +4,7 @@ import csv
 import io
 from typing import Any
 
+from iam_validator.core import constants
 from iam_validator.core.formatters.base import OutputFormatter
 from iam_validator.core.models import ValidationReport
 
@@ -58,7 +59,7 @@ class CSVFormatter(OutputFormatter):
             1
             for r in report.results
             for i in r.issues
-            if i.severity in ("error", "critical", "high")
+            if i.severity in constants.HIGH_SEVERITY_LEVELS
         )
         warnings = sum(
             1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")

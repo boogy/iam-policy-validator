@@ -97,15 +97,23 @@ description = IAM_PASS_ROLE_REQUIREMENT['required_conditions'][0]['description']
 ```python
 {
     "actions": ["iam:PassRole"],
-    "severity": "high",
+    "severity": "high",  # Optional: Override check-level severity
     "required_conditions": [{
         "condition_key": "iam:PassedToService",
-        "description": "Why needed",
-        "expected_value": "lambda.amazonaws.com",  # Optional
-        "operator": "StringEquals",  # Optional
+        "description": "Restrict which services can assume the role",  # User-facing explanation
+        "example": '{\n  "Condition": {\n    "StringEquals": {\n      "iam:PassedToService": "lambda.amazonaws.com"\n    }\n  }\n}',  # Optional: Shows in GitHub with ```json formatting
+        "expected_value": "lambda.amazonaws.com",  # Optional: Specific value to check
+        "operator": "StringEquals",  # Optional: Condition operator (default: StringEquals)
     }]
 }
 ```
+
+**Field Reference:**
+- `condition_key` (required) - The IAM condition key to enforce
+- `description` (optional) - Explanation shown to users (plain text suggestion)
+- `example` (optional) - Code example (formatted as ` ```json ` block in GitHub PR comments)
+- `expected_value` (optional) - Specific value the condition should have
+- `operator` (optional) - Condition operator type (default: "StringEquals")
 
 **Advanced Conditions:**
 ```python

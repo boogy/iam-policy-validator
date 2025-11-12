@@ -6,10 +6,13 @@ including posting PR comments, line comments, labels, and retrieving PR informat
 
 import logging
 import os
+import re
 from enum import Enum
 from typing import Any
 
 import httpx
+
+from iam_validator.core import constants
 
 logger = logging.getLogger(__name__)
 
@@ -134,8 +137,6 @@ class GitHubIntegration:
 
         # Basic sanitization - alphanumeric, hyphens, underscores, dots
         # GitHub allows these characters in usernames and repo names
-        import re
-
         valid_pattern = re.compile(r"^[a-zA-Z0-9._-]+$")
         if not valid_pattern.match(owner) or not valid_pattern.match(repo):
             logger.warning(
@@ -199,8 +200,6 @@ class GitHubIntegration:
             return "https://api.github.com"
 
         # Basic URL validation
-        import re
-
         # Simple URL pattern check
         url_pattern = re.compile(r"^https://[a-zA-Z0-9.-]+(?:/.*)?$")
         if not url_pattern.match(api_url):
@@ -506,7 +505,7 @@ class GitHubIntegration:
             return True
         return False
 
-    async def cleanup_bot_review_comments(self, identifier: str = "🤖 IAM Policy Validator") -> int:
+    async def cleanup_bot_review_comments(self, identifier: str = constants.BOT_IDENTIFIER) -> int:
         """Delete all review comments from the bot (from previous runs).
 
         This ensures old/outdated comments are removed before posting new ones.
