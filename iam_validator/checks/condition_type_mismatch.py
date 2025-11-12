@@ -107,8 +107,8 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                         ValidationIssue(
                             severity="warning",
                             message=(
-                                f"Type mismatch (usable but not recommended): Operator '{operator}' expects "
-                                f"{operator_type} values, but condition key '{condition_key}' is type {key_type}. "
+                                f"Type mismatch (usable but not recommended): Operator `{operator}` expects "
+                                f"{operator_type} values, but condition key `{condition_key}` is type {key_type}. "
                                 f"Consider using an ARN-specific operator like ArnEquals or ArnLike instead."
                             ),
                             statement_sid=statement_sid,
@@ -123,8 +123,8 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                         ValidationIssue(
                             severity=self.get_severity(config),
                             message=(
-                                f"Type mismatch: Operator '{operator}' expects {operator_type} values, "
-                                f"but condition key '{condition_key}' is type {key_type}."
+                                f"Type mismatch: Operator `{operator}` expects {operator_type} values, "
+                                f"but condition key `{condition_key}` is type {key_type}."
                             ),
                             statement_sid=statement_sid,
                             statement_index=statement_idx,
@@ -141,7 +141,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                         ValidationIssue(
                             severity=self.get_severity(config),
                             message=(
-                                f"Invalid value format for condition key '{condition_key}': {error_msg}"
+                                f"Invalid value format for condition key `{condition_key}`: {error_msg}"
                             ),
                             statement_sid=statement_sid,
                             statement_index=statement_idx,
@@ -172,7 +172,9 @@ class ConditionTypeMismatchCheck(PolicyCheck):
         Returns:
             Type string or None if not found
         """
-        from iam_validator.core.config.aws_global_conditions import get_global_conditions
+        from iam_validator.core.config.aws_global_conditions import (
+            get_global_conditions,
+        )
 
         # Check if it's a global condition key
         global_conditions = get_global_conditions()

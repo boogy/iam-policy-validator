@@ -52,26 +52,26 @@ class ConditionKeyValidationCheck(PolicyCheck):
                         continue
 
                     # Validate against action and resource types
-                    is_valid, error_msg, warning_msg = await fetcher.validate_condition_key(
-                        action, condition_key, resources
-                    )
+                    result = await fetcher.validate_condition_key(action, condition_key, resources)
 
-                    if not is_valid:
+                    if not result.is_valid:
                         issues.append(
                             ValidationIssue(
                                 severity=self.get_severity(config),
                                 statement_sid=statement_sid,
                                 statement_index=statement_idx,
                                 issue_type="invalid_condition_key",
-                                message=error_msg or f"Invalid condition key: {condition_key}",
+                                message=result.error_message
+                                or f"Invalid condition key: {condition_key}",
                                 action=action,
                                 condition_key=condition_key,
                                 line_number=line_number,
+                                suggestion=result.suggestion,
                             )
                         )
                         # Only report once per condition key (not per action)
                         break
-                    elif warning_msg and warn_on_global_keys:
+                    elif result.warning_message and warn_on_global_keys:
                         # Add warning for global condition keys with action-specific keys
                         # Only if warn_on_global_condition_keys is enabled
                         issues.append(
@@ -80,7 +80,7 @@ class ConditionKeyValidationCheck(PolicyCheck):
                                 statement_sid=statement_sid,
                                 statement_index=statement_idx,
                                 issue_type="global_condition_key_with_action_specific",
-                                message=warning_msg,
+                                message=result.warning_message,
                                 action=action,
                                 condition_key=condition_key,
                                 line_number=line_number,

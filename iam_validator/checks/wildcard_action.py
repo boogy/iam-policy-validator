@@ -39,18 +39,11 @@ class WildcardActionCheck(PolicyCheck):
         # Check for wildcard action (Action: "*")
         if "*" in actions:
             message = config.config.get("message", "Statement allows all actions (*)")
-            suggestion_text = config.config.get(
+            suggestion = config.config.get(
                 "suggestion",
                 "Replace wildcard with specific actions needed for your use case",
             )
             example = config.config.get("example", "")
-
-            # Combine suggestion + example
-            suggestion = (
-                f"{suggestion_text}\nExample:\n```json\n{example}\n```"
-                if example
-                else suggestion_text
-            )
 
             issues.append(
                 ValidationIssue(
@@ -60,6 +53,7 @@ class WildcardActionCheck(PolicyCheck):
                     issue_type="overly_permissive",
                     message=message,
                     suggestion=suggestion,
+                    example=example if example else None,
                     line_number=statement.line_number,
                 )
             )

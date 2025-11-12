@@ -1,0 +1,44 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PassExecRoleToLambda",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:PassRole"
+      ],
+      "Resource": "arn:aws:iam::${aws_account_id}:role/lambda-exec-role"
+    },
+    {
+      "Sid": "ReadExecRole",
+      "Effect": "Allow",
+      "Action": "iam:GetRole",
+      "Resource": "arn:aws:iam::${aws_account_id}:role/${environment}-*"
+    },
+    {
+      "Sid": "DDKeysSecret",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetResourcePolicy"
+      ],
+      "Resource": "arn:aws:secretsmanager:*:${aws_account_id}:secret:main/datadog/api-key/platform/plaintext-*"
+    },
+    {
+      "Sid": "S3BucketAccess",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::${bucket_name}/*"
+    },
+    {
+      "Sid": "CloudFormationTemplate",
+      "Effect": "Allow",
+      "Action": "iam:GetRole",
+      "Resource": "arn:aws:iam::${AWS::AccountId}:role/CloudFormationRole"
+    }
+  ]
+}

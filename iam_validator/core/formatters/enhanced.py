@@ -10,6 +10,7 @@ from rich.text import Text
 from rich.tree import Tree
 
 from iam_validator.__version__ import __version__
+from iam_validator.core import constants
 from iam_validator.core.formatters.base import OutputFormatter
 from iam_validator.core.models import PolicyValidationResult, ValidationReport
 
@@ -50,8 +51,14 @@ class EnhancedFormatter(OutputFormatter):
         show_severity_breakdown = kwargs.get("show_severity_breakdown", True)
 
         # Use StringIO to capture Rich console output
+        from iam_validator.utils import get_terminal_width
+
         string_buffer = StringIO()
-        console = Console(file=string_buffer, force_terminal=color, width=120)
+        # Get terminal width for proper text wrapping
+        terminal_width = get_terminal_width()
+        console = Console(
+            file=string_buffer, force_terminal=color, width=terminal_width, legacy_windows=False
+        )
 
         # Header with title
         console.print()
@@ -60,7 +67,14 @@ class EnhancedFormatter(OutputFormatter):
             style="bold cyan",
             justify="center",
         )
-        console.print(Panel(title, border_style="bright_blue", padding=(1, 0)))
+        console.print(
+            Panel(
+                title,
+                border_style=constants.CONSOLE_HEADER_COLOR,
+                padding=(1, 0),
+                width=constants.CONSOLE_PANEL_WIDTH,
+            )
+        )
         console.print()
 
         # Executive Summary with progress bars (optional)
@@ -73,7 +87,7 @@ class EnhancedFormatter(OutputFormatter):
             self._print_severity_breakdown(console, report)
 
         console.print()
-        console.print(Rule(title="[bold]Detailed Results", style="bright_blue"))
+        console.print(Rule(title="[bold]Detailed Results", style=constants.CONSOLE_HEADER_COLOR))
         console.print()
 
         # Detailed results using tree structure
@@ -140,8 +154,9 @@ class EnhancedFormatter(OutputFormatter):
             Panel(
                 metrics_table,
                 title="📊 Executive Summary",
-                border_style="bright_blue",
+                border_style=constants.CONSOLE_HEADER_COLOR,
                 padding=(1, 2),
+                width=constants.CONSOLE_PANEL_WIDTH,
             )
         )
 
@@ -225,7 +240,12 @@ class EnhancedFormatter(OutputFormatter):
             )
 
         console.print(
-            Panel(severity_table, title="🎯 Issue Severity Breakdown", border_style="bright_blue")
+            Panel(
+                severity_table,
+                title="🎯 Issue Severity Breakdown",
+                border_style=constants.CONSOLE_HEADER_COLOR,
+                width=constants.CONSOLE_PANEL_WIDTH,
+            )
         )
 
     def _format_policy_result_modern(
@@ -247,7 +267,7 @@ class EnhancedFormatter(OutputFormatter):
         elif result.is_valid and result.issues:
             # Valid IAM policy but has security findings
             # Check severity to determine the appropriate status
-            has_critical = any(i.severity in ("error", "critical", "high") for i in result.issues)
+            has_critical = any(i.severity in constants.HIGH_SEVERITY_LEVELS for i in result.issues)
             if has_critical:
                 icon = "⚠️"
                 color = "red"
@@ -386,6 +406,13 @@ class EnhancedFormatter(OutputFormatter):
             suggestion_text.append(issue.suggestion, style="italic yellow")
             msg_node.add(suggestion_text)
 
+        # Example (if present, show with indentation)
+        if issue.example:
+            msg_node.add(Text("Example:", style="bold cyan"))
+            # Show example code with syntax highlighting
+            example_text = Text(issue.example, style="dim")
+            msg_node.add(example_text)
+
     def _print_final_status(self, console: Console, report: ValidationReport) -> None:
         """Print final status panel."""
         if report.invalid_policies == 0 and report.total_issues == 0:
@@ -400,7 +427,7 @@ class EnhancedFormatter(OutputFormatter):
             # Valid IAM policies but may have security findings
             # Check if there are critical/high security issues
             has_critical = any(
-                i.severity in ("error", "critical", "high")
+                i.severity in constants.HIGH_SEVERITY_LEVELS
                 for r in report.results
                 for i in r.issues
             )
@@ -437,4 +464,11 @@ class EnhancedFormatter(OutputFormatter):
         final_text.append("\n\n")
         final_text.append(message)
 
-        console.print(Panel(final_text, border_style=border_color, padding=(1, 2)))
+        console.print(
+            Panel(
+                final_text,
+                border_style=border_color,
+                padding=(1, 2),
+                width=constants.CONSOLE_PANEL_WIDTH,
+            )
+        )

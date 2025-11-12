@@ -112,12 +112,12 @@ class PrincipalValidationCheck(PolicyCheck):
                     ValidationIssue(
                         severity=self.get_severity(config),
                         issue_type="blocked_principal",
-                        message=f"Blocked principal detected: {principal}. "
+                        message=f"Blocked principal detected: `{principal}`. "
                         f"This principal is explicitly blocked by your security policy.",
                         statement_index=statement_idx,
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
-                        suggestion=f"Remove the principal '{principal}' or add appropriate conditions to restrict access. "
+                        suggestion=f"Remove the principal `{principal}` or add appropriate conditions to restrict access. "
                         "Consider using more specific principals instead of wildcards.",
                     )
                 )
@@ -131,8 +131,8 @@ class PrincipalValidationCheck(PolicyCheck):
                     ValidationIssue(
                         severity=self.get_severity(config),
                         issue_type="unauthorized_principal",
-                        message=f"Principal not in allowed list: {principal}. "
-                        f"Only principals in the allowed_principals whitelist are permitted.",
+                        message=f"Principal not in allowed list: `{principal}`. "
+                        f"Only principals in the `allowed_principals` whitelist are permitted.",
                         statement_index=statement_idx,
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
@@ -151,7 +151,7 @@ class PrincipalValidationCheck(PolicyCheck):
                         ValidationIssue(
                             severity=self.get_severity(config),
                             issue_type="missing_principal_conditions",
-                            message=f"Principal '{principal}' requires conditions: {', '.join(missing_conditions)}. "
+                            message=f"Principal `{principal}` requires conditions: {', '.join(f'`{c}`' for c in missing_conditions)}. "
                             f"This principal must have these condition keys to restrict access.",
                             statement_index=statement_idx,
                             statement_sid=statement.sid,
@@ -169,7 +169,11 @@ class PrincipalValidationCheck(PolicyCheck):
         # Check advanced format: principal_condition_requirements
         if principal_condition_requirements:
             condition_issues = self._validate_principal_condition_requirements(
-                statement, statement_idx, principals, principal_condition_requirements, config
+                statement,
+                statement_idx,
+                principals,
+                principal_condition_requirements,
+                config,
             )
             issues.extend(condition_issues)
 
@@ -629,15 +633,18 @@ class PrincipalValidationCheck(PolicyCheck):
             or self.get_severity(config)
         )
 
+        suggestion_text, example_code = self._build_condition_suggestion(
+            condition_key, description, example, expected_value, operator
+        )
+
         return ValidationIssue(
             severity=severity,
             statement_sid=statement.sid,
             statement_index=statement_idx,
             issue_type="missing_principal_condition",
             message=f"{message_prefix} Principal(s) {matching_principals} require condition '{condition_key}'",
-            suggestion=self._build_condition_suggestion(
-                condition_key, description, example, expected_value, operator
-            ),
+            suggestion=suggestion_text,
+            example=example_code,
             line_number=statement.line_number,
         )
 
@@ -648,8 +655,8 @@ class PrincipalValidationCheck(PolicyCheck):
         example: str,
         expected_value: Any = None,
         operator: str = "StringEquals",
-    ) -> str:
-        """Build a helpful suggestion for adding the missing condition.
+    ) -> tuple[str, str]:
+        """Build suggestion and example for adding the missing condition.
 
         Args:
             condition_key: The condition key
@@ -659,19 +666,16 @@ class PrincipalValidationCheck(PolicyCheck):
             operator: Condition operator
 
         Returns:
-            Suggestion string
+            Tuple of (suggestion_text, example_code)
         """
-        parts = []
-
-        if description:
-            parts.append(description)
+        suggestion = description if description else f"Add condition: {condition_key}"
 
         # Build example based on condition key type
         if example:
-            parts.append(f"Example:\n```json\n{example}\n```")
+            example_code = example
         else:
             # Auto-generate example
-            example_lines = ['Add to "Condition" block:', f'  "{operator}": {{']
+            example_lines = [f'  "{operator}": {{']
 
             if isinstance(expected_value, list):
                 value_str = (
@@ -698,9 +702,9 @@ class PrincipalValidationCheck(PolicyCheck):
             example_lines.append(f'    "{condition_key}": {value_str}')
             example_lines.append("  }")
 
-            parts.append("\n".join(example_lines))
+            example_code = "\n".join(example_lines)
 
-        return ". ".join(parts) if parts else f"Add condition: {condition_key}"
+        return suggestion, example_code
 
     def _build_any_of_suggestion(self, any_of_conditions: list[dict[str, Any]]) -> str:
         """Build suggestion for any_of conditions.

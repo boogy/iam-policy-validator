@@ -31,6 +31,7 @@ from collections.abc import Generator
 from pathlib import Path
 
 import yaml
+from pydantic import ValidationError
 
 from iam_validator.core.models import IAMPolicy
 
@@ -53,6 +54,8 @@ class PolicyLoader:
         """
         self.loaded_policies: list[tuple[str, IAMPolicy]] = []
         self.max_file_size_bytes = max_file_size_mb * 1024 * 1024
+        # Track parsing/validation errors for reporting
+        self.parsing_errors: list[tuple[str, str]] = []  # (file_path, error_message)
 
     @staticmethod
     def _find_statement_line_numbers(file_content: str) -> list[int]:
@@ -142,7 +145,7 @@ class PolicyLoader:
                 return False
             return True
         except OSError as e:
-            logger.error(f"Failed to check file size for {path}: {e}")
+            logger.error("Failed to check file size for %s: %s", path, e)
             return False
 
     def load_from_file(self, file_path: str) -> IAMPolicy | None:
@@ -157,11 +160,11 @@ class PolicyLoader:
         path = Path(file_path)
 
         if not path.exists():
-            logger.error(f"File not found: {file_path}")
+            logger.error("File not found: %s", file_path)
             return None
 
         if not path.is_file():
-            logger.error(f"Not a file: {file_path}")
+            logger.error("Not a file: %s", file_path)
             return None
 
         if path.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
@@ -197,17 +200,48 @@ class PolicyLoader:
                     if idx < len(statement_line_numbers):
                         statement.line_number = statement_line_numbers[idx]
 
-            logger.info(f"Successfully loaded policy from {file_path}")
+            logger.info("Successfully loaded policy from %s", file_path)
             return policy
 
         except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON in {file_path}: {e}")
+            error_msg = f"Invalid JSON: {e}"
+            logger.error("Invalid JSON in %s: %s", file_path, e)
+            self.parsing_errors.append((file_path, error_msg))
             return None
         except yaml.YAMLError as e:
-            logger.error(f"Invalid YAML in {file_path}: {e}")
+            error_msg = f"Invalid YAML: {e}"
+            logger.error("Invalid YAML in %s: %s", file_path, e)
+            self.parsing_errors.append((file_path, error_msg))
+            return None
+        except ValidationError as e:
+            # Handle Pydantic validation errors with helpful messages
+            error_messages = []
+            for error in e.errors():
+                loc = ".".join(str(x) for x in error["loc"])
+                error_type = error["type"]
+
+                # Provide user-friendly messages for common errors
+                if error_type == "extra_forbidden":
+                    # Extract the field name that has a typo
+                    field_name = error["loc"][-1] if error["loc"] else "unknown"
+                    error_messages.append(
+                        f"Unknown field '{field_name}' at {loc}. "
+                        f"This might be a typo. Did you mean 'Condition', 'Action', or 'Resource'?"
+                    )
+                else:
+                    error_messages.append(f"{loc}: {error['msg']}")
+
+            error_summary = "\n  ".join(error_messages)
+            logger.error(
+                "Policy validation failed for %s:\n  %s",
+                file_path,
+                error_summary,
+            )
+            # Track parsing error for GitHub reporting
+            self.parsing_errors.append((file_path, error_summary))
             return None
         except Exception as e:
-            logger.error(f"Failed to load policy from {file_path}: {e}")
+            logger.error("Failed to load policy from %s: %s", file_path, e)
             return None
 
     def load_from_directory(
@@ -225,11 +259,11 @@ class PolicyLoader:
         path = Path(directory_path)
 
         if not path.exists():
-            logger.error(f"Directory not found: {directory_path}")
+            logger.error("Directory not found: %s", directory_path)
             return []
 
         if not path.is_dir():
-            logger.error(f"Not a directory: {directory_path}")
+            logger.error("Not a directory: %s", directory_path)
             return []
 
         policies: list[tuple[str, IAMPolicy]] = []
@@ -241,7 +275,7 @@ class PolicyLoader:
                 if policy:
                     policies.append((str(file_path), policy))
 
-        logger.info(f"Loaded {len(policies)} policies from {directory_path}")
+        logger.info("Loaded %d policies from %s", len(policies), directory_path)
         return policies
 
     def load_from_path(self, path: str, recursive: bool = True) -> list[tuple[str, IAMPolicy]]:
@@ -262,7 +296,7 @@ class PolicyLoader:
         elif path_obj.is_dir():
             return self.load_from_directory(path, recursive)
         else:
-            logger.error(f"Path not found: {path}")
+            logger.error("Path not found: %s", path)
             return []
 
     def load_from_paths(
@@ -283,7 +317,7 @@ class PolicyLoader:
             policies = self.load_from_path(path.strip(), recursive)
             all_policies.extend(policies)
 
-        logger.info(f"Loaded {len(all_policies)} total policies from {len(paths)} path(s)")
+        logger.info("Loaded %d total policies from %d path(s)", len(all_policies), len(paths))
         return all_policies
 
     def _get_policy_files(self, path: str, recursive: bool = True) -> Generator[Path, None, None]:
@@ -310,7 +344,7 @@ class PolicyLoader:
                 if file_path.is_file() and file_path.suffix.lower() in self.SUPPORTED_EXTENSIONS:
                     yield file_path
         else:
-            logger.error(f"Path not found: {path}")
+            logger.error("Path not found: %s", path)
 
     def stream_from_path(
         self, path: str, recursive: bool = True
@@ -391,6 +425,29 @@ class PolicyLoader:
             policy = IAMPolicy.model_validate(data)
             logger.info("Successfully parsed policy from string")
             return policy
+        except json.JSONDecodeError as e:
+            logger.error("Invalid JSON: %s", e)
+            return None
+        except ValidationError as e:
+            # Handle Pydantic validation errors with helpful messages
+            error_messages = []
+            for error in e.errors():
+                loc = ".".join(str(x) for x in error["loc"])
+                error_type = error["type"]
+
+                # Provide user-friendly messages for common errors
+                if error_type == "extra_forbidden":
+                    # Extract the field name that has a typo
+                    field_name = error["loc"][-1] if error["loc"] else "unknown"
+                    error_messages.append(
+                        f"Unknown field '{field_name}' at {loc}. "
+                        f"This might be a typo. Did you mean 'Condition', 'Action', or 'Resource'?"
+                    )
+                else:
+                    error_messages.append(f"{loc}: {error['msg']}")
+
+            logger.error("Policy validation failed:\n  %s", "\n  ".join(error_messages))
+            return None
         except Exception as e:
-            logger.error(f"Failed to parse policy string: {e}")
+            logger.error("Failed to parse policy string: %s", e)
             return None

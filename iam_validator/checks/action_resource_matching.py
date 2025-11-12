@@ -21,6 +21,8 @@ Example:
     This check will report: s3:GetObject requires arn:aws:s3:::mybucket/*
 """
 
+import re
+
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
@@ -231,18 +233,23 @@ class ActionResourceMatchingCheck(PolicyCheck):
         if reason:
             message = reason
         elif all_required_formats and len(all_required_formats) > 1:
-            types = ", ".join(f["type"] for f in all_required_formats)
+            types = ", ".join(f"`{f['type']}`" for f in all_required_formats)
             message = (
-                f"No resources match for action '{action}'. This action requires one of: {types}"
+                f"No resources match for action `{action}`. This action requires one of: {types}"
             )
         else:
             message = (
-                f"No resources match for action '{action}'. "
-                f"This action requires resource type: {required_type}"
+                f"No resources match for action `{action}`. "
+                f"This action requires resource type: `{required_type}`"
             )
 
         # Build suggestion with examples
-        suggestion = self._get_suggestion(action, required_format, provided_resources)
+        suggestion = self._get_suggestion(
+            action=action,
+            required_format=required_format,
+            provided_resources=provided_resources,
+            all_required_formats=all_required_formats,
+        )
 
         return ValidationIssue(
             severity=self.get_severity(config),
@@ -265,6 +272,7 @@ class ActionResourceMatchingCheck(PolicyCheck):
         action: str,
         required_format: str,
         provided_resources: list[str],
+        all_required_formats: list[dict] | None = None,
     ) -> str:
         """
         Generate helpful suggestion for fixing the mismatch.
@@ -281,44 +289,75 @@ class ActionResourceMatchingCheck(PolicyCheck):
         # Special case: Wildcard resource
         if required_format == "*":
             return (
-                f'Action {action} can only use Resource: "*" (wildcard).\n'
+                f'Action `{action}` can only use Resource: "*" (wildcard).\n'
                 f"  This action does not support resource-level permissions.\n"
                 f'  Example: "Resource": "*"'
             )
 
-        # Extract resource type from ARN pattern
-        # Pattern format: arn:${Partition}:service:${Region}:${Account}:resourceType/...
-        # Examples:
-        #   arn:${Partition}:s3:::${BucketName}/${ObjectName} -> object
-        #   arn:${Partition}:iam::${Account}:user/${UserName} -> user
-        resource_type = self._extract_resource_type_from_pattern(required_format)
-
-        # Build service-specific suggestion
+        # Build service-specific suggestion with proper markdown formatting
         suggestion_parts = []
 
-        # Add action description
-        suggestion_parts.append(f"Action {action} requires {resource_type} resource type.")
+        # If multiple resource types are valid, show all of them
+        if all_required_formats and len(all_required_formats) > 1:
+            resource_types = [fmt["type"] for fmt in all_required_formats]
+            suggestion_parts.append(
+                f"Action `{action}` requires one of these resource types: {', '.join(f'`{t}`' for t in resource_types)}"
+            )
+            suggestion_parts.append("")
 
-        # Add expected format
-        suggestion_parts.append(f"  Expected format: {required_format}")
+            # Show format and example for each resource type
+            for fmt in all_required_formats:
+                resource_type = fmt["type"]
+                arn_format = fmt["format"]
 
-        # Add practical example based on the pattern
-        example = self._generate_example_arn(required_format)
-        if example:
-            suggestion_parts.append(f"  Example: {example}")
+                suggestion_parts.append(
+                    f"**Option {all_required_formats.index(fmt) + 1}: `{resource_type}` resource**"
+                )
+                suggestion_parts.append("```")
+                suggestion_parts.append(arn_format)
+                suggestion_parts.append("```")
 
-        # Add helpful context for common patterns
-        context = self._get_resource_context(action_name, resource_type, required_format)
-        if context:
-            suggestion_parts.append(f"  {context}")
+                # Add practical example
+                example = self._generate_example_arn(arn_format)
+                if example:
+                    suggestion_parts.append(f"Example: `{example}`")
 
-        suggestion = "\n".join(suggestion_parts)
+                suggestion_parts.append("")
+        else:
+            # Single resource type - show detailed info
+            # Extract resource type from ARN pattern
+            # Pattern format: arn:${Partition}:service:${Region}:${Account}:resourceType/...
+            # Examples:
+            #   arn:${Partition}:s3:::${BucketName}/${ObjectName} -> object
+            #   arn:${Partition}:iam::${Account}:user/${UserName} -> user
+            resource_type = self._extract_resource_type_from_pattern(required_format)
+
+            # Add action description
+            suggestion_parts.append(f"Action `{action}` requires `{resource_type}` resource type.")
+            suggestion_parts.append("")
+
+            # Add expected format in code block
+            suggestion_parts.append("**Expected format:**")
+            suggestion_parts.append(f"```\n{required_format}\n```")
+
+            # Add practical example based on the pattern
+            example = self._generate_example_arn(required_format)
+            if example:
+                suggestion_parts.append("**Example:**")
+                suggestion_parts.append(f"```\n{example}\n```")
+
+            # Add helpful context for common patterns
+            context = self._get_resource_context(action_name, resource_type, required_format)
+            if context:
+                suggestion_parts.append(f"**Note:** {context}")
 
         # Add current resources to help user understand the mismatch
         if provided_resources and len(provided_resources) <= 3:
-            current = ", ".join(provided_resources)
-            suggestion += f"\n  Current resources: {current}"
+            suggestion_parts.append("**Current resources:**")
+            for resource in provided_resources:
+                suggestion_parts.append(f"- `{resource}`")
 
+        suggestion = "\n".join(suggestion_parts)
         return suggestion
 
     def _extract_resource_type_from_pattern(self, pattern: str) -> str:
@@ -340,17 +379,14 @@ class ActionResourceMatchingCheck(PolicyCheck):
 
         # Extract resource type (part before / or entire string)
         if "/" in resource_part:
-            resource_type = resource_part.split("/")[0]
+            resource_type = resource_part.split("/", maxsplit=1)[0]
         elif ":" in resource_part:
-            resource_type = resource_part.split(":")[0]
+            resource_type = resource_part.split(":", maxsplit=1)[0]
         else:
             resource_type = resource_part
 
         # Remove template variables like ${...}
-        import re
-
         resource_type = re.sub(r"\$\{[^}]+\}", "", resource_type)
-
         return resource_type.strip() or "resource"
 
     def _generate_example_arn(self, pattern: str) -> str:
@@ -359,8 +395,6 @@ class ActionResourceMatchingCheck(PolicyCheck):
 
         Converts AWS template variables to realistic examples.
         """
-        import re
-
         example = pattern
 
         # Common substitutions

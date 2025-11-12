@@ -5,22 +5,19 @@
       "Sid": "SendMessageToSNSTopic",
       "Effect": "Allow",
       "Action": "sqs:SendMessage",
-      "Resource": "arn:aws:sns:us-east-1:123456789012:MyTopic",
-      "Comment": "WRONG: sqs:SendMessage requires SQS queue ARN, not SNS topic ARN"
+      "Resource": "arn:aws:sns:us-east-1:123456789012:MyTopic"
     },
     {
       "Sid": "PublishToSQSQueue",
       "Effect": "Allow",
       "Action": "sns:Publish",
-      "Resource": "arn:aws:sqs:us-east-1:123456789012:MyQueue",
-      "Comment": "WRONG: sns:Publish requires SNS topic ARN, not SQS queue ARN"
+      "Resource": "arn:aws:sqs:us-east-1:123456789012:MyQueue"
     },
     {
       "Sid": "DeleteQueueWithTopicARN",
       "Effect": "Allow",
       "Action": "sqs:DeleteQueue",
-      "Resource": "arn:aws:sns:us-east-1:123456789012:*",
-      "Comment": "WRONG: sqs:DeleteQueue requires SQS queue ARN"
+      "Resource": "arn:aws:sns:us-east-1:123456789012:*"
     }
   ]
 }

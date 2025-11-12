@@ -135,12 +135,14 @@ Tailor validation messages to your organization's guidelines. Each check support
 
 When configuring checks, you can customize these fields:
 
-| Field         | Purpose                                      | When Shown                     | Audience                        |
-| ------------- | -------------------------------------------- | ------------------------------ | ------------------------------- |
-| `description` | Technical description of what the check does | Documentation, check listings  | Developers maintaining the tool |
-| `message`     | Error/warning message when issue is detected | Validation reports, CLI output | End users fixing policies       |
-| `suggestion`  | Guidance on how to fix or mitigate the issue | Validation reports             | Developers implementing fixes   |
-| `example`     | Concrete code example showing before/after   | Validation reports             | Developers writing policy code  |
+| Field         | Purpose                                      | When Shown                     | Audience                        | GitHub Formatting |
+| ------------- | -------------------------------------------- | ------------------------------ | ------------------------------- | ----------------- |
+| `description` | Technical description of what the check does | Documentation, check listings  | Developers maintaining the tool | Plain text        |
+| `message`     | Error/warning message when issue is detected | Validation reports, CLI output | End users fixing policies       | Plain text        |
+| `suggestion`  | Guidance on how to fix or mitigate the issue | Validation reports, GitHub PRs | Developers implementing fixes   | Plain text        |
+| `example`     | Concrete code example showing before/after   | Validation reports, GitHub PRs | Developers writing policy code  | ` ```json ` block |
+
+**GitHub PR Comments:** The `example` field is automatically wrapped in ` ```json ` code blocks when posted to GitHub PR review comments, providing syntax highlighting and proper formatting. Console and enhanced output display examples as plain text.
 
 ### Field Progression
 
@@ -193,8 +195,7 @@ full_wildcard:
 
 ### Output Example
 
-When a validation issue is found, the fields appear in reports like this:
-
+**Console/Enhanced Output:**
 ```
 ❌ full_wildcard (CRITICAL)
 
@@ -208,14 +209,16 @@ Replace:
   "Resource": "*"
 
 With specific values:
-  "Action": [
-    "s3:GetObject",
-    "s3:PutObject"
-  ],
-  "Resource": [
-    "arn:aws:s3:::my-bucket/*"
-  ]
+  "Action": ["s3:GetObject", "s3:PutObject"],
+  "Resource": ["arn:aws:s3:::my-bucket/*"]
 ```
+
+**GitHub PR Comment:**
+The same issue in a GitHub PR review comment automatically formats the example with syntax highlighting:
+
+<img width="600" alt="GitHub PR comment with formatted JSON" src="https://github.com/user-attachments/assets/example.png">
+
+The `example` field is wrapped in ` ```json ` blocks for proper GitHub markdown rendering, while suggestion remains plain text.
 
 ### Template Placeholders
 
@@ -420,16 +423,28 @@ wildcard_action:
 
 ### Field Availability by Check
 
-Not all checks support all fields. Most common fields:
+Not all checks support all customizable fields:
 
-- ✅ `description` - Supported by all checks
-- ✅ `severity` - Supported by all checks
-- ✅ `enabled` - Supported by all checks
-- ⚠️ `message` - Supported by most checks (wildcards, sensitive actions, etc.)
-- ⚠️ `suggestion` - Supported by security checks
-- ⚠️ `example` - Supported by security checks
+**Universal Fields (all checks):**
+- ✅ `enabled` - Enable/disable the check
+- ✅ `severity` - Override severity level
+- ✅ `description` - Technical description (internal documentation)
 
-**Default Messages:** See [defaults.py](../iam_validator/core/config/defaults.py) for all built-in messages and fields
+**Configurable Message Fields (security & wildcard checks):**
+- ✅ `message` - Custom error/warning text
+  - Supported by: `wildcard_action`, `wildcard_resource`, `full_wildcard`, `service_wildcard`, `sensitive_action`
+- ✅ `suggestion` - Custom guidance text (plain text)
+  - Supported by: `wildcard_action`, `wildcard_resource`, `full_wildcard`, `service_wildcard`, `sensitive_action`
+- ✅ `example` - Custom code example (formatted as ` ```json ` in GitHub)
+  - Supported by: `wildcard_action`, `wildcard_resource`, `full_wildcard`, `service_wildcard`, `sensitive_action`
+
+**Advanced Checks (per-requirement customization):**
+- `action_condition_enforcement` - Each requirement can have `description` and `example` (see [condition-requirements.md](condition-requirements.md))
+- `principal_validation` - Each principal requirement can have `description` and `example` in the `required_conditions` block
+
+**Note:** Validation checks (e.g., `action_validation`, `condition_key_validation`, `resource_validation`) generate messages automatically based on AWS service definitions and do not support custom message fields.
+
+**Default Messages:** See [defaults.py](../iam_validator/core/config/defaults.py) for all built-in messages and available fields per check
 
 ## Principal Validation
 

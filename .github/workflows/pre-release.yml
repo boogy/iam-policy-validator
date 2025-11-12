@@ -44,7 +44,7 @@ jobs:
     environment: prerelease # Requires approval from environment reviewers
     permissions:
       contents: write # Required for creating releases and tags
-      pull-requests: read # Required for reading PR info
+      pull-requests: write # Required for reading PR info and commenting
       id-token: write # Required for PyPI trusted publishing (test.pypi.org)
 
     steps:
@@ -173,10 +173,14 @@ jobs:
 
           cat PRERELEASE_NOTES.md
 
+      - name: Get current commit SHA
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Pre-Release
         uses: softprops/action-gh-release@5be0e66d93ac7ed76da52eca8bb058f665c3a5fe # v2
         with:
-          name: "${{ steps.version.outputs.tag }} (Pre-release)"
+          name: "${{ steps.version.outputs.tag }}"
           tag_name: ${{ steps.version.outputs.tag }}
           body_path: PRERELEASE_NOTES.md
           files: |
@@ -185,7 +189,8 @@ jobs:
           draft: false
           prerelease: true
           generate_release_notes: false
-          target_commitish: ${{ steps.pr_info.outputs.branch }}
+          target_commitish: ${{ steps.commit.outputs.sha }}
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -43,18 +43,11 @@ class FullWildcardCheck(PolicyCheck):
                 "message",
                 "Statement allows all actions on all resources - CRITICAL SECURITY RISK",
             )
-            suggestion_text = config.config.get(
+            suggestion = config.config.get(
                 "suggestion",
                 "This grants full administrative access. Replace both wildcards with specific actions and resources to follow least-privilege principle",
             )
             example = config.config.get("example", "")
-
-            # Combine suggestion + example
-            suggestion = (
-                f"{suggestion_text}\nExample:\n```json\n{example}\n```"
-                if example
-                else suggestion_text
-            )
 
             issues.append(
                 ValidationIssue(
@@ -64,6 +57,7 @@ class FullWildcardCheck(PolicyCheck):
                     issue_type="security_risk",
                     message=message,
                     suggestion=suggestion,
+                    example=example if example else None,
                     line_number=statement.line_number,
                 )
             )

@@ -153,6 +153,17 @@ runs:
       run: uv sync --frozen
       shell: bash
 
+    - name: Display version information
+      working-directory: ${{ github.action_path }}
+      run: |
+        # Get version from package
+        VERSION=$(uv run python -c "from iam_validator.__version__ import __version__; print(__version__)")
+
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "🛡️ IAM Policy Validator ${VERSION}"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      shell: bash
+
     - name: Get current week for cache key
       id: week
       run: echo "week=$(date +%Y-W%V)" >> $GITHUB_OUTPUT

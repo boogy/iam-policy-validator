@@ -63,6 +63,21 @@ DEFAULT_CONFIG_FILENAMES = [
 ]
 
 # ============================================================================
+# Severity Levels
+# ============================================================================
+# Severity level groupings for filtering and categorization
+# Used across formatters and report generation
+
+# High severity issues that typically fail validation
+HIGH_SEVERITY_LEVELS = ("error", "critical", "high")
+
+# Medium severity issues (warnings)
+MEDIUM_SEVERITY_LEVELS = ("warning", "medium")
+
+# Low severity issues (informational)
+LOW_SEVERITY_LEVELS = ("info", "low")
+
+# ============================================================================
 # GitHub Integration
 # ============================================================================
 
@@ -72,3 +87,45 @@ BOT_IDENTIFIER = "🤖 IAM Policy Validator"
 # HTML comment markers for identifying bot-generated content (for cleanup/updates)
 SUMMARY_IDENTIFIER = "<!-- iam-policy-validator-summary -->"
 REVIEW_IDENTIFIER = "<!-- iam-policy-validator-review -->"
+
+# GitHub comment size limits
+# GitHub's actual limit is 65536 characters, but we use a smaller limit for safety
+GITHUB_MAX_COMMENT_LENGTH = 65000  # Maximum single comment length
+GITHUB_COMMENT_SPLIT_LIMIT = 60000  # Target size when splitting into multiple parts
+
+# Comment size estimation parameters (used for multi-part comment splitting)
+COMMENT_BASE_OVERHEAD_CHARS = 2000  # Base overhead for headers/footers
+COMMENT_CHARS_PER_ISSUE_ESTIMATE = 500  # Average characters per issue
+COMMENT_CONTINUATION_OVERHEAD_CHARS = 200  # Overhead for continuation markers
+FORMATTING_SAFETY_BUFFER = 100  # Safety buffer for formatting calculations
+
+# ============================================================================
+# Console Display Settings
+# ============================================================================
+
+# Panel width for formatted console output
+CONSOLE_PANEL_WIDTH = 100
+
+# Rich console color styles
+CONSOLE_HEADER_COLOR = "bright_blue"
+
+# ============================================================================
+# Cache and Timeout Settings
+# ============================================================================
+
+# Cache TTL (Time To Live) - 7 days
+DEFAULT_CACHE_TTL_HOURS = 168  # 7 days in hours
+DEFAULT_CACHE_TTL_SECONDS = 604800  # 7 days in seconds (168 * 3600)
+
+# HTTP request timeout in seconds
+DEFAULT_HTTP_TIMEOUT_SECONDS = 30.0
+
+# Time conversion constants
+SECONDS_PER_HOUR = 3600
+
+# ============================================================================
+# AWS Documentation URLs
+# ============================================================================
+
+# AWS Service Authorization Reference (for finding valid actions, resources, and condition keys)
+AWS_SERVICE_AUTH_REF_URL = "https://docs.aws.amazon.com/service-authorization/latest/reference/reference_policies_actions-resources-contextkeys.html"

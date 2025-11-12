@@ -5,22 +5,19 @@
       "Sid": "GetItemWithIndexARN",
       "Effect": "Allow",
       "Action": "dynamodb:GetItem",
-      "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/MyTable/index/*",
-      "Comment": "WRONG: dynamodb:GetItem requires table ARN, not index ARN"
+      "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/MyTable/index/*"
     },
     {
       "Sid": "QueryWithStreamARN",
       "Effect": "Allow",
       "Action": "dynamodb:Query",
-      "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/MyTable/stream/*",
-      "Comment": "WRONG: dynamodb:Query requires table ARN, not stream ARN"
+      "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/MyTable/stream/*"
     },
     {
       "Sid": "DeleteTableWithBackupARN",
       "Effect": "Allow",
       "Action": "dynamodb:DeleteTable",
-      "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/MyTable/backup/*",
-      "Comment": "WRONG: dynamodb:DeleteTable requires table ARN only"
+      "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/MyTable/backup/*"
     }
   ]
 }

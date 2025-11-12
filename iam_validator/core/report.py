@@ -12,6 +12,7 @@ from rich.table import Table
 from rich.text import Text
 
 from iam_validator.__version__ import __version__
+from iam_validator.core import constants
 from iam_validator.core.formatters import (
     ConsoleFormatter,
     CSVFormatter,
@@ -71,11 +72,16 @@ class ReportGenerator:
         """
         return self.formatter_registry.format_report(report, format_id, **kwargs)
 
-    def generate_report(self, results: list[PolicyValidationResult]) -> ValidationReport:
+    def generate_report(
+        self,
+        results: list[PolicyValidationResult],
+        parsing_errors: list[tuple[str, str]] | None = None,
+    ) -> ValidationReport:
         """Generate a validation report from results.
 
         Args:
             results: List of policy validation results
+            parsing_errors: Optional list of (file_path, error_message) for files that failed to parse
 
         Returns:
             ValidationReport
@@ -106,6 +112,7 @@ class ReportGenerator:
             validity_issues=validity_issues,
             security_issues=security_issues,
             results=results,
+            parsing_errors=parsing_errors or [],
         )
 
     def print_console_report(self, report: ValidationReport) -> None:
@@ -150,6 +157,7 @@ class ReportGenerator:
                 summary_text,
                 title=f"Validation Summary (iam-validator v{__version__})",
                 border_style="blue",
+                width=constants.CONSOLE_PANEL_WIDTH,
             )
         )
 
@@ -177,11 +185,12 @@ class ReportGenerator:
             self.console.print("  [dim]No issues found[/dim]")
             return
 
-        # Create issues table with adjusted column widths for better readability
-        table = Table(show_header=True, header_style="bold", box=None, padding=(0, 1))
-        table.add_column("Severity", style="cyan", width=12, no_wrap=False)
-        table.add_column("Type", style="magenta", width=25, no_wrap=False)
-        table.add_column("Message", style="white", no_wrap=False)
+        # Create issues table with flexible column widths
+        # Use wider columns and more padding to better utilize terminal width
+        table = Table(show_header=True, header_style="bold", box=None, padding=(0, 2), expand=True)
+        table.add_column("Severity", style="cyan", no_wrap=True, min_width=12)
+        table.add_column("Type", style="magenta", no_wrap=False, min_width=32)
+        table.add_column("Message", style="white", no_wrap=False, ratio=3)
 
         for issue in result.issues:
             severity_style = {
@@ -207,6 +216,8 @@ class ReportGenerator:
             message = f"{location}: {issue.message}"
             if issue.suggestion:
                 message += f"\n  → {issue.suggestion}"
+            if issue.example:
+                message += f"\n[dim]Example:[/dim]\n[dim]{issue.example}[/dim]"
 
             table.add_row(severity_style, issue.issue_type, message)
 
@@ -224,13 +235,15 @@ class ReportGenerator:
         return report.model_dump_json(indent=2)
 
     def generate_github_comment_parts(
-        self, report: ValidationReport, max_length_per_part: int = 60000
+        self,
+        report: ValidationReport,
+        max_length_per_part: int = constants.GITHUB_COMMENT_SPLIT_LIMIT,
     ) -> list[str]:
         """Generate GitHub PR comment(s), splitting into multiple parts if needed.
 
         Args:
             report: Validation report
-            max_length_per_part: Maximum character length per comment part (default 60000)
+            max_length_per_part: Maximum character length per comment part (default from GITHUB_COMMENT_SPLIT_LIMIT)
 
         Returns:
             List of comment parts (each under max_length_per_part)
@@ -260,9 +273,9 @@ class ReportGenerator:
             Estimated character count
         """
         # Rough estimate: ~500 chars per issue + overhead
-        base_overhead = 2000  # Header + footer
-        chars_per_issue = 500
-        return base_overhead + (report.total_issues * chars_per_issue)
+        return constants.COMMENT_BASE_OVERHEAD_CHARS + (
+            report.total_issues * constants.COMMENT_CHARS_PER_ISSUE_ESTIMATE
+        )
 
     def _generate_split_comments(self, report: ValidationReport, max_length: int) -> list[str]:
         """Split a large report into multiple comment parts.
@@ -289,13 +302,13 @@ class ReportGenerator:
         # - Part indicator: "**(Part N/M)**\n\n" (estimated ~20 chars)
         # - HTML comment identifier: "<!-- iam-policy-validator -->\n" (~35 chars)
         # - Safety buffer for formatting
-        continuation_overhead = 200
+        continuation_overhead = constants.COMMENT_CONTINUATION_OVERHEAD_CHARS
 
         # Sort results to prioritize errors - support both IAM validity and security severities
         sorted_results = sorted(
             [(idx, r) for idx, r in enumerate(report.results, 1) if r.issues],
             key=lambda x: (
-                -sum(1 for i in x[1].issues if i.severity in ("error", "critical", "high")),
+                -sum(1 for i in x[1].issues if i.severity in constants.HIGH_SEVERITY_LEVELS),
                 -len(x[1].issues),
             ),
         )
@@ -410,7 +423,7 @@ class ReportGenerator:
                 1
                 for r in report.results
                 for i in r.issues
-                if i.severity in ("error", "critical", "high")
+                if i.severity in constants.HIGH_SEVERITY_LEVELS
             )
             warnings = sum(
                 1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")
@@ -456,9 +469,9 @@ class ReportGenerator:
         lines.append("")
 
         # Group issues by severity - support both IAM validity and security severities
-        errors = [i for i in result.issues if i.severity in ("error", "critical", "high")]
-        warnings = [i for i in result.issues if i.severity in ("warning", "medium")]
-        infos = [i for i in result.issues if i.severity in ("info", "low")]
+        errors = [i for i in result.issues if i.severity in constants.HIGH_SEVERITY_LEVELS]
+        warnings = [i for i in result.issues if i.severity in constants.MEDIUM_SEVERITY_LEVELS]
+        infos = [i for i in result.issues if i.severity in constants.LOW_SEVERITY_LEVELS]
 
         if errors:
             lines.append("### 🔴 Errors")
@@ -510,12 +523,16 @@ class ReportGenerator:
 
         return "\n".join(parts)
 
-    def generate_github_comment(self, report: ValidationReport, max_length: int = 65000) -> str:
+    def generate_github_comment(
+        self,
+        report: ValidationReport,
+        max_length: int = constants.GITHUB_MAX_COMMENT_LENGTH,
+    ) -> str:
         """Generate a GitHub-flavored markdown comment for PR reviews.
 
         Args:
             report: Validation report
-            max_length: Maximum character length (GitHub limit is 65536, we use 65000 for safety)
+            max_length: Maximum character length (default from GITHUB_MAX_COMMENT_LENGTH constant)
 
         Returns:
             Markdown formatted string
@@ -523,7 +540,8 @@ class ReportGenerator:
         lines = []
 
         # Header with emoji and status badge
-        if report.invalid_policies == 0:
+        has_parsing_errors = len(report.parsing_errors) > 0
+        if report.invalid_policies == 0 and not has_parsing_errors:
             lines.append("# 🎉 IAM Policy Validation Passed!")
             status_badge = (
                 "![Status](https://img.shields.io/badge/status-passed-success?style=flat-square)"
@@ -558,7 +576,7 @@ class ReportGenerator:
                 1
                 for r in report.results
                 for i in r.issues
-                if i.severity in ("error", "critical", "high")
+                if i.severity in constants.HIGH_SEVERITY_LEVELS
             )
             warnings = sum(
                 1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")
@@ -579,6 +597,29 @@ class ReportGenerator:
                 lines.append(f"| 🔵 **Info** | {infos} |")
             lines.append("")
 
+        # Parsing errors section (if any)
+        if report.parsing_errors:
+            lines.append("### ⚠️ Parsing Errors")
+            lines.append("")
+            lines.append(
+                f"**{len(report.parsing_errors)} file(s) failed to parse** and were excluded from validation:"
+            )
+            lines.append("")
+            for file_path, error_msg in report.parsing_errors:
+                # Extract just the filename for cleaner display
+                from pathlib import Path
+
+                filename = Path(file_path).name
+                lines.append(f"- **`{filename}`**")
+                lines.append("  ```")
+                lines.append(f"  {error_msg}")
+                lines.append("  ```")
+            lines.append("")
+            lines.append(
+                "> **Note:** Fix these parsing errors first before validation can proceed on these files."
+            )
+            lines.append("")
+
         # Store header for later (we always include this)
         header_content = "\n".join(lines)
 
@@ -594,7 +635,7 @@ class ReportGenerator:
         footer_content = "\n".join(footer_lines)
 
         # Calculate remaining space for details
-        base_length = len(header_content) + len(footer_content) + 100  # 100 for safety
+        base_length = len(header_content) + len(footer_content) + constants.FORMATTING_SAFETY_BUFFER
         available_length = max_length - base_length
 
         # Detailed findings
@@ -611,7 +652,7 @@ class ReportGenerator:
             sorted_results = sorted(
                 [(idx, r) for idx, r in enumerate(report.results, 1) if r.issues],
                 key=lambda x: (
-                    -sum(1 for i in x[1].issues if i.severity in ("error", "critical", "high")),
+                    -sum(1 for i in x[1].issues if i.severity in constants.HIGH_SEVERITY_LEVELS),
                     -len(x[1].issues),
                 ),
             )
@@ -623,7 +664,7 @@ class ReportGenerator:
                 policy_lines = []
 
                 # Group issues by severity - support both IAM validity and security severities
-                errors = [i for i in result.issues if i.severity in ("error", "critical", "high")]
+                errors = [i for i in result.issues if i.severity in constants.HIGH_SEVERITY_LEVELS]
                 warnings = [i for i in result.issues if i.severity in ("warning", "medium")]
                 infos = [i for i in result.issues if i.severity in ("info", "low")]
 

@@ -8,6 +8,8 @@ from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from iam_validator.core import constants
+
 # Policy Type Constants
 PolicyType = Literal[
     "IDENTITY_POLICY",
@@ -89,9 +91,8 @@ class ServiceDetail(BaseModel):
     resources_list: list[ResourceType] = Field(default_factory=list, alias="Resources")
     condition_keys_list: list[ConditionKey] = Field(default_factory=list, alias="ConditionKeys")
 
-    def model_post_init(self, __context: Any) -> None:
+    def model_post_init(self, __context: Any, /) -> None:
         """Convert lists to dictionaries for easier lookup."""
-        del __context  # Unused
         # Convert actions list to dict
         self.actions = {action.name: action for action in self.actions_list}
         # Convert resources list to dict
@@ -104,7 +105,7 @@ class ServiceDetail(BaseModel):
 class Statement(BaseModel):
     """IAM policy statement."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     sid: str | None = Field(default=None, alias="Sid")
     effect: str = Field(alias="Effect")
@@ -134,7 +135,7 @@ class Statement(BaseModel):
 class IAMPolicy(BaseModel):
     """IAM policy document."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     version: str = Field(alias="Version")
     statement: list[Statement] = Field(alias="Statement")
@@ -161,6 +162,7 @@ class ValidationIssue(BaseModel):
     resource: str | None = None
     condition_key: str | None = None
     suggestion: str | None = None
+    example: str | None = None  # Code example (JSON/YAML) - formatted separately for GitHub
     line_number: int | None = None  # Line number in the policy file (if available)
 
     # Severity level constants (ClassVar to avoid Pydantic treating them as fields)
@@ -225,8 +227,8 @@ class ValidationIssue(BaseModel):
 
         # Add identifier for bot comment cleanup (HTML comment - not visible to users)
         if include_identifier:
-            parts.append("<!-- iam-policy-validator-review -->\n")
-            parts.append("🤖 **IAM Policy Validator**\n")
+            parts.append(f"{constants.REVIEW_IDENTIFIER}\n")
+            parts.append(f"{constants.BOT_IDENTIFIER}\n")
 
         # Build statement context for better navigation
         statement_context = f"Statement[{self.statement_index}]"
@@ -241,7 +243,9 @@ class ValidationIssue(BaseModel):
         parts.append(self.message)
 
         # Put additional details in collapsible section if there are any
-        has_details = bool(self.action or self.resource or self.condition_key or self.suggestion)
+        has_details = bool(
+            self.action or self.resource or self.condition_key or self.suggestion or self.example
+        )
 
         if has_details:
             parts.append("")
@@ -266,6 +270,14 @@ class ValidationIssue(BaseModel):
                 parts.append("**💡 Suggested Fix:**")
                 parts.append("")
                 parts.append(self.suggestion)
+                parts.append("")
+
+            # Add example if present (formatted as JSON code block for GitHub)
+            if self.example:
+                parts.append("**Example:**")
+                parts.append("```json")
+                parts.append(self.example)
+                parts.append("```")
 
             parts.append("")
             parts.append("</details>")
@@ -298,6 +310,9 @@ class ValidationReport(BaseModel):
     validity_issues: int = 0  # Count of IAM validity issues (error/warning/info)
     security_issues: int = 0  # Count of security issues (critical/high/medium/low)
     results: list[PolicyValidationResult] = Field(default_factory=list)
+    parsing_errors: list[tuple[str, str]] = Field(
+        default_factory=list
+    )  # (file_path, error_message)
 
     def get_summary(self) -> str:
         """Generate a human-readable summary."""

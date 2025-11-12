@@ -70,11 +70,11 @@ class MFAConditionCheck(PolicyCheck):
                         ValidationIssue(
                             severity=self.get_severity(config),
                             message=(
-                                "Dangerous MFA condition pattern detected. "
-                                'Using {"Bool": {"aws:MultiFactorAuthPresent": "false"}} does not enforce MFA '
-                                "because aws:MultiFactorAuthPresent may not exist in the request context. "
-                                'Consider using {"Bool": {"aws:MultiFactorAuthPresent": "true"}} in an Allow statement, '
-                                "or use BoolIfExists in a Deny statement."
+                                "**Dangerous MFA condition pattern detected.** "
+                                'Using `{"Bool": {"aws:MultiFactorAuthPresent": "false"}}` does not enforce MFA '
+                                "because `aws:MultiFactorAuthPresent` may not exist in the request context. "
+                                'Consider using `{"Bool": {"aws:MultiFactorAuthPresent": "true"}}` in an Allow statement, '
+                                "or use `BoolIfExists` in a Deny statement."
                             ),
                             statement_sid=statement_sid,
                             statement_index=statement_idx,
@@ -97,10 +97,10 @@ class MFAConditionCheck(PolicyCheck):
                         ValidationIssue(
                             severity=self.get_severity(config),
                             message=(
-                                "Dangerous MFA condition pattern detected. "
-                                'Using {"Null": {"aws:MultiFactorAuthPresent": "false"}} only checks if the key exists, '
+                                "**Dangerous MFA condition pattern detected.** "
+                                'Using `{"Null": {"aws:MultiFactorAuthPresent": "false"}}` only checks if the key exists, '
                                 "not whether MFA was actually used. This does not enforce MFA. "
-                                'Consider using {"Bool": {"aws:MultiFactorAuthPresent": "true"}} in an Allow statement instead.'
+                                'Consider using `{"Bool": {"aws:MultiFactorAuthPresent": "true"}}` in an Allow statement instead.'
                             ),
                             statement_sid=statement_sid,
                             statement_index=statement_idx,

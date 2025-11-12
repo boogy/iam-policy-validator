@@ -294,8 +294,8 @@ class TestServiceWildcardCheck:
 
         assert len(issues) == 1
         assert "Use specific actions instead of s3:*" in issues[0].suggestion
-        assert "Example:" in issues[0].suggestion
-        assert "Try s3:Get* or s3:List*" in issues[0].suggestion
+        assert issues[0].example is not None
+        assert "Try s3:Get* or s3:List*" in issues[0].example
 
     @pytest.mark.asyncio
     async def test_action_without_service_prefix_ignored(self, check, fetcher, config):

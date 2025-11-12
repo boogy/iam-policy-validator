@@ -250,8 +250,8 @@ class TestWildcardActionCheck:
 
         assert len(issues) == 1
         assert "Use specific actions instead of wildcard" in issues[0].suggestion
-        assert "Example:" in issues[0].suggestion
-        assert "Action: ['s3:GetObject', 's3:PutObject']" in issues[0].suggestion
+        assert issues[0].example is not None
+        assert "Action: ['s3:GetObject', 's3:PutObject']" in issues[0].example
 
     @pytest.mark.asyncio
     async def test_wildcard_with_resource_wildcard(self, check, fetcher, config):

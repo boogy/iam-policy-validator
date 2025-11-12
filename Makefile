@@ -1,4 +1,4 @@
-.PHONY: help install dev clean test lint format type-check build publish publish-test version sync-defaults
+.PHONY: help install dev clean test lint format ruff type-check build publish publish-test version sync-defaults
 
 # Default target
 help:
@@ -14,6 +14,7 @@ help:
 	@echo "  make test             Run tests"
 	@echo "  make lint             Run linting checks"
 	@echo "  make format           Format code with ruff"
+	@echo "  make ruff             Format code with ruff (alias for format)"
 	@echo "  make type-check       Run mypy type checking"
 	@echo "  make check            Run all checks (lint + type + test)"
 	@echo ""
@@ -72,6 +73,8 @@ lint:
 format:
 	@uv run ruff format iam_validator/
 	@uv run ruff check --fix iam_validator/
+
+ruff: format
 
 type-check:
 	uv run mypy iam_validator/

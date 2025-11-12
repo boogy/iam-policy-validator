@@ -27,16 +27,35 @@ import os
 import re
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+from iam_validator.core import constants
 from iam_validator.core.config import AWS_SERVICE_REFERENCE_BASE_URL
 from iam_validator.core.models import ServiceDetail, ServiceInfo
 from iam_validator.utils.cache import LRUCache
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ConditionKeyValidationResult:
+    """Result of condition key validation.
+
+    Attributes:
+        is_valid: True if the condition key is valid for the action
+        error_message: Short error message if invalid (shown prominently)
+        warning_message: Warning message if valid but not recommended
+        suggestion: Detailed suggestion with valid keys (shown in collapsible section)
+    """
+
+    is_valid: bool
+    error_message: str | None = None
+    warning_message: str | None = None
+    suggestion: str | None = None
 
 
 class CompiledPatterns:
@@ -199,10 +218,10 @@ class AWSServiceFetcher:
 
     def __init__(
         self,
-        timeout: float = 30.0,
+        timeout: float = constants.DEFAULT_HTTP_TIMEOUT_SECONDS,
         retries: int = 3,
         enable_cache: bool = True,
-        cache_ttl: int = 604800,
+        cache_ttl: int = constants.DEFAULT_CACHE_TTL_SECONDS,
         memory_cache_size: int = 256,
         connection_pool_size: int = 50,
         keepalive_connections: int = 20,
@@ -303,7 +322,7 @@ class AWSServiceFetcher:
             limits=httpx.Limits(
                 max_keepalive_connections=self.keepalive_connections,
                 max_connections=self.connection_pool_size,
-                keepalive_expiry=30.0,  # Keep connections alive for 30 seconds
+                keepalive_expiry=constants.DEFAULT_HTTP_TIMEOUT_SECONDS,  # Keep connections alive
             ),
             http2=True,  # Enable HTTP/2 for multiplexing
         )
@@ -658,7 +677,7 @@ class AWSServiceFetcher:
                             return service_detail
                         except FileNotFoundError:
                             pass
-                raise ValueError(f"Service '{service_name}' not found in {self.aws_services_dir}")
+                raise ValueError(f"Service `{service_name}` not found in {self.aws_services_dir}")
 
         # Fetch service list and find URL from API
         services = await self.fetch_services()
@@ -676,7 +695,7 @@ class AWSServiceFetcher:
 
                 return service_detail
 
-        raise ValueError(f"Service '{service_name}' not found")
+        raise ValueError(f"Service `{service_name}` not found")
 
     async def fetch_multiple_services(self, service_names: list[str]) -> dict[str, ServiceDetail]:
         """Fetch multiple services concurrently with optimized batching."""
@@ -823,7 +842,7 @@ class AWSServiceFetcher:
 
     async def validate_condition_key(
         self, action: str, condition_key: str, resources: list[str] | None = None
-    ) -> tuple[bool, str | None, str | None]:
+    ) -> ConditionKeyValidationResult:
         """
         Validate condition key against action and optionally resource types.
 
@@ -833,10 +852,11 @@ class AWSServiceFetcher:
             resources: Optional list of resource ARNs to validate against
 
         Returns:
-            Tuple of (is_valid, error_message, warning_message)
+            ConditionKeyValidationResult with:
             - is_valid: True if key is valid (even with warning)
-            - error_message: Error message if invalid (is_valid=False)
+            - error_message: Short error message if invalid (shown prominently)
             - warning_message: Warning message if valid but not recommended
+            - suggestion: Detailed suggestion with valid keys (shown in collapsible section)
         """
         try:
             from iam_validator.core.config.aws_global_conditions import (
@@ -852,10 +872,9 @@ class AWSServiceFetcher:
                 if global_conditions.is_valid_global_key(condition_key):
                     is_global_key = True
                 else:
-                    return (
-                        False,
-                        f"Invalid AWS global condition key: '{condition_key}'.",
-                        None,
+                    return ConditionKeyValidationResult(
+                        is_valid=False,
+                        error_message=f"Invalid AWS global condition key: `{condition_key}`.",
                     )
 
             # Fetch service detail (cached)
@@ -863,7 +882,7 @@ class AWSServiceFetcher:
 
             # Check service-specific condition keys
             if condition_key in service_detail.condition_keys:
-                return True, None, None
+                return ConditionKeyValidationResult(is_valid=True)
 
             # Check action-specific condition keys
             if action_name in service_detail.actions:
@@ -872,7 +891,7 @@ class AWSServiceFetcher:
                     action_detail.action_condition_keys
                     and condition_key in action_detail.action_condition_keys
                 ):
-                    return True, None, None
+                    return ConditionKeyValidationResult(is_valid=True)
 
                 # Check resource-specific condition keys
                 # Get resource types required by this action
@@ -886,7 +905,7 @@ class AWSServiceFetcher:
                         resource_type = service_detail.resources.get(resource_name)
                         if resource_type and resource_type.condition_keys:
                             if condition_key in resource_type.condition_keys:
-                                return True, None, None
+                                return ConditionKeyValidationResult(is_valid=True)
 
                 # If it's a global key but the action has specific condition keys defined,
                 # AWS allows it but the key may not be available in every request context
@@ -898,21 +917,95 @@ class AWSServiceFetcher:
                         f"Verify that '{condition_key}' is available for this specific action's request context. "
                         f"Consider using '*IfExists' operators (e.g., StringEqualsIfExists) if the key might be missing."
                     )
-                    return True, None, warning_msg
+                    return ConditionKeyValidationResult(is_valid=True, warning_message=warning_msg)
 
             # If it's a global key and action doesn't define specific keys, allow it
             if is_global_key:
-                return True, None, None
+                return ConditionKeyValidationResult(is_valid=True)
 
-            return (
-                False,
-                f"Condition key '{condition_key}' is not valid for action '{action}'",
-                None,
+            # Short error message
+            error_msg = f"Condition key `{condition_key}` is not valid for action `{action}`"
+
+            # Collect valid condition keys for this action
+            valid_keys = set()
+
+            # Add service-level condition keys
+            if service_detail.condition_keys:
+                if isinstance(service_detail.condition_keys, dict):
+                    valid_keys.update(service_detail.condition_keys.keys())
+                elif isinstance(service_detail.condition_keys, list):
+                    valid_keys.update(service_detail.condition_keys)
+
+            # Add action-specific condition keys
+            if action_name in service_detail.actions:
+                action_detail = service_detail.actions[action_name]
+                if action_detail.action_condition_keys:
+                    if isinstance(action_detail.action_condition_keys, dict):
+                        valid_keys.update(action_detail.action_condition_keys.keys())
+                    elif isinstance(action_detail.action_condition_keys, list):
+                        valid_keys.update(action_detail.action_condition_keys)
+
+                # Add resource-specific condition keys
+                if action_detail.resources:
+                    for res_req in action_detail.resources:
+                        resource_name = res_req.get("Name", "")
+                        if resource_name:
+                            resource_type = service_detail.resources.get(resource_name)
+                            if resource_type and resource_type.condition_keys:
+                                if isinstance(resource_type.condition_keys, dict):
+                                    valid_keys.update(resource_type.condition_keys.keys())
+                                elif isinstance(resource_type.condition_keys, list):
+                                    valid_keys.update(resource_type.condition_keys)
+
+            # Build detailed suggestion with valid keys (goes in collapsible section)
+            suggestion_parts = []
+
+            if valid_keys:
+                # Sort and limit to first 10 keys for readability
+                sorted_keys = sorted(valid_keys)
+                suggestion_parts.append("**Valid condition keys for this action:**")
+                if len(sorted_keys) <= 10:
+                    for key in sorted_keys:
+                        suggestion_parts.append(f"- `{key}`")
+                else:
+                    for key in sorted_keys[:10]:
+                        suggestion_parts.append(f"- `{key}`")
+                    suggestion_parts.append(f"- ... and {len(sorted_keys) - 10} more")
+
+                suggestion_parts.append("")
+                suggestion_parts.append(
+                    "**Global condition keys** (e.g., `aws:ResourceOrgID`, `aws:RequestedRegion`, `aws:SourceIp`, `aws:SourceVpce`) "
+                    "can also be used with any AWS action"
+                )
+            else:
+                # No action-specific keys - mention global keys
+                suggestion_parts.append(
+                    "This action does not have specific condition keys defined.\n\n"
+                    "However, you can use **global condition keys** such as:\n"
+                    "- `aws:RequestedRegion`\n"
+                    "- `aws:SourceIp`\n"
+                    "- `aws:SourceVpce`\n"
+                    "- `aws:UserAgent`\n"
+                    "- `aws:CurrentTime`\n"
+                    "- `aws:SecureTransport`\n"
+                    "- `aws:PrincipalArn`\n"
+                    "- And many others"
+                )
+
+            suggestion = "\n".join(suggestion_parts)
+
+            return ConditionKeyValidationResult(
+                is_valid=False,
+                error_message=error_msg,
+                suggestion=suggestion,
             )
 
         except Exception as e:
             logger.error(f"Error validating condition key {condition_key} for {action}: {e}")
-            return False, f"Failed to validate condition key: {str(e)}", None
+            return ConditionKeyValidationResult(
+                is_valid=False,
+                error_message=f"Failed to validate condition key: {str(e)}",
+            )
 
     async def clear_caches(self) -> None:
         """Clear all caches (memory and disk)."""

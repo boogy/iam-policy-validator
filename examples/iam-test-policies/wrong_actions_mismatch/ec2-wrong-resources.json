@@ -5,29 +5,25 @@
       "Sid": "TerminateInstancesWithVolumeARN",
       "Effect": "Allow",
       "Action": "ec2:TerminateInstances",
-      "Resource": "arn:aws:ec2:us-east-1:123456789012:volume/*",
-      "Comment": "WRONG: ec2:TerminateInstances requires instance ARN, not volume ARN"
+      "Resource": "arn:aws:ec2:us-east-1:123456789012:volume/*"
     },
     {
       "Sid": "DeleteVolumeWithInstanceARN",
       "Effect": "Allow",
       "Action": "ec2:DeleteVolume",
-      "Resource": "arn:aws:ec2:us-east-1:123456789012:instance/*",
-      "Comment": "WRONG: ec2:DeleteVolume requires volume ARN, not instance ARN"
+      "Resource": "arn:aws:ec2:us-east-1:123456789012:instance/*"
     },
     {
       "Sid": "CreateSnapshotWithInstanceARN",
       "Effect": "Allow",
       "Action": "ec2:CreateSnapshot",
-      "Resource": "arn:aws:ec2:us-east-1:123456789012:instance/*",
-      "Comment": "WRONG: ec2:CreateSnapshot requires volume ARN"
+      "Resource": "arn:aws:ec2:us-east-1:123456789012:instance/*"
     },
     {
       "Sid": "AttachVolumeWithSnapshotARN",
       "Effect": "Allow",
       "Action": "ec2:AttachVolume",
-      "Resource": "arn:aws:ec2:us-east-1:123456789012:snapshot/*",
-      "Comment": "WRONG: ec2:AttachVolume requires volume and instance ARNs"
+      "Resource": "arn:aws:ec2:us-east-1:123456789012:snapshot/*"
     }
   ]
 }

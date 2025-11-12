@@ -63,17 +63,10 @@ class WildcardResourceCheck(PolicyCheck):
 
             # Flag the issue if actions are not all allowed or no allowed_wildcards configured
             message = config.config.get("message", "Statement applies to all resources (*)")
-            suggestion_text = config.config.get(
+            suggestion = config.config.get(
                 "suggestion", "Replace wildcard with specific resource ARNs"
             )
             example = config.config.get("example", "")
-
-            # Combine suggestion + example
-            suggestion = (
-                f"{suggestion_text}\nExample:\n```json\n{example}\n```"
-                if example
-                else suggestion_text
-            )
 
             issues.append(
                 ValidationIssue(
@@ -83,6 +76,7 @@ class WildcardResourceCheck(PolicyCheck):
                     issue_type="overly_permissive",
                     message=message,
                     suggestion=suggestion,
+                    example=example if example else None,
                     line_number=statement.line_number,
                 )
             )

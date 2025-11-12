@@ -16,6 +16,7 @@ Benefits of code-first approach:
 - 5-10x faster than YAML parsing
 """
 
+from iam_validator.core import constants
 from iam_validator.core.config.category_suggestions import get_category_suggestions
 from iam_validator.core.config.condition_requirements import CONDITION_REQUIREMENTS
 from iam_validator.core.config.principal_requirements import (
@@ -70,11 +71,11 @@ DEFAULT_CONFIG = {
         # Cache AWS service definitions locally (persists between runs)
         "cache_enabled": True,
         # Cache TTL in hours (default: 168 = 7 days)
-        "cache_ttl_hours": 168,
+        "cache_ttl_hours": constants.DEFAULT_CACHE_TTL_HOURS,
         # Severity levels that cause validation to fail
         # IAM Validity: error, warning, info
         # Security: critical, high, medium, low
-        "fail_on_severity": ["error", "critical", "high"],
+        "fail_on_severity": list(constants.HIGH_SEVERITY_LEVELS),
     },
     # ========================================================================
     # AWS IAM Validation Checks (17 checks total)
@@ -188,7 +189,7 @@ DEFAULT_CONFIG = {
         "enabled": True,
         "severity": "error",  # IAM validity error
         "description": "Validates ARN format for resources",
-        "arn_pattern": "^arn:(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f):[a-z0-9\\-]+:[a-z0-9\\-*]*:[0-9*]*:.+$",
+        "arn_pattern": constants.DEFAULT_ARN_VALIDATION_PATTERN,
     },
     # ========================================================================
     # 9. PRINCIPAL VALIDATION
@@ -389,6 +390,18 @@ DEFAULT_CONFIG = {
         # Services that are allowed to use wildcards (default: logs, cloudwatch, xray)
         # See: iam_validator/core/config/wildcards.py
         "allowed_services": list(DEFAULT_SERVICE_WILDCARDS),
+        "message": "Service wildcard '{action}' grants all permissions for the {service} service",
+        "suggestion": (
+            "Replace '{action}' with specific actions needed for your use case to follow least-privilege principle.\n"
+            "Find valid {service} actions: https://docs.aws.amazon.com/service-authorization/latest/reference/reference_policies_actions-resources-contextkeys.html"
+        ),
+        "example": (
+            "Replace:\n"
+            '  "Action": ["{action}"]\n'
+            "\n"
+            "With specific actions:\n"
+            '  "Action": ["{service}:Describe*", "{service}:List*"]\n'
+        ),
     },
     # ========================================================================
     # 16. SENSITIVE ACTION
@@ -482,10 +495,6 @@ DEFAULT_CONFIG = {
     #     - prevent_public_ip: Prevents 0.0.0.0/0 IP ranges
     #
     # See: iam_validator/core/config/condition_requirements.py
-    # Python API:
-    #   from iam_validator.core.config import CONDITION_REQUIREMENTS
-    #   import copy
-    #   requirements = copy.deepcopy(CONDITION_REQUIREMENTS)
     "action_condition_enforcement": {
         "enabled": True,
         "severity": "high",  # Default severity (can be overridden per-requirement)

@@ -305,7 +305,7 @@ class TestEdgeCases:
         )
 
         # Unknown services raise ValueError from the fetcher
-        with pytest.raises(ValueError, match="Service 'unknownservice' not found"):
+        with pytest.raises(ValueError, match="Service `unknownservice` not found"):
             await check.execute(statement, 0, fetcher, check_config)
 
     @pytest.mark.asyncio

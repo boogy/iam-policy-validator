@@ -349,7 +349,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         return issues
 
     async def _check_action_match(
-        self, statement_actions: list[str], requirement: dict[str, Any], fetcher: AWSServiceFetcher
+        self,
+        statement_actions: list[str],
+        requirement: dict[str, Any],
+        fetcher: AWSServiceFetcher,
     ) -> tuple[bool, list[str]]:
         """
         Check if statement actions match the requirement.
@@ -766,6 +769,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             or self.get_severity(config)  # Global check severity
         )
 
+        suggestion_text, example_code = self._build_suggestion(
+            condition_key, description, example, expected_value, operator
+        )
+
         return ValidationIssue(
             severity=severity,
             statement_sid=statement.sid,
@@ -774,9 +781,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             message=f"{message_prefix} Action(s) {matching_actions} require condition '{condition_key}'",
             action=", ".join(matching_actions),
             condition_key=condition_key,
-            suggestion=self._build_suggestion(
-                condition_key, description, example, expected_value, operator
-            ),
+            suggestion=suggestion_text,
+            example=example_code,
             line_number=statement.line_number,
         )
 
@@ -787,19 +793,20 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         example: str,
         expected_value: Any = None,
         operator: str = "StringEquals",
-    ) -> str:
-        """Build a helpful suggestion for adding the missing condition."""
-        parts = []
+    ) -> tuple[str, str]:
+        """Build suggestion and example for adding the missing condition.
 
-        if description:
-            parts.append(description)
+        Returns:
+            Tuple of (suggestion_text, example_code)
+        """
+        suggestion = description if description else f"Add condition: {condition_key}"
 
         # Build example based on condition key type
         if example:
-            parts.append(f"Example:\n```json\n{example}\n```")
+            example_code = example
         else:
             # Auto-generate example
-            example_lines = ['Add to "Condition" block:', f'  "{operator}": {{']
+            example_lines = [f'  "{operator}": {{']
 
             if isinstance(expected_value, list):
                 value_str = (
@@ -826,9 +833,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             example_lines.append(f'    "{condition_key}": {value_str}')
             example_lines.append("  }")
 
-            parts.append("\n".join(example_lines))
+            example_code = "\n".join(example_lines)
 
-        return ". ".join(parts) if parts else f"Add condition: {condition_key}"
+        return suggestion, example_code
 
     def _build_any_of_suggestion(self, any_of_conditions: list[dict[str, Any]]) -> str:
         """Build suggestion for any_of conditions."""

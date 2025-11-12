@@ -10,6 +10,7 @@ see iam_validator.checks.utils instead.
 Organization:
     - cache.py: Generic caching implementations (LRUCache with TTL)
     - regex.py: Regex pattern caching and compilation utilities
+    - terminal.py: Terminal width detection utilities
 """
 
 from iam_validator.utils.cache import LRUCache
@@ -19,6 +20,7 @@ from iam_validator.utils.regex import (
     compile_and_cache,
     get_cached_pattern,
 )
+from iam_validator.utils.terminal import get_terminal_width
 
 __all__ = [
     # Cache utilities
@@ -28,4 +30,6 @@ __all__ = [
     "compile_and_cache",
     "get_cached_pattern",
     "clear_pattern_cache",
+    # Terminal utilities
+    "get_terminal_width",
 ]
