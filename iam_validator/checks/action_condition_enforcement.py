@@ -545,7 +545,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             except re.error:
                                 continue
 
-                except (ValueError, Exception):
+                except (ValueError, Exception):  # pylint: disable=broad-exception-caught
                     # If we can't fetch the service or parse the action, fall back to prefix matching
                     stmt_prefix = statement_action.rstrip("*")
                     for pattern in patterns:
@@ -848,11 +848,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             description = cond.get("description", "")
             expected_value = cond.get("expected_value")
 
-            option = f"\nOption {i}: {condition_key}"
+            option = f"\nOption {i}: `{condition_key}`"
             if description:
                 option += f" - {description}"
             if expected_value is not None:
-                option += f" (value: {expected_value})"
+                option += f" (value: `{expected_value}`)"
 
             suggestions.append(option)
 

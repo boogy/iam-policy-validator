@@ -652,11 +652,11 @@ class PrincipalValidationCheck(PolicyCheck):
             description = cond.get("description", "")
             expected_value = cond.get("expected_value")
 
-            option = f"\nOption {i}: {condition_key}"
+            option = f"\nOption {i}: `{condition_key}`"
             if description:
                 option += f" - {description}"
             if expected_value is not None:
-                option += f" (value: {expected_value})"
+                option += f" (value: `{expected_value}`)"
 
             suggestions.append(option)
 
