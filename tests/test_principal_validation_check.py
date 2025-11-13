@@ -453,7 +453,7 @@ class TestPrincipalConditionRequirements:
         # Extract condition keys from messages like "Principal(s) ['*'] require condition 'aws:SourceArn'"
         condition_keys = set()
         for issue in issues:
-            parts = issue.message.split("'")
+            parts = issue.message.split("`")
             if len(parts) >= 4:
                 condition_keys.add(parts[-2])  # Get the second-to-last quoted part
         assert "aws:SourceArn" in condition_keys

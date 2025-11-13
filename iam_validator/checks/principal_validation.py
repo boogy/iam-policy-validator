@@ -566,12 +566,14 @@ class PrincipalValidationCheck(PolicyCheck):
             condition_key, description, example, expected_value, operator
         )
 
+        matching_principals_formatted = ", ".join(f"`{p}`" for p in matching_principals)
+
         return ValidationIssue(
             severity=severity,
             statement_sid=statement.sid,
             statement_index=statement_idx,
             issue_type="missing_principal_condition",
-            message=f"{message_prefix} Principal(s) {matching_principals} require condition '{condition_key}'",
+            message=f"{message_prefix} Principal(s) {matching_principals_formatted} require condition `{condition_key}`",
             suggestion=suggestion_text,
             example=example_code,
             line_number=statement.line_number,

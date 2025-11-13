@@ -197,15 +197,16 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 description = requirement.get("description", "These actions should not be used")
                 # Use per-requirement severity if specified, else use global
                 severity = requirement.get("severity", self.get_severity(config))
+                matching_actions_formatted = ", ".join(f"`{a}`" for a in matching_actions)
                 issues.append(
                     ValidationIssue(
                         severity=severity,
                         statement_sid=statement.sid,
                         statement_index=statement_idx,
                         issue_type="forbidden_action_present",
-                        message=f"FORBIDDEN: Actions {matching_actions} should not be used. {description}",
+                        message=f"FORBIDDEN: Actions {matching_actions_formatted} should not be used. {description}",
                         action=", ".join(matching_actions),
-                        suggestion=f"Remove these forbidden actions from the statement: {', '.join(matching_actions)}. {description}",
+                        suggestion=f"Remove these forbidden actions from the statement: {matching_actions_formatted}. {description}",
                         line_number=statement.line_number,
                     )
                 )
@@ -308,6 +309,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
                 # Use the first matching statement's index for the issue
                 first_idx, first_stmt, _ = matching_statements[0]
+                all_actions_formatted = ", ".join(f"`{a}`" for a in sorted(all_actions))
 
                 issues.append(
                     ValidationIssue(
@@ -315,7 +317,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                         statement_sid=first_stmt.sid,
                         statement_index=first_idx,
                         issue_type="policy_level_action_detected",
-                        message=f"POLICY-LEVEL: Actions {sorted(all_actions)} found in {len(matching_statements)} statement(s). {description}",
+                        message=f"POLICY-LEVEL: Actions {all_actions_formatted} found in {len(matching_statements)} statement(s). {description}",
                         action=", ".join(sorted(all_actions)),
                         suggestion=f"Review these statements: {', '.join(statement_refs)}. {description}",
                         line_number=first_stmt.line_number,
