@@ -869,7 +869,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 option = f"\n- **Option {i}**: {condition_keys_formatted} (both required)"
 
                 # Use description from first condition or combine them
-                descriptions = [c.get("description", "") for c in all_of_list if c.get("description")]
+                descriptions = [
+                    c.get("description", "") for c in all_of_list if c.get("description")
+                ]
                 if descriptions:
                     option += f" - {descriptions[0]}"
 
