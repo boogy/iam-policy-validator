@@ -807,7 +807,7 @@ class AWSServiceFetcher:
                     # Wildcard doesn't match any actions
                     return (
                         False,
-                        f"Action pattern '{action_name}' does not match any actions in service '{service_prefix}'",
+                        f"Action pattern `{action_name}` does not match any actions in service `{service_prefix}`",
                         True,
                     )
 
@@ -816,16 +816,16 @@ class AWSServiceFetcher:
 
             if action_exists:
                 return True, None, False
-            else:
-                # Suggest similar actions
-                similar = [a for a in available_actions if action_name.lower() in a.lower()][:3]
 
-                suggestion = f" Did you mean: {', '.join(similar)}?" if similar else ""
-                return (
-                    False,
-                    f"Action '{action_name}' not found in service '{service_prefix}'.{suggestion}",
-                    False,
-                )
+            # Suggest similar actions
+            similar = [f"`{a}`" for a in available_actions if action_name.lower() in a.lower()][:3]
+
+            suggestion = f" Did you mean: {', '.join(similar)}?" if similar else ""
+            return (
+                False,
+                f"Action `{action_name}` not found in service `{service_prefix}`.{suggestion}",
+                False,
+            )
 
         except ValueError as e:
             return False, str(e), False
@@ -915,11 +915,11 @@ class AWSServiceFetcher:
                 # AWS allows it but the key may not be available in every request context
                 if is_global_key and action_detail.action_condition_keys is not None:
                     warning_msg = (
-                        f"Global condition key '{condition_key}' is used with action '{action}'. "
+                        f"Global condition key `{condition_key}` is used with action `{action}`. "
                         f"While global condition keys can be used across all AWS services, "
                         f"the key may not be available in every request context. "
-                        f"Verify that '{condition_key}' is available for this specific action's request context. "
-                        f"Consider using '*IfExists' operators (e.g., StringEqualsIfExists) if the key might be missing."
+                        f"Verify that `{condition_key}` is available for this specific action's request context. "
+                        f"Consider using `*IfExists` operators (e.g., `StringEqualsIfExists`) if the key might be missing."
                     )
                     return ConditionKeyValidationResult(is_valid=True, warning_message=warning_msg)
 
