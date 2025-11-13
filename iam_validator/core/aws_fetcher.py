@@ -778,8 +778,7 @@ class AWSServiceFetcher:
                     # Just verify service exists
                     await self.fetch_service_by_name(service_prefix)
                     return True, None, True
-                else:
-                    return False, "Wildcard actions are not allowed", True
+                return False, "Wildcard actions are not allowed", True
 
             # Fetch service details (will use cache)
             service_detail = await self.fetch_service_by_name(service_prefix)
@@ -803,13 +802,12 @@ class AWSServiceFetcher:
                         examples += f", ... ({match_count - 5} more)"
 
                     return True, None, True
-                else:
-                    # Wildcard doesn't match any actions
-                    return (
-                        False,
-                        f"Action pattern `{action_name}` does not match any actions in service `{service_prefix}`",
-                        True,
-                    )
+                # Wildcard doesn't match any actions
+                return (
+                    False,
+                    f"Action pattern `{action_name}` does not match any actions in service `{service_prefix}`",
+                    True,
+                )
 
             # Check if exact action exists (case-insensitive)
             action_exists = any(a.lower() == action_name.lower() for a in available_actions)
