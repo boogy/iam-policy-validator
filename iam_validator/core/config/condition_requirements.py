@@ -54,23 +54,70 @@ IAM_PASS_ROLE_REQUIREMENT: Final[dict[str, Any]] = {
 S3_WRITE_ORG_ID: Final[dict[str, Any]] = {
     "actions": ["s3:PutObject"],
     "severity": "medium",
-    "required_conditions": [
-        {
-            "condition_key": "aws:ResourceOrgId",
-            "description": (
-                "Require `aws:ResourceAccount`, `aws:ResourceOrgID` or `aws:ResourceOrgPaths` condition(s) for S3 write actions to enforce organization-level access control"
-            ),
-            "example": (
-                "{\n"
-                '  "Condition": {\n'
-                '    "StringEquals": {\n'
-                '      "aws:ResourceOrgId": "${aws:PrincipalOrgID}"\n'
-                "    }\n"
-                "  }\n"
-                "}"
-            ),
-        },
-    ],
+    "required_conditions": {
+        "any_of": [
+            # Option 1: Use organization-level control with ResourceOrgID
+            {
+                "all_of": [
+                    {
+                        "condition_key": "aws:ResourceOrgID",
+                        "description": "Restrict S3 write actions to resources within your AWS Organization",
+                        "example": (
+                            "{\n"
+                            '  "Condition": {\n'
+                            '    "StringEquals": {\n'
+                            '      "aws:ResourceOrgID": "${aws:PrincipalOrgID}",\n'
+                            '      "aws:ResourceAccount": "${aws:PrincipalAccount}"\n'
+                            "    }\n"
+                            "  }\n"
+                            "}"
+                        ),
+                    },
+                    {
+                        "condition_key": "aws:ResourceAccount",
+                        "description": "Ensure the S3 resource belongs to the same AWS account as the principal",
+                    },
+                ]
+            },
+            # Option 2: Use organization path-based control
+            {
+                "all_of": [
+                    {
+                        "condition_key": "aws:ResourceOrgPaths",
+                        "description": "Restrict S3 write actions to resources within your AWS Organization path",
+                        "example": (
+                            "{\n"
+                            '  "Condition": {\n'
+                            '    "StringEquals": {\n'
+                            '      "aws:ResourceOrgPaths": "${aws:PrincipalOrgPaths}",\n'
+                            '      "aws:ResourceAccount": "${aws:PrincipalAccount}"\n'
+                            "    }\n"
+                            "  }\n"
+                            "}"
+                        ),
+                    },
+                    {
+                        "condition_key": "aws:ResourceAccount",
+                        "description": "Ensure the S3 resource belongs to the same AWS account as the principal",
+                    },
+                ]
+            },
+            # Option 3: Account-only control (less restrictive, but still secure)
+            {
+                "condition_key": "aws:ResourceAccount",
+                "description": "Restrict S3 write actions to resources within the same AWS account",
+                "example": (
+                    "{\n"
+                    '  "Condition": {\n'
+                    '    "StringEquals": {\n'
+                    '      "aws:ResourceAccount": "${aws:PrincipalAccount}"\n'
+                    "    }\n"
+                    "  }\n"
+                    "}"
+                ),
+            },
+        ],
+    },
 }
 
 # IP Restrictions - Source IP requirements
