@@ -532,7 +532,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     available_actions = list(service_detail.actions.keys())
 
                     # Find which actual AWS actions the wildcard would grant
-                    _, granted_actions = fetcher._match_wildcard_action(
+                    _, granted_actions = fetcher.match_wildcard_action(
                         statement_action.split(":", 1)[1],  # Just the action part (e.g., "C*")
                         available_actions,
                     )

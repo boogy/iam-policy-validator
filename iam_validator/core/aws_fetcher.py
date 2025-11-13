@@ -160,7 +160,7 @@ class AWSServiceFetcher:
 
         Public API - Parsing:
             - parse_action: Split action into service and name
-            - _match_wildcard_action: Match wildcard patterns
+            - match_wildcard_action: Match wildcard patterns
 
         Utilities:
             - get_stats: Get cache statistics
@@ -735,7 +735,7 @@ class AWSServiceFetcher:
 
         return match.group("service").lower(), match.group("action")
 
-    def _match_wildcard_action(self, pattern: str, actions: list[str]) -> tuple[bool, list[str]]:
+    def match_wildcard_action(self, pattern: str, actions: list[str]) -> tuple[bool, list[str]]:
         """Match wildcard pattern against list of actions.
 
         Args:
@@ -790,7 +790,7 @@ class AWSServiceFetcher:
                 if not allow_wildcards:
                     return False, "Wildcard actions are not allowed", True
 
-                has_matches, matched_actions = self._match_wildcard_action(
+                has_matches, matched_actions = self.match_wildcard_action(
                     action_name, available_actions
                 )
 
