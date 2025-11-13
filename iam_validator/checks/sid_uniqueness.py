@@ -35,6 +35,10 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
     # No spaces allowed
     sid_pattern = re.compile(r"^[a-zA-Z0-9_-]+$")
 
+    # Handle policies with no statements
+    if not policy.statement:
+        return []
+
     # Collect all SIDs (ignoring None/empty values) and check format
     sids_with_indices: list[tuple[str, int]] = []
     for idx, statement in enumerate(policy.statement):
@@ -43,15 +47,15 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
             if not sid_pattern.match(statement.sid):
                 # Identify the issue
                 if " " in statement.sid:
-                    issue_msg = f"Statement ID '{statement.sid}' contains spaces, which are not allowed by AWS"
+                    issue_msg = f"Statement ID `{statement.sid}` contains spaces, which are not allowed by AWS"
                     suggestion = (
-                        f"Remove spaces from the SID. Example: '{statement.sid.replace(' ', '')}'"
+                        f"Remove spaces from the SID. Example: `{statement.sid.replace(' ', '')}`"
                     )
                 else:
                     invalid_chars = "".join(
                         set(c for c in statement.sid if not c.isalnum() and c not in "_-")
                     )
-                    issue_msg = f"Statement ID '{statement.sid}' contains invalid characters: {invalid_chars}"
+                    issue_msg = f"Statement ID `{statement.sid}` contains invalid characters: `{invalid_chars}`"
                     suggestion = (
                         "SIDs must contain only alphanumeric characters, hyphens, and underscores"
                     )
@@ -91,7 +95,7 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
                     statement_sid=duplicate_sid,
                     statement_index=idx,
                     issue_type="duplicate_sid",
-                    message=f"Statement ID `{duplicate_sid}` is used **{count} times** in this policy (found in statements {statement_numbers})",
+                    message=f"Statement ID `{duplicate_sid}` is used **{count} times** in this policy (found in statements `{statement_numbers}`)",
                     suggestion="Change this SID to a unique value. Statement IDs help identify and reference specific statements, so duplicates can cause confusion.",
                     line_number=statement.line_number,
                 )

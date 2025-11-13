@@ -259,7 +259,7 @@ class AccessAnalyzerReportFormatter:
             file_path: Path to save JSON report
         """
         json_content = self.generate_json_report(report)
-        with open(file_path, "w") as f:
+        with open(file_path, "w", encoding="utf-8") as f:
             f.write(json_content)
 
     def generate_markdown_report(
@@ -636,5 +636,5 @@ class AccessAnalyzerReportFormatter:
             file_path: Path to save Markdown report
         """
         markdown_content = self.generate_markdown_report(report)
-        with open(file_path, "w") as f:
+        with open(file_path, "w", encoding="utf-8") as f:
             f.write(markdown_content)

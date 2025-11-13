@@ -51,31 +51,31 @@ wildcard_action:
   severity: low  # Downgrade to low in development
   # Ignore test files
   ignore_patterns:
-    - filepath_regex: "^(test|tests|examples)/.*"
+    - filepath: "^(test|tests|examples)/.*"
 
 wildcard_resource:
   enabled: true
   severity: low  # Downgrade to low in development
   ignore_patterns:
-    - filepath_regex: "^(test|tests|examples)/.*"
+    - filepath: "^(test|tests|examples)/.*"
 
 full_wildcard:
   enabled: true
   severity: medium  # Still warn but don't fail
   ignore_patterns:
-    - filepath_regex: "^(test|tests|examples)/.*"
+    - filepath: "^(test|tests|examples)/.*"
 
 service_wildcard:
   enabled: true
   severity: medium
   ignore_patterns:
-    - filepath_regex: "^(test|tests|examples)/.*"
+    - filepath: "^(test|tests|examples)/.*"
 
 sensitive_action:
   enabled: true
   severity: low  # Just informational in development
   ignore_patterns:
-    - filepath_regex: "^(test|tests|examples)/.*"
+    - filepath: "^(test|tests|examples)/.*"
 
 # Action condition enforcement - disabled in development
 # Enable in staging/production

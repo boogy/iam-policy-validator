@@ -9,7 +9,7 @@ settings:
 
 principal_validation:
   enabled: true
-  severity: medium  # Lower severity for relaxed mode
+  severity: medium # Lower severity for relaxed mode
 
   # Only block fully public access
   blocked_principals:
@@ -18,15 +18,9 @@ principal_validation:
   # No whitelist (allow all except blocked)
   allowed_principals: []
 
-  # No condition requirements
-  require_conditions_for: {}
+  # No condition requirements (most relaxed)
+  principal_condition_requirements: []
 
-  # Allow AWS service principals
+  # Allow all AWS service principals (relaxed mode)
   allowed_service_principals:
-    - "cloudfront.amazonaws.com"
-    - "s3.amazonaws.com"
-    - "sns.amazonaws.com"
-    - "apigateway.amazonaws.com"
-    - "lambda.amazonaws.com"
-    - "logs.amazonaws.com"
-    - "events.amazonaws.com"
+    - "aws:*" # Allow any AWS service principal

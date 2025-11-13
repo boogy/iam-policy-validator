@@ -63,7 +63,7 @@ class ActionValidationCheck(PolicyCheck):
                         statement_sid=statement_sid,
                         statement_index=statement_idx,
                         issue_type="invalid_action",
-                        message=error_msg or f"Invalid action: {action}",
+                        message=error_msg or f"Invalid action: `{action}`",
                         action=action,
                         line_number=line_number,
                     )

@@ -7,11 +7,13 @@ This directory contains examples, configurations, and templates for using the IA
 ```
 examples/
 ├── access-analyzer/       # AWS Access Analyzer integration examples
-├── configs/               # Configuration file examples (3 essential configs)
+├── configs/               # Configuration file examples (9+ essential configs)
 ├── custom_checks/         # Custom policy check examples
 ├── github-actions/        # GitHub Actions workflow examples
 ├── iam-test-policies/     # Test IAM policies (invalid/problematic cases)
-└── none-of-feature/       # none_of feature demonstration
+├── library-usage/         # Python library usage examples
+├── trust-policies/        # Trust policy examples (role assumption)
+└── README.md              # This file
 ```
 
 ## Quick Start
@@ -46,7 +48,7 @@ See [custom_checks/README.md](custom_checks/README.md) for creating custom valid
 
 ### 1. Configuration Files (`configs/`)
 
-Three essential configurations covering common use cases:
+Nine+ essential configurations covering common use cases:
 
 - **`basic-config.yaml`** - Minimal configuration with defaults
   - Good starting point for most users
@@ -117,7 +119,36 @@ CI/CD integration examples - 7 ready-to-use workflows:
 
 See [github-actions/README.md](github-actions/README.md) for quick start and [docs/github-actions-workflows.md](../docs/github-actions-workflows.md) for detailed setup.
 
-### 5. AWS Access Analyzer (`access-analyzer/`)
+### 5. Trust Policies (`trust-policies/`)
+
+Example trust policies (role assumption policies) demonstrating correct patterns:
+
+**Examples:**
+- `lambda-service-role-trust-policy.json` - AWS service trust (Lambda)
+- `github-actions-oidc-trust-policy.json` - OIDC federation (GitHub Actions)
+- `saml-federated-trust-policy.json` - SAML-based federation
+- `cross-account-trust-policy.json` - Cross-account access with ExternalId
+
+**Usage:**
+```bash
+# Validate trust policy with specialized validation
+iam-validator validate \
+  --path examples/trust-policies/lambda-service-role-trust-policy.json \
+  --policy-type TRUST_POLICY
+
+# Enable trust policy validation check in config
+trust_policy_validation:
+  enabled: true
+  severity: high
+```
+
+**Key Features:**
+- Action-principal type matching validation
+- SAML/OIDC provider ARN format validation
+- Required conditions enforcement (SAML:aud, etc.)
+- See [trust-policies/README.md](trust-policies/README.md) for complete guide
+
+### 6. AWS Access Analyzer (`access-analyzer/`)
 
 Example resource policies for Access Analyzer validation:
 - `example1.json` - S3 bucket policy

@@ -1,0 +1,107 @@
+# ============================================================================
+# Example: Using List-Based Ignore Patterns
+# ============================================================================
+# This example demonstrates the new list support for ignore_patterns fields.
+# You can now specify multiple patterns in a single ignore rule using lists.
+# ============================================================================
+
+settings:
+  fail_fast: false
+  enable_builtin_checks: true
+
+# ============================================================================
+# BEFORE: Multiple separate ignore patterns (old way, still works)
+# ============================================================================
+# sensitive_action:
+#   enabled: true
+#   ignore_patterns:
+#     - action: "^iam:PassRole$"
+#     - action: "^iam:CreateUser$"
+#     - action: "^iam:AttachUserPolicy$"
+#     - action: "^s3:GetObject$"
+#     - action: "^s3:PutObject$"
+
+# ============================================================================
+# AFTER: Single ignore pattern with list (new way, more concise)
+# ============================================================================
+sensitive_action:
+  enabled: true
+  severity: medium
+  ignore_patterns:
+    # Example 1: List of exact action matches
+    - action:
+        - "^iam:PassRole$"
+        - "^iam:CreateUser$"
+        - "^iam:AttachUserPolicy$"
+        - "^s3:GetObject$"
+        - "^s3:PutObject$"
+
+    # Example 2: List with regex patterns
+    - action:
+        - "^s3:.*" # All S3 actions
+        - "^iam:Get.*" # All IAM Get actions
+        - "^ec2:Describe.*" # All EC2 Describe actions
+
+    # Example 3: Combine with other fields (AND logic)
+    - filepath: "^test/.*"
+      action:
+        - "^.*:Delete.*" # All delete actions in test files
+        - "^.*:Terminate.*" # All terminate actions in test files
+
+    # Example 4: Mix single patterns with lists (both work)
+    - action: "^logs:.*" # Single pattern still works
+
+# ============================================================================
+# ALL ignore_patterns fields support lists!
+# ============================================================================
+wildcard_action:
+  enabled: true
+  ignore_patterns:
+    # filepath field supports lists
+    - filepath:
+        - "^test/.*"
+        - "^examples/.*"
+        - "^sandbox/.*"
+
+    # resource field supports lists
+    - resource:
+        - "arn:aws:s3:::.*-test-.*"
+        - "arn:aws:s3:::.*-sandbox-.*"
+        - "arn:aws:s3:::.*-dev-.*"
+
+    # sid field supports lists (exact match or regex)
+    - sid:
+        - "AllowTestAccess"
+        - "AllowDevAccess"
+        - "Allow.*ReadOnly" # Regex with *
+
+# ============================================================================
+# Condition keys also support lists
+# ============================================================================
+condition_key_validation:
+  enabled: true
+  ignore_patterns:
+    # Ignore specific condition keys
+    - condition_key:
+        - "aws:SourceIp"
+        - "aws:PrincipalOrgID"
+        - "aws:SourceArn"
+# ============================================================================
+# Benefits of List-Based Patterns
+# ============================================================================
+# 1. More concise - group related patterns together
+# 2. Easier to maintain - add/remove items in one place
+# 3. Self-documenting - lists show related items clearly
+# 4. Backward compatible - old syntax still works
+# 5. OR logic within list - any match triggers ignore
+# 6. Works for ALL fields - filepath, action, resource, sid, condition_key
+#
+# Pattern Matching Logic:
+# - Within ONE pattern: Multiple fields = AND (all must match)
+# - Within ONE field list: Multiple patterns = OR (any match = ignore)
+# - Multiple patterns: OR (any pattern match = ignore)
+#
+# Example:
+#   - filepath: ["^prod/.*", "^staging/.*"]  # OR (matches prod OR staging)
+#     action: ["s3:.*", "ec2:.*"]  # AND - OR (matches s3:* OR ec2:*)
+#   - filepath: "^test/.*"     # OR (this is a separate pattern)

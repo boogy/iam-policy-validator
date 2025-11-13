@@ -114,13 +114,17 @@ Examples:
             choices=[
                 "IDENTITY_POLICY",
                 "RESOURCE_POLICY",
+                "TRUST_POLICY",
                 "SERVICE_CONTROL_POLICY",
                 "RESOURCE_CONTROL_POLICY",
             ],
             default="IDENTITY_POLICY",
             help="Type of IAM policy being validated (default: IDENTITY_POLICY). "
-            "Enables policy-type-specific validation (e.g., requiring Principal for resource policies, "
-            "strict RCP requirements for resource control policies)",
+            "IDENTITY_POLICY: Attached to users/groups/roles | "
+            "RESOURCE_POLICY: S3/SNS/SQS policies | "
+            "TRUST_POLICY: Role assumption policies | "
+            "SERVICE_CONTROL_POLICY: AWS Orgs SCPs | "
+            "RESOURCE_CONTROL_POLICY: AWS Orgs RCPs",
         )
 
         parser.add_argument(
@@ -157,12 +161,6 @@ Examples:
         parser.add_argument(
             "--custom-checks-dir",
             help="Path to directory containing custom checks for auto-discovery",
-        )
-
-        parser.add_argument(
-            "--no-registry",
-            action="store_true",
-            help="Use legacy validation (disable check registry system)",
         )
 
         parser.add_argument(
@@ -242,14 +240,12 @@ Examples:
             logging.info(f"Loaded {len(policies)} policies from {len(args.paths)} path(s)")
 
         # Validate policies
-        use_registry = not getattr(args, "no_registry", False)
         config_path = getattr(args, "config", None)
         custom_checks_dir = getattr(args, "custom_checks_dir", None)
         policy_type = cast(PolicyType, getattr(args, "policy_type", "IDENTITY_POLICY"))
         results = await validate_policies(
             policies,
             config_path=config_path,
-            use_registry=use_registry,
             custom_checks_dir=custom_checks_dir,
             policy_type=policy_type,
         )
@@ -329,7 +325,6 @@ Examples:
         """
         loader = PolicyLoader()
         generator = ReportGenerator()
-        use_registry = not getattr(args, "no_registry", False)
         config_path = getattr(args, "config", None)
         custom_checks_dir = getattr(args, "custom_checks_dir", None)
         policy_type = cast(PolicyType, getattr(args, "policy_type", "IDENTITY_POLICY"))
@@ -354,7 +349,6 @@ Examples:
             results = await validate_policies(
                 [(file_path, policy)],
                 config_path=config_path,
-                use_registry=use_registry,
                 custom_checks_dir=custom_checks_dir,
                 policy_type=policy_type,
             )

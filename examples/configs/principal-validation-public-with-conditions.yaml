@@ -18,16 +18,18 @@ principal_validation:
   # No whitelist
   allowed_principals: []
 
-  # Require conditions for public access
-  require_conditions_for:
-    "*":
-      - "aws:SourceArn"  # Must specify source
-      - "aws:SourceAccount"  # Must specify account
+  # Require conditions for public access (using new format)
+  principal_condition_requirements:
+    - principals:
+        - "*"  # Public access
+      severity: high
+      required_conditions:
+        all_of:  # ALL of these conditions must be present
+          - condition_key: "aws:SourceArn"
+            description: "Must specify source ARN to limit public access"
+          - condition_key: "aws:SourceAccount"
+            description: "Must specify source account to prevent unauthorized access"
 
-  # Allow AWS service principals
+  # Allow all AWS service principals
   allowed_service_principals:
-    - "cloudfront.amazonaws.com"
-    - "s3.amazonaws.com"
-    - "sns.amazonaws.com"
-    - "apigateway.amazonaws.com"
-    - "lambda.amazonaws.com"
+    - "aws:*"  # Allow any AWS service principal

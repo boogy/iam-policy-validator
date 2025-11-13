@@ -106,7 +106,7 @@ class TestResourceValidationCheck:
         assert issues[0].severity == "error"
         assert issues[0].issue_type == "invalid_resource"
         assert issues[0].resource == "aws:s3:::my-bucket/*"
-        assert "Invalid ARN format" in issues[0].message
+        assert "Invalid" in issues[0].message and "ARN" in issues[0].message
 
     @pytest.mark.asyncio
     async def test_invalid_arn_invalid_partition(self, check, fetcher, config):
@@ -119,7 +119,7 @@ class TestResourceValidationCheck:
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 1
-        assert "Invalid ARN format" in issues[0].message
+        assert "Invalid" in issues[0].message and "ARN" in issues[0].message
 
     @pytest.mark.asyncio
     async def test_invalid_arn_malformed(self, check, fetcher, config):

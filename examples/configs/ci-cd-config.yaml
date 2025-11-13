@@ -50,21 +50,21 @@ wildcard_action:
   severity: high
   # Allow wildcards only in explicitly marked test policies
   ignore_patterns:
-    - filepath_regex: "^test/.*"
-      statement_sid: ".*Test.*"
+    - filepath: "^test/.*"
+      sid: ".*Test.*"
 
 wildcard_resource:
   enabled: true
   severity: high
   ignore_patterns:
-    - filepath_regex: "^test/.*"
+    - filepath: "^test/.*"
 
 full_wildcard:
   enabled: true
   severity: critical
   # Never allow full wildcards except in marked test policies
   ignore_patterns:
-    - filepath_regex: "^test/.*-wildcard-test\\.json$"
+    - filepath: "^test/.*-wildcard-test\\.json$"
 
 service_wildcard:
   enabled: true

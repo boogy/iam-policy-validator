@@ -1,6 +1,6 @@
 # IAM Policy Validator - Complete Documentation
 
-> High-performance AWS IAM policy validation using AWS Access Analyzer and 18 built-in security checks
+> High-performance AWS IAM policy validation using AWS Access Analyzer and 19 built-in security checks
 
 **Quick Links:** [Installation](#installation) • [Quick Start](#quick-start) • [GitHub Actions](#github-actions) • [Validation Checks](#validation-checks) • [CLI Reference](#cli-reference) • [Configuration](#configuration)
 
@@ -405,33 +405,40 @@ See `examples/github-actions/` for more workflow examples.
 
 ## Validation Checks
 
-IAM Policy Validator performs **18 built-in validation checks** to ensure your IAM policies are correct, secure, and follow best practices.
+IAM Policy Validator performs **19 built-in validation checks** to ensure your IAM policies are correct, secure, and follow best practices.
 
 ### Check Categories
 
-1. **AWS Validation Checks (6 checks)** - Ensure policies conform to AWS IAM requirements
+1. **Policy Structure Check (1 check)** - Always runs first
+   - Policy Structure - Validates fundamental IAM policy grammar (Version, Effect, required fields, conflicts)
+
+2. **AWS Validation Checks (11 checks)** - Ensure policies conform to AWS IAM requirements
    - Action Validation
    - Condition Key Validation
    - Condition Type Mismatch
    - MFA Condition Anti-Patterns
    - Resource ARN Validation
+   - Principal Validation
    - SID Uniqueness
+   - Set Operator Validation
+   - Policy Type Validation
+   - Action-Resource Matching
+   - Policy Size
 
-2. **Security Best Practice Checks (7 checks)** - Identify security anti-patterns
+3. **Security Best Practice Checks (6 checks)** - Identify security anti-patterns
    - Wildcard Action
    - Wildcard Resource
    - Full Wildcard (CRITICAL)
    - Service Wildcard
    - Sensitive Action (490 actions across 4 categories)
-   - Principal Validation (resource policies)
-   - Policy Size
-
-3. **Advanced Enforcement Checks (5 checks)** - Enforce org-specific requirements
    - Action Condition Enforcement (MFA, IP, tags, etc.)
-   - Action-Resource Matching
-   - Action-Resource Constraint
-   - Set Operator Validation
-   - Policy Type Validation
+
+4. **Trust Policy Validation (1 check - Opt-in)** - Disabled by default
+   - Trust Policy Validation - Validates action-principal coupling for role assumption policies
+     - Ensures correct principal types for assume role actions
+     - Validates SAML/OIDC provider ARN formats
+     - Enforces required conditions (SAML:aud, etc.)
+     - Use with `--policy-type TRUST_POLICY` flag
 
 ### Quick Examples
 
@@ -448,7 +455,7 @@ iam-validator validate --path ./policies/ --config my-config.yaml
 
 ### Detailed Documentation
 
-**📚 For complete documentation of all 18 checks with detailed pass/fail examples, see [Check Reference Guide](docs/check-reference.md)**
+**📚 For complete documentation of all 19 checks with detailed pass/fail examples, see [Check Reference Guide](docs/check-reference.md)**
 
 The check-reference.md file provides:
 - Detailed explanation of what each check validates
@@ -456,6 +463,7 @@ The check-reference.md file provides:
 - Fail examples (invalid policies with error messages)
 - Configuration options for each check
 - How to use ignore patterns to filter findings
+- Trust policy validation (opt-in check)
 
 ---
 
@@ -1023,35 +1031,38 @@ See [examples/configs/](examples/configs/) directory for configurations:
 
 ## Built-in Validation Checks
 
-IAM Policy Validator includes **18 comprehensive validation checks** across three categories. Each check can be individually configured, enabled/disabled, and customized to match your organization's security requirements.
+IAM Policy Validator includes **19 comprehensive validation checks** across four categories. Each check can be individually configured, enabled/disabled, and customized to match your organization's security requirements.
 
 ### Overview
 
-- **AWS Validation Checks (6)** - Ensure policies meet AWS IAM requirements
-- **Security Best Practices (7)** - Identify anti-patterns and security risks
-- **Advanced Enforcement (5)** - Enforce organization-specific security policies
+- **Policy Structure (1)** - Validates fundamental IAM policy grammar (always runs first)
+- **AWS Validation Checks (11)** - Ensure policies meet AWS IAM requirements
+- **Security Best Practices (6)** - Identify anti-patterns and security risks
+- **Trust Policy Validation (1)** - Validates role assumption policies (opt-in, disabled by default)
 
 ### Quick Reference
 
-| Check | Category | Severity | What It Does |
-|-------|----------|----------|--------------|
-| action_validation | AWS | error | Validates actions exist in AWS services |
-| condition_key_validation | AWS | error | Validates condition keys for actions/resources |
-| condition_type_mismatch | AWS | error | Validates operator/key type matching |
-| mfa_condition_antipattern | AWS | warning | Detects dangerous MFA patterns |
-| resource_validation | AWS | error | Validates ARN format |
-| sid_uniqueness | AWS | error | Ensures unique statement IDs |
-| wildcard_action | Security | medium | Detects `Action: "*"` |
-| wildcard_resource | Security | medium | Detects `Resource: "*"` |
-| full_wildcard | Security | **critical** | Detects both wildcards (admin access) |
-| service_wildcard | Security | high | Detects `service:*` patterns |
-| sensitive_action | Security | medium | 490 sensitive actions across 4 categories |
-| principal_validation | Security | high | Validates resource policy principals |
-| policy_size | AWS | error | Validates against AWS size limits |
-| action_condition_enforcement | Enforcement | high | Requires conditions for actions |
-| action_resource_matching | Enforcement | medium | Validates resource types and account-level actions |
-| set_operator_validation | AWS | error | Validates ForAllValues/ForAnyValue |
-| policy_type_validation | Enforcement | error | Validates policy matches declared type |
+| Check                        | Category       | Severity     | What It Does                                                 |
+| ---------------------------- | -------------- | ------------ | ------------------------------------------------------------ |
+| policy_structure             | Structure      | error        | Validates fundamental IAM policy grammar (always runs first) |
+| action_validation            | AWS            | error        | Validates actions exist in AWS services                      |
+| condition_key_validation     | AWS            | error        | Validates condition keys for actions/resources               |
+| condition_type_mismatch      | AWS            | error        | Validates operator/key type matching                         |
+| mfa_condition_antipattern    | AWS            | warning      | Detects dangerous MFA patterns                               |
+| resource_validation          | AWS            | error        | Validates ARN format                                         |
+| principal_validation         | AWS            | high         | Validates resource policy principals                         |
+| sid_uniqueness               | AWS            | error        | Ensures unique statement IDs                                 |
+| set_operator_validation      | AWS            | error        | Validates ForAllValues/ForAnyValue                           |
+| policy_type_validation       | AWS            | error        | Validates policy matches declared type                       |
+| action_resource_matching     | AWS            | medium       | Validates resource types and account-level actions           |
+| policy_size                  | AWS            | error        | Validates against AWS size limits                            |
+| wildcard_action              | Security       | medium       | Detects `Action: "*"`                                        |
+| wildcard_resource            | Security       | medium       | Detects `Resource: "*"`                                      |
+| full_wildcard                | Security       | **critical** | Detects both wildcards (admin access)                        |
+| service_wildcard             | Security       | high         | Detects `service:*` patterns                                 |
+| sensitive_action             | Security       | medium       | 490 sensitive actions across 4 categories                    |
+| action_condition_enforcement | Security       | high         | Requires conditions for actions                              |
+| trust_policy_validation      | Trust (opt-in) | high         | Validates action-principal coupling for role assumption      |
 
 ### Examples
 
@@ -1084,7 +1095,7 @@ IAM Policy Validator includes **18 comprehensive validation checks** across thre
 
 ### Complete Documentation
 
-**📚 For detailed documentation of all 18 checks with comprehensive pass/fail examples:**
+**📚 For detailed documentation of all 19 checks with comprehensive pass/fail examples:**
 
 **[→ View Complete Checks Reference](docs/check-reference.md)**
 
@@ -1095,6 +1106,7 @@ The check-reference.md file includes:
 - ✅ Configuration options
 - ✅ Ignore patterns and filtering
 - ✅ Best practices and recommendations
+- ✅ Trust policy validation (opt-in)
 
 ---
 

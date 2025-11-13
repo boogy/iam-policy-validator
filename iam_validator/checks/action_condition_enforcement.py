@@ -272,7 +272,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             # Collect all statements that match the action criteria
             matching_statements: list[tuple[int, Statement, list[str]]] = []
 
-            for idx, statement in enumerate(policy.statement):
+            for idx, statement in enumerate(policy.statement or []):
                 # Only check Allow statements
                 if statement.effect != "Allow":
                     continue
@@ -635,7 +635,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             statement_index=statement_idx,
                             issue_type="missing_required_condition_any_of",
                             message=(
-                                f"Actions {matching_actions} require at least ONE of these conditions: "
+                                f"Actions `{matching_actions}` require at least ONE of these conditions: "
                                 f"{', '.join(condition_keys)}"
                             ),
                             action=", ".join(matching_actions),
@@ -773,12 +773,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             condition_key, description, example, expected_value, operator
         )
 
+        matching_actions_str = ", ".join(f"`{a}`" for a in matching_actions)
         return ValidationIssue(
             severity=severity,
             statement_sid=statement.sid,
             statement_index=statement_idx,
             issue_type="missing_required_condition",
-            message=f"{message_prefix} Action(s) {matching_actions} require condition '{condition_key}'",
+            message=f"{message_prefix} Action(s) `{matching_actions_str}` require condition `{condition_key}`",
             action=", ".join(matching_actions),
             condition_key=condition_key,
             suggestion=suggestion_text,
@@ -870,13 +871,12 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         description = condition_requirement.get("description", "")
         expected_value = condition_requirement.get("expected_value")
 
-        message = (
-            f"FORBIDDEN: Action(s) {matching_actions} must NOT have condition '{condition_key}'"
-        )
+        matching_actions_str = ", ".join(f"`{a}`" for a in matching_actions)
+        message = f"FORBIDDEN: Action(s) `{matching_actions_str}` must NOT have condition `{condition_key}`"
         if expected_value is not None:
-            message += f" with value '{expected_value}'"
+            message += f" with value `{expected_value}`"
 
-        suggestion = f"Remove the '{condition_key}' condition from the statement"
+        suggestion = f"Remove the `{condition_key}` condition from the statement"
         if description:
             suggestion += f". {description}"
 

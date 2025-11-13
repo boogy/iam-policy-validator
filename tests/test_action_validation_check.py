@@ -210,4 +210,4 @@ class TestActionValidationCheck:
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 1
-        assert "Invalid action: s3:InvalidAction" in issues[0].message
+        assert "Invalid action: `s3:InvalidAction`" in issues[0].message

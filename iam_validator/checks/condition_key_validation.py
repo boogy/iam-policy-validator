@@ -62,7 +62,7 @@ class ConditionKeyValidationCheck(PolicyCheck):
                                 statement_index=statement_idx,
                                 issue_type="invalid_condition_key",
                                 message=result.error_message
-                                or f"Invalid condition key: {condition_key}",
+                                or f"Invalid condition key: `{condition_key}`",
                                 action=action,
                                 condition_key=condition_key,
                                 line_number=line_number,

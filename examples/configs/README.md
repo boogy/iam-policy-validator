@@ -330,8 +330,8 @@ iam-validator validate s3-bucket-policy.json \
    ```yaml
    wildcard_action:
      ignore_patterns:
-       - filepath_regex: "^terraform/modules/.*"
-       - statement_sid: "AllowTerraformBackend"
+       - filepath: "^terraform/modules/.*"
+       - sid: "AllowTerraformBackend"
    ```
 
 3. **Adjust fail_on_severity for your workflow**

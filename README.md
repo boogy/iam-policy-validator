@@ -200,8 +200,13 @@ results = await validate_policies(policies)
 
 **All checks are fully configurable** - Enable/disable checks, adjust severity levels, add custom requirements, and define ignore patterns through the configuration file.
 
+### Core Checks (18 always-on + 1 opt-in)
+
+The validator includes **19 built-in checks** organized into three categories:
+
 ### AWS Correctness Checks (12)
 Validates policies against AWS IAM requirements:
+- **Policy structure** - Validates fundamental IAM policy grammar (Version, Effect, required fields, conflicts)
 - **Action validation** - Verify actions exist in AWS services
 - **Condition key validation** - Check condition keys are valid for actions
 - **Condition type matching** - Ensure condition values match expected types
@@ -213,7 +218,6 @@ Validates policies against AWS IAM requirements:
 - **MFA condition patterns** - Detect common MFA anti-patterns
 - **Policy type validation** - Enforce policy type requirements (RCP, SCP, etc.)
 - **Action-resource matching** - Detect impossible action-resource combinations
-- **Action-resource constraints** - Validate service-specific constraints
 
 ### Security Best Practices (6)
 Identifies security risks and overly permissive permissions:
@@ -223,6 +227,15 @@ Identifies security risks and overly permissive permissions:
 - **Service wildcards** (`s3:*`, `iam:*`, etc.)
 - **Sensitive actions** - ~490 actions across 4 risk categories requiring conditions
 - **Action condition enforcement** - Enforce required conditions (MFA, IP, SourceArn, etc.)
+
+### Trust Policy Validation (1 - Opt-in, Disabled by Default)
+Specialized validation for role assumption policies:
+- **Trust policy validation** - Validates action-principal coupling for assume role actions
+  - Ensures correct principal types (`AssumeRoleWithSAML` → Federated, etc.)
+  - Validates SAML/OIDC provider ARN formats
+  - Enforces required conditions (`SAML:aud`, OIDC audience, etc.)
+  - Use with `--policy-type TRUST_POLICY` flag
+  - See [Trust Policy Examples](examples/trust-policies/README.md)
 
 ### Configuration & Customization
 
@@ -283,10 +296,11 @@ ignore_patterns:
 ```
 
 **📖 Complete documentation:**
-- [Check Reference Guide](docs/check-reference.md) - All 18 checks with examples
+- [Check Reference Guide](docs/check-reference.md) - All 19 checks with examples
 - [Configuration Guide](docs/configuration.md) - Full configuration options
 - [Condition Requirements](docs/condition-requirements.md) - Action-specific requirements
 - [Privilege Escalation Detection](docs/privilege-escalation.md) - How privilege escalation works
+- [Trust Policy Validation](examples/trust-policies/README.md) - Trust policy examples and validation
 
 ## Output Formats & GitHub Integration
 
@@ -315,7 +329,7 @@ ignore_patterns:
 
 ## AWS Access Analyzer (Optional)
 
-In addition to the 18 built-in checks, optionally enable AWS Access Analyzer for additional validation capabilities that require AWS credentials:
+In addition to the 19 built-in checks, optionally enable AWS Access Analyzer for additional validation capabilities that require AWS credentials:
 
 ### Access Analyzer Capabilities
 
@@ -352,16 +366,18 @@ iam-validator analyze --path bucket-policy.json \
 ## 📚 Documentation
 
 **Guides:**
-- [Check Reference](docs/check-reference.md) - All 18 checks with examples
+- [Check Reference](docs/check-reference.md) - All 19 checks with examples
 - [Configuration Guide](docs/configuration.md) - Customize checks and behavior
 - [GitHub Actions Guide](docs/github-actions-workflows.md) - CI/CD integration
 - [Python Library Guide](docs/python-library-usage.md) - Use as Python package
+- [Trust Policy Guide](examples/trust-policies/README.md) - Trust policy validation
 - [Contributing Guide](CONTRIBUTING.md) - How to contribute
 
 **Examples:**
-- [Configuration Examples](examples/configs/) - 9 config file templates
+- [Configuration Examples](examples/configs/) - 9+ config file templates
 - [Workflow Examples](examples/github-actions/) - GitHub Actions workflows
 - [Custom Checks](examples/custom_checks/) - Add your own validation rules
+- [Trust Policies](examples/trust-policies/) - Trust policy examples
 
 ## 🤝 Contributing
 

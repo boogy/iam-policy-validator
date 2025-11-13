@@ -72,7 +72,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
         # Check each condition operator and its keys/values
         for operator, conditions in statement.condition.items():
             # Normalize the operator and get its expected type
-            base_operator, operator_type, set_prefix = normalize_operator(operator)
+            base_operator, operator_type, _set_prefix = normalize_operator(operator)
 
             if operator_type is None:
                 # Unknown operator - this will be caught by another check
@@ -108,7 +108,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                             severity="warning",
                             message=(
                                 f"Type mismatch (usable but not recommended): Operator `{operator}` expects "
-                                f"{operator_type} values, but condition key `{condition_key}` is type {key_type}. "
+                                f"`{operator_type}` values, but condition key `{condition_key}` is type `{key_type}`. "
                                 f"Consider using an ARN-specific operator like ArnEquals or ArnLike instead."
                             ),
                             statement_sid=statement_sid,
@@ -123,8 +123,8 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                         ValidationIssue(
                             severity=self.get_severity(config),
                             message=(
-                                f"Type mismatch: Operator `{operator}` expects {operator_type} values, "
-                                f"but condition key `{condition_key}` is type {key_type}."
+                                f"Type mismatch: Operator `{operator}` expects `{operator_type}` values, "
+                                f"but condition key `{condition_key}` is type `{key_type}`."
                             ),
                             statement_sid=statement_sid,
                             statement_index=statement_idx,
@@ -172,7 +172,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
         Returns:
             Type string or None if not found
         """
-        from iam_validator.core.config.aws_global_conditions import (
+        from iam_validator.core.config.aws_global_conditions import (  # pylint: disable=import-outside-toplevel
             get_global_conditions,
         )
 
@@ -229,7 +229,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                                         if condition_key_obj.types:
                                             return condition_key_obj.types[0]
 
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 # If we can't look up the action, skip it
                 continue
 
