@@ -1,8 +1,9 @@
 """Resource validation check - validates ARN formats."""
 
 import re
+from typing import ClassVar
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.constants import DEFAULT_ARN_VALIDATION_PATTERN, MAX_ARN_LENGTH
 from iam_validator.core.models import Statement, ValidationIssue
@@ -15,17 +16,9 @@ from iam_validator.sdk.arn_matching import (
 class ResourceValidationCheck(PolicyCheck):
     """Validates ARN format for resources."""
 
-    @property
-    def check_id(self) -> str:
-        return "resource_validation"
-
-    @property
-    def description(self) -> str:
-        return "Validates ARN format for resources"
-
-    @property
-    def default_severity(self) -> str:
-        return "error"
+    check_id: ClassVar[str] = "resource_validation"
+    description: ClassVar[str] = "Validates ARN format for resources"
+    default_severity: ClassVar[str] = "error"
 
     async def execute(
         self,

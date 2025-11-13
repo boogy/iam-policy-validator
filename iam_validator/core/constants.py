@@ -124,6 +124,23 @@ DEFAULT_HTTP_TIMEOUT_SECONDS = 30.0
 SECONDS_PER_HOUR = 3600
 
 # ============================================================================
+# Policy Type Restrictions
+# ============================================================================
+
+# AWS services that support Resource Control Policies (RCP)
+# These services can have wildcard actions in RCP policy statements
+# Reference: https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_rcps.html
+RCP_SUPPORTED_SERVICES = frozenset(
+    {
+        "s3",
+        "sts",
+        "sqs",
+        "secretsmanager",
+        "kms",
+    }
+)
+
+# ============================================================================
 # AWS Documentation URLs
 # ============================================================================
 

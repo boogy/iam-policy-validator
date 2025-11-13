@@ -6,7 +6,9 @@ Based on AWS IAM best practices:
 https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-single-vs-multi-valued-context-keys.html
 """
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from typing import ClassVar
+
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.condition_validators import (
     is_multivalued_context_key,
@@ -18,20 +20,11 @@ from iam_validator.core.models import Statement, ValidationIssue
 class SetOperatorValidationCheck(PolicyCheck):
     """Check for proper usage of ForAllValues and ForAnyValue set operators."""
 
-    @property
-    def check_id(self) -> str:
-        """Unique identifier for this check."""
-        return "set_operator_validation"
-
-    @property
-    def description(self) -> str:
-        """Description of what this check does."""
-        return "Validates proper usage of ForAllValues and ForAnyValue set operators"
-
-    @property
-    def default_severity(self) -> str:
-        """Default severity level for issues found by this check."""
-        return "error"
+    check_id: ClassVar[str] = "set_operator_validation"
+    description: ClassVar[str] = (
+        "Validates proper usage of ForAllValues and ForAnyValue set operators"
+    )
+    default_severity: ClassVar[str] = "error"
 
     async def execute(
         self,
@@ -120,8 +113,8 @@ class SetOperatorValidationCheck(PolicyCheck):
                             ValidationIssue(
                                 severity="warning",
                                 message=(
-                                    f"Security risk: ForAllValues with Allow effect on `{condition_key}` "
-                                    f"should include a Null condition check. Without it, requests with missing "
+                                    f"Security risk: `ForAllValues` with `Allow` effect on `{condition_key}` "
+                                    f"should include a `Null` condition check. Without it, requests with missing "
                                     f'`{condition_key}` will be granted access. Add: `"Null": {{"{condition_key}": "false"}}`. '
                                     f"See: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-single-vs-multi-valued-context-keys.html"
                                 ),
@@ -141,7 +134,7 @@ class SetOperatorValidationCheck(PolicyCheck):
                                 severity="warning",
                                 message=(
                                     f"Unpredictable behavior: `ForAnyValue` with `Deny` effect on `{condition_key}` "
-                                    f"should include a Null condition check. Without it, requests with missing "
+                                    f"should include a `Null` condition check. Without it, requests with missing "
                                     f"`{condition_key}` will evaluate to `No match` instead of denying access. "
                                     f'Add: `"Null": {{"{condition_key}": "false"}}`. '
                                     f"See: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-single-vs-multi-valued-context-keys.html"

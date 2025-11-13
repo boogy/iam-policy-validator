@@ -3,7 +3,9 @@
 Validates that condition operators match the expected types for condition keys and values.
 """
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from typing import ClassVar
+
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.condition_validators import (
     normalize_operator,
@@ -16,20 +18,11 @@ from iam_validator.core.models import Statement, ValidationIssue
 class ConditionTypeMismatchCheck(PolicyCheck):
     """Check for type mismatches between operators, keys, and values."""
 
-    @property
-    def check_id(self) -> str:
-        """Unique identifier for this check."""
-        return "condition_type_mismatch"
-
-    @property
-    def description(self) -> str:
-        """Description of what this check does."""
-        return "Validates condition operator types match key types and value formats"
-
-    @property
-    def default_severity(self) -> str:
-        """Default severity level for issues found by this check."""
-        return "error"
+    check_id: ClassVar[str] = "condition_type_mismatch"
+    description: ClassVar[str] = (
+        "Validates condition operator types match key types and value formats"
+    )
+    default_severity: ClassVar[str] = "error"
 
     async def execute(
         self,
@@ -109,7 +102,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                             message=(
                                 f"Type mismatch (usable but not recommended): Operator `{operator}` expects "
                                 f"`{operator_type}` values, but condition key `{condition_key}` is type `{key_type}`. "
-                                f"Consider using an ARN-specific operator like ArnEquals or ArnLike instead."
+                                f"Consider using an ARN-specific operator like `ArnEquals` or `ArnLike` instead."
                             ),
                             statement_sid=statement_sid,
                             statement_index=statement_idx,

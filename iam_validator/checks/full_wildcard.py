@@ -1,6 +1,8 @@
 """Full wildcard check - detects Action: '*' AND Resource: '*' together (critical security risk)."""
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from typing import ClassVar
+
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
 
@@ -8,17 +10,11 @@ from iam_validator.core.models import Statement, ValidationIssue
 class FullWildcardCheck(PolicyCheck):
     """Checks for both Action: '*' AND Resource: '*' which grants full administrative access."""
 
-    @property
-    def check_id(self) -> str:
-        return "full_wildcard"
-
-    @property
-    def description(self) -> str:
-        return "Checks for both action and resource wildcards together (critical risk)"
-
-    @property
-    def default_severity(self) -> str:
-        return "critical"
+    check_id: ClassVar[str] = "full_wildcard"
+    description: ClassVar[str] = (
+        "Checks for both action and resource wildcards together (critical risk)"
+    )
+    default_severity: ClassVar[str] = "critical"
 
     async def execute(
         self,
@@ -41,7 +37,7 @@ class FullWildcardCheck(PolicyCheck):
         if "*" in actions and "*" in resources:
             message = config.config.get(
                 "message",
-                "Statement allows all actions on all resources - CRITICAL SECURITY RISK",
+                "Statement allows all actions on all resources - **CRITICAL SECURITY RISK**",
             )
             suggestion = config.config.get(
                 "suggestion",

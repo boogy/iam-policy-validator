@@ -22,8 +22,9 @@ Example:
 """
 
 import re
+from typing import ClassVar
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
 from iam_validator.sdk.arn_matching import (
@@ -42,17 +43,9 @@ class ActionResourceMatchingCheck(PolicyCheck):
     work as intended because the resource ARNs don't match what the action requires.
     """
 
-    @property
-    def check_id(self) -> str:
-        return "action_resource_matching"
-
-    @property
-    def description(self) -> str:
-        return "Validates that resources match required types for actions"
-
-    @property
-    def default_severity(self) -> str:
-        return "medium"  # Security issue, not IAM validity error
+    check_id: ClassVar[str] = "action_resource_matching"
+    description: ClassVar[str] = "Validates that resources match required types for actions"
+    default_severity: ClassVar[str] = "medium"  # Security issue, not IAM validity error
 
     async def execute(
         self,
@@ -139,7 +132,7 @@ class ActionResourceMatchingCheck(PolicyCheck):
                             statement_sid=statement_sid,
                             line_number=line_number,
                             config=config,
-                            reason=f'Action {action} can only use Resource: "*"',
+                            reason=f'Action `{action}` can only use `Resource: "*"`',
                         )
                     )
                 continue
@@ -293,9 +286,9 @@ class ActionResourceMatchingCheck(PolicyCheck):
         # Special case: Wildcard resource
         if required_format == "*":
             return (
-                f'Action `{action}` can only use Resource: `"*"` (wildcard).\n'
+                f'Action `{action}` can only use `Resource: "*"` (wildcard).\n'
                 f"  This action does not support resource-level permissions.\n"
-                f'  Example: "Resource": `"*"`'
+                f'  Example: `"Resource": "*"`'
             )
 
         # Build service-specific suggestion with proper markdown formatting

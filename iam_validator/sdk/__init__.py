@@ -37,7 +37,7 @@ Quick Start:
 
 # === High-level validation functions (shortcuts) ===
 # === AWS utilities ===
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 
 # === Core validation components (for advanced usage) ===
 from iam_validator.core.check_registry import CheckRegistry, PolicyCheck

@@ -6,7 +6,7 @@ from iam_validator.checks.action_condition_enforcement import (
     ActionConditionEnforcementCheck,
 )
 from iam_validator.core.check_registry import CheckConfig
-from iam_validator.core.models import Statement
+from iam_validator.core.models import Statement, IAMPolicy
 
 
 class TestActionConditionEnforcement:
@@ -57,12 +57,13 @@ class TestActionConditionEnforcement:
             resource="*",
         )
 
-        issues = await check.execute(statement, 0, mock_fetcher, config)
+        policy = IAMPolicy(version="2012-10-17", statement=[statement])
+        issues = await check.execute_policy(policy, "test-policy.json", mock_fetcher, config)
 
         assert len(issues) == 1
-        assert issues[0].issue_type == "forbidden_action_present"
+        assert issues[0].issue_type == "forbidden_action"
         assert "iam:DeleteUser" in issues[0].message
-        assert "FORBIDDEN" in issues[0].message
+        assert "Forbidden actions" in issues[0].message
 
     @pytest.mark.asyncio
     async def test_none_of_actions_allowed(self, check, mock_fetcher):
@@ -89,7 +90,8 @@ class TestActionConditionEnforcement:
             resource="*",
         )
 
-        issues = await check.execute(statement, 0, mock_fetcher, config)
+        policy = IAMPolicy(version="2012-10-17", statement=[statement])
+        issues = await check.execute_policy(policy, "test-policy.json", mock_fetcher, config)
 
         assert len(issues) == 0
 
@@ -127,7 +129,8 @@ class TestActionConditionEnforcement:
             condition={"Bool": {"aws:SecureTransport": False}},
         )
 
-        issues = await check.execute(statement, 0, mock_fetcher, config)
+        policy = IAMPolicy(version="2012-10-17", statement=[statement])
+        issues = await check.execute_policy(policy, "test-policy.json", mock_fetcher, config)
 
         assert len(issues) == 1
         assert issues[0].issue_type == "forbidden_condition_present"
@@ -167,7 +170,8 @@ class TestActionConditionEnforcement:
             condition={"Bool": {"aws:SecureTransport": True}},
         )
 
-        issues = await check.execute(statement, 0, mock_fetcher, config)
+        policy = IAMPolicy(version="2012-10-17", statement=[statement])
+        issues = await check.execute_policy(policy, "test-policy.json", mock_fetcher, config)
 
         assert len(issues) == 0
 
@@ -201,7 +205,8 @@ class TestActionConditionEnforcement:
             resource="*",
         )
 
-        issues = await check.execute(statement, 0, mock_fetcher, config)
+        policy = IAMPolicy(version="2012-10-17", statement=[statement])
+        issues = await check.execute_policy(policy, "test-policy.json", mock_fetcher, config)
 
         assert len(issues) == 2  # One for each missing condition
         assert all(issue.issue_type == "missing_required_condition" for issue in issues)
@@ -242,7 +247,8 @@ class TestActionConditionEnforcement:
             },
         )
 
-        issues = await check.execute(statement, 0, mock_fetcher, config)
+        policy = IAMPolicy(version="2012-10-17", statement=[statement])
+        issues = await check.execute_policy(policy, "test-policy.json", mock_fetcher, config)
 
         assert len(issues) == 0
 
@@ -276,7 +282,8 @@ class TestActionConditionEnforcement:
             resource="*",
         )
 
-        issues = await check.execute(statement, 0, mock_fetcher, config)
+        policy = IAMPolicy(version="2012-10-17", statement=[statement])
+        issues = await check.execute_policy(policy, "test-policy.json", mock_fetcher, config)
 
         assert len(issues) == 1
         assert issues[0].issue_type == "missing_required_condition_any_of"
@@ -313,7 +320,8 @@ class TestActionConditionEnforcement:
             condition={"IpAddress": {"aws:SourceIp": "10.0.0.0/8"}},
         )
 
-        issues = await check.execute(statement, 0, mock_fetcher, config)
+        policy = IAMPolicy(version="2012-10-17", statement=[statement])
+        issues = await check.execute_policy(policy, "test-policy.json", mock_fetcher, config)
 
         assert len(issues) == 0
 
@@ -341,7 +349,8 @@ class TestActionConditionEnforcement:
             resource="*",
         )
 
-        issues = await check.execute(statement, 0, mock_fetcher, config)
+        policy = IAMPolicy(version="2012-10-17", statement=[statement])
+        issues = await check.execute_policy(policy, "test-policy.json", mock_fetcher, config)
 
         assert len(issues) == 0
 
@@ -375,7 +384,8 @@ class TestActionConditionEnforcement:
             resource="*",
         )
 
-        issues = await check.execute(statement, 0, mock_fetcher, config)
+        policy = IAMPolicy(version="2012-10-17", statement=[statement])
+        issues = await check.execute_policy(policy, "test-policy.json", mock_fetcher, config)
 
         assert len(issues) == 1
         assert "aws:MultiFactorAuthPresent" in issues[0].message
@@ -422,7 +432,8 @@ class TestActionConditionEnforcement:
             },
         )
 
-        issues = await check.execute(statement, 0, mock_fetcher, config)
+        policy = IAMPolicy(version="2012-10-17", statement=[statement])
+        issues = await check.execute_policy(policy, "test-policy.json", mock_fetcher, config)
 
         assert len(issues) == 1
         assert issues[0].issue_type == "forbidden_condition_present"

@@ -8,7 +8,7 @@ that resources in a policy statement match the required resource types for actio
 import pytest
 
 from iam_validator.checks.action_resource_matching import ActionResourceMatchingCheck
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.models import Statement
 

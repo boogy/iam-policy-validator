@@ -112,9 +112,16 @@ class TestPolicyCheck:
     """Test the PolicyCheck abstract base class."""
 
     def test_cannot_instantiate_abstract_class(self):
-        """Test that PolicyCheck cannot be instantiated directly."""
-        with pytest.raises(TypeError):
-            PolicyCheck()
+        """Test that PolicyCheck raises error when check_id/description not defined."""
+        # PolicyCheck itself can be instantiated but will raise NotImplementedError
+        # when accessing check_id or description
+        check = PolicyCheck()
+
+        with pytest.raises(NotImplementedError, match="check_id"):
+            _ = check.check_id
+
+        with pytest.raises(NotImplementedError, match="description"):
+            _ = check.description
 
     def test_mock_check_implementation(self):
         """Test that MockCheck properly implements PolicyCheck."""

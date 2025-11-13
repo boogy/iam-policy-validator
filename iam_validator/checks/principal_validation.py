@@ -35,9 +35,9 @@ Supports: any_of, all_of, none_of, and expected_value (single value or list)
 """
 
 import fnmatch
-from typing import Any
+from typing import Any, ClassVar
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.config.service_principals import is_aws_service_principal
 from iam_validator.core.models import Statement, ValidationIssue
@@ -46,17 +46,11 @@ from iam_validator.core.models import Statement, ValidationIssue
 class PrincipalValidationCheck(PolicyCheck):
     """Validates Principal elements in resource policies."""
 
-    @property
-    def check_id(self) -> str:
-        return "principal_validation"
-
-    @property
-    def description(self) -> str:
-        return "Validates Principal elements in resource policies for security best practices"
-
-    @property
-    def default_severity(self) -> str:
-        return "high"
+    check_id: ClassVar[str] = "principal_validation"
+    description: ClassVar[str] = (
+        "Validates Principal elements in resource policies for security best practices"
+    )
+    default_severity: ClassVar[str] = "high"
 
     async def execute(
         self,
@@ -122,7 +116,7 @@ class PrincipalValidationCheck(PolicyCheck):
                         severity=self.get_severity(config),
                         issue_type="unauthorized_principal",
                         message=f"`Principal` not in allowed list: `{principal}`. "
-                        f"Only principals in the `allowed_principals` whitelist are permitted.",
+                        f"Only principals in the `allowed_principals` allow-list are permitted.",
                         statement_index=statement_idx,
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
@@ -401,7 +395,6 @@ class PrincipalValidationCheck(PolicyCheck):
                     # Create a combined error for any_of
                     condition_keys = [cond.get("condition_key", "unknown") for cond in any_of]
                     severity = requirement.get("severity", self.get_severity(config))
-                    matching_principals_str = ", ".join(f"`{p}`" for p in matching_principals)
                     issues.append(
                         ValidationIssue(
                             severity=severity,
@@ -409,7 +402,7 @@ class PrincipalValidationCheck(PolicyCheck):
                             statement_index=statement_idx,
                             issue_type="missing_principal_condition_any_of",
                             message=(
-                                f"`Principal`s `{matching_principals_str}` require at least ONE of these conditions: "
+                                f"`Principal`s `{', '.join(f'`{p}`' for p in matching_principals)}` require at least ONE of these conditions: "
                                 f"{', '.join(f'`{c}`' for c in condition_keys)}"
                             ),
                             suggestion=self._build_any_of_suggestion(any_of),
@@ -566,14 +559,12 @@ class PrincipalValidationCheck(PolicyCheck):
             condition_key, description, example, expected_value, operator
         )
 
-        matching_principals_formatted = ", ".join(f"`{p}`" for p in matching_principals)
-
         return ValidationIssue(
             severity=severity,
             statement_sid=statement.sid,
             statement_index=statement_idx,
             issue_type="missing_principal_condition",
-            message=f"{message_prefix} Principal(s) {matching_principals_formatted} require condition `{condition_key}`",
+            message=f"{message_prefix} Principal(s) {', '.join(f'`{p}`' for p in matching_principals)} require condition `{condition_key}`",
             suggestion=suggestion_text,
             example=example_code,
             line_number=statement.line_number,
@@ -599,7 +590,7 @@ class PrincipalValidationCheck(PolicyCheck):
         Returns:
             Tuple of (suggestion_text, example_code)
         """
-        suggestion = description if description else f"Add condition: {condition_key}"
+        suggestion = description if description else f"Add condition: `{condition_key}`"
 
         # Build example based on condition key type
         if example:

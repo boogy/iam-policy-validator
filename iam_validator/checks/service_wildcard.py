@@ -1,6 +1,8 @@
 """Service wildcard check - detects service-level wildcards like 'iam:*', 's3:*'."""
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from typing import ClassVar
+
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
 
@@ -8,17 +10,9 @@ from iam_validator.core.models import Statement, ValidationIssue
 class ServiceWildcardCheck(PolicyCheck):
     """Checks for service-level wildcards (e.g., 'iam:*', 's3:*') which grant all permissions for a service."""
 
-    @property
-    def check_id(self) -> str:
-        return "service_wildcard"
-
-    @property
-    def description(self) -> str:
-        return "Checks for service-level wildcards (e.g., 'iam:*', 's3:*')"
-
-    @property
-    def default_severity(self) -> str:
-        return "high"
+    check_id: ClassVar[str] = "service_wildcard"
+    description: ClassVar[str] = "Checks for service-level wildcards (e.g., 'iam:*', 's3:*')"
+    default_severity: ClassVar[str] = "high"
 
     async def execute(
         self,

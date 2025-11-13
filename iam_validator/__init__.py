@@ -1,6 +1,6 @@
 """IAM Policy Validator - Validate AWS IAM policies for correctness and security."""
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.cli import main
 from iam_validator.core.models import (
     IAMPolicy,

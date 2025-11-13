@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from iam_validator.checks.condition_key_validation import ConditionKeyValidationCheck
-from iam_validator.core.aws_fetcher import AWSServiceFetcher, ConditionKeyValidationResult
+from iam_validator.core.aws_service import AWSServiceFetcher, ConditionKeyValidationResult
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.models import Statement
 

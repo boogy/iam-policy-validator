@@ -6,7 +6,7 @@ easy to develop custom IAM policy checks.
 """
 
 from iam_validator.checks.utils.wildcard_expansion import expand_wildcard_actions
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.models import ValidationIssue
 from iam_validator.sdk.arn_matching import arn_matches, arn_strictly_valid
 

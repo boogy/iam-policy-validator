@@ -1,6 +1,8 @@
 """Condition key validation check - validates condition keys against AWS definitions."""
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from typing import ClassVar
+
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
 
@@ -8,17 +10,9 @@ from iam_validator.core.models import Statement, ValidationIssue
 class ConditionKeyValidationCheck(PolicyCheck):
     """Validates condition keys against AWS service definitions and global keys."""
 
-    @property
-    def check_id(self) -> str:
-        return "condition_key_validation"
-
-    @property
-    def description(self) -> str:
-        return "Validates condition keys against AWS service definitions"
-
-    @property
-    def default_severity(self) -> str:
-        return "error"  # Invalid condition keys are IAM policy errors
+    check_id: ClassVar[str] = "condition_key_validation"
+    description: ClassVar[str] = "Validates condition keys against AWS service definitions"
+    default_severity: ClassVar[str] = "error"  # Invalid condition keys are IAM policy errors
 
     async def execute(
         self,

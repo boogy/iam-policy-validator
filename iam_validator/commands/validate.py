@@ -44,6 +44,9 @@ Examples:
   # Use custom checks from a directory
   iam-validator validate --path ./policies/ --custom-checks-dir ./my-checks
 
+  # Use offline mode with pre-downloaded AWS service definitions
+  iam-validator validate --path ./policies/ --aws-services-dir ./aws_services
+
   # Generate JSON output
   iam-validator validate --path ./policies/ --format json --output report.json
 
@@ -164,6 +167,13 @@ Examples:
         )
 
         parser.add_argument(
+            "--aws-services-dir",
+            help="Path to directory containing pre-downloaded AWS service definitions "
+            "(enables offline mode, avoids API rate limiting). "
+            "Use 'iam-validator download-services' to create this directory.",
+        )
+
+        parser.add_argument(
             "--stream",
             action="store_true",
             help="Process files one-by-one (memory efficient, progressive feedback)",
@@ -242,12 +252,14 @@ Examples:
         # Validate policies
         config_path = getattr(args, "config", None)
         custom_checks_dir = getattr(args, "custom_checks_dir", None)
+        aws_services_dir = getattr(args, "aws_services_dir", None)
         policy_type = cast(PolicyType, getattr(args, "policy_type", "IDENTITY_POLICY"))
         results = await validate_policies(
             policies,
             config_path=config_path,
             custom_checks_dir=custom_checks_dir,
             policy_type=policy_type,
+            aws_services_dir=aws_services_dir,
         )
 
         # Generate report (include parsing errors if any)

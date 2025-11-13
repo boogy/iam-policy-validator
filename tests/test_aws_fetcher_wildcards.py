@@ -2,7 +2,7 @@
 
 import pytest
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 
 
 class TestWildcardMatching:
