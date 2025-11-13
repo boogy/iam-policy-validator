@@ -634,12 +634,15 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     for cond in any_of:
                         if "all_of" in cond:
                             # Nested all_of - collect all condition keys
-                            nested_keys = [c.get("condition_key", "unknown") for c in cond["all_of"]]
+                            nested_keys = [
+                                c.get("condition_key", "unknown") for c in cond["all_of"]
+                            ]
                             condition_keys.append(f"({' + '.join(f'`{k}`' for k in nested_keys)})")
                         else:
                             # Simple condition
                             condition_keys.append(f"`{cond.get('condition_key', 'unknown')}`")
                     condition_keys_formatted = " OR ".join(condition_keys)
+                    matching_actions_formatted = ", ".join(f"`{a}`" for a in matching_actions)
                     issues.append(
                         ValidationIssue(
                             severity=self.get_severity(config),
@@ -647,7 +650,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             statement_index=statement_idx,
                             issue_type="missing_required_condition_any_of",
                             message=(
-                                f"Actions `{matching_actions}` require at least ONE of these conditions: "
+                                f"Actions `{matching_actions_formatted}` require at least ONE of these conditions: "
                                 f"{condition_keys_formatted}"
                             ),
                             action=", ".join(matching_actions),
