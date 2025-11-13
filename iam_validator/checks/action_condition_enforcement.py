@@ -629,7 +629,17 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
                 if not any_present:
                     # Create a combined error for any_of
-                    condition_keys = [cond.get("condition_key", "unknown") for cond in any_of]
+                    # Handle both simple conditions and nested all_of
+                    condition_keys = []
+                    for cond in any_of:
+                        if "all_of" in cond:
+                            # Nested all_of - collect all condition keys
+                            nested_keys = [c.get("condition_key", "unknown") for c in cond["all_of"]]
+                            condition_keys.append(f"({' + '.join(f'`{k}`' for k in nested_keys)})")
+                        else:
+                            # Simple condition
+                            condition_keys.append(f"`{cond.get('condition_key', 'unknown')}`")
+                    condition_keys_formatted = " OR ".join(condition_keys)
                     issues.append(
                         ValidationIssue(
                             severity=self.get_severity(config),
@@ -638,7 +648,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             issue_type="missing_required_condition_any_of",
                             message=(
                                 f"Actions `{matching_actions}` require at least ONE of these conditions: "
-                                f"{', '.join(condition_keys)}"
+                                f"{condition_keys_formatted}"
                             ),
                             action=", ".join(matching_actions),
                             suggestion=self._build_any_of_suggestion(any_of),

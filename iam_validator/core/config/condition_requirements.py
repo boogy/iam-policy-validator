@@ -62,6 +62,7 @@ S3_WRITE_ORG_ID: Final[dict[str, Any]] = {
                     {
                         "condition_key": "aws:ResourceOrgID",
                         "description": "Restrict S3 write actions to resources within your AWS Organization",
+                        "expected_value": "${aws:PrincipalOrgID}",
                         "example": (
                             "{\n"
                             '  "Condition": {\n'
@@ -76,6 +77,7 @@ S3_WRITE_ORG_ID: Final[dict[str, Any]] = {
                     {
                         "condition_key": "aws:ResourceAccount",
                         "description": "Ensure the S3 resource belongs to the same AWS account as the principal",
+                        "expected_value": "${aws:PrincipalAccount}",
                     },
                 ]
             },
@@ -85,6 +87,7 @@ S3_WRITE_ORG_ID: Final[dict[str, Any]] = {
                     {
                         "condition_key": "aws:ResourceOrgPaths",
                         "description": "Restrict S3 write actions to resources within your AWS Organization path",
+                        "expected_value": "${aws:PrincipalOrgPaths}",
                         "example": (
                             "{\n"
                             '  "Condition": {\n'
@@ -99,6 +102,7 @@ S3_WRITE_ORG_ID: Final[dict[str, Any]] = {
                     {
                         "condition_key": "aws:ResourceAccount",
                         "description": "Ensure the S3 resource belongs to the same AWS account as the principal",
+                        "expected_value": "${aws:PrincipalAccount}",
                     },
                 ]
             },
@@ -106,6 +110,7 @@ S3_WRITE_ORG_ID: Final[dict[str, Any]] = {
             {
                 "condition_key": "aws:ResourceAccount",
                 "description": "Restrict S3 write actions to resources within the same AWS account",
+                "expected_value": "${aws:PrincipalAccount}",
                 "example": (
                     "{\n"
                     '  "Condition": {\n'
