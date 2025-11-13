@@ -58,7 +58,7 @@ S3_WRITE_ORG_ID: Final[dict[str, Any]] = {
         {
             "condition_key": "aws:ResourceOrgId",
             "description": (
-                "Require aws:ResourceAccount, aws:ResourceOrgID or aws:ResourceOrgPaths condition(s) for S3 write actions to enforce organization-level access control"
+                "Require `aws:ResourceAccount`, `aws:ResourceOrgID` or `aws:ResourceOrgPaths` condition(s) for S3 write actions to enforce organization-level access control"
             ),
             "example": (
                 "{\n"
