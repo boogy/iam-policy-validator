@@ -11,6 +11,7 @@ This check runs automatically based on:
 2. Auto-detection: If any statement has a Principal, provides helpful guidance
 """
 
+from iam_validator.core.constants import RCP_SUPPORTED_SERVICES
 from iam_validator.core.models import IAMPolicy, ValidationIssue
 
 
@@ -47,12 +48,12 @@ async def execute_policy(
         if is_trust_policy(policy):
             hint_msg = (
                 "Policy contains assume role actions - this is a TRUST POLICY. "
-                "Use --policy-type TRUST_POLICY for proper validation (suppresses missing Resource warnings, "
+                "Use `--policy-type TRUST_POLICY` for proper validation (suppresses missing Resource warnings, "
                 "enables trust-specific validation)"
             )
             suggestion_msg = "iam-validator validate --path <file> --policy-type TRUST_POLICY"
         else:
-            hint_msg = "Policy contains Principal element - this suggests it's a RESOURCE POLICY. Use --policy-type RESOURCE_POLICY"
+            hint_msg = "Policy contains Principal element - this suggests it's a RESOURCE POLICY. Use `--policy-type RESOURCE_POLICY`"
             suggestion_msg = "iam-validator validate --path <file> --policy-type RESOURCE_POLICY"
 
         issues.append(
@@ -164,8 +165,8 @@ async def execute_policy(
 
     # Resource Control Policies (RCPs) have very strict requirements
     elif policy_type == "RESOURCE_CONTROL_POLICY":
-        # RCP supported services (as of 2025)
-        rcp_supported_services = {"s3", "sts", "sqs", "secretsmanager", "kms"}
+        # Use the centralized list of RCP supported services from constants
+        rcp_supported_services = RCP_SUPPORTED_SERVICES
 
         for idx, statement in enumerate(policy.statement):
             # 1. Effect MUST be Deny (only RCPFullAWSAccess can use Allow)
@@ -174,13 +175,13 @@ async def execute_policy(
                     ValidationIssue(
                         severity="error",
                         issue_type="invalid_rcp_effect",
-                        message="Resource Control Policy statement must have Effect: Deny. "
-                        "For RCPs that you create, the Effect value must be 'Deny'. "
-                        "Only the AWS-managed RCPFullAWSAccess policy can use 'Allow'.",
+                        message="Resource Control Policy statement must have `Effect: Deny`. "
+                        "For RCPs that you create, the `Effect` value must be `Deny`. "
+                        "Only the AWS-managed `RCPFullAWSAccess` policy can use `Allow`.",
                         statement_index=idx,
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
-                        suggestion='Change the Effect to "Deny" for this RCP statement.',
+                        suggestion="Change the `Effect` to `Deny` for this RCP statement.",
                     )
                 )
 
@@ -194,13 +195,12 @@ async def execute_policy(
                         severity="error",
                         issue_type="invalid_rcp_not_principal",
                         message="Resource Control Policy must not contain `NotPrincipal` element. "
-                        "RCPs only support Principal with value '*'. Use Condition elements "
+                        "RCPs only support `Principal` with value `*`. Use `Condition` elements "
                         "to restrict specific principals.",
                         statement_index=idx,
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
-                        suggestion="Remove NotPrincipal and use Principal: '*' with Condition "
-                        "elements to restrict access.",
+                        suggestion='Remove `NotPrincipal` and use `Principal: "*"` with `Condition` elements to restrict access.',
                     )
                 )
             elif not has_principal:
@@ -208,8 +208,8 @@ async def execute_policy(
                     ValidationIssue(
                         severity="error",
                         issue_type="missing_rcp_principal",
-                        message="Resource Control Policy statement must have `Principal`: '*'. "
-                        "RCPs require the `Principal` element with value '*'. Use `Condition` "
+                        message='Resource Control Policy statement must have `Principal: "*"`. '
+                        'RCPs require the `Principal` element with value `"*"`. Use `Condition` '
                         "elements to restrict specific principals.",
                         statement_index=idx,
                         statement_sid=statement.sid,
@@ -257,7 +257,7 @@ async def execute_policy(
                                     statement_sid=statement.sid,
                                     line_number=statement.line_number,
                                     suggestion="Replace `*` with service-specific actions from supported "
-                                    f"services: {', '.join(sorted(rcp_supported_services))}",
+                                    f"services: {', '.join(f'`{a}`' for a in sorted(rcp_supported_services))}",
                                 )
                             )
                         else:
@@ -275,13 +275,13 @@ async def execute_policy(
                             severity="error",
                             issue_type="unsupported_rcp_service",
                             message=f"Resource Control Policy contains actions from unsupported services: "
-                            f"{', '.join(unsupported_actions)}. RCPs only support these services: "
-                            f"{', '.join(sorted(rcp_supported_services))}",
+                            f"{', '.join(f'`{a}`' for a in unsupported_actions)}. RCPs only support these services: "
+                            f"{', '.join(f'`{a}`' for a in sorted(rcp_supported_services))}",
                             statement_index=idx,
                             statement_sid=statement.sid,
                             line_number=statement.line_number,
                             suggestion=f"Use only actions from supported RCP services: "
-                            f"{', '.join(sorted(rcp_supported_services))}",
+                            f"{', '.join(f'`{a}`' for a in sorted(rcp_supported_services))}",
                         )
                     )
 
@@ -296,8 +296,7 @@ async def execute_policy(
                         statement_index=idx,
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
-                        suggestion="Replace `NotAction` with `Action` element listing the specific "
-                        "actions to deny.",
+                        suggestion="Replace `NotAction` with `Action` element listing the specific actions to deny.",
                     )
                 )
 

@@ -1,6 +1,6 @@
 """Sensitive action check - detects sensitive actions without IAM conditions."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from iam_validator.checks.utils.policy_level_checks import check_policy_level_actions
 from iam_validator.checks.utils.sensitive_action_matcher import (
@@ -8,7 +8,7 @@ from iam_validator.checks.utils.sensitive_action_matcher import (
     check_sensitive_actions,
 )
 from iam_validator.checks.utils.wildcard_expansion import expand_wildcard_actions
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.config.sensitive_actions import get_category_for_action
 from iam_validator.core.models import Statement, ValidationIssue
@@ -20,17 +20,9 @@ if TYPE_CHECKING:
 class SensitiveActionCheck(PolicyCheck):
     """Checks for sensitive actions without IAM conditions to limit their use."""
 
-    @property
-    def check_id(self) -> str:
-        return "sensitive_action"
-
-    @property
-    def description(self) -> str:
-        return "Checks for sensitive actions without conditions"
-
-    @property
-    def default_severity(self) -> str:
-        return "medium"
+    check_id: ClassVar[str] = "sensitive_action"
+    description: ClassVar[str] = "Checks for sensitive actions without conditions"
+    default_severity: ClassVar[str] = "medium"
 
     def _get_severity_for_action(self, action: str, config: CheckConfig) -> str:
         """
@@ -86,6 +78,7 @@ class SensitiveActionCheck(PolicyCheck):
         return (
             "Add IAM conditions to limit when this action can be used. Use ABAC for scalability:\n"
             "• Match principal tags to resource tags (`aws:PrincipalTag/<tag-name>` = `aws:ResourceTag/<tag-name>`)\n"
+            "• Match organization principal tags to resource tags (`aws:PrincipalOrgID` = `aws:ResourceOrgID`)\n"
             "• Require MFA (`aws:MultiFactorAuthPresent` = `true`)\n"
             "• Restrict by IP (`aws:SourceIp`) or VPC (`aws:SourceVpc`)",
             '"Condition": {\n'
@@ -125,14 +118,14 @@ class SensitiveActionCheck(PolicyCheck):
             if len(matched_actions) == 1:
                 message_template = config.config.get(
                     "message_single",
-                    "Sensitive action '{action}' should have conditions to limit when it can be used",
+                    "Sensitive action `{action}` should have conditions to limit when it can be used",
                 )
                 message = message_template.format(action=matched_actions[0])
             else:
                 action_list = "', '".join(matched_actions)
                 message_template = config.config.get(
                     "message_multiple",
-                    "Sensitive actions '{actions}' should have conditions to limit when they can be used",
+                    "Sensitive actions `{actions}` should have conditions to limit when they can be used",
                 )
                 message = message_template.format(actions=action_list)
 

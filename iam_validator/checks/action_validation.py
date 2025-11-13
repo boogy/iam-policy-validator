@@ -9,7 +9,9 @@ validations. However, it can be useful in environments where Access Analyzer is
 not available or for pre-deployment policy validation to catch errors early.
 """
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from typing import ClassVar
+
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
 
@@ -17,17 +19,9 @@ from iam_validator.core.models import Statement, ValidationIssue
 class ActionValidationCheck(PolicyCheck):
     """Validates that IAM actions exist in AWS services."""
 
-    @property
-    def check_id(self) -> str:
-        return "action_validation"
-
-    @property
-    def description(self) -> str:
-        return "Validates that actions exist in AWS service definitions"
-
-    @property
-    def default_severity(self) -> str:
-        return "error"
+    check_id: ClassVar[str] = "action_validation"
+    description: ClassVar[str] = "Validates that actions exist in AWS service definitions"
+    default_severity: ClassVar[str] = "error"
 
     async def execute(
         self,

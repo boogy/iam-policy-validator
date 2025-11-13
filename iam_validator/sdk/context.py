@@ -8,7 +8,7 @@ and make the validation API more convenient to use.
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.models import PolicyValidationResult
 from iam_validator.core.policy_checks import validate_policies
 from iam_validator.core.policy_loader import PolicyLoader

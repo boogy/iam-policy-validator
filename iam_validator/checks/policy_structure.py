@@ -20,11 +20,11 @@ By detecting these issues early, we can:
 """
 
 import re
-from typing import Any
+from typing import Any, ClassVar
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
-from iam_validator.core.models import IAMPolicy, PolicyType, Statement, ValidationIssue
+from iam_validator.core.models import IAMPolicy, PolicyType, ValidationIssue
 
 # Valid statement fields according to AWS IAM policy grammar
 # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_grammar.html
@@ -350,7 +350,7 @@ def validate_statement_structure(
                 statement_index=statement_idx,
                 issue_type="missing_effect",
                 message="`Statement` is missing the required `Effect` field",
-                suggestion="Add an Effect field with value `Allow` or `Deny`",
+                suggestion="Add an `Effect` field with value `Allow` or `Deny`",
                 example='"Effect": "Allow"',
             )
         )
@@ -362,7 +362,7 @@ def validate_statement_structure(
                 statement_index=statement_idx,
                 issue_type="invalid_effect",
                 message=f"Invalid `Effect` value: `{statement_dict['Effect']}`. Must be `Allow` or `Deny`",
-                suggestion="Change Effect to either `Allow` or `Deny`",
+                suggestion="Change `Effect` to either `Allow` or `Deny`",
                 example='"Effect": "Allow"',
             )
         )
@@ -488,41 +488,11 @@ class PolicyStructureCheck(PolicyCheck):
     issues early.
     """
 
-    @property
-    def check_id(self) -> str:
-        return "policy_structure"
-
-    @property
-    def description(self) -> str:
-        return "Validates fundamental IAM policy structure (required fields, field conflicts, valid values)"
-
-    @property
-    def default_severity(self) -> str:
-        return "error"
-
-    async def execute(
-        self,
-        statement: Statement,
-        statement_idx: int,
-        fetcher: AWSServiceFetcher,
-        config: CheckConfig,
-    ) -> list[ValidationIssue]:
-        """Execute at statement level.
-
-        This is a policy-level check, so statement-level execution returns empty.
-        The actual check runs in execute_policy() which has access to all statements.
-
-        Args:
-            statement: The IAM policy statement (unused)
-            statement_idx: Index of the statement in the policy (unused)
-            fetcher: AWS service fetcher (unused)
-            config: Check configuration (unused)
-
-        Returns:
-            Empty list (actual check runs in execute_policy())
-        """
-        del statement, statement_idx, fetcher, config  # Unused
-        return []
+    check_id: ClassVar[str] = "policy_structure"
+    description: ClassVar[str] = (
+        "Validates fundamental IAM policy structure (required fields, field conflicts, valid values)"
+    )
+    default_severity: ClassVar[str] = "error"
 
     async def execute_policy(
         self,

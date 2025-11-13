@@ -7,7 +7,7 @@ to their actual action names using the AWS Service Reference API.
 import re
 from functools import lru_cache
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 
 
 # Global cache for compiled wildcard patterns (shared across checks)

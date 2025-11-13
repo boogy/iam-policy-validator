@@ -3,6 +3,8 @@
 Detects dangerous MFA-related condition patterns that may not enforce MFA as intended.
 """
 
+from typing import ClassVar
+
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
 
@@ -10,20 +12,9 @@ from iam_validator.core.models import Statement, ValidationIssue
 class MFAConditionCheck(PolicyCheck):
     """Check for MFA condition anti-patterns."""
 
-    @property
-    def check_id(self) -> str:
-        """Unique identifier for this check."""
-        return "mfa_condition_antipattern"
-
-    @property
-    def description(self) -> str:
-        """Description of what this check does."""
-        return "Detects dangerous MFA-related condition patterns"
-
-    @property
-    def default_severity(self) -> str:
-        """Default severity level for issues found by this check."""
-        return "warning"
+    check_id: ClassVar[str] = "mfa_condition_antipattern"
+    description: ClassVar[str] = "Detects dangerous MFA-related condition patterns"
+    default_severity: ClassVar[str] = "warning"
 
     async def execute(
         self, statement: Statement, statement_idx: int, fetcher, config: CheckConfig
@@ -73,8 +64,8 @@ class MFAConditionCheck(PolicyCheck):
                                 "**Dangerous MFA condition pattern detected.** "
                                 'Using `{"Bool": {"aws:MultiFactorAuthPresent": "false"}}` does not enforce MFA '
                                 "because `aws:MultiFactorAuthPresent` may not exist in the request context. "
-                                'Consider using `{"Bool": {"aws:MultiFactorAuthPresent": "true"}}` in an Allow statement, '
-                                "or use `BoolIfExists` in a Deny statement."
+                                'Consider using `{"Bool": {"aws:MultiFactorAuthPresent": "true"}}` in an `Allow` statement, '
+                                "or use `BoolIfExists` in a `Deny` statement."
                             ),
                             statement_sid=statement_sid,
                             statement_index=statement_idx,
@@ -100,7 +91,7 @@ class MFAConditionCheck(PolicyCheck):
                                 "**Dangerous MFA condition pattern detected.** "
                                 'Using `{"Null": {"aws:MultiFactorAuthPresent": "false"}}` only checks if the key exists, '
                                 "not whether MFA was actually used. This does not enforce MFA. "
-                                'Consider using `{"Bool": {"aws:MultiFactorAuthPresent": "true"}}` in an Allow statement instead.'
+                                'Consider using `{"Bool": {"aws:MultiFactorAuthPresent": "true"}}` in an `Allow` statement instead.'
                             ),
                             statement_sid=statement_sid,
                             statement_index=statement_idx,

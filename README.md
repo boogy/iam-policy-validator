@@ -327,6 +327,111 @@ ignore_patterns:
 
 **📖 See [GitHub Integration Guide](docs/github-actions-workflows.md) for detailed examples**
 
+## Cache Management & Offline Mode
+
+### Offline Validation (No AWS API Calls)
+
+Validate policies without AWS API access using pre-downloaded service definitions. Useful for:
+- **Air-gapped environments** - No internet access required
+- **Rate limiting avoidance** - No AWS API throttling (429 errors)
+- **CI/CD performance** - Faster validation with local files
+- **Development** - Work offline without AWS credentials
+
+**Download AWS service definitions once:**
+```bash
+# Download all AWS service definitions to local directory
+iam-validator download-services --output-dir ./aws-services
+
+# Directory structure:
+# aws-services/
+#   ├── _services.json       # List of all services
+#   ├── s3.json             # S3 service definition
+#   ├── iam.json            # IAM service definition
+#   └── ... (250+ services)
+```
+
+**Use offline mode:**
+```bash
+# CLI: Use --aws-services-dir flag
+iam-validator validate --path policies/ --aws-services-dir ./aws-services
+
+# Config file: Set aws_services_dir
+# .iam-validator.yaml
+settings:
+  aws_services_dir: ./aws-services
+```
+
+**Python library:**
+```python
+from iam_validator.core.policy_checks import validate_policies
+from iam_validator.core.policy_loader import PolicyLoader
+
+loader = PolicyLoader()
+policies = loader.load_from_path("./policies")
+
+# Pass aws_services_dir to enable offline mode
+results = await validate_policies(
+    policies,
+    aws_services_dir="./aws-services"
+)
+```
+
+### Cache Directory Control
+
+Control where AWS service definitions are cached (for library users):
+
+```python
+from iam_validator.core.aws_service import AWSServiceFetcher
+
+async with AWSServiceFetcher() as fetcher:
+    # Get current cache location
+    cache_path = fetcher.get_cache_directory()
+    print(f"Cache at: {cache_path}")
+    # macOS: ~/Library/Caches/iam-validator/aws_services
+    # Linux: ~/.cache/iam-validator/aws_services
+    # Windows: %LOCALAPPDATA%/iam-validator/cache/aws_services
+
+    # Change cache directory at runtime
+    fetcher.set_cache_directory("/tmp/custom-cache")
+
+    # All future cache operations use the new directory
+    await fetcher.fetch_services()
+```
+
+### Cache Management CLI
+
+Manage the cache directly:
+
+```bash
+# Show cache information and statistics
+iam-validator cache info
+
+# List all cached services
+iam-validator cache list
+iam-validator cache list --format columns
+
+# Show cache directory location
+iam-validator cache location
+
+# Clear cache
+iam-validator cache clear
+
+# Refresh cache (clear + re-download common services)
+iam-validator cache refresh
+
+# Pre-fetch common services (without clearing)
+iam-validator cache prefetch
+```
+
+**Cache configuration:**
+```yaml
+# .iam-validator.yaml
+settings:
+  cache_enabled: true              # Enable/disable caching
+  cache_ttl_hours: 168            # Cache lifetime (7 days default)
+  cache_directory: /custom/path    # Custom cache location
+```
+
 ## AWS Access Analyzer (Optional)
 
 In addition to the 19 built-in checks, optionally enable AWS Access Analyzer for additional validation capabilities that require AWS credentials:

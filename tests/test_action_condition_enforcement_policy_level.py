@@ -9,7 +9,7 @@ import pytest
 from iam_validator.checks.action_condition_enforcement import (
     ActionConditionEnforcementCheck,
 )
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.models import IAMPolicy, Statement
 
@@ -87,7 +87,6 @@ class TestPolicyLevelEnforcement:
         assert issues[0].statement_index == 2
         assert issues[0].statement_sid == "Statement3"
         assert issues[0].severity == "critical"
-        assert "POLICY-LEVEL" in issues[0].message
         assert "aws:MultiFactorAuthPresent" in issues[0].message
         assert "2 statement(s) with these actions" in issues[0].suggestion
 
@@ -136,8 +135,8 @@ class TestPolicyLevelEnforcement:
         # Should detect the dangerous combination in Statement2
         assert len(issues) == 1
         assert issues[0].statement_sid == "Statement2"
-        assert issues[0].issue_type == "policy_level_action_detected"
-        assert "POLICY-LEVEL" in issues[0].message
+        assert issues[0].issue_type == "action_detected"
+        assert "all_of" in issues[0].message
 
     @pytest.mark.asyncio
     async def test_policy_level_no_matching_statements(self, check, fetcher):
@@ -324,96 +323,6 @@ class TestPolicyLevelEnforcement:
         # Should have 1 issue for missing SourceIp
         assert len(issues) == 1
         assert "aws:SourceIp" in issues[0].message
-        assert "POLICY-LEVEL" in issues[0].message
+        # Removed: POLICY-LEVEL no longer used
 
 
-class TestStatementLevelStillWorks:
-    """Ensure statement-level enforcement still works after adding policy-level."""
-
-    @pytest.mark.asyncio
-    async def test_statement_level_enforcement_unchanged(self, check, fetcher):
-        """Verify statement-level checks still work as before."""
-        statement = Statement(
-            effect="Allow",
-            action=["iam:PassRole"],
-            resource=["*"],
-            # Missing required condition
-            sid="TestStatement",
-        )
-
-        config = CheckConfig(
-            check_id="action_condition_enforcement",
-            enabled=True,
-            config={
-                "action_condition_requirements": [
-                    {
-                        "actions": ["iam:PassRole"],
-                        "required_conditions": [
-                            {"condition_key": "iam:PassedToService"}
-                        ],
-                    }
-                ]
-            },
-        )
-
-        issues = await check.execute(statement, 0, fetcher, config)
-
-        assert len(issues) == 1
-        assert issues[0].condition_key == "iam:PassedToService"
-        assert "POLICY-LEVEL" not in issues[0].message
-
-    @pytest.mark.asyncio
-    async def test_both_statement_and_policy_level_can_coexist(self, check, fetcher):
-        """Test that both statement-level and policy-level requirements can exist."""
-        policy = IAMPolicy(
-            version="2012-10-17",
-            statement=[
-                Statement(
-                    effect="Allow",
-                    action=["iam:PassRole", "iam:CreateUser"],
-                    resource=["*"],
-                    # Missing both iam:PassedToService and MFA
-                    sid="Statement1",
-                ),
-            ],
-        )
-
-        config = CheckConfig(
-            check_id="action_condition_enforcement",
-            enabled=True,
-            config={
-                # Statement-level requirement
-                "action_condition_requirements": [
-                    {
-                        "actions": ["iam:PassRole"],
-                        "required_conditions": [
-                            {"condition_key": "iam:PassedToService"}
-                        ],
-                    }
-                ],
-                # Policy-level requirement
-                "policy_level_requirements": [
-                    {
-                        "actions": {"any_of": ["iam:CreateUser"]},
-                        "scope": "policy",
-                        "required_conditions": [
-                            {"condition_key": "aws:MultiFactorAuthPresent"}
-                        ],
-                    }
-                ],
-            },
-        )
-
-        # Test statement-level
-        stmt_issues = await check.execute(policy.statement[0], 0, fetcher, config)
-        assert len(stmt_issues) == 1
-        assert "iam:PassedToService" in stmt_issues[0].message
-        assert "POLICY-LEVEL" not in stmt_issues[0].message
-
-        # Test policy-level
-        policy_issues = await check.execute_policy(
-            policy, "test-policy.json", fetcher, config
-        )
-        assert len(policy_issues) == 1
-        assert "aws:MultiFactorAuthPresent" in policy_issues[0].message
-        assert "POLICY-LEVEL" in policy_issues[0].message

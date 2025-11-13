@@ -12,12 +12,12 @@ Note: AWS does not count whitespace when calculating policy size.
 
 import json
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.constants import AWS_POLICY_SIZE_LIMITS
-from iam_validator.core.models import Statement, ValidationIssue
+from iam_validator.core.models import ValidationIssue
 
 if TYPE_CHECKING:
     from iam_validator.core.models import IAMPolicy
@@ -29,42 +29,9 @@ class PolicySizeCheck(PolicyCheck):
     # AWS IAM policy size limits (loaded from constants module)
     DEFAULT_LIMITS = AWS_POLICY_SIZE_LIMITS
 
-    @property
-    def check_id(self) -> str:
-        return "policy_size"
-
-    @property
-    def description(self) -> str:
-        return "Validates that IAM policies don't exceed AWS size limits"
-
-    @property
-    def default_severity(self) -> str:
-        return "error"
-
-    async def execute(
-        self,
-        statement: Statement,
-        statement_idx: int,
-        fetcher: AWSServiceFetcher,
-        config: CheckConfig,
-    ) -> list[ValidationIssue]:
-        """Execute the policy size check at statement level.
-
-        This is a policy-level check, so statement-level execution returns empty.
-        The actual check runs in execute_policy() which has access to the full policy.
-
-        Args:
-            statement: The IAM policy statement (unused)
-            statement_idx: Index of the statement in the policy (unused)
-            fetcher: AWS service fetcher (unused for this check)
-            config: Configuration for this check instance (unused)
-
-        Returns:
-            Empty list (actual check runs in execute_policy())
-        """
-        del statement, statement_idx, fetcher, config  # Unused
-        # This is a policy-level check - execution happens in execute_policy()
-        return []
+    check_id: ClassVar[str] = "policy_size"
+    description: ClassVar[str] = "Validates that IAM policies don't exceed AWS size limits"
+    default_severity: ClassVar[str] = "error"
 
     async def execute_policy(
         self,

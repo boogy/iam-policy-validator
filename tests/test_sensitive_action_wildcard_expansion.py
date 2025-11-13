@@ -4,7 +4,7 @@ import pytest
 
 from iam_validator.checks.sensitive_action import SensitiveActionCheck
 from iam_validator.checks.utils.wildcard_expansion import expand_wildcard_actions
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.models import Statement
 

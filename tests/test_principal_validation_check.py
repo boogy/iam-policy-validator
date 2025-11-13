@@ -3,7 +3,7 @@
 import pytest
 
 from iam_validator.checks.principal_validation import PrincipalValidationCheck
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.models import Statement
 

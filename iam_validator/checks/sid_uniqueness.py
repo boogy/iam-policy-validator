@@ -13,10 +13,11 @@ statement, examining all statements in the policy to find duplicates and format 
 
 import re
 from collections import Counter
+from typing import ClassVar
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
-from iam_validator.core.models import IAMPolicy, Statement, ValidationIssue
+from iam_validator.core.models import IAMPolicy, ValidationIssue
 
 
 def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[ValidationIssue]:
@@ -111,42 +112,11 @@ class SidUniquenessCheck(PolicyCheck):
     It only runs once when processing the first statement to avoid duplicate work.
     """
 
-    @property
-    def check_id(self) -> str:
-        return "sid_uniqueness"
-
-    @property
-    def description(self) -> str:
-        return "Validates that Statement IDs (Sids) are unique and follow AWS naming requirements (no spaces)"
-
-    @property
-    def default_severity(self) -> str:
-        return "warning"
-
-    async def execute(
-        self,
-        statement: Statement,
-        statement_idx: int,
-        fetcher: AWSServiceFetcher,
-        config: CheckConfig,
-    ) -> list[ValidationIssue]:
-        """Execute the SID uniqueness check at statement level.
-
-        This is a policy-level check, so statement-level execution returns empty.
-        The actual check runs in execute_policy() which has access to all statements.
-
-        Args:
-            statement: The IAM policy statement (unused)
-            statement_idx: Index of the statement in the policy (unused)
-            fetcher: AWS service fetcher (unused for this check)
-            config: Configuration for this check instance (unused)
-
-        Returns:
-            Empty list (actual check runs in execute_policy())
-        """
-        del statement, statement_idx, fetcher, config  # Unused
-        # This is a policy-level check - execution happens in execute_policy()
-        return []
+    check_id: ClassVar[str] = "sid_uniqueness"
+    description: ClassVar[str] = (
+        "Validates that Statement IDs (Sids) are unique and follow AWS naming requirements (no spaces)"
+    )
+    default_severity: ClassVar[str] = "warning"
 
     async def execute_policy(
         self,

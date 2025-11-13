@@ -8,7 +8,8 @@ from rich.console import Console
 from rich.table import Table
 
 from iam_validator.commands.base import Command
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
+from iam_validator.core.aws_service.storage import ServiceFileStorage
 from iam_validator.core.config.config_loader import ConfigLoader
 
 logger = logging.getLogger(__name__)
@@ -130,7 +131,7 @@ Examples:
         cache_ttl_seconds = cache_ttl_hours * 3600
 
         # Get cache directory (even if caching is disabled, for info purposes)
-        cache_dir = AWSServiceFetcher._get_cache_directory(cache_directory)
+        cache_dir = ServiceFileStorage.get_cache_directory(cache_directory)
 
         action = args.cache_action
 
@@ -226,7 +227,7 @@ Examples:
             services.append({"name": name, "size": size, "file": f.name, "mtime": mtime})
 
         # Sort by service name
-        services.sort(key=lambda x: x["name"])
+        services.sort(key=lambda x: str(x["name"]))
 
         if output_format == "table":
             self._print_services_table(services)

@@ -10,11 +10,11 @@ This module provides a pluggable check system that allows:
 """
 
 import asyncio
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.ignore_patterns import IgnorePatternMatcher
 from iam_validator.core.models import Statement, ValidationIssue
 
@@ -103,38 +103,101 @@ class PolicyCheck(ABC):
 
     To create a custom check:
     1. Inherit from this class
-    2. Implement check_id, description, and execute()
-    3. Register with CheckRegistry
+    2. Implement check_id and description (required)
+    3. Implement either execute() OR execute_policy() (or both)
+    4. Register with CheckRegistry
 
-    Example:
-        class MyCustomCheck(PolicyCheck):
-            check_id = "my_custom_check"
-            description = "Validates custom compliance rules"
+    Two ways to define check_id and description:
+
+    Option 1 - Class attributes (simpler, recommended for static values):
+        from typing import ClassVar
+
+        class MyCheck(PolicyCheck):
+            check_id: ClassVar[str] = "my_check"
+            description: ClassVar[str] = "My check description"
 
             async def execute(self, statement, statement_idx, fetcher, config):
+                return []
+
+        Note: ClassVar annotation is required for Pylance type checker compatibility.
+
+    Option 2 - Property decorators (more flexible, supports dynamic values):
+        class MyCheck(PolicyCheck):
+            @property
+            def check_id(self) -> str:
+                return "my_check"
+
+            @property
+            def description(self) -> str:
+                return "My check description"
+
+            async def execute(self, statement, statement_idx, fetcher, config):
+                return []
+
+    Statement-level check example:
+        from typing import ClassVar
+
+        class MyStatementCheck(PolicyCheck):
+            check_id: ClassVar[str] = "my_statement_check"
+            description: ClassVar[str] = "Validates individual statements"
+
+            async def execute(self, statement, statement_idx, fetcher, config):
+                issues = []
+                # Your validation logic here
+                return issues
+
+    Policy-level check example:
+        from typing import ClassVar
+
+        class MyPolicyCheck(PolicyCheck):
+            check_id: ClassVar[str] = "my_policy_check"
+            description: ClassVar[str] = "Validates entire policy"
+
+            async def execute_policy(self, policy, policy_file, fetcher, config, **kwargs):
                 issues = []
                 # Your validation logic here
                 return issues
     """
 
     @property
-    @abstractmethod
     def check_id(self) -> str:
         """Unique identifier for this check (e.g., 'action_validation')."""
-        pass
+        raise NotImplementedError("Subclasses must define check_id")
 
     @property
-    @abstractmethod
     def description(self) -> str:
         """Human-readable description of what this check does."""
-        pass
+        raise NotImplementedError("Subclasses must define description")
 
     @property
     def default_severity(self) -> str:
         """Default severity level for issues found by this check."""
         return "warning"
 
-    @abstractmethod
+    def __init_subclass__(cls, **kwargs):
+        """
+        Validate that subclasses override at least one execution method.
+
+        This ensures checks implement either execute() OR execute_policy() (or both).
+        If neither is overridden, the check would never produce any results.
+        """
+        super().__init_subclass__(**kwargs)
+
+        # Skip validation for abstract classes
+        if ABC in cls.__bases__:
+            return
+
+        # Check if at least one method is overridden
+        has_execute = cls.execute is not PolicyCheck.execute
+        has_execute_policy = cls.execute_policy is not PolicyCheck.execute_policy
+
+        if not has_execute and not has_execute_policy:
+            raise TypeError(
+                f"Check '{cls.__name__}' must override at least one of: "
+                "execute() for statement-level checks, or "
+                "execute_policy() for policy-level checks"
+            )
+
     async def execute(
         self,
         statement: Statement,
@@ -145,6 +208,10 @@ class PolicyCheck(ABC):
         """
         Execute the check on a policy statement.
 
+        This method is called for statement-level checks. If your check only needs
+        to examine the entire policy (not individual statements), you can leave this
+        as the default implementation and override execute_policy() instead.
+
         Args:
             statement: The IAM policy statement to check
             statement_idx: Index of the statement in the policy
@@ -154,7 +221,8 @@ class PolicyCheck(ABC):
         Returns:
             List of ValidationIssue objects found by this check
         """
-        pass
+        del statement, statement_idx, fetcher, config  # Unused in default implementation
+        return []
 
     async def execute_policy(
         self,

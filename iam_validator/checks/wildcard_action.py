@@ -1,6 +1,8 @@
 """Wildcard action check - detects Action: '*' in IAM policies."""
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from typing import ClassVar
+
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
 
@@ -8,17 +10,9 @@ from iam_validator.core.models import Statement, ValidationIssue
 class WildcardActionCheck(PolicyCheck):
     """Checks for wildcard actions (Action: '*') which grant all permissions."""
 
-    @property
-    def check_id(self) -> str:
-        return "wildcard_action"
-
-    @property
-    def description(self) -> str:
-        return "Checks for wildcard actions (*)"
-
-    @property
-    def default_severity(self) -> str:
-        return "medium"
+    check_id: ClassVar[str] = "wildcard_action"
+    description: ClassVar[str] = "Checks for wildcard actions (*)"
+    default_severity: ClassVar[str] = "medium"
 
     async def execute(
         self,

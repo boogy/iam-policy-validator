@@ -1,7 +1,9 @@
 """Wildcard resource check - detects Resource: '*' in IAM policies."""
 
+from typing import ClassVar
+
 from iam_validator.checks.utils.wildcard_expansion import expand_wildcard_actions
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
 
@@ -9,17 +11,9 @@ from iam_validator.core.models import Statement, ValidationIssue
 class WildcardResourceCheck(PolicyCheck):
     """Checks for wildcard resources (Resource: '*') which grant access to all resources."""
 
-    @property
-    def check_id(self) -> str:
-        return "wildcard_resource"
-
-    @property
-    def description(self) -> str:
-        return "Checks for wildcard resources (*)"
-
-    @property
-    def default_severity(self) -> str:
-        return "medium"
+    check_id: ClassVar[str] = "wildcard_resource"
+    description: ClassVar[str] = "Checks for wildcard resources (*)"
+    default_severity: ClassVar[str] = "medium"
 
     async def execute(
         self,

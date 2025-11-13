@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 
 from iam_validator.core import constants
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckRegistry, create_default_registry
 from iam_validator.core.config.config_loader import ConfigLoader
 from iam_validator.core.models import (
@@ -51,6 +51,7 @@ async def validate_policies(
     config_path: str | None = None,
     custom_checks_dir: str | None = None,
     policy_type: PolicyType = "IDENTITY_POLICY",
+    aws_services_dir: str | None = None,
 ) -> list[PolicyValidationResult]:
     """Validate multiple policies concurrently.
 
@@ -59,6 +60,8 @@ async def validate_policies(
         config_path: Optional path to configuration file
         custom_checks_dir: Optional path to directory containing custom checks for auto-discovery
         policy_type: Type of policy (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY)
+        aws_services_dir: Optional path to directory containing pre-downloaded AWS service definitions
+                         (enables offline mode, overrides config setting)
 
     Returns:
         List of validation results
@@ -110,7 +113,8 @@ async def validate_policies(
     cache_enabled = config.get_setting("cache_enabled", True)
     cache_ttl_hours = config.get_setting("cache_ttl_hours", constants.DEFAULT_CACHE_TTL_HOURS)
     cache_directory = config.get_setting("cache_directory", None)
-    aws_services_dir = config.get_setting("aws_services_dir", None)
+    # CLI argument takes precedence over config file
+    services_dir = aws_services_dir or config.get_setting("aws_services_dir", None)
     cache_ttl_seconds = cache_ttl_hours * constants.SECONDS_PER_HOUR
 
     # Validate policies using registry
@@ -118,7 +122,7 @@ async def validate_policies(
         enable_cache=cache_enabled,
         cache_ttl=cache_ttl_seconds,
         cache_dir=cache_directory,
-        aws_services_dir=aws_services_dir,
+        aws_services_dir=services_dir,
     ) as fetcher:
         tasks = [
             _validate_policy_with_registry(

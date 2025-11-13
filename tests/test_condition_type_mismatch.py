@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from iam_validator.checks.condition_type_mismatch import ConditionTypeMismatchCheck
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.models import Statement
 
@@ -198,7 +198,7 @@ class TestConditionTypeMismatchCheck:
         assert len(issues) == 1
         assert issues[0].severity == "warning"
         assert issues[0].issue_type == "type_mismatch_usable"
-        assert "ArnEquals or ArnLike" in issues[0].message
+        assert "ArnEquals" in issues[0].message and "ArnLike" in issues[0].message
 
     @pytest.mark.asyncio
     async def test_invalid_date_format(self, check, fetcher, config):

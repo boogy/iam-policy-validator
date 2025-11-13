@@ -1,11 +1,23 @@
 """
-Action-Specific Condition Enforcement Check (Unified)
+Action-Specific Condition Enforcement Check
 
-This built-in check ensures that specific actions have required conditions.
+This check ensures that specific actions have required conditions.
 Supports ALL types of conditions: MFA, IP, VPC, time, tags, encryption, etc.
 
-Supports advanced "all_of" and "any_of" logic for both actions and conditions.
-Supports both STATEMENT-LEVEL and POLICY-LEVEL enforcement.
+The entire policy is scanned once, checking all statements for matching actions.
+
+ACTION MATCHING MODES:
+- Simple list: Checks each statement for any of the specified actions
+  Example: actions: ["iam:PassRole", "iam:CreateUser"]
+
+- any_of: Finds statements that contain ANY of the specified actions
+  Example: actions: {any_of: ["iam:CreateUser", "iam:AttachUserPolicy"]}
+
+- all_of: Finds statements that contain ALL specified actions (overly permissive detection)
+  Example: actions: {all_of: ["iam:CreateAccessKey", "iam:UpdateAccessKey"]}
+
+- none_of: Flags statements that contain forbidden actions
+  Example: actions: {none_of: ["iam:DeleteUser", "s3:DeleteBucket"]}
 
 Common use cases:
 - iam:PassRole must have iam:PassedToService condition
@@ -13,17 +25,17 @@ Common use cases:
 - Actions must have source IP restrictions
 - Resources must have required tags
 - Combine multiple conditions (MFA + IP + Tags)
-- Policy-level: Ensure ALL statements granting certain actions have MFA
+- Detect overly permissive statements (all_of)
+- Ensure privilege escalation combinations are protected
 
 Configuration in iam-validator.yaml:
 
     checks:
       action_condition_enforcement:
         enabled: true
-        severity: error
+        severity: high
         description: "Enforce specific conditions for specific actions"
 
-        # STATEMENT-LEVEL: Check individual statements (default)
         action_condition_requirements:
           # BASIC: Simple action with required condition
           - actions:
@@ -87,56 +99,38 @@ Configuration in iam-validator.yaml:
                   expected_value: false
                   description: "Ensure insecure transport is never allowed"
 
-          # none_of for actions: Flag if forbidden actions are present
-          - actions:
-              none_of:
-                - "iam:*"
-                - "s3:DeleteBucket"
-            description: "These dangerous actions should never be used"
-
-        # POLICY-LEVEL: Scan entire policy and enforce conditions across all matching statements
-        policy_level_requirements:
-          # Example: If ANY statement grants privilege escalation actions,
-          # then ALL such statements must have MFA
+          # any_of for actions: If ANY statement grants privilege escalation actions, require MFA
           - actions:
               any_of:
                 - "iam:CreateUser"
                 - "iam:AttachUserPolicy"
                 - "iam:PutUserPolicy"
-            scope: "policy"
             required_conditions:
               - condition_key: "aws:MultiFactorAuthPresent"
                 expected_value: true
-            description: "Privilege escalation actions require MFA across entire policy"
+            description: "Privilege escalation actions require MFA"
             severity: "critical"
 
-          # Example: All admin actions across the policy must have MFA
-          - actions:
-              any_of:
-                - "iam:*"
-                - "s3:*"
-            scope: "policy"
-            required_conditions:
-              all_of:
-                - condition_key: "aws:MultiFactorAuthPresent"
-                  expected_value: true
-                - condition_key: "aws:SourceIp"
-            apply_to: "all_matching_statements"
-
-          # Example: Ensure no statement in the policy allows dangerous combinations
+          # all_of for actions: Flag statements that contain BOTH dangerous actions (overly permissive)
           - actions:
               all_of:
                 - "iam:CreateAccessKey"
                 - "iam:UpdateAccessKey"
-            scope: "policy"
             severity: "critical"
-            description: "Dangerous combination of actions detected in policy"
+            description: "Statement grants both CreateAccessKey and UpdateAccessKey - too permissive"
+
+          # none_of for actions: Flag if forbidden actions are present
+          - actions:
+              none_of:
+                - "iam:DeleteUser"
+                - "s3:DeleteBucket"
+            description: "These dangerous actions should never be used"
 """
 
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
 
@@ -147,89 +141,11 @@ if TYPE_CHECKING:
 class ActionConditionEnforcementCheck(PolicyCheck):
     """Enforces specific condition requirements for specific actions with all_of/any_of support."""
 
-    @property
-    def check_id(self) -> str:
-        return "action_condition_enforcement"
-
-    @property
-    def description(self) -> str:
-        return "Enforces conditions (MFA, IP, tags, etc.) for specific actions (supports all_of/any_of)"
-
-    @property
-    def default_severity(self) -> str:
-        return "error"
-
-    async def execute(
-        self,
-        statement: Statement,
-        statement_idx: int,
-        fetcher: AWSServiceFetcher,
-        config: CheckConfig,
-    ) -> list[ValidationIssue]:
-        """Execute statement-level condition enforcement check."""
-        issues = []
-
-        # Only check Allow statements
-        if statement.effect != "Allow":
-            return issues
-
-        # Get action condition requirements from config
-        action_condition_requirements = config.config.get("action_condition_requirements", [])
-        if not action_condition_requirements:
-            return issues
-
-        statement_actions = statement.get_actions()
-
-        # Check each requirement rule
-        for requirement in action_condition_requirements:
-            # Check if this requirement applies to the statement's actions
-            actions_match, matching_actions = await self._check_action_match(
-                statement_actions, requirement, fetcher
-            )
-
-            if not actions_match:
-                continue
-
-            # Check if this is a none_of action rule (forbidden actions)
-            actions_config = requirement.get("actions", [])
-            if isinstance(actions_config, dict) and "none_of" in actions_config:
-                # This is a forbidden action rule - flag it
-                description = requirement.get("description", "These actions should not be used")
-                # Use per-requirement severity if specified, else use global
-                severity = requirement.get("severity", self.get_severity(config))
-                matching_actions_formatted = ", ".join(f"`{a}`" for a in matching_actions)
-                issues.append(
-                    ValidationIssue(
-                        severity=severity,
-                        statement_sid=statement.sid,
-                        statement_index=statement_idx,
-                        issue_type="forbidden_action_present",
-                        message=f"FORBIDDEN: Actions {matching_actions_formatted} should not be used. {description}",
-                        action=", ".join(matching_actions),
-                        suggestion=f"Remove these forbidden actions from the statement: {matching_actions_formatted}. {description}",
-                        line_number=statement.line_number,
-                    )
-                )
-                continue
-
-            # Actions match - now validate required conditions
-            required_conditions_config = requirement.get("required_conditions", [])
-            if not required_conditions_config:
-                continue
-
-            # Check if conditions are in all_of/any_of/none_of format or simple list
-            condition_issues = self._validate_conditions(
-                statement,
-                statement_idx,
-                required_conditions_config,
-                matching_actions,
-                config,
-                requirement,  # Pass the full requirement for severity override
-            )
-
-            issues.extend(condition_issues)
-
-        return issues
+    check_id: ClassVar[str] = "action_condition_enforcement"
+    description: ClassVar[str] = (
+        "Enforces conditions (MFA, IP, tags, etc.) for specific actions (supports all_of/any_of)"
+    )
+    default_severity: ClassVar[str] = "error"
 
     async def execute_policy(
         self,
@@ -240,21 +156,25 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         **kwargs,
     ) -> list[ValidationIssue]:
         """
-        Execute policy-level condition enforcement check.
+        Execute policy-wide condition enforcement check.
 
-        This method scans the entire policy and enforces that ALL statements granting
-        certain actions must have specific conditions. This is useful for ensuring
-        consistent security controls across the entire policy.
+        This method scans the entire policy once and enforces conditions based on action matching:
+        - Simple list: Checks each statement for matching actions
+        - all_of: Finds statements that contain ALL specified actions (overly permissive detection)
+        - any_of: Finds statements that contain ANY of the specified actions
+        - none_of: Flags statements that contain forbidden actions
 
-        Example use case:
-        - "If ANY statement in the policy grants iam:CreateUser, iam:AttachUserPolicy,
+        Example use cases:
+        - any_of: "If ANY statement grants iam:CreateUser, iam:AttachUserPolicy,
           or iam:PutUserPolicy, then ALL such statements must have MFA condition."
+        - all_of: "Flag statements that grant BOTH iam:CreateAccessKey AND
+          iam:UpdateAccessKey (overly permissive)"
 
         Args:
             policy: The complete IAM policy to check
             policy_file: Path to the policy file (for context/reporting)
             fetcher: AWS service fetcher for validation against AWS APIs
-            config: Configuration for this check instance
+            config: CheckConfig: Configuration for this check instance
             **kwargs: Additional context (policy_type, etc.)
 
         Returns:
@@ -263,90 +183,484 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         del policy_file, kwargs  # Not used in current implementation
         issues = []
 
-        # Get policy-level requirements from config
-        policy_level_requirements = config.config.get("policy_level_requirements", [])
-        if not policy_level_requirements:
+        # Get action condition requirements from config
+        # Support both old (policy_level_requirements) and new (action_condition_requirements) keys
+        requirements = config.config.get(
+            "action_condition_requirements",
+            config.config.get("policy_level_requirements", []),
+        )
+
+        if not requirements:
             return issues
 
-        # Process each policy-level requirement
-        for requirement in policy_level_requirements:
-            # Collect all statements that match the action criteria
-            matching_statements: list[tuple[int, Statement, list[str]]] = []
+        # Process each requirement
+        for requirement in requirements:
+            # Check if actions use all_of/any_of/none_of (policy-wide) or simple list (per-statement)
+            actions_config = requirement.get("actions", [])
+            uses_logical_operators = isinstance(actions_config, dict) and any(
+                key in actions_config for key in ("all_of", "any_of", "none_of")
+            )
 
-            for idx, statement in enumerate(policy.statement or []):
-                # Only check Allow statements
-                if statement.effect != "Allow":
+            if uses_logical_operators:
+                # Policy-wide detection (all_of/any_of/none_of)
+                policy_issues = await self._check_policy_wide(policy, requirement, fetcher, config)
+                issues.extend(policy_issues)
+            else:
+                # Per-statement check (simple list)
+                statement_issues = await self._check_per_statement(
+                    policy, requirement, fetcher, config
+                )
+                issues.extend(statement_issues)
+
+        return issues
+
+    async def _check_policy_wide(
+        self,
+        policy: "IAMPolicy",
+        requirement: dict[str, Any],
+        fetcher: AWSServiceFetcher,
+        config: CheckConfig,
+    ) -> list[ValidationIssue]:
+        """
+        Check actions across the entire policy using all_of/any_of/none_of logic.
+
+        This enables policy-wide detection patterns:
+        - all_of: ALL required actions must exist somewhere in the policy
+        - any_of: At least ONE required action must exist somewhere in the policy
+        - none_of: NONE of the forbidden actions should exist in the policy
+        """
+        issues = []
+        actions_config = requirement.get("actions", {})
+        all_of = actions_config.get("all_of", [])
+        any_of = actions_config.get("any_of", [])
+        none_of = actions_config.get("none_of", [])
+
+        # Collect all actions across the entire policy
+        policy_wide_actions: set[str] = set()
+        statements_by_action: dict[str, list[tuple[int, Statement]]] = {}
+
+        for idx, statement in enumerate(policy.statement or []):
+            if statement.effect != "Allow":
+                continue
+
+            statement_actions = statement.get_actions()
+            policy_wide_actions.update(statement_actions)
+
+            # Track which statements grant which actions
+            for action in statement_actions:
+                if action not in statements_by_action:
+                    statements_by_action[action] = []
+                statements_by_action[action].append((idx, statement))
+
+        # Check all_of: ALL required actions must exist in policy
+        if all_of:
+            all_of_result = await self._check_all_of_policy_wide(
+                all_of,
+                policy_wide_actions,
+                statements_by_action,
+                requirement,
+                fetcher,
+                config,
+            )
+            issues.extend(all_of_result)
+
+        # Check any_of: At least ONE required action must exist in policy
+        if any_of:
+            any_of_result = await self._check_any_of_policy_wide(
+                any_of,
+                policy_wide_actions,
+                statements_by_action,
+                requirement,
+                fetcher,
+                config,
+            )
+            issues.extend(any_of_result)
+
+        # Check none_of: NONE of the forbidden actions should exist in policy
+        if none_of:
+            none_of_result = await self._check_none_of_policy_wide(
+                none_of,
+                policy_wide_actions,
+                statements_by_action,
+                requirement,
+                config,
+                fetcher,
+            )
+            issues.extend(none_of_result)
+
+        return issues
+
+    async def _check_all_of_policy_wide(
+        self,
+        all_of_actions: list[str],
+        policy_wide_actions: set[str],
+        statements_by_action: dict[str, list[tuple[int, Statement]]],
+        requirement: dict[str, Any],
+        fetcher: AWSServiceFetcher,
+        config: CheckConfig,
+    ) -> list[ValidationIssue]:
+        """
+        Check if ALL required actions exist anywhere in the policy.
+
+        For all_of, we report ONLY statements that contain ALL the required actions,
+        not statements that contain just some of them. This is useful for detecting
+        overly permissive individual statements.
+        """
+        issues = []
+
+        # First, check if ALL required actions exist somewhere in the policy
+        found_actions_mapping: dict[str, str] = {}  # req_action -> matched_policy_action
+        missing_actions: list[str] = []
+
+        for req_action in all_of_actions:
+            action_found = False
+            for policy_action in policy_wide_actions:
+                if await self._action_matches(
+                    policy_action, req_action, requirement.get("action_patterns", []), fetcher
+                ):
+                    action_found = True
+                    found_actions_mapping[req_action] = policy_action
+                    break
+
+            if not action_found:
+                missing_actions.append(req_action)
+
+        # If not all actions exist in the policy, no issue
+        if missing_actions:
+            return issues
+
+        # ALL required actions exist in the policy
+        # Now find statements that have ALL of them (not just some)
+        statements_with_all_actions: list[tuple[int, Statement, list[str]]] = []
+
+        # Check each statement to see if it contains ALL required actions
+        for statement in statements_by_action.get(list(found_actions_mapping.values())[0], []):
+            stmt_idx, stmt = statement
+            stmt_actions = stmt.get_actions()
+
+            # Check if this statement has ALL required actions
+            has_all_actions = True
+            matched_actions = []
+
+            for req_action in all_of_actions:
+                req_action_found = False
+                for stmt_action in stmt_actions:
+                    if await self._action_matches(
+                        stmt_action, req_action, requirement.get("action_patterns", []), fetcher
+                    ):
+                        req_action_found = True
+                        if stmt_action not in matched_actions:
+                            matched_actions.append(stmt_action)
+                        break
+
+                if not req_action_found:
+                    has_all_actions = False
+                    break
+
+            if has_all_actions:
+                statements_with_all_actions.append((stmt_idx, stmt, matched_actions))
+
+        # Also check other statements not in the first action's list
+        checked_indices = {s[0] for s in statements_with_all_actions}
+        for policy_action, stmt_list in statements_by_action.items():
+            for stmt_idx, stmt in stmt_list:
+                if stmt_idx in checked_indices:
                     continue
 
-                statement_actions = statement.get_actions()
+                stmt_actions = stmt.get_actions()
 
-                # Check if this statement matches the action requirement
-                actions_match, matching_actions = await self._check_action_match(
-                    statement_actions, requirement, fetcher
+                # Check if this statement has ALL required actions
+                has_all_actions = True
+                matched_actions = []
+
+                for req_action in all_of_actions:
+                    req_action_found = False
+                    for stmt_action in stmt_actions:
+                        if await self._action_matches(
+                            stmt_action, req_action, requirement.get("action_patterns", []), fetcher
+                        ):
+                            req_action_found = True
+                            if stmt_action not in matched_actions:
+                                matched_actions.append(stmt_action)
+                            break
+
+                    if not req_action_found:
+                        has_all_actions = False
+                        break
+
+                if has_all_actions:
+                    statements_with_all_actions.append((stmt_idx, stmt, matched_actions))
+                    checked_indices.add(stmt_idx)
+
+        # If no statements have ALL actions, no issue to report
+        if not statements_with_all_actions:
+            return issues
+
+        # Report statements that have ALL the dangerous actions
+        return self._generate_policy_wide_issues(
+            statements_with_all_actions,
+            list(found_actions_mapping.values()),
+            requirement,
+            config,
+            "all_of",
+        )
+
+    async def _check_any_of_policy_wide(
+        self,
+        any_of_actions: list[str],
+        policy_wide_actions: set[str],
+        statements_by_action: dict[str, list[tuple[int, Statement]]],
+        requirement: dict[str, Any],
+        fetcher: AWSServiceFetcher,
+        config: CheckConfig,
+    ) -> list[ValidationIssue]:
+        """Check if at least ONE required action exists anywhere in the policy."""
+        issues = []
+        found_actions: list[str] = []
+        statements_with_required_actions: list[tuple[int, Statement, list[str]]] = []
+
+        for req_action in any_of_actions:
+            for policy_action in policy_wide_actions:
+                if await self._action_matches(
+                    policy_action, req_action, requirement.get("action_patterns", []), fetcher
+                ):
+                    found_actions.append(policy_action)
+
+                    # Track statements that have this action
+                    if policy_action in statements_by_action:
+                        for stmt_idx, stmt in statements_by_action[policy_action]:
+                            existing = next(
+                                (s for s in statements_with_required_actions if s[0] == stmt_idx),
+                                None,
+                            )
+                            if existing:
+                                if policy_action not in existing[2]:
+                                    existing[2].append(policy_action)
+                            else:
+                                statements_with_required_actions.append(
+                                    (stmt_idx, stmt, [policy_action])
+                                )
+
+        # If no actions found, no issue
+        if not found_actions:
+            return issues
+
+        # At least one action found - validate conditions
+        return self._generate_policy_wide_issues(
+            statements_with_required_actions,
+            found_actions,
+            requirement,
+            config,
+            "any_of",
+        )
+
+    async def _check_none_of_policy_wide(
+        self,
+        none_of_actions: list[str],
+        policy_wide_actions: set[str],
+        statements_by_action: dict[str, list[tuple[int, Statement]]],
+        requirement: dict[str, Any],
+        config: CheckConfig,
+        fetcher: AWSServiceFetcher,
+    ) -> list[ValidationIssue]:
+        """Check if any forbidden actions exist in the policy."""
+        issues = []
+        forbidden_found: list[str] = []
+        statements_with_forbidden: list[tuple[int, Statement, list[str]]] = []
+
+        for forbidden_action in none_of_actions:
+            for policy_action in policy_wide_actions:
+                if await self._action_matches(
+                    policy_action, forbidden_action, requirement.get("action_patterns", []), fetcher
+                ):
+                    forbidden_found.append(policy_action)
+
+                    # Track statements with forbidden actions
+                    if policy_action in statements_by_action:
+                        for stmt_idx, stmt in statements_by_action[policy_action]:
+                            existing = next(
+                                (s for s in statements_with_forbidden if s[0] == stmt_idx), None
+                            )
+                            if existing:
+                                if policy_action not in existing[2]:
+                                    existing[2].append(policy_action)
+                            else:
+                                statements_with_forbidden.append((stmt_idx, stmt, [policy_action]))
+
+        # If forbidden actions found, create issues
+        if not forbidden_found:
+            return issues
+
+        description = requirement.get("description", "These actions should not be used")
+        severity = requirement.get("severity", self.get_severity(config))
+
+        for stmt_idx, stmt, actions in statements_with_forbidden:
+            actions_formatted = ", ".join(f"`{a}`" for a in actions)
+            statement_refs = [
+                f"Statement #{idx + 1}{' (SID: ' + s.sid + ')' if s.sid else ''}"
+                for idx, s, _ in statements_with_forbidden
+            ]
+
+            issues.append(
+                ValidationIssue(
+                    severity=severity,
+                    statement_sid=stmt.sid,
+                    statement_index=stmt_idx,
+                    issue_type="forbidden_action",
+                    message=f"Forbidden actions {actions_formatted} found. {description}",
+                    action=", ".join(actions),
+                    suggestion=f"Remove these forbidden actions. Found in: {', '.join(statement_refs)}. {description}",
+                    line_number=stmt.line_number,
+                )
+            )
+
+        return issues
+
+    def _generate_policy_wide_issues(
+        self,
+        statements_with_actions: list[tuple[int, Statement, list[str]]],
+        found_actions: list[str],
+        requirement: dict[str, Any],
+        config: CheckConfig,
+        operator_type: str,
+    ) -> list[ValidationIssue]:
+        """Generate validation issues for policy-wide checks."""
+        issues = []
+        required_conditions_config = requirement.get("required_conditions", [])
+        description = requirement.get("description", "")
+        severity = requirement.get("severity", self.get_severity(config))
+
+        if not required_conditions_config:
+            # No conditions specified, just report that actions were found
+            all_actions_formatted = ", ".join(f"`{a}`" for a in sorted(set(found_actions)))
+            statement_refs = [
+                f"Statement #{idx + 1}{' (SID: ' + stmt.sid + ')' if stmt.sid else ''}"
+                for idx, stmt, _ in statements_with_actions
+            ]
+
+            first_idx, first_stmt, _ = statements_with_actions[0]
+            issues.append(
+                ValidationIssue(
+                    severity=severity,
+                    statement_sid=first_stmt.sid,
+                    statement_index=first_idx,
+                    issue_type="action_detected",
+                    message=f"Actions {all_actions_formatted} found across {len(statements_with_actions)} statement(s) ({operator_type}). {description}",
+                    action=", ".join(sorted(set(found_actions))),
+                    suggestion=f"Review these statements: {', '.join(statement_refs)}. {description}",
+                    line_number=first_stmt.line_number,
+                )
+            )
+            return issues
+
+        # Validate conditions for each statement
+        for idx, statement, matching_actions in statements_with_actions:
+            condition_issues = self._validate_conditions(
+                statement,
+                idx,
+                required_conditions_config,
+                matching_actions,
+                config,
+                requirement,
+            )
+
+            # Add context
+            for issue in condition_issues:
+                issue.suggestion = (
+                    f"{issue.suggestion}\n\n"
+                    f"Note: Found {len(statements_with_actions)} statement(s) with these actions in the policy ({operator_type})."
                 )
 
-                if actions_match and matching_actions:
-                    matching_statements.append((idx, statement, matching_actions))
+            issues.extend(condition_issues)
 
-            # If no statements match, skip this requirement
-            if not matching_statements:
+        return issues
+
+    async def _check_per_statement(
+        self,
+        policy: "IAMPolicy",
+        requirement: dict[str, Any],
+        fetcher: AWSServiceFetcher,
+        config: CheckConfig,
+    ) -> list[ValidationIssue]:
+        """
+        Check each statement individually for matching actions (simple list format).
+
+        Used when actions are specified as a simple list (not using all_of/any_of/none_of).
+        """
+        issues = []
+        matching_statements: list[tuple[int, Statement, list[str]]] = []
+
+        for idx, statement in enumerate(policy.statement or []):
+            # Only check Allow statements
+            if statement.effect != "Allow":
                 continue
 
-            # Now validate that ALL matching statements have the required conditions
-            required_conditions_config = requirement.get("required_conditions", [])
-            if not required_conditions_config:
-                # No conditions specified, just report that actions were found
-                description = requirement.get("description", "")
-                severity = requirement.get("severity", self.get_severity(config))
+            statement_actions = statement.get_actions()
 
-                # Create a summary issue for all matching statements
-                all_actions = set()
-                statement_refs = []
-                for idx, stmt, actions in matching_statements:
-                    all_actions.update(actions)
-                    sid_info = f" (SID: {stmt.sid})" if stmt.sid else ""
-                    statement_refs.append(f"Statement #{idx + 1}{sid_info}")
+            # Check if this statement matches the action requirement
+            actions_match, matching_actions = await self._check_action_match(
+                statement_actions, requirement, fetcher
+            )
 
-                # Use the first matching statement's index for the issue
-                first_idx, first_stmt, _ = matching_statements[0]
-                all_actions_formatted = ", ".join(f"`{a}`" for a in sorted(all_actions))
+            if actions_match and matching_actions:
+                matching_statements.append((idx, statement, matching_actions))
 
-                issues.append(
-                    ValidationIssue(
-                        severity=severity,
-                        statement_sid=first_stmt.sid,
-                        statement_index=first_idx,
-                        issue_type="policy_level_action_detected",
-                        message=f"POLICY-LEVEL: Actions {all_actions_formatted} found in {len(matching_statements)} statement(s). {description}",
-                        action=", ".join(sorted(all_actions)),
-                        suggestion=f"Review these statements: {', '.join(statement_refs)}. {description}",
-                        line_number=first_stmt.line_number,
-                    )
+        # If no statements match, skip this requirement
+        if not matching_statements:
+            return issues
+
+        # Now validate that ALL matching statements have the required conditions
+        required_conditions_config = requirement.get("required_conditions", [])
+        if not required_conditions_config:
+            # No conditions specified, just report that actions were found
+            description = requirement.get("description", "")
+            severity = requirement.get("severity", self.get_severity(config))
+
+            # Create a summary issue for all matching statements
+            all_actions = set()
+            statement_refs = []
+            for idx, stmt, actions in matching_statements:
+                all_actions.update(actions)
+                sid_info = f" (SID: {stmt.sid})" if stmt.sid else ""
+                statement_refs.append(f"Statement #{idx + 1}{sid_info}")
+
+            # Use the first matching statement's index for the issue
+            first_idx, first_stmt, _ = matching_statements[0]
+            all_actions_formatted = ", ".join(f"`{a}`" for a in sorted(all_actions))
+
+            issues.append(
+                ValidationIssue(
+                    severity=severity,
+                    statement_sid=first_stmt.sid,
+                    statement_index=first_idx,
+                    issue_type="action_detected",
+                    message=f"Actions {all_actions_formatted} found in {len(matching_statements)} statement(s). {description}",
+                    action=", ".join(sorted(all_actions)),
+                    suggestion=f"Review these statements: {', '.join(statement_refs)}. {description}",
+                    line_number=first_stmt.line_number,
                 )
-                continue
+            )
+            return issues
 
-            # Validate conditions for each matching statement
-            for idx, statement, matching_actions in matching_statements:
-                condition_issues = self._validate_conditions(
-                    statement,
-                    idx,
-                    required_conditions_config,
-                    matching_actions,
-                    config,
-                    requirement,
+        # Validate conditions for each matching statement
+        for idx, statement, matching_actions in matching_statements:
+            condition_issues = self._validate_conditions(
+                statement,
+                idx,
+                required_conditions_config,
+                matching_actions,
+                config,
+                requirement,
+            )
+
+            # Add context to each issue
+            for issue in condition_issues:
+                issue.suggestion = (
+                    f"{issue.suggestion}\n\n"
+                    f"Note: Found {len(matching_statements)} statement(s) with these actions in the policy."
                 )
 
-                # Add policy-level context to each issue
-                for issue in condition_issues:
-                    # Modify the message to indicate this is part of policy-level enforcement
-                    issue.message = f"POLICY-LEVEL: {issue.message}"
-                    issue.suggestion = (
-                        f"{issue.suggestion}\n\n"
-                        f"Note: This is enforced at the policy level. "
-                        f"Found {len(matching_statements)} statement(s) with these actions in the policy."
-                    )
-
-                issues.extend(condition_issues)
+            issues.extend(condition_issues)
 
         return issues
 
@@ -815,7 +1129,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         Returns:
             Tuple of (suggestion_text, example_code)
         """
-        suggestion = description if description else f"Add condition: {condition_key}"
+        suggestion = description if description else f"Add condition: `{condition_key}`"
 
         # Build example based on condition key type
         if example:

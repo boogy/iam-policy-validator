@@ -34,9 +34,9 @@ This check is DISABLED by default. Enable it for trust policy validation:
 """
 
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
 
@@ -79,17 +79,11 @@ class TrustPolicyValidationCheck(PolicyCheck):
         },
     }
 
-    @property
-    def check_id(self) -> str:
-        return "trust_policy_validation"
-
-    @property
-    def description(self) -> str:
-        return "Validates trust policies for role assumption security and action-principal coupling"
-
-    @property
-    def default_severity(self) -> str:
-        return "high"
+    check_id: ClassVar[str] = "trust_policy_validation"
+    description: ClassVar[str] = (
+        "Validates trust policies for role assumption security and action-principal coupling"
+    )
+    default_severity: ClassVar[str] = "high"
 
     async def execute(
         self,
@@ -256,7 +250,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
                     ValidationIssue(
                         severity=self.get_severity(config),
                         issue_type="invalid_principal_type_for_assume_action",
-                        message=f"Action `{action}` should not use Principal type `{principal_type}`. "
+                        message=f"Action `{action}` should not use `Principal` type `{principal_type}`. "
                         f"Expected principal types: {allowed_list}",
                         statement_index=statement_idx,
                         statement_sid=statement.sid,
