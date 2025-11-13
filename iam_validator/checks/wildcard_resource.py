@@ -62,7 +62,9 @@ class WildcardResourceCheck(PolicyCheck):
                     return issues
 
             # Flag the issue if actions are not all allowed or no allowed_wildcards configured
-            message = config.config.get("message", "Statement applies to all resources (*)")
+            message = config.config.get(
+                "message", 'Statement applies to all resources `"*"` (wildcard resource).'
+            )
             suggestion = config.config.get(
                 "suggestion", "Replace wildcard with specific resource ARNs"
             )

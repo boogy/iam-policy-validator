@@ -51,11 +51,11 @@ class ServiceWildcardCheck(PolicyCheck):
                     # Get message template and replace placeholders
                     message_template = config.config.get(
                         "message",
-                        "Service-level wildcard '{action}' grants all permissions for {service} service",
+                        "Service-level wildcard `{action}` grants all permissions for `{service}` service",
                     )
                     suggestion_template = config.config.get(
                         "suggestion",
-                        "Consider specifying explicit actions instead of '{action}'. If you need multiple actions, list them individually or use more specific wildcards like '{service}:Get*' or '{service}:List*'.",
+                        "Consider specifying explicit actions instead of `{action}`. If you need multiple actions, list them individually or use more specific wildcards like `{service}:Get*` or `{service}:List*`.",
                     )
                     example_template = config.config.get("example", "")
 

@@ -85,9 +85,9 @@ class SensitiveActionCheck(PolicyCheck):
         # Generic ABAC fallback for uncategorized actions
         return (
             "Add IAM conditions to limit when this action can be used. Use ABAC for scalability:\n"
-            "• Match principal tags to resource tags (aws:PrincipalTag/<tag-name> = aws:ResourceTag/<tag-name>)\n"
-            "• Require MFA (aws:MultiFactorAuthPresent = true)\n"
-            "• Restrict by IP (aws:SourceIp) or VPC (aws:SourceVpc)",
+            "• Match principal tags to resource tags (`aws:PrincipalTag/<tag-name>` = `aws:ResourceTag/<tag-name>`)\n"
+            "• Require MFA (`aws:MultiFactorAuthPresent` = `true`)\n"
+            "• Restrict by IP (`aws:SourceIp`) or VPC (`aws:SourceVpc`)",
             '"Condition": {\n'
             '  "StringEquals": {\n'
             '    "aws:PrincipalTag/owner": "${aws:ResourceTag/owner}"\n'
@@ -191,6 +191,10 @@ class SensitiveActionCheck(PolicyCheck):
         """
         del policy_file, fetcher  # Not used in current implementation
         issues = []
+
+        # Handle policies with no statements
+        if not policy.statement:
+            return []
 
         # Collect all actions from all Allow statements across the entire policy
         all_actions: set[str] = set()

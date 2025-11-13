@@ -23,7 +23,7 @@ class TestWildcardMatching:
             "ListBuckets",
         ]
 
-        has_matches, matched = fetcher._match_wildcard_action("Get*", actions)
+        has_matches, matched = fetcher.match_wildcard_action("Get*", actions)
 
         assert has_matches is True
         assert len(matched) == 3
@@ -43,7 +43,7 @@ class TestWildcardMatching:
             "ListBuckets",
         ]
 
-        has_matches, matched = fetcher._match_wildcard_action("*Object", actions)
+        has_matches, matched = fetcher.match_wildcard_action("*Object", actions)
 
         assert has_matches is True
         assert len(matched) == 3
@@ -63,7 +63,7 @@ class TestWildcardMatching:
             "ListBuckets",
         ]
 
-        has_matches, matched = fetcher._match_wildcard_action("Get*Acl", actions)
+        has_matches, matched = fetcher.match_wildcard_action("Get*Acl", actions)
 
         assert has_matches is True
         assert len(matched) == 2
@@ -83,7 +83,7 @@ class TestWildcardMatching:
             "ListBuckets",
         ]
 
-        has_matches, matched = fetcher._match_wildcard_action("*Get*Object*", actions)
+        has_matches, matched = fetcher.match_wildcard_action("*Get*Object*", actions)
 
         assert has_matches is True
         assert len(matched) == 4
@@ -102,7 +102,7 @@ class TestWildcardMatching:
             "DeleteObject",
         ]
 
-        has_matches, matched = fetcher._match_wildcard_action("List*", actions)
+        has_matches, matched = fetcher.match_wildcard_action("List*", actions)
 
         assert has_matches is False
         assert len(matched) == 0
@@ -116,7 +116,7 @@ class TestWildcardMatching:
             "GetOBJECT",
         ]
 
-        has_matches, matched = fetcher._match_wildcard_action("get*", actions)
+        has_matches, matched = fetcher.match_wildcard_action("get*", actions)
 
         assert has_matches is True
         assert len(matched) == 4
@@ -131,7 +131,7 @@ class TestWildcardMatching:
             "Get(Object)",
         ]
 
-        has_matches, matched = fetcher._match_wildcard_action("Get-*", actions)
+        has_matches, matched = fetcher.match_wildcard_action("Get-*", actions)
 
         assert has_matches is True
         assert len(matched) == 1
@@ -145,7 +145,7 @@ class TestWildcardMatching:
             "DeleteObject",
         ]
 
-        has_matches, matched = fetcher._match_wildcard_action("*", actions)
+        has_matches, matched = fetcher.match_wildcard_action("*", actions)
 
         assert has_matches is True
         assert len(matched) == 3
@@ -159,7 +159,7 @@ class TestWildcardMatching:
         ]
 
         # Without wildcard, should match exact only
-        has_matches, matched = fetcher._match_wildcard_action("GetObject", actions)
+        has_matches, matched = fetcher.match_wildcard_action("GetObject", actions)
 
         assert has_matches is True
         assert len(matched) == 1
@@ -169,7 +169,7 @@ class TestWildcardMatching:
         """Test wildcard pattern with empty action list."""
         actions = []
 
-        has_matches, matched = fetcher._match_wildcard_action("Get*", actions)
+        has_matches, matched = fetcher.match_wildcard_action("Get*", actions)
 
         assert has_matches is False
         assert len(matched) == 0

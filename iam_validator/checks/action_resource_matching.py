@@ -88,6 +88,10 @@ class ActionResourceMatchingCheck(PolicyCheck):
         statement_sid = statement.sid
         line_number = statement.line_number
 
+        # Skip if no resources to validate (e.g., trust policies don't have Resource field)
+        if not resources:
+            return issues
+
         # Skip if we have a wildcard resource (handled by other checks)
         if "*" in resources:
             return issues
@@ -289,9 +293,9 @@ class ActionResourceMatchingCheck(PolicyCheck):
         # Special case: Wildcard resource
         if required_format == "*":
             return (
-                f'Action `{action}` can only use Resource: "*" (wildcard).\n'
+                f'Action `{action}` can only use Resource: `"*"` (wildcard).\n'
                 f"  This action does not support resource-level permissions.\n"
-                f'  Example: "Resource": "*"'
+                f'  Example: "Resource": `"*"`'
             )
 
         # Build service-specific suggestion with proper markdown formatting

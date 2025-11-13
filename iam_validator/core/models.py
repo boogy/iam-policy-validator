@@ -14,6 +14,7 @@ from iam_validator.core import constants
 PolicyType = Literal[
     "IDENTITY_POLICY",
     "RESOURCE_POLICY",
+    "TRUST_POLICY",  # Trust policies (role assumption policies - subtype of resource policies)
     "SERVICE_CONTROL_POLICY",
     "RESOURCE_CONTROL_POLICY",
 ]
@@ -105,10 +106,10 @@ class ServiceDetail(BaseModel):
 class Statement(BaseModel):
     """IAM policy statement."""
 
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     sid: str | None = Field(default=None, alias="Sid")
-    effect: str = Field(alias="Effect")
+    effect: str | None = Field(default=None, alias="Effect")
     action: list[str] | str | None = Field(default=None, alias="Action")
     not_action: list[str] | str | None = Field(default=None, alias="NotAction")
     resource: list[str] | str | None = Field(default=None, alias="Resource")
@@ -135,10 +136,10 @@ class Statement(BaseModel):
 class IAMPolicy(BaseModel):
     """IAM policy document."""
 
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    version: str = Field(alias="Version")
-    statement: list[Statement] = Field(alias="Statement")
+    version: str | None = Field(default=None, alias="Version")
+    statement: list[Statement] | None = Field(default=None, alias="Statement")
     id: str | None = Field(default=None, alias="Id")
 
 
@@ -164,6 +165,9 @@ class ValidationIssue(BaseModel):
     suggestion: str | None = None
     example: str | None = None  # Code example (JSON/YAML) - formatted separately for GitHub
     line_number: int | None = None  # Line number in the policy file (if available)
+    check_id: str | None = (
+        None  # Check that triggered this issue (e.g., "policy_size", "sensitive_action")
+    )
 
     # Severity level constants (ClassVar to avoid Pydantic treating them as fields)
     VALID_SEVERITIES: ClassVar[frozenset[str]] = frozenset(
@@ -281,6 +285,12 @@ class ValidationIssue(BaseModel):
 
             parts.append("")
             parts.append("</details>")
+
+        # Add check ID at the bottom if available
+        if self.check_id:
+            parts.append("")
+            parts.append("---")
+            parts.append(f"*Check: `{self.check_id}`*")
 
         return "\n".join(parts)
 

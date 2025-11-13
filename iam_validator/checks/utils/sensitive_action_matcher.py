@@ -5,15 +5,13 @@ configurations, supporting exact matches, regex patterns, and any_of/all_of logi
 
 Performance optimizations:
 - Uses frozenset for O(1) lookups
-- LRU cache for compiled regex patterns
+- Centralized LRU cache for compiled regex patterns (from ignore_patterns module)
 - Lazy loading of default actions from modular data structure
 """
 
-import re
-from functools import lru_cache
-
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.config.sensitive_actions import get_sensitive_actions
+from iam_validator.core.ignore_patterns import compile_pattern
 
 # Lazy-loaded default set of sensitive actions
 # This will be loaded only when first accessed
@@ -37,7 +35,9 @@ def _get_default_sensitive_actions() -> frozenset[str]:
     return _DEFAULT_SENSITIVE_ACTIONS_CACHE
 
 
-def get_sensitive_actions_by_categories(categories: list[str] | None = None) -> frozenset[str]:
+def get_sensitive_actions_by_categories(
+    categories: list[str] | None = None,
+) -> frozenset[str]:
     """
     Get sensitive actions filtered by categories.
 
@@ -66,25 +66,10 @@ def get_sensitive_actions_by_categories(categories: list[str] | None = None) -> 
 DEFAULT_SENSITIVE_ACTIONS = _get_default_sensitive_actions()
 
 
-# Global regex pattern cache for performance
-@lru_cache(maxsize=256)
-def compile_pattern(pattern: str) -> re.Pattern[str] | None:
-    """Compile and cache regex patterns.
-
-    Args:
-        pattern: Regex pattern string
-
-    Returns:
-        Compiled pattern or None if invalid
-    """
-    try:
-        return re.compile(pattern)
-    except re.error:
-        return None
-
-
 def check_sensitive_actions(
-    actions: list[str], config: CheckConfig, default_actions: frozenset[str] | None = None
+    actions: list[str],
+    config: CheckConfig,
+    default_actions: frozenset[str] | None = None,
 ) -> tuple[bool, list[str]]:
     """
     Check if actions match sensitive action criteria with any_of/all_of support.
@@ -115,6 +100,10 @@ def check_sensitive_actions(
         # Use all categories if no specific categories configured
         default_actions = _get_default_sensitive_actions()
 
+    # Apply ignore_patterns to filter out default actions
+    # This allows users to exclude specific actions from the default 490 actions
+    default_actions = config.filter_actions(default_actions)
+
     # Filter out wildcards
     filtered_actions = [a for a in actions if a != "*"]
     if not filtered_actions:
@@ -140,6 +129,17 @@ def check_sensitive_actions(
     # Use set operations for efficient deduplication
     matched_set = set(actions_matched) | set(patterns_matched)
     matched_actions = list(matched_set)
+
+    # Apply ignore_patterns to filter the final matched actions
+    # This ensures ignore_patterns work for:
+    # 1. Default actions (490 actions from Python modules)
+    # 2. Custom sensitive_actions configuration
+    # 3. Custom sensitive_action_patterns configuration
+    if matched_actions and config.ignore_patterns:
+        filtered_matched = config.filter_actions(frozenset(matched_actions))
+        matched_actions = list(filtered_matched)
+        # Update is_sensitive based on filtered results
+        is_sensitive = len(matched_actions) > 0
 
     return is_sensitive, matched_actions
 
@@ -243,7 +243,7 @@ def check_patterns_config(actions: list[str], config) -> tuple[bool, list[str]]:
             # Each item can be a string pattern, or a dict with any_of/all_of
             if isinstance(item, str):
                 # Simple string pattern - check if any action matches
-                # Use cached compiled pattern
+                # Use cached compiled pattern from centralized ignore_patterns module
                 compiled = compile_pattern(item)
                 if compiled:
                     for action in actions:
@@ -262,7 +262,7 @@ def check_patterns_config(actions: list[str], config) -> tuple[bool, list[str]]:
         # any_of: at least one action must match at least one pattern
         if "any_of" in config:
             matched = set()
-            # Pre-compile all patterns
+            # Pre-compile all patterns using centralized cache
             compiled_patterns = [compile_pattern(p) for p in config["any_of"]]
 
             for action in actions:
@@ -274,7 +274,7 @@ def check_patterns_config(actions: list[str], config) -> tuple[bool, list[str]]:
 
         # all_of: at least one action must match ALL patterns
         if "all_of" in config:
-            # Pre-compile all patterns
+            # Pre-compile all patterns using centralized cache
             compiled_patterns = [compile_pattern(p) for p in config["all_of"]]
             # Filter out invalid patterns
             compiled_patterns = [p for p in compiled_patterns if p]

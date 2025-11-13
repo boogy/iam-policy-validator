@@ -42,31 +42,51 @@
 #   - Multiple fields in ONE pattern = AND logic (all must match)
 #   - Multiple patterns = OR logic (any pattern matches → ignore)
 #
-# Available Fields:
-#   - filepath_regex:        Regex to match file path
-#   - action_matches:        Regex to match action name
-#   - resource_matches:      Regex to match resource ARN
-#   - statement_sid:         Exact SID or regex (if contains *)
-#   - condition_key_matches: Regex to match condition key
+# Available Fields (ALL support single strings OR lists):
+#   - filepath:      Regex to match file path
+#   - action:        Regex to match action name
+#   - resource:      Regex to match resource ARN
+#   - sid:           Exact SID or regex (if contains *)
+#   - condition_key: Regex to match condition key
 #
 # Example Usage:
 #   wildcard_action:
 #     enabled: true
 #     ignore_patterns:
-#       # Ignore in test/example files
-#       - filepath_regex: "^(test|examples)/.*"
+#       # Single values (original syntax)
+#       - filepath: "^(test|examples)/.*"
+#       - sid: "AllowReadOnlyAccess"
 #
-#       # Ignore read-only wildcards in readonly policies
-#       - filepath_regex: "policies/readonly-.*\\.json"
-#         action_matches: ".*:(Get|List|Describe).*"
+#       # Lists (NEW: works for ALL fields!)
+#       - filepath:
+#           - "^test/.*"
+#           - "^examples/.*"
+#           - "^sandbox/.*"
 #
-#       # Ignore by statement SID
-#       - statement_sid: "AllowReadOnlyAccess"
+#       - action:
+#           - "^iam:PassRole$"
+#           - "^iam:CreateUser$"
+#           - "^iam:AttachUserPolicy$"
 #
-#       # Complex: file + action + resource
-#       - filepath_regex: "terraform/backend\\.tf"
-#         action_matches: "s3:.*"
-#         resource_matches: "arn:aws:s3:::.*-tfstate.*"
+#       - resource:
+#           - "arn:aws:s3:::.*-test-.*"
+#           - "arn:aws:s3:::.*-dev-.*"
+#
+#       - sid:
+#           - "AllowTestAccess"
+#           - "AllowDevAccess"
+#           - "Allow.*ReadOnly"  # Regex with *
+#
+#       - condition_key:
+#           - "aws:SourceIp"
+#           - "aws:PrincipalOrgID"
+#
+#       # Combined fields (AND logic across fields, OR within lists)
+#       - filepath: "policies/readonly-.*\\.json"
+#         action:
+#           - ".*:Get.*"
+#           - ".*:List.*"
+#           - ".*:Describe.*"
 #
 # This feature is available for ALL checks below. See examples in each check section.
 # ============================================================================
@@ -299,137 +319,116 @@ resource_validation:
 # ============================================================================
 # 9. PRINCIPAL VALIDATION
 # ============================================================================
-# Validate principals in resource policies
-# This check validates Principal elements in resource-based policies (S3 buckets, SNS topics, etc.)
-# Only runs when --policy-type RESOURCE_POLICY is specified
+# Validates Principal elements in resource-based policies
+# Applies to: S3 buckets, SNS topics, SQS queues, Lambda functions, etc.
+# Only runs when: --policy-type RESOURCE_POLICY
 #
-# Service principals now defined in Python!
-#   - Located in: iam_validator/core/config/service_principals.py
-#   - 16 service principals by default
-#   - Organized by category (storage, compute, networking, etc.)
+# Three control mechanisms:
+#   1. blocked_principals: Block specific principals (deny list)
+#   2. allowed_principals: Allow only specific principals (whitelist mode)
+#   3. principal_condition_requirements: Require conditions for certain principals
 #
-# Advanced principal condition requirements!
-#   - Similar to action_condition_enforcement but for principals
-#   - Supports all_of/any_of/none_of logic
-#   - Severity overrides per requirement/condition
-#   - Expected values and operator validation
-#   - Default requirements defined in Python module!
-#     Located in: iam_validator/core/config/principal_requirements.py
-#     7 principal requirements by default (2 enabled: public_access, prevent_insecure_transport)
 principal_validation:
   enabled: true
-  severity: high # Security issue, not IAM validity error
+  severity: high
   description: "Validates Principal elements in resource policies for security best practices"
-  # ignore_patterns available - see top of file for usage examples
 
-  # Block dangerous/public principals
-  # These principals should never be allowed in your resource policies
+  # 1. BLOCKED PRINCIPALS (Deny List)
+  # Principals that should NEVER be allowed
+  # Default: ["*"] blocks public access
   blocked_principals:
-    - "*" # Public access to everyone
-    # - "arn:aws:iam::*:root"  # All AWS accounts (uncomment to block)
+    - "*" # Block public access to everyone
+    # - "arn:aws:iam::*:root"  # Uncomment to block all AWS accounts
 
-  # Allow only specific principals (optional - leave empty to allow all except blocked)
-  # When specified, ONLY these principals are allowed (whitelist mode)
-  # Supports patterns with wildcards
-  allowed_principals:
-    []
-    # Examples:
-    # - "arn:aws:iam::123456789012:root"  # Specific account
-    # - "arn:aws:iam::123456789012:role/*"  # All roles in account
-    # - "arn:aws:iam::*:role/OrganizationAccountAccessRole"  # Specific role in any account
+  # 2. ALLOWED PRINCIPALS (Whitelist Mode)
+  # When set, ONLY these principals are allowed
+  # Leave empty [] to allow all (except blocked)
+  # Examples:
+  #   - "arn:aws:iam::123456789012:root"  # Only your account
+  #   - "arn:aws:iam::*:role/OrgAccessRole"  # Specific role in any account
+  allowed_principals: []
 
-  # SIMPLE FORMAT (backward compatible):
-  # Require conditions for specific principals
-  # These principals must have conditions to limit their access
-  require_conditions_for:
-    # Principal pattern -> Required condition keys
-    "*":
-      - "aws:SourceArn" # Public access must be limited by source ARN
-      - "aws:SourceAccount" # Public access must be limited by source account
-    # "arn:aws:iam::*:root":
-    #   - "aws:PrincipalOrgID"  # Cross-account access must be from same org
-
-  # ADVANCED FORMAT (new - supports all_of/any_of/none_of):
-  # Rich condition requirements for principals
-  # Similar to action_condition_enforcement but for principals
-  # principal_condition_requirements:
-  #   # Public access with critical severity
-  #   - principals:
-  #       - "*"
-  #     severity: critical # Override global severity
-  #     required_conditions:
-  #       all_of:
-  #         - condition_key: "aws:SourceArn"
-  #           description: "Limit public access by source ARN"
-  #           example: |
-  #             "Condition": {
-  #               "StringEquals": {
-  #                 "aws:SourceArn": "arn:aws:sns:us-east-1:123456789012:my-topic"
-  #               }
-  #             }
-  #         - condition_key: "aws:SourceAccount"
-  #           description: "Limit public access by source account"
+  # 3. PRINCIPAL CONDITION REQUIREMENTS
+  # Require specific conditions for certain principals
+  # Supports all_of/any_of/none_of logic like action_condition_enforcement
+  # Default: 2 enabled (public_access, prevent_insecure_transport)
+  # See: iam_validator/core/config/principal_requirements.py
   #
-  #   # Cross-account access must be from same organization
-  #   - principals:
-  #       - "arn:aws:iam::*:root"
+  # Examples:
+  # principal_condition_requirements:
+  #   # Public access must have source restrictions
+  #   - principals: ["*"]
+  #     severity: critical
+  #     required_conditions:
+  #       any_of:  # At least ONE of these
+  #         - condition_key: "aws:SourceArn"
+  #         - condition_key: "aws:SourceAccount"
+  #         - condition_key: "aws:SourceVpce"
+  #
+  #   # Cross-account requires organization membership
+  #   - principals: ["arn:aws:iam::*:root"]
   #     severity: high
   #     required_conditions:
   #       - condition_key: "aws:PrincipalOrgID"
-  #         operator: "StringEquals"
-  #         expected_value: "o-xxxxx"
-  #         description: "Cross-account access must be from same organization"
-  #
-  #   # IAM roles must have MFA or come from specific VPC
-  #   - principals:
-  #       - "arn:aws:iam::*:role/*"
-  #     required_conditions:
-  #       any_of:
-  #         - condition_key: "aws:MultiFactorAuthPresent"
-  #           expected_value: true
-  #           description: "Require MFA for IAM role access"
-  #         - condition_key: "aws:SourceVpce"
-  #           description: "Or require access from specific VPC endpoint"
-  #
-  #   # Combined all_of and any_of
-  #   - principals:
-  #       - "arn:aws:iam::*:user/*"
-  #     required_conditions:
-  #       all_of:
-  #         - condition_key: "aws:MultiFactorAuthPresent"
-  #           expected_value: true
-  #         - condition_key: "aws:RequestTag/Environment"
-  #       any_of:
-  #         - condition_key: "aws:SourceIp"
-  #           operator: "IpAddress"
-  #         - condition_key: "aws:SourceVpce"
-  #
-  #   # Prevent insecure transport (none_of)
-  #   - principals:
-  #       - "*"
-  #     required_conditions:
-  #       none_of:
-  #         - condition_key: "aws:SecureTransport"
-  #           expected_value: false
-  #           description: "Ensure insecure transport is never allowed"
+  #         expected_value: ["o-abc123", "o-def456"]
 
-  # Organization validation (optional)
-  # Ensure principals belong to your AWS Organization
-  # require_organization_principals: true
-  # allowed_organization_ids:
-  #   - "o-123456789"
-
-  # Service principals that are always allowed (default list loaded from Python)
-  # Override to customize which service principals are allowed
-  # Default includes: cloudfront, s3, sns, lambda, logs, events, elb, cloudtrail, etc.
-  # See: iam_validator/core/config/service_principals.py
+  # 4. ALLOWED SERVICE PRINCIPALS
+  # AWS service principals that are always allowed
+  # Default: "aws:*" = ALL AWS service principals (*.amazonaws.com)
+  # Note: "aws:*" is different from "*" (public access)
+  #
+  # Keep default (allow all AWS services):
+  # allowed_service_principals: ["aws:*"]
+  #
+  # Or restrict to specific services:
   # allowed_service_principals:
   #   - "cloudfront.amazonaws.com"
   #   - "s3.amazonaws.com"
   #   - "lambda.amazonaws.com"
 
 # ============================================================================
-# 10. POLICY TYPE VALIDATION
+# 10. TRUST POLICY VALIDATION
+# ============================================================================
+# Validates trust policies (role assumption policies) for security best practices
+# Ensures assume role actions have appropriate principals and conditions
+#
+# Key validations:
+#   - Action-Principal type matching (AssumeRoleWithSAML needs Federated)
+#   - Provider ARN format validation (SAML vs OIDC provider patterns)
+#   - Required conditions per assume method (SAML:aud, ExternalId, etc.)
+#
+# Complements principal_validation (allowlists/blocklists) and
+# action_condition_enforcement (required conditions)
+#
+# DISABLED by default - enable for trust policy validation (--policy-type TRUST_POLICY)
+trust_policy_validation:
+  enabled: false # Opt-in feature for trust policy validation
+  severity: high # Security issue
+  description: "Validates trust policies for role assumption security"
+  # ignore_patterns available - see top of file for usage examples
+
+  # Optional: Custom validation rules (override defaults)
+  # Default rules:
+  #   sts:AssumeRole → AWS or Service principals
+  #   sts:AssumeRoleWithSAML → Federated (SAML) with SAML:aud condition
+  #   sts:AssumeRoleWithWebIdentity → Federated (OIDC)
+  #
+  # Example custom rules:
+  # validation_rules:
+  #   sts:AssumeRole:
+  #     allowed_principal_types:
+  #       - "AWS"  # Only AWS principals, no Service principals
+  #     required_conditions:
+  #       - "sts:ExternalId"  # Always require ExternalId
+  #   sts:AssumeRoleWithSAML:
+  #     allowed_principal_types:
+  #       - "Federated"
+  #     provider_pattern: "^arn:aws:iam::\\d{12}:saml-provider/[\\w+=,.@-]+$"
+  #     required_conditions:
+  #       - "SAML:aud"
+
+# ============================================================================
+# 11. POLICY TYPE VALIDATION
 # ============================================================================
 # Validate policy type requirements (new in v1.3.0)
 # Ensures policies conform to the declared type (IDENTITY vs RESOURCE_POLICY)
@@ -445,7 +444,7 @@ policy_type_validation:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 11. ACTION-RESOURCE MATCHING
+# 12. ACTION-RESOURCE MATCHING
 # ============================================================================
 # Resource-Action Matching Check (inspired by Parliament's RESOURCE_MISMATCH)
 # Validates that resources in policy statements match the required resource types for actions
@@ -461,11 +460,11 @@ action_resource_matching:
   # Example ignore patterns (commented out by default)
   # ignore_patterns:
   #   # Ignore in test files
-  #   - filepath_regex: "^test/.*"
+  #   - filepath: "^test/.*"
   #
   #   # Ignore specific action mismatches in specific files
-  #   - filepath_regex: "legacy/.*"
-  #     action_matches: "s3:GetObject"
+  #   - filepath: "legacy/.*"
+  #     action: "s3:GetObject"
 
 # ============================================================================
 # Security Best Practices Checks (6 checks)
@@ -488,7 +487,7 @@ action_resource_matching:
 # ============================================================================
 
 # ============================================================================
-# 12. WILDCARD ACTION
+# 13. WILDCARD ACTION
 # ============================================================================
 # Check for wildcard actions (Action: "*")
 # Flags statements that allow all actions
@@ -509,22 +508,22 @@ wildcard_action:
   # Ignore findings that match specific patterns
   # ignore_patterns:
   #   # Ignore in test/example files
-  #   - filepath_regex: "^(test|examples)/.*"
+  #   - filepath: "^(test|examples)/.*"
   #
   #   # Ignore read-only wildcards in readonly policies
-  #   - filepath_regex: "policies/readonly-.*\\.json"
-  #     action_matches: ".*:(Get|List|Describe).*"
+  #   - filepath: "policies/readonly-.*\\.json"
+  #     action: ".*:(Get|List|Describe).*"
   #
   #   # Ignore by statement SID
-  #   - statement_sid: "AllowReadOnlyAccess"
+  #   - sid: "AllowReadOnlyAccess"
   #
   #   # Complex: file + action + resource
-  #   - filepath_regex: "terraform/backend\\.tf"
-  #     action_matches: "s3:.*"
-  #     resource_matches: "arn:aws:s3:::.*-tfstate.*"
+  #   - filepath: "terraform/backend\\.tf"
+  #     action: "s3:.*"
+  #     resource: "arn:aws:s3:::.*-tfstate.*"
 
 # ============================================================================
-# 13. WILDCARD RESOURCE
+# 14. WILDCARD RESOURCE
 # ============================================================================
 # Check for wildcard resources (Resource: "*")
 # Flags statements that apply to all resources
@@ -558,7 +557,7 @@ wildcard_resource:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 14. FULL WILDCARD (CRITICAL)
+# 15. FULL WILDCARD (CRITICAL)
 # ============================================================================
 # Check for BOTH Action: "*" AND Resource: "*" (CRITICAL)
 # This grants full administrative access (AdministratorAccess equivalent)
@@ -579,7 +578,7 @@ full_wildcard:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 15. SERVICE WILDCARD
+# 16. SERVICE WILDCARD
 # ============================================================================
 # Check for service-level wildcards (e.g., "iam:*", "s3:*", "ec2:*")
 # These grant ALL permissions for a service (often too permissive)
@@ -598,7 +597,7 @@ service_wildcard:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 16. SENSITIVE ACTION
+# 17. SENSITIVE ACTION
 # ============================================================================
 # Check for sensitive actions without IAM conditions
 # Sensitive actions: credential exposure, data access, privilege escalation, resource exposure
@@ -667,10 +666,28 @@ sensitive_action:
   #   - all_of:  # All must be present for detection
   #       - "iam:CreateUser"
   #       - "iam:AttachUserPolicy"
-  # ignore_patterns available - see top of file for usage examples
+
+  # Optional: Ignore specific actions from being considered sensitive
+  # This is useful when you want to use the default 490 actions but exclude some
+  # ignore_patterns:
+  #   # Single action patterns
+  #   - action: "^iam:PassRole$"           # Ignore iam:PassRole
+  #   - action: "^iam:AttachRolePolicy$"   # Ignore iam:AttachRolePolicy
+  #   - action: "^s3:GetObject$"           # Ignore s3:GetObject
+  #
+  #   # NEW: List of actions (more concise)
+  #   - action:
+  #       - "^iam:PassRole$"
+  #       - "^iam:CreateUser$"
+  #       - "^iam:AttachUserPolicy$"
+  #
+  #   # NEW: List with wildcards
+  #   - action:
+  #       - "^s3:Get.*"     # All S3 Get actions
+  #       - "^iam:List.*"   # All IAM List actions
 
 # ============================================================================
-# 17. ACTION CONDITION ENFORCEMENT
+# 18. ACTION CONDITION ENFORCEMENT
 # ============================================================================
 # Enforce specific IAM condition requirements for actions
 #

@@ -577,7 +577,7 @@ class AccessAnalyzerValidator:
                 )
                 results.append(result)
 
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 self.logger.error(f"Failed to validate {policy_file}: {e}")
                 result = AccessAnalyzerResult(
                     policy_file=policy_file,

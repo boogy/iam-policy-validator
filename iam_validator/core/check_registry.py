@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from iam_validator.core.aws_fetcher import AWSServiceFetcher
+from iam_validator.core.ignore_patterns import IgnorePatternMatcher
 from iam_validator.core.models import Statement, ValidationIssue
 
 if TYPE_CHECKING:
@@ -36,26 +37,29 @@ class CheckConfig:
     List of patterns to ignore findings.
 
     Each pattern is a dict with optional fields:
-    - filepath_regex: Regex to match file path
-    - action_matches: Regex to match action name
-    - resource_matches: Regex to match resource
-    - statement_sid: Exact SID to match (or regex if ends with .*)
-    - condition_key_matches: Regex to match condition key
+    - filepath: Regex to match file path
+    - action: Regex to match action name
+    - resource: Regex to match resource
+    - sid: Exact SID to match (or regex if ends with .*)
+    - condition_key: Regex to match condition key
 
     Multiple fields in one pattern = AND logic
     Multiple patterns = OR logic (any pattern matches → ignore)
 
     Example:
         ignore_patterns:
-          - filepath_regex: "test/.*|examples/.*"
-          - filepath_regex: "policies/readonly-.*"
-            action_matches: ".*:(Get|List|Describe).*"
-          - statement_sid: "AllowReadOnlyAccess"
+          - filepath: "test/.*|examples/.*"
+          - filepath: "policies/readonly-.*"
+            action: ".*:(Get|List|Describe).*"
+          - sid: "AllowReadOnlyAccess"
     """
 
     def should_ignore(self, issue: ValidationIssue, filepath: str = "") -> bool:
         """
         Check if issue should be ignored based on ignore patterns.
+
+        Uses centralized IgnorePatternMatcher for high-performance filtering
+        with cached compiled regex patterns.
 
         Args:
             issue: The validation issue to check
@@ -63,80 +67,34 @@ class CheckConfig:
 
         Returns:
             True if the issue should be ignored
+
+        Performance:
+            - Cached regex compilation (LRU cache)
+            - Early exit optimization
         """
-        if not self.ignore_patterns:
-            return False
+        return IgnorePatternMatcher.should_ignore_issue(issue, filepath, self.ignore_patterns)
 
-        import re
-
-        for pattern in self.ignore_patterns:
-            if self._matches_pattern(pattern, issue, filepath, re):
-                return True
-
-        return False
-
-    def _matches_pattern(
-        self,
-        pattern: dict[str, Any],
-        issue: ValidationIssue,
-        filepath: str,
-        re_module: Any,
-    ) -> bool:
+    def filter_actions(self, actions: frozenset[str]) -> frozenset[str]:
         """
-        Check if issue matches a single ignore pattern.
+        Filter actions based on action ignore patterns.
 
-        All fields in pattern must match (AND logic).
+        Uses centralized IgnorePatternMatcher for high-performance filtering
+        with cached compiled regex patterns.
+
+        This is useful for checks that need to filter a set of actions before
+        creating ValidationIssues (e.g., sensitive_action check).
 
         Args:
-            pattern: Pattern dict with optional fields
-            issue: ValidationIssue to check
-            filepath: Path to policy file
-            re_module: re module for regex matching
+            actions: Set of actions to filter
 
         Returns:
-            True if all fields in pattern match the issue
+            Filtered set of actions (actions matching ignore patterns removed)
+
+        Performance:
+            - Cached regex compilation (LRU cache)
+            - Early exit per action on first match
         """
-        for field_name, regex_pattern in pattern.items():
-            actual_value = None
-
-            if field_name == "filepath_regex":
-                actual_value = filepath
-            elif field_name == "action_matches":
-                actual_value = issue.action or ""
-            elif field_name == "resource_matches":
-                actual_value = issue.resource or ""
-            elif field_name == "statement_sid":
-                # For SID, support both exact match and regex
-                if isinstance(regex_pattern, str) and "*" in regex_pattern:
-                    # Treat as regex if contains wildcard
-                    actual_value = issue.statement_sid or ""
-                else:
-                    # Exact match
-                    if issue.statement_sid != regex_pattern:
-                        return False
-                    continue
-            elif field_name == "condition_key_matches":
-                actual_value = issue.condition_key or ""
-            else:
-                # Unknown field, skip
-                continue
-
-            # Check regex match (case-insensitive)
-            if actual_value is None:
-                return False
-
-            try:
-                if not re_module.search(
-                    str(regex_pattern),
-                    str(actual_value),
-                    re_module.IGNORECASE,
-                ):
-                    return False
-            except re_module.error:
-                # Invalid regex, don't match
-                return False
-
-        return True  # All fields matched
+        return IgnorePatternMatcher.filter_actions(actions, self.ignore_patterns)
 
 
 class PolicyCheck(ABC):
@@ -399,6 +357,10 @@ class CheckRegistry:
                 config = self.get_config(check.check_id)
                 if config:
                     issues = await check.execute(statement, statement_idx, fetcher, config)
+                    # Inject check_id into each issue
+                    for issue in issues:
+                        if issue.check_id is None:
+                            issue.check_id = check.check_id
                     # Filter issues based on ignore_patterns
                     filtered_issues = [
                         issue for issue in issues if not config.should_ignore(issue, filepath)
@@ -427,7 +389,12 @@ class CheckRegistry:
                 check = enabled_checks[idx]
                 print(f"Warning: Check '{check.check_id}' failed: {result}")
             elif isinstance(result, list):
+                check = enabled_checks[idx]
                 config = configs[idx]
+                # Inject check_id into each issue
+                for issue in result:
+                    if issue.check_id is None:
+                        issue.check_id = check.check_id
                 # Filter issues based on ignore_patterns
                 filtered_issues = [
                     issue for issue in result if not config.should_ignore(issue, filepath)
@@ -475,6 +442,7 @@ class CheckRegistry:
         policy_file: str,
         fetcher: AWSServiceFetcher,
         policy_type: str = "IDENTITY_POLICY",
+        **kwargs,
     ) -> list[ValidationIssue]:
         """
         Execute all enabled policy-level checks.
@@ -487,6 +455,7 @@ class CheckRegistry:
             policy_file: Path to the policy file (for context/reporting)
             fetcher: AWS service fetcher for API calls
             policy_type: Type of policy (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY)
+            **kwargs: Additional arguments to pass to checks (e.g., raw_policy_dict)
 
         Returns:
             List of all ValidationIssue objects from all policy-level checks
@@ -507,34 +476,61 @@ class CheckRegistry:
                 if config:
                     try:
                         issues = await check.execute_policy(
-                            policy, policy_file, fetcher, config, policy_type=policy_type
+                            policy,
+                            policy_file,
+                            fetcher,
+                            config,
+                            policy_type=policy_type,
+                            **kwargs,
                         )
-                        all_issues.extend(issues)
+                        # Inject check_id into each issue
+                        for issue in issues:
+                            if issue.check_id is None:
+                                issue.check_id = check.check_id
+                        # Filter issues based on ignore_patterns
+                        filtered_issues = [
+                            issue
+                            for issue in issues
+                            if not config.should_ignore(issue, policy_file)
+                        ]
+                        all_issues.extend(filtered_issues)
                     except Exception as e:
                         print(f"Warning: Check '{check.check_id}' failed: {e}")
             return all_issues
 
         # Execute all policy-level checks in parallel
         tasks = []
+        configs = []
         for check in policy_level_checks:
             config = self.get_config(check.check_id)
             if config:
                 task = check.execute_policy(
-                    policy, policy_file, fetcher, config, policy_type=policy_type
+                    policy, policy_file, fetcher, config, policy_type=policy_type, **kwargs
                 )
                 tasks.append(task)
+                configs.append(config)
 
         # Wait for all checks to complete
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Collect all issues, handling any exceptions
+        # Collect all issues, handling any exceptions and applying ignore_patterns
         for idx, result in enumerate(results):
             if isinstance(result, Exception):
                 # Log error but continue with other checks
                 check = policy_level_checks[idx]
                 print(f"Warning: Check '{check.check_id}' failed: {result}")
             elif isinstance(result, list):
-                all_issues.extend(result)
+                check = policy_level_checks[idx]
+                config = configs[idx]
+                # Inject check_id into each issue
+                for issue in result:
+                    if issue.check_id is None:
+                        issue.check_id = check.check_id
+                # Filter issues based on ignore_patterns
+                filtered_issues = [
+                    issue for issue in result if not config.should_ignore(issue, policy_file)
+                ]
+                all_issues.extend(filtered_issues)
 
         return all_issues
 
@@ -560,6 +556,11 @@ def create_default_registry(
     if include_builtin_checks:
         # Import and register built-in checks
         from iam_validator import checks
+
+        # 0. FUNDAMENTAL STRUCTURE (Must run FIRST - validates basic policy structure)
+        registry.register(
+            checks.PolicyStructureCheck()
+        )  # Policy-level: Validates required fields, conflicts, valid values
 
         # 1. POLICY STRUCTURE (Checks that examine the entire policy, not individual statements)
         registry.register(
@@ -600,6 +601,9 @@ def create_default_registry(
         registry.register(
             checks.PrincipalValidationCheck()
         )  # Principal validation (resource policies)
+        registry.register(
+            checks.TrustPolicyValidationCheck()
+        )  # Trust policy validation (role assumption policies)
 
         # Note: policy_type_validation is a standalone function (not a class-based check)
         # and is called separately in the validation flow

@@ -75,7 +75,7 @@ class ResourceValidationCheck(PolicyCheck):
                         issue_type="invalid_resource",
                         message=f"Resource ARN exceeds maximum length ({len(resource)} > {MAX_ARN_LENGTH}): {resource[:100]}...",
                         resource=resource[:100] + "...",
-                        suggestion="ARN is too long and may be invalid",
+                        suggestion="`ARN` is too long and may be invalid",
                         line_number=line_number,
                     )
                 )
@@ -101,9 +101,9 @@ class ResourceValidationCheck(PolicyCheck):
                                 statement_sid=statement_sid,
                                 statement_index=statement_idx,
                                 issue_type="invalid_resource",
-                                message=f"Invalid ARN format even after normalizing template variables: {resource}",
+                                message=f"Invalid `ARN` format even after normalizing template variables: `{resource}`",
                                 resource=resource,
-                                suggestion="ARN should follow format: arn:partition:service:region:account-id:resource (template variables like ${aws_account_id} are supported)",
+                                suggestion="`ARN` should follow format: `arn:partition:service:region:account-id:resource` (template variables like `${aws_account_id}` are supported)",
                                 line_number=line_number,
                             )
                         )
@@ -114,13 +114,13 @@ class ResourceValidationCheck(PolicyCheck):
                                 statement_sid=statement_sid,
                                 statement_index=statement_idx,
                                 issue_type="invalid_resource",
-                                message=f"Invalid ARN format: {resource}",
+                                message=f"Invalid `ARN` format: `{resource}`",
                                 resource=resource,
-                                suggestion="ARN should follow format: arn:partition:service:region:account-id:resource",
+                                suggestion="`ARN` should follow format: `arn:partition:service:region:account-id:resource`",
                                 line_number=line_number,
                             )
                         )
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 # If regex matching fails (shouldn't happen with length check), treat as invalid
                 issues.append(
                     ValidationIssue(
@@ -128,9 +128,9 @@ class ResourceValidationCheck(PolicyCheck):
                         statement_sid=statement_sid,
                         statement_index=statement_idx,
                         issue_type="invalid_resource",
-                        message=f"Could not validate ARN format: {resource}",
+                        message=f"Could not validate `ARN` format: `{resource}`",
                         resource=resource,
-                        suggestion="ARN validation failed - may contain unexpected characters",
+                        suggestion="`ARN` validation failed - may contain unexpected characters",
                         line_number=line_number,
                     )
                 )

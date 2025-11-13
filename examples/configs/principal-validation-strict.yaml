@@ -10,24 +10,28 @@ settings:
 
 principal_validation:
   enabled: true
-  severity: critical  # Treat as critical security issue
+  severity: critical # Treat as critical security issue
 
   # Block all dangerous principals
   blocked_principals:
-    - "*"  # Public access
-    - "arn:aws:iam::*:root"  # All AWS accounts (too broad)
+    - "*" # Public access
+    - "arn:aws:iam::*:root" # All AWS accounts (too broad)
 
   # Whitelist mode: ONLY these principals are allowed
   allowed_principals:
-    - "arn:aws:iam::123456789012:*"  # My own account
-    - "arn:aws:iam::987654321098:role/TrustedPartnerRole"  # Specific partner role
+    - "arn:aws:iam::123456789012:*" # My own account
+    - "arn:aws:iam::987654321098:role/TrustedPartnerRole" # Specific partner role
 
-  # Require org ID for any cross-account access
-  require_conditions_for:
-    "arn:aws:iam::*:*":
-      - "aws:PrincipalOrgID"
+  # Require org ID for any cross-account access (using new format)
+  principal_condition_requirements:
+    - principals:
+        - "arn:aws:iam::*:*" # Any cross-account principal
+      severity: high
+      required_conditions:
+        - condition_key: "aws:PrincipalOrgID"
+          description: "Cross-account access must be from same AWS Organization"
 
-  # Allow common AWS service principals
+  # Allow only specific AWS service principals (strict mode)
   allowed_service_principals:
     - "cloudfront.amazonaws.com"
     - "s3.amazonaws.com"

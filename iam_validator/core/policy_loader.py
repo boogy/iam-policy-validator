@@ -29,6 +29,7 @@ import json
 import logging
 from collections.abc import Generator
 from pathlib import Path
+from typing import overload
 
 import yaml
 from pydantic import ValidationError
@@ -45,6 +46,8 @@ class PolicyLoader:
     """
 
     SUPPORTED_EXTENSIONS = {".json", ".yaml", ".yml"}
+    # Directories to skip when scanning recursively (cache, build artifacts, etc.)
+    SKIP_DIRECTORIES = {".cache", ".git", "node_modules", "__pycache__", ".venv", "venv"}
 
     def __init__(self, max_file_size_mb: int = 100) -> None:
         """Initialize the policy loader.
@@ -148,14 +151,26 @@ class PolicyLoader:
             logger.error("Failed to check file size for %s: %s", path, e)
             return False
 
-    def load_from_file(self, file_path: str) -> IAMPolicy | None:
+    @overload
+    def load_from_file(self, file_path: str, return_raw_dict: bool = False) -> IAMPolicy | None: ...
+
+    @overload
+    def load_from_file(
+        self, file_path: str, return_raw_dict: bool = True
+    ) -> tuple[IAMPolicy, dict] | None: ...
+
+    def load_from_file(
+        self, file_path: str, return_raw_dict: bool = False
+    ) -> IAMPolicy | tuple[IAMPolicy, dict] | None:
         """Load a single IAM policy from a file.
 
         Args:
             file_path: Path to the policy file
+            return_raw_dict: If True, return tuple of (policy, raw_dict) for validation
 
         Returns:
-            Parsed IAMPolicy or None if loading fails
+            Parsed IAMPolicy, or tuple of (IAMPolicy, raw_dict) if return_raw_dict=True,
+            or None if loading fails
         """
         path = Path(file_path)
 
@@ -196,12 +211,12 @@ class PolicyLoader:
 
             # Attach line numbers to statements
             if statement_line_numbers:
-                for idx, statement in enumerate(policy.statement):
+                for idx, statement in enumerate(policy.statement or []):
                     if idx < len(statement_line_numbers):
                         statement.line_number = statement_line_numbers[idx]
 
             logger.info("Successfully loaded policy from %s", file_path)
-            return policy
+            return (policy, data) if return_raw_dict else policy
 
         except json.JSONDecodeError as e:
             error_msg = f"Invalid JSON: {e}"
@@ -270,6 +285,10 @@ class PolicyLoader:
         pattern = "**/*" if recursive else "*"
 
         for file_path in path.glob(pattern):
+            # Skip directories that shouldn't be scanned
+            if any(skip_dir in file_path.parts for skip_dir in self.SKIP_DIRECTORIES):
+                continue
+
             if file_path.is_file() and file_path.suffix.lower() in self.SUPPORTED_EXTENSIONS:
                 policy = self.load_from_file(str(file_path))
                 if policy:
@@ -341,6 +360,10 @@ class PolicyLoader:
         elif path_obj.is_dir():
             pattern = "**/*" if recursive else "*"
             for file_path in path_obj.glob(pattern):
+                # Skip directories that shouldn't be scanned
+                if any(skip_dir in file_path.parts for skip_dir in self.SKIP_DIRECTORIES):
+                    continue
+
                 if file_path.is_file() and file_path.suffix.lower() in self.SUPPORTED_EXTENSIONS:
                     yield file_path
         else:

@@ -72,7 +72,7 @@ async def expand_wildcard_actions(actions: list[str], fetcher: AWSServiceFetcher
             available_actions = list(service_detail.actions.keys())
 
             # Match wildcard pattern against available actions
-            _, matched_actions = fetcher._match_wildcard_action(action_name, available_actions)
+            _, matched_actions = fetcher.match_wildcard_action(action_name, available_actions)
 
             # Add expanded actions with service prefix
             for matched_action in matched_actions:

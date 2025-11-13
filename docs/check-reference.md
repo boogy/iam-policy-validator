@@ -1,28 +1,144 @@
 # Check Reference Guide
 
-Complete reference for all 17 built-in validation checks with configuration options and pass/fail examples.
+Complete reference for all **19 built-in validation checks** with configuration options and pass/fail examples.
+
+## Check Overview
+
+The validator includes **19 checks** organized into three categories:
+
+- **12 AWS Validation Checks** - Ensure policies conform to AWS IAM requirements
+- **6 Security Best Practice Checks** - Identify security risks and anti-patterns
+- **1 Trust Policy Check** - Validates role assumption policies (opt-in, disabled by default)
+
+**Note:** The `policy_structure` check runs automatically before all other checks to validate fundamental policy structure. It's not configurable but ensures basic AWS IAM policy grammar compliance.
 
 ## Quick Reference
 
-| Check                                                         | Severity | Type           | Configurable |
-| ------------------------------------------------------------- | -------- | -------------- | ------------ |
-| [sid_uniqueness](#sid_uniqueness)                             | error    | AWS Validation | ❌            |
-| [policy_size](#policy_size)                                   | error    | AWS Validation | ✅            |
-| [action_validation](#action_validation)                       | error    | AWS Validation | ❌            |
-| [condition_key_validation](#condition_key_validation)         | error    | AWS Validation | ✅            |
-| [condition_type_mismatch](#condition_type_mismatch)           | error    | AWS Validation | ❌            |
-| [set_operator_validation](#set_operator_validation)           | error    | AWS Validation | ❌            |
-| [mfa_condition_antipattern](#mfa_condition_antipattern)       | warning  | AWS Validation | ❌            |
-| [resource_validation](#resource_validation)                   | error    | AWS Validation | ✅            |
-| [principal_validation](#principal_validation)                 | high     | AWS Validation | ✅            |
-| [policy_type_validation](#policy_type_validation)             | error    | AWS Validation | ❌            |
-| [action_resource_matching](#action_resource_matching)         | medium   | AWS Validation | ❌            |
-| [wildcard_action](#wildcard_action)                           | medium   | Security       | ✅            |
-| [wildcard_resource](#wildcard_resource)                       | medium   | Security       | ✅            |
-| [full_wildcard](#full_wildcard)                               | critical | Security       | ❌            |
-| [service_wildcard](#service_wildcard)                         | high     | Security       | ✅            |
-| [sensitive_action](#sensitive_action)                         | medium   | Security       | ✅            |
-| [action_condition_enforcement](#action_condition_enforcement) | high     | Security       | ✅            |
+| Check                                                         | Severity | Type           | Default | Configurable |
+| ------------------------------------------------------------- | -------- | -------------- | ------- | ------------ |
+| [policy_structure](#policy_structure)                         | error    | Structure      | ✅ On    | ❌            |
+| [sid_uniqueness](#sid_uniqueness)                             | error    | AWS Validation | ✅ On    | ❌            |
+| [policy_size](#policy_size)                                   | error    | AWS Validation | ✅ On    | ✅            |
+| [action_validation](#action_validation)                       | error    | AWS Validation | ✅ On    | ❌            |
+| [condition_key_validation](#condition_key_validation)         | error    | AWS Validation | ✅ On    | ✅            |
+| [condition_type_mismatch](#condition_type_mismatch)           | error    | AWS Validation | ✅ On    | ❌            |
+| [set_operator_validation](#set_operator_validation)           | error    | AWS Validation | ✅ On    | ❌            |
+| [mfa_condition_antipattern](#mfa_condition_antipattern)       | warning  | AWS Validation | ✅ On    | ❌            |
+| [resource_validation](#resource_validation)                   | error    | AWS Validation | ✅ On    | ✅            |
+| [principal_validation](#principal_validation)                 | high     | AWS Validation | ✅ On    | ✅            |
+| [policy_type_validation](#policy_type_validation)             | error    | AWS Validation | ✅ On    | ❌            |
+| [action_resource_matching](#action_resource_matching)         | medium   | AWS Validation | ✅ On    | ❌            |
+| [wildcard_action](#wildcard_action)                           | medium   | Security       | ✅ On    | ✅            |
+| [wildcard_resource](#wildcard_resource)                       | medium   | Security       | ✅ On    | ✅            |
+| [full_wildcard](#full_wildcard)                               | critical | Security       | ✅ On    | ❌            |
+| [service_wildcard](#service_wildcard)                         | high     | Security       | ✅ On    | ✅            |
+| [sensitive_action](#sensitive_action)                         | medium   | Security       | ✅ On    | ✅            |
+| [action_condition_enforcement](#action_condition_enforcement) | high     | Security       | ✅ On    | ✅            |
+| [trust_policy_validation](#trust_policy_validation)           | high     | Trust Policy   | ⚠️ Off   | ✅            |
+
+---
+
+## Policy Structure Check (1 check)
+
+This check runs **first** before all other checks to validate fundamental IAM policy structure.
+
+### policy_structure
+
+**Purpose:** Validates that IAM policies meet AWS IAM structural requirements before detailed validation.
+
+**Severity:** `error` (not configurable)
+
+**Always Enabled:** This check cannot be disabled as it ensures basic policy validity.
+
+**What it validates:**
+- **Required fields**: Policy must have `Version` and `Statement` fields
+- **Valid Version**: Must be `2012-10-17` or `2008-10-17`
+- **Statement structure**: Each statement must have `Effect` and `Action`/`NotAction`
+- **Field conflicts**: `Action` vs `NotAction`, `Resource` vs `NotResource`, `Principal` vs `NotPrincipal`
+- **Valid values**: `Effect` must be `"Allow"` or `"Deny"`
+- **Unknown fields**: Detects typos and unexpected fields
+- **Policy type detection**: Auto-detects IDENTITY_POLICY vs RESOURCE_POLICY
+
+#### Configuration
+
+This check is not configurable and always runs first.
+
+```yaml
+# policy_structure check cannot be disabled or configured
+# It automatically runs before all other checks
+```
+
+#### Examples
+
+❌ **FAIL: Missing Version field**
+```json
+{
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "s3:GetObject",
+    "Resource": "*"
+  }]
+}
+```
+**Error:** `Policy document is missing the 'Version' field`
+
+❌ **FAIL: Invalid Effect value**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "allow",  // Must be "Allow" or "Deny" (case-sensitive)
+    "Action": "s3:GetObject",
+    "Resource": "*"
+  }]
+}
+```
+**Error:** `Invalid Effect value: 'allow'. Must be 'Allow' or 'Deny'`
+
+❌ **FAIL: Action and NotAction conflict**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "s3:GetObject",
+    "NotAction": "s3:DeleteObject",  // Cannot have both!
+    "Resource": "*"
+  }]
+}
+```
+**Error:** `Statement contains both 'Action' and 'NotAction' fields`
+
+❌ **FAIL: Unknown field (typo)**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Actions": "s3:GetObject",  // Typo: should be "Action"
+    "Resource": "*"
+  }]
+}
+```
+**Error:** `Statement contains unknown field(s): 'Actions'`
+
+✅ **PASS: Valid policy structure**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "s3:GetObject",
+    "Resource": "arn:aws:s3:::my-bucket/*"
+  }]
+}
+```
+
+**Why This Check is Important:**
+- Catches structural errors before expensive AWS API validation
+- Provides clear error messages for common typos
+- Prevents submission of malformed policies to AWS
+- Enables better error reporting in GitHub PRs
 
 ---
 
@@ -649,10 +765,16 @@ principal_validation:
   allowed_principals: []
 
   # Service principals that are always allowed
+  # Default: "*" allows ALL AWS service principals (*.amazonaws.com)
+  # This is recommended as AWS services are generally trusted
   allowed_service_principals:
-    - "cloudfront.amazonaws.com"
-    - "s3.amazonaws.com"
-    - "lambda.amazonaws.com"
+    - "*"  # Allow all AWS service principals (default)
+
+  # Or restrict to specific services:
+  # allowed_service_principals:
+  #   - "cloudfront.amazonaws.com"
+  #   - "s3.amazonaws.com"
+  #   - "lambda.amazonaws.com"
 
   # Simple format: Require conditions for specific principals
   require_conditions_for:
@@ -1328,27 +1450,62 @@ All checks support ignore patterns for filtering specific findings:
 wildcard_action:
   ignore_patterns:
     # Ignore in test files
-    - filepath_regex: "^test/.*"
+    - filepath: "^test/.*"
 
     # Ignore specific SID
-    - statement_sid: "AllowTerraformBackend"
+    - sid: "AllowTerraformBackend"
 
     # Complex: file + action + resource
-    - filepath_regex: "terraform/.*"
-      action_matches: "s3:.*"
-      resource_matches: ".*-tfstate.*"
+    - filepath: "terraform/.*"
+      action: "s3:.*"
+      resource: ".*-tfstate.*"
+
+    # NEW: List of actions (any match = ignore)
+    - action:
+        - "^iam:PassRole$"
+        - "^iam:CreateUser$"
+        - "^iam:AttachUserPolicy$"
+
+    # NEW: List with regex patterns
+    - action:
+        - "^s3:.*"        # All S3 actions
+        - "^iam:Get.*"    # All IAM Get actions
+        - "^ec2:Describe.*"  # All EC2 Describe actions
 ```
 
-**Pattern Fields:**
-- `filepath_regex`: Match file path
-- `action_matches`: Match action name
-- `resource_matches`: Match resource ARN
-- `statement_sid`: Match statement SID
-- `condition_key_matches`: Match condition key
+**Pattern Fields (ALL support single strings OR lists):**
+- `filepath`: Match file path (regex) - aliases: `filepath_regex`
+- `action`: Match action name (regex) - aliases: `action_matches`
+- `resource`: Match resource ARN (regex) - aliases: `resource_matches`
+- `sid`: Match statement SID (exact or regex) - aliases: `statement_sid`
+- `condition_key`: Match condition key (regex) - aliases: `condition_key_matches`
+
+**List Support (New - works for ALL fields):**
+Every field now supports lists of patterns for more concise configuration:
+- Single string: `action: "^s3:.*"` (matches any S3 action)
+- List: `action: ["^s3:GetObject$", "^s3:PutObject$"]` (matches either action)
+- Any match in the list will trigger the ignore (OR logic)
+
+**Additional Examples:**
+```yaml
+ignore_patterns:
+  # filepath with list
+  - filepath: ["^test/.*", "^examples/.*", "^sandbox/.*"]
+
+  # sid with list (exact match or regex)
+  - sid: ["AllowTestAccess", "AllowDevAccess", "Allow.*ReadOnly"]
+
+  # resource with list
+  - resource: ["arn:aws:s3:::.*-test-.*", "arn:aws:s3:::.*-dev-.*"]
+
+  # condition_key with list
+  - condition_key: ["aws:SourceIp", "aws:PrincipalOrgID"]
+```
 
 **Logic:**
 - Multiple fields in ONE pattern = AND (all must match)
-- Multiple patterns = OR (any match = ignore)
+- Multiple items in ONE field list = OR (any match = ignore)
+- Multiple patterns = OR (any pattern match = ignore)
 
 ---
 
@@ -1406,9 +1563,310 @@ settings:
 
 ---
 
+## Trust Policy Validation Check (1 check - Opt-in)
+
+This check is **disabled by default** and must be explicitly enabled in your configuration.
+
+### trust_policy_validation
+
+**Purpose:** Validates trust policies (role assumption policies) for security best practices and action-principal coupling.
+
+**Severity:** `high` (configurable)
+
+**Disabled by Default:** This check must be explicitly enabled as it's specialized for trust policies.
+
+**What it validates:**
+- **Action-Principal Type Matching**: Ensures correct principal types for assume actions
+  - `sts:AssumeRole` → Requires `AWS` or `Service` principals
+  - `sts:AssumeRoleWithSAML` → Requires `Federated` principals (SAML provider)
+  - `sts:AssumeRoleWithWebIdentity` → Requires `Federated` principals (OIDC provider)
+- **Provider ARN Format**: Validates SAML and OIDC provider ARN formats
+- **Required Conditions**: Enforces required conditions for federated access
+  - SAML: Requires `SAML:aud` condition
+  - OIDC: Requires provider-specific audience conditions (e.g., `*:aud`)
+
+**Trust policies** are resource-based policies attached to IAM roles that control **who can assume the role** and under what conditions.
+
+#### Configuration
+
+```yaml
+trust_policy_validation:
+  enabled: true  # Must explicitly enable
+  severity: high
+
+  # Optional: Customize validation rules (uses defaults if not specified)
+  validation_rules:
+    sts:AssumeRole:
+      allowed_principal_types: ["AWS", "Service"]
+      description: "Standard role assumption"
+
+    sts:AssumeRoleWithSAML:
+      allowed_principal_types: ["Federated"]
+      provider_pattern: "^arn:aws:iam::\\d{12}:saml-provider/[\\w+=,.@-]+$"
+      required_conditions: ["SAML:aud"]
+      description: "SAML-based federated role assumption"
+
+    sts:AssumeRoleWithWebIdentity:
+      allowed_principal_types: ["Federated"]
+      provider_pattern: "^arn:aws:iam::\\d{12}:oidc-provider/[\\w./-]+$"
+      required_conditions: ["*:aud"]  # Wildcard for provider-specific keys
+      description: "OIDC-based federated role assumption"
+```
+
+#### Usage
+
+**Always use with `--policy-type TRUST_POLICY` flag:**
+
+```bash
+# Enable trust policy validation
+iam-validator validate trust-policy.json --policy-type TRUST_POLICY
+```
+
+The `--policy-type TRUST_POLICY` flag:
+- ✅ Enables trust-specific validation (if check is enabled in config)
+- ✅ Suppresses irrelevant warnings (missing Resource field)
+- ✅ Provides clear, actionable error messages
+
+#### Examples
+
+❌ **FAIL: Wrong principal type for AssumeRoleWithSAML**
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "AWS": "arn:aws:iam::123456789012:root"  // Should be Federated!
+    },
+    "Action": "sts:AssumeRoleWithSAML"
+  }]
+}
+```
+
+**Error:** `Action 'sts:AssumeRoleWithSAML' should not use Principal type 'AWS'. Expected principal types: 'Federated'`
+
+**Fix:**
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {
+    "Federated": "arn:aws:iam::123456789012:saml-provider/MyProvider"
+  },
+  "Action": "sts:AssumeRoleWithSAML",
+  "Condition": {
+    "StringEquals": {
+      "SAML:aud": "https://signin.aws.amazon.com/saml"
+    }
+  }
+}
+```
+
+❌ **FAIL: Missing required SAML:aud condition**
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "Federated": "arn:aws:iam::123456789012:saml-provider/MyProvider"
+    },
+    "Action": "sts:AssumeRoleWithSAML"
+    // Missing required condition!
+  }]
+}
+```
+
+**Error:** `Action 'sts:AssumeRoleWithSAML' is missing required conditions: 'SAML:aud'`
+
+**Fix:** Add the required condition:
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {
+    "Federated": "arn:aws:iam::123456789012:saml-provider/MyProvider"
+  },
+  "Action": "sts:AssumeRoleWithSAML",
+  "Condition": {
+    "StringEquals": {
+      "SAML:aud": "https://signin.aws.amazon.com/saml"
+    }
+  }
+}
+```
+
+❌ **FAIL: Invalid OIDC provider ARN format**
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "Federated": "arn:aws:iam::123456789012:role/MyRole"  // Wrong! Should be oidc-provider
+    },
+    "Action": "sts:AssumeRoleWithWebIdentity"
+  }]
+}
+```
+
+**Error:** `Federated principal 'arn:aws:iam::123456789012:role/MyRole' does not match expected OIDC provider format`
+
+**Fix:**
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {
+    "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+  },
+  "Action": "sts:AssumeRoleWithWebIdentity",
+  "Condition": {
+    "StringEquals": {
+      "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+    },
+    "StringLike": {
+      "token.actions.githubusercontent.com:sub": "repo:myorg/myrepo:*"
+    }
+  }
+}
+```
+
+✅ **PASS: Valid AWS Service trust policy**
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "Service": "lambda.amazonaws.com"
+    },
+    "Action": "sts:AssumeRole"
+  }]
+}
+```
+
+✅ **PASS: Valid cross-account trust with conditions**
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "AWS": "arn:aws:iam::123456789012:root"
+    },
+    "Action": "sts:AssumeRole",
+    "Condition": {
+      "StringEquals": {
+        "sts:ExternalId": "unique-external-id"
+      }
+    }
+  }]
+}
+```
+
+✅ **PASS: Valid GitHub Actions OIDC trust**
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+    },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": {
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+      },
+      "StringLike": {
+        "token.actions.githubusercontent.com:sub": "repo:myorg/myrepo:*"
+      }
+    }
+  }]
+}
+```
+
+#### How It Complements Other Checks
+
+Trust policy validation works alongside:
+
+- **`principal_validation`** - Validates which principals are allowed/blocked (applies to all resource policies)
+- **`trust_policy_validation`** - Validates action-principal coupling (specific to trust policies)
+- **`action_condition_enforcement`** - Enforces required conditions for actions (applies to all policies)
+
+All three checks work together without conflicts.
+
+#### Common Trust Policy Patterns
+
+**AWS Service Trust (Lambda, EC2, ECS):**
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {"Service": "lambda.amazonaws.com"},
+  "Action": "sts:AssumeRole"
+}
+```
+
+**Cross-Account Trust:**
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {"AWS": "arn:aws:iam::ACCOUNT-ID:root"},
+  "Action": "sts:AssumeRole",
+  "Condition": {
+    "StringEquals": {"sts:ExternalId": "SECRET"}
+  }
+}
+```
+
+**SAML Federation:**
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {"Federated": "arn:aws:iam::ACCOUNT-ID:saml-provider/PROVIDER"},
+  "Action": "sts:AssumeRoleWithSAML",
+  "Condition": {
+    "StringEquals": {"SAML:aud": "https://signin.aws.amazon.com/saml"}
+  }
+}
+```
+
+**OIDC Federation (GitHub Actions):**
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {"Federated": "arn:aws:iam::ACCOUNT-ID:oidc-provider/token.actions.githubusercontent.com"},
+  "Action": "sts:AssumeRoleWithWebIdentity",
+  "Condition": {
+    "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
+    "StringLike": {"token.actions.githubusercontent.com:sub": "repo:org/repo:*"}
+  }
+}
+```
+
+#### See Also
+
+- [Trust Policy Examples](../examples/trust-policies/README.md) - Complete trust policy examples
+- [Principal Validation Check](#principal_validation) - Complementary principal validation
+- [AWS Trust Policy Documentation](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_terms-and-concepts.html#iam-term-trust-policy)
+
+---
+
 ## See Also
 
 - [Configuration Guide](configuration.md) - Complete configuration reference
 - [Condition Requirements](condition-requirements.md) - Action condition enforcement details
 - [Privilege Escalation](privilege-escalation.md) - Detecting escalation paths
 - [Example Configs](../examples/configs/README.md) - Ready-to-use configurations
+- [Trust Policy Examples](../examples/trust-policies/README.md) - Trust policy validation examples

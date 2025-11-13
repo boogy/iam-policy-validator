@@ -73,7 +73,7 @@ class SetOperatorValidationCheck(PolicyCheck):
 
         # First pass: Identify set operators and Null checks
         for operator, conditions in statement.condition.items():
-            base_operator, operator_type, set_prefix = normalize_operator(operator)
+            base_operator, _operator_type, set_prefix = normalize_operator(operator)
 
             # Track Null checks
             if base_operator == "Null":
@@ -87,22 +87,22 @@ class SetOperatorValidationCheck(PolicyCheck):
 
         # Second pass: Validate set operator usage
         for operator, conditions in statement.condition.items():
-            base_operator, operator_type, set_prefix = normalize_operator(operator)
+            base_operator, _operator_type, set_prefix = normalize_operator(operator)
 
             if not set_prefix:
                 continue
 
             # Check each condition key used with a set operator
-            for condition_key, condition_values in conditions.items():
+            for condition_key, _condition_values in conditions.items():
                 # Issue 1: Set operator used with single-valued context key (anti-pattern)
                 if not is_multivalued_context_key(condition_key):
                     issues.append(
                         ValidationIssue(
                             severity=self.get_severity(config),
                             message=(
-                                f"Set operator '{set_prefix}' should not be used with single-valued "
-                                f"condition key '{condition_key}'. This can lead to overly permissive policies. "
-                                f"Set operators are designed for multivalued context keys like 'aws:TagKeys'. "
+                                f"Set operator `{set_prefix}` should not be used with single-valued "
+                                f"condition key `{condition_key}`. This can lead to overly permissive policies. "
+                                f"Set operators are designed for multivalued context keys like `aws:TagKeys`. "
                                 f"See: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-single-vs-multi-valued-context-keys.html"
                             ),
                             statement_sid=statement_sid,
@@ -120,9 +120,9 @@ class SetOperatorValidationCheck(PolicyCheck):
                             ValidationIssue(
                                 severity="warning",
                                 message=(
-                                    f"Security risk: ForAllValues with Allow effect on '{condition_key}' "
+                                    f"Security risk: ForAllValues with Allow effect on `{condition_key}` "
                                     f"should include a Null condition check. Without it, requests with missing "
-                                    f'\'{condition_key}\' will be granted access. Add: \'"Null": {{"{condition_key}": "false"}}\'. '
+                                    f'`{condition_key}` will be granted access. Add: `"Null": {{"{condition_key}": "false"}}`. '
                                     f"See: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-single-vs-multi-valued-context-keys.html"
                                 ),
                                 statement_sid=statement_sid,
@@ -140,10 +140,10 @@ class SetOperatorValidationCheck(PolicyCheck):
                             ValidationIssue(
                                 severity="warning",
                                 message=(
-                                    f"Unpredictable behavior: ForAnyValue with Deny effect on '{condition_key}' "
+                                    f"Unpredictable behavior: `ForAnyValue` with `Deny` effect on `{condition_key}` "
                                     f"should include a Null condition check. Without it, requests with missing "
-                                    f"'{condition_key}' will evaluate to 'No match' instead of denying access. "
-                                    f'Add: \'"Null": {{"{condition_key}": "false"}}\'. '
+                                    f"`{condition_key}` will evaluate to `No match` instead of denying access. "
+                                    f'Add: `"Null": {{"{condition_key}": "false"}}`. '
                                     f"See: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-single-vs-multi-valued-context-keys.html"
                                 ),
                                 statement_sid=statement_sid,

@@ -197,15 +197,16 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 description = requirement.get("description", "These actions should not be used")
                 # Use per-requirement severity if specified, else use global
                 severity = requirement.get("severity", self.get_severity(config))
+                matching_actions_formatted = ", ".join(f"`{a}`" for a in matching_actions)
                 issues.append(
                     ValidationIssue(
                         severity=severity,
                         statement_sid=statement.sid,
                         statement_index=statement_idx,
                         issue_type="forbidden_action_present",
-                        message=f"FORBIDDEN: Actions {matching_actions} should not be used. {description}",
+                        message=f"FORBIDDEN: Actions {matching_actions_formatted} should not be used. {description}",
                         action=", ".join(matching_actions),
-                        suggestion=f"Remove these forbidden actions from the statement: {', '.join(matching_actions)}. {description}",
+                        suggestion=f"Remove these forbidden actions from the statement: {matching_actions_formatted}. {description}",
                         line_number=statement.line_number,
                     )
                 )
@@ -272,7 +273,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             # Collect all statements that match the action criteria
             matching_statements: list[tuple[int, Statement, list[str]]] = []
 
-            for idx, statement in enumerate(policy.statement):
+            for idx, statement in enumerate(policy.statement or []):
                 # Only check Allow statements
                 if statement.effect != "Allow":
                     continue
@@ -308,6 +309,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
                 # Use the first matching statement's index for the issue
                 first_idx, first_stmt, _ = matching_statements[0]
+                all_actions_formatted = ", ".join(f"`{a}`" for a in sorted(all_actions))
 
                 issues.append(
                     ValidationIssue(
@@ -315,7 +317,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                         statement_sid=first_stmt.sid,
                         statement_index=first_idx,
                         issue_type="policy_level_action_detected",
-                        message=f"POLICY-LEVEL: Actions {sorted(all_actions)} found in {len(matching_statements)} statement(s). {description}",
+                        message=f"POLICY-LEVEL: Actions {all_actions_formatted} found in {len(matching_statements)} statement(s). {description}",
                         action=", ".join(sorted(all_actions)),
                         suggestion=f"Review these statements: {', '.join(statement_refs)}. {description}",
                         line_number=first_stmt.line_number,
@@ -530,7 +532,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     available_actions = list(service_detail.actions.keys())
 
                     # Find which actual AWS actions the wildcard would grant
-                    _, granted_actions = fetcher._match_wildcard_action(
+                    _, granted_actions = fetcher.match_wildcard_action(
                         statement_action.split(":", 1)[1],  # Just the action part (e.g., "C*")
                         available_actions,
                     )
@@ -545,7 +547,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             except re.error:
                                 continue
 
-                except (ValueError, Exception):
+                except (ValueError, Exception):  # pylint: disable=broad-exception-caught
                     # If we can't fetch the service or parse the action, fall back to prefix matching
                     stmt_prefix = statement_action.rstrip("*")
                     for pattern in patterns:
@@ -627,7 +629,20 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
                 if not any_present:
                     # Create a combined error for any_of
-                    condition_keys = [cond.get("condition_key", "unknown") for cond in any_of]
+                    # Handle both simple conditions and nested all_of
+                    condition_keys = []
+                    for cond in any_of:
+                        if "all_of" in cond:
+                            # Nested all_of - collect all condition keys
+                            nested_keys = [
+                                c.get("condition_key", "unknown") for c in cond["all_of"]
+                            ]
+                            condition_keys.append(f"({' + '.join(f'`{k}`' for k in nested_keys)})")
+                        else:
+                            # Simple condition
+                            condition_keys.append(f"`{cond.get('condition_key', 'unknown')}`")
+                    condition_keys_formatted = " OR ".join(condition_keys)
+                    matching_actions_formatted = ", ".join(f"`{a}`" for a in matching_actions)
                     issues.append(
                         ValidationIssue(
                             severity=self.get_severity(config),
@@ -635,8 +650,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             statement_index=statement_idx,
                             issue_type="missing_required_condition_any_of",
                             message=(
-                                f"Actions {matching_actions} require at least ONE of these conditions: "
-                                f"{', '.join(condition_keys)}"
+                                f"Actions `{matching_actions_formatted}` require at least ONE of these conditions: "
+                                f"{condition_keys_formatted}"
                             ),
                             action=", ".join(matching_actions),
                             suggestion=self._build_any_of_suggestion(any_of),
@@ -773,12 +788,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             condition_key, description, example, expected_value, operator
         )
 
+        matching_actions_str = ", ".join(f"`{a}`" for a in matching_actions)
         return ValidationIssue(
             severity=severity,
             statement_sid=statement.sid,
             statement_index=statement_idx,
             issue_type="missing_required_condition",
-            message=f"{message_prefix} Action(s) {matching_actions} require condition '{condition_key}'",
+            message=f"{message_prefix} Action(s) `{matching_actions_str}` require condition `{condition_key}`",
             action=", ".join(matching_actions),
             condition_key=condition_key,
             suggestion=suggestion_text,
@@ -843,15 +859,38 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         suggestions.append("Add at least ONE of these conditions:")
 
         for i, cond in enumerate(any_of_conditions, 1):
-            condition_key = cond.get("condition_key", "unknown")
-            description = cond.get("description", "")
-            expected_value = cond.get("expected_value")
+            # Handle nested all_of blocks
+            if "all_of" in cond:
+                # Nested all_of - show all required conditions together
+                all_of_list = cond["all_of"]
+                condition_keys = [c.get("condition_key", "unknown") for c in all_of_list]
+                condition_keys_formatted = " + ".join(f"`{k}`" for k in condition_keys)
 
-            option = f"\nOption {i}: {condition_key}"
-            if description:
-                option += f" - {description}"
-            if expected_value is not None:
-                option += f" (value: {expected_value})"
+                option = f"\n- **Option {i}**: {condition_keys_formatted} (both required)"
+
+                # Use description from first condition or combine them
+                descriptions = [
+                    c.get("description", "") for c in all_of_list if c.get("description")
+                ]
+                if descriptions:
+                    option += f" - {descriptions[0]}"
+
+                # Show example from first condition that has one
+                for c in all_of_list:
+                    if c.get("example"):
+                        # Example will be shown separately, just note it's available
+                        break
+            else:
+                # Simple condition (original behavior)
+                condition_key = cond.get("condition_key", "unknown")
+                description = cond.get("description", "")
+                expected_value = cond.get("expected_value")
+
+                option = f"\n- **Option {i}**: `{condition_key}`"
+                if description:
+                    option += f" - {description}"
+                if expected_value is not None:
+                    option += f" (value: `{expected_value}`)"
 
             suggestions.append(option)
 
@@ -870,13 +909,12 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         description = condition_requirement.get("description", "")
         expected_value = condition_requirement.get("expected_value")
 
-        message = (
-            f"FORBIDDEN: Action(s) {matching_actions} must NOT have condition '{condition_key}'"
-        )
+        matching_actions_str = ", ".join(f"`{a}`" for a in matching_actions)
+        message = f"FORBIDDEN: Action(s) `{matching_actions_str}` must NOT have condition `{condition_key}`"
         if expected_value is not None:
-            message += f" with value '{expected_value}'"
+            message += f" with value `{expected_value}`"
 
-        suggestion = f"Remove the '{condition_key}' condition from the statement"
+        suggestion = f"Remove the `{condition_key}` condition from the statement"
         if description:
             suggestion += f". {description}"
 

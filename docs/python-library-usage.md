@@ -133,7 +133,6 @@ async def validate_with_config_file():
     results = await validate_policies(
         policies,
         config_path="./iam-validator.yaml",
-        use_registry=True
     )
     return results
 
@@ -195,7 +194,6 @@ async def validate_with_programmatic_config():
     results = await validate_policies(
         policies,
         config_path=config_path,
-        use_registry=True
     )
 
     return results
@@ -296,7 +294,6 @@ async def validate_with_custom_checks():
     # Validate with custom checks directory
     results = await validate_policies(
         policies,
-        use_registry=True,
         custom_checks_dir="./custom_checks"  # Auto-discovers checks
     )
 
@@ -358,7 +355,6 @@ async def ci_validation():
     results = await validate_policies(
         policies,
         config_path=str(config_file) if config_file.exists() else None,
-        use_registry=True
     )
 
     # Generate JSON report for CI/CD tools
@@ -418,7 +414,6 @@ async def batch_validate_multiple_dirs():
         results = await validate_policies(
             policies,
             config_path="./iam-validator.yaml",
-            use_registry=True
         )
 
         all_results.extend(results)
@@ -575,7 +570,6 @@ async def advanced_validation():
     results = await validate_policies(
         policies,
         config_path=config_path,
-        use_registry=True
     )
 
     return results
@@ -666,7 +660,6 @@ async def validate_with_custom_cache():
     results = await validate_policies(
         policies,
         config_path=config_path,
-        use_registry=True
     )
 
     return results
@@ -706,7 +699,6 @@ from iam_validator.core.policy_checks import validate_policies
 results = await validate_policies(
     policies,                    # list[tuple[str, IAMPolicy]]
     config_path=None,           # Optional: path to config file
-    use_registry=True,          # True: new system, False: legacy
     custom_checks_dir=None,     # Optional: directory for custom checks
 )
 
@@ -907,7 +899,6 @@ async def main():
     results = await validate_policies(
         policies,
         config_path=str(config_file) if config_file.exists() else None,
-        use_registry=True,
         custom_checks_dir=str(custom_checks_dir) if custom_checks_dir.exists() else None
     )
 

@@ -23,8 +23,16 @@ def check():
 
 @pytest.fixture
 def config():
-    """Create default check config."""
-    return CheckConfig(check_id="principal_validation", enabled=True, config={})
+    """Create default check config with proper defaults."""
+    return CheckConfig(
+        check_id="principal_validation",
+        enabled=True,
+        config={
+            "blocked_principals": ["*"],  # Block public access by default
+            "allowed_principals": [],
+            "allowed_service_principals": ["aws:*"],  # Allow all AWS service principals
+        },
+    )
 
 
 class TestPrincipalValidationCheck:
@@ -179,73 +187,7 @@ class TestPrincipalValidationCheck:
         assert len(issues) == 0
 
     @pytest.mark.asyncio
-    async def test_required_conditions_for_principal(self, check, fetcher):
-        """Test that required conditions are enforced for specific principals."""
-        config = CheckConfig(
-            check_id="principal_validation",
-            enabled=True,
-            config={
-                "blocked_principals": [],
-                "require_conditions_for": {
-                    "arn:aws:iam::123456789012:*": ["aws:SourceIp"],
-                },
-            },
-        )
-
-        # Statement without required condition
-        statement1 = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["arn:aws:s3:::my-bucket/*"],
-            Principal={"AWS": "arn:aws:iam::123456789012:user/test"},
-        )
-
-        issues1 = await check.execute(statement1, 0, fetcher, config)
-        assert len(issues1) == 1
-        assert issues1[0].issue_type == "missing_principal_conditions"
-        assert "aws:SourceIp" in issues1[0].message
-
-        # Statement with required condition
-        statement2 = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["arn:aws:s3:::my-bucket/*"],
-            Principal={"AWS": "arn:aws:iam::123456789012:user/test"},
-            Condition={"IpAddress": {"aws:SourceIp": "10.0.0.0/8"}},
-        )
-
-        issues2 = await check.execute(statement2, 0, fetcher, config)
-        assert len(issues2) == 0
-
     @pytest.mark.asyncio
-    async def test_multiple_required_conditions(self, check, fetcher):
-        """Test multiple required conditions for a principal."""
-        config = CheckConfig(
-            check_id="principal_validation",
-            enabled=True,
-            config={
-                "blocked_principals": [],
-                "require_conditions_for": {
-                    "*": ["aws:SourceIp", "aws:SecureTransport"],
-                },
-            },
-        )
-
-        # Statement with one missing condition
-        statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["arn:aws:s3:::my-bucket/*"],
-            Principal="*",
-            Condition={"IpAddress": {"aws:SourceIp": "10.0.0.0/8"}},
-        )
-
-        issues = await check.execute(statement, 0, fetcher, config)
-        # Should report missing condition (aws:SecureTransport is missing)
-        assert len(issues) == 1
-        assert issues[0].issue_type == "missing_principal_conditions"
-        assert "aws:SecureTransport" in issues[0].message
-
     @pytest.mark.asyncio
     async def test_principal_as_dict_with_list(self, check, fetcher, config):
         """Test principal with dict containing list of principals."""
@@ -445,35 +387,6 @@ class TestPrincipalValidationCheck:
         assert len(issues) == 0
 
     @pytest.mark.asyncio
-    async def test_condition_key_matching(self, check, fetcher):
-        """Test that condition key matching is exact."""
-        config = CheckConfig(
-            check_id="principal_validation",
-            enabled=True,
-            config={
-                "blocked_principals": [],
-                "require_conditions_for": {
-                    "*": ["aws:SourceIp"],
-                },
-            },
-        )
-
-        # Condition with different key should not satisfy requirement
-        statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["arn:aws:s3:::my-bucket/*"],
-            Principal="*",
-            Condition={"StringEquals": {"aws:username": "test"}},
-        )
-
-        issues = await check.execute(statement, 0, fetcher, config)
-
-        # Should report missing condition (aws:SourceIp is required but not present)
-        assert len(issues) == 1
-        assert issues[0].issue_type == "missing_principal_conditions"
-        assert "aws:SourceIp" in issues[0].message
-
     @pytest.mark.asyncio
     async def test_empty_blocked_principals(self, check, fetcher):
         """Test with empty blocked principals list."""
@@ -540,7 +453,7 @@ class TestPrincipalConditionRequirements:
         # Extract condition keys from messages like "Principal(s) ['*'] require condition 'aws:SourceArn'"
         condition_keys = set()
         for issue in issues:
-            parts = issue.message.split("'")
+            parts = issue.message.split("`")
             if len(parts) >= 4:
                 condition_keys.add(parts[-2])  # Get the second-to-last quoted part
         assert "aws:SourceArn" in condition_keys
@@ -975,46 +888,6 @@ class TestPrincipalConditionRequirements:
         assert len(issues2) == 0
 
     @pytest.mark.asyncio
-    async def test_backward_compatibility_with_simple_format(self, check, fetcher):
-        """Test that both simple and advanced formats can work together."""
-        config = CheckConfig(
-            check_id="principal_validation",
-            enabled=True,
-            config={
-                "blocked_principals": [],
-                # Simple format (old)
-                "require_conditions_for": {
-                    "arn:aws:iam::123456789012:*": ["aws:username"],
-                },
-                # Advanced format (new)
-                "principal_condition_requirements": [
-                    {
-                        "principals": ["*"],
-                        "required_conditions": [{"condition_key": "aws:SourceArn"}],
-                    }
-                ],
-            },
-        )
-
-        # Principal matching both formats
-        statement = Statement(
-            Effect="Allow",
-            Action=["s3:GetObject"],
-            Resource=["arn:aws:s3:::my-bucket/*"],
-            Principal={"AWS": "arn:aws:iam::123456789012:user/test"},
-        )
-
-        issues = await check.execute(statement, 0, fetcher, config)
-
-        # Should report at least one missing condition
-        # Note: The simple format check runs per-principal in the loop,
-        # while advanced format runs after the loop, so * doesn't match
-        # the specific principal "arn:aws:iam::123456789012:user/test"
-        assert len(issues) >= 1
-        # Check that at least one of the expected conditions is reported as missing
-        messages = " ".join([issue.message for issue in issues])
-        assert "aws:username" in messages
-
     @pytest.mark.asyncio
     async def test_description_in_suggestion(self, check, fetcher):
         """Test that description appears in suggestion."""

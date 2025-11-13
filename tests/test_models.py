@@ -315,13 +315,17 @@ class TestIAMPolicy:
         assert policy.statement[0].effect == "Allow"
         assert policy.statement[1].effect == "Deny"
 
-    def test_policy_missing_required_fields(self):
-        """Test that missing required fields raise validation error."""
-        with pytest.raises(ValidationError):
-            IAMPolicy(Statement=[])  # Missing Version
+    def test_policy_missing_fields_allowed(self):
+        """Test that Version and Statement are optional fields (can be None)."""
+        # Version is optional (though AWS recommends it)
+        policy1 = IAMPolicy(Statement=[])
+        assert policy1.version is None
+        assert policy1.statement == []
 
-        with pytest.raises(ValidationError):
-            IAMPolicy(Version="2012-10-17")  # Missing Statement
+        # Statement is optional (though not useful)
+        policy2 = IAMPolicy(Version="2012-10-17")
+        assert policy2.version == "2012-10-17"
+        assert policy2.statement is None
 
 
 class TestValidationIssue:

@@ -121,8 +121,7 @@ iam-policy-auditor/
 │   └── conftest.py             # Pytest configuration and fixtures
 │
 ├── docs/                       # Documentation
-│   ├── check-reference.md      # Complete reference for all 18 checks
-│   ├── CHECKS.md               # Deprecated - migration guide
+│   ├── check-reference.md      # Complete reference for all 19 checks
 │   ├── SDK.md                  # Python SDK documentation
 │   ├── configuration.md        # Configuration guide
 │   ├── condition-requirements.md  # Action condition enforcement
@@ -305,15 +304,22 @@ This runs linting, type checking, and tests.
 
 - **README.md**: Project overview, quick start, and feature highlights
 - **DOCS.md**: Complete usage guide, CLI reference, and configuration
-- **docs/check-reference.md**: Complete validation checks reference with pass/fail examples
-- **docs/CHECKS.md**: (Deprecated) Migration guide to new check documentation
+- **docs/check-reference.md**: Complete reference for all 19 checks with pass/fail examples
 - **docs/SDK.md**: Python library documentation and API reference
+- **docs/README.md**: Documentation hub with navigation and quick links
 - **docs/**: Additional guides and advanced topics
   - **configuration.md**: Configuration guide
   - **condition-requirements.md**: Action condition enforcement
   - **privilege-escalation.md**: Privilege escalation detection
   - **custom-checks.md**: Custom check development
+  - **github-actions-workflows.md**: CI/CD integration guide
+  - **python-library-usage.md**: Python SDK usage
   - **development/**: Contributor documentation
+- **examples/**: Practical examples
+  - **configs/**: 9+ configuration templates
+  - **trust-policies/**: Trust policy validation examples
+  - **custom_checks/**: Custom check implementations
+  - **github-actions/**: Workflow examples
 
 ### Building Documentation
 

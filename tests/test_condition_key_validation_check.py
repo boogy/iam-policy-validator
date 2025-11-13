@@ -276,7 +276,7 @@ class TestConditionKeyValidationCheck:
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 1
-        assert "Invalid condition key: s3:invalidKey" in issues[0].message
+        assert "Invalid condition key: `s3:invalidKey`" in issues[0].message
 
     @pytest.mark.asyncio
     async def test_string_action(self, check, fetcher, config):

@@ -160,7 +160,7 @@ class AWSServiceFetcher:
 
         Public API - Parsing:
             - parse_action: Split action into service and name
-            - _match_wildcard_action: Match wildcard patterns
+            - match_wildcard_action: Match wildcard patterns
 
         Utilities:
             - get_stats: Get cache statistics
@@ -352,7 +352,7 @@ class AWSServiceFetcher:
             try:
                 await self.fetch_service_by_name(name)
                 self._prefetched_services.add(name)
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.warning(f"Failed to prefetch service {name}: {e}")
 
         # Fetch in batches to avoid overwhelming the API
@@ -400,7 +400,7 @@ class AWSServiceFetcher:
             logger.debug(f"Disk cache hit for {url}")
             return data
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning(f"Failed to read cache for {url}: {e}")
             return None
 
@@ -415,7 +415,7 @@ class AWSServiceFetcher:
             with open(cache_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
             logger.debug(f"Written to disk cache: {url}")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning(f"Failed to write cache for {url}: {e}")
 
     async def _make_request_with_batching(self, url: str) -> Any:
@@ -459,7 +459,7 @@ class AWSServiceFetcher:
             if not future.done():
                 future.set_result(result)
             return result
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             if not future.done():
                 future.set_exception(e)
             raise
@@ -504,21 +504,23 @@ class AWSServiceFetcher:
 
                     return data
 
-                except Exception as json_error:
+                except Exception as json_error:  # pylint: disable=broad-exception-caught
                     logger.error(f"Failed to parse response as JSON: {json_error}")
-                    raise ValueError(f"Invalid JSON response from {url}: {json_error}")
+                    raise ValueError(
+                        f"Invalid JSON response from {url}: {json_error}"
+                    ) from json_error
 
             except httpx.HTTPStatusError as e:
                 logger.error(f"HTTP error {e.response.status_code} for {url}")
                 if e.response.status_code == 404:
-                    raise ValueError(f"Service not found: {url}")
+                    raise ValueError(f"Service not found: {url}") from e
                 last_exception = e
 
             except httpx.RequestError as e:
                 logger.error(f"Request error for {url}: {e}")
                 last_exception = e
 
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.error(f"Unexpected error for {url}: {e}")
                 last_exception = e
 
@@ -547,7 +549,7 @@ class AWSServiceFetcher:
             raise FileNotFoundError(f"_services.json not found in {self.aws_services_dir}")
 
         try:
-            with open(services_file) as f:
+            with open(services_file, encoding="utf-8") as f:
                 data = json.load(f)
 
             if not isinstance(data, list):
@@ -565,7 +567,7 @@ class AWSServiceFetcher:
             return services
 
         except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in services.json: {e}")
+            raise ValueError(f"Invalid JSON in services.json: {e}") from e
 
     def _load_service_from_file(self, service_name: str) -> ServiceDetail:
         """Load service detail from local JSON file.
@@ -591,7 +593,7 @@ class AWSServiceFetcher:
             raise FileNotFoundError(f"Service file not found: {service_file}")
 
         try:
-            with open(service_file) as f:
+            with open(service_file, encoding="utf-8") as f:
                 data = json.load(f)
 
             service_detail = ServiceDetail.model_validate(data)
@@ -599,7 +601,7 @@ class AWSServiceFetcher:
             return service_detail
 
         except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in {service_file}: {e}")
+            raise ValueError(f"Invalid JSON in {service_file}: {e}") from e
 
     async def fetch_services(self) -> list[ServiceInfo]:
         """Fetch list of AWS services with caching.
@@ -677,7 +679,9 @@ class AWSServiceFetcher:
                             return service_detail
                         except FileNotFoundError:
                             pass
-                raise ValueError(f"Service `{service_name}` not found in {self.aws_services_dir}")
+                raise ValueError(
+                    f"Service `{service_name}` not found in {self.aws_services_dir}"
+                ) from FileNotFoundError
 
         # Fetch service list and find URL from API
         services = await self.fetch_services()
@@ -704,7 +708,7 @@ class AWSServiceFetcher:
             try:
                 detail = await self.fetch_service_by_name(name)
                 return name, detail
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.error(f"Failed to fetch service {name}: {e}")
                 raise
 
@@ -717,7 +721,7 @@ class AWSServiceFetcher:
             if isinstance(result, Exception):
                 logger.error(f"Failed to fetch service {service_names[i]}: {result}")
                 raise result
-            elif isinstance(result, tuple):
+            if isinstance(result, tuple):
                 name, detail = result
                 services[name] = detail
 
@@ -731,7 +735,7 @@ class AWSServiceFetcher:
 
         return match.group("service").lower(), match.group("action")
 
-    def _match_wildcard_action(self, pattern: str, actions: list[str]) -> tuple[bool, list[str]]:
+    def match_wildcard_action(self, pattern: str, actions: list[str]) -> tuple[bool, list[str]]:
         """Match wildcard pattern against list of actions.
 
         Args:
@@ -774,8 +778,7 @@ class AWSServiceFetcher:
                     # Just verify service exists
                     await self.fetch_service_by_name(service_prefix)
                     return True, None, True
-                else:
-                    return False, "Wildcard actions are not allowed", True
+                return False, "Wildcard actions are not allowed", True
 
             # Fetch service details (will use cache)
             service_detail = await self.fetch_service_by_name(service_prefix)
@@ -786,7 +789,7 @@ class AWSServiceFetcher:
                 if not allow_wildcards:
                     return False, "Wildcard actions are not allowed", True
 
-                has_matches, matched_actions = self._match_wildcard_action(
+                has_matches, matched_actions = self.match_wildcard_action(
                     action_name, available_actions
                 )
 
@@ -799,33 +802,32 @@ class AWSServiceFetcher:
                         examples += f", ... ({match_count - 5} more)"
 
                     return True, None, True
-                else:
-                    # Wildcard doesn't match any actions
-                    return (
-                        False,
-                        f"Action pattern '{action_name}' does not match any actions in service '{service_prefix}'",
-                        True,
-                    )
+                # Wildcard doesn't match any actions
+                return (
+                    False,
+                    f"Action pattern `{action_name}` does not match any actions in service `{service_prefix}`",
+                    True,
+                )
 
             # Check if exact action exists (case-insensitive)
             action_exists = any(a.lower() == action_name.lower() for a in available_actions)
 
             if action_exists:
                 return True, None, False
-            else:
-                # Suggest similar actions
-                similar = [a for a in available_actions if action_name.lower() in a.lower()][:3]
 
-                suggestion = f" Did you mean: {', '.join(similar)}?" if similar else ""
-                return (
-                    False,
-                    f"Action '{action_name}' not found in service '{service_prefix}'.{suggestion}",
-                    False,
-                )
+            # Suggest similar actions
+            similar = [f"`{a}`" for a in available_actions if action_name.lower() in a.lower()][:3]
+
+            suggestion = f" Did you mean: {', '.join(similar)}?" if similar else ""
+            return (
+                False,
+                f"Action `{action_name}` not found in service `{service_prefix}`.{suggestion}",
+                False,
+            )
 
         except ValueError as e:
             return False, str(e), False
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error(f"Error validating action {action}: {e}")
             return False, f"Failed to validate action: {str(e)}", False
 
@@ -859,7 +861,7 @@ class AWSServiceFetcher:
             - suggestion: Detailed suggestion with valid keys (shown in collapsible section)
         """
         try:
-            from iam_validator.core.config.aws_global_conditions import (
+            from iam_validator.core.config.aws_global_conditions import (  # pylint: disable=import-outside-toplevel
                 get_global_conditions,
             )
 
@@ -911,11 +913,11 @@ class AWSServiceFetcher:
                 # AWS allows it but the key may not be available in every request context
                 if is_global_key and action_detail.action_condition_keys is not None:
                     warning_msg = (
-                        f"Global condition key '{condition_key}' is used with action '{action}'. "
+                        f"Global condition key `{condition_key}` is used with action `{action}`. "
                         f"While global condition keys can be used across all AWS services, "
                         f"the key may not be available in every request context. "
-                        f"Verify that '{condition_key}' is available for this specific action's request context. "
-                        f"Consider using '*IfExists' operators (e.g., StringEqualsIfExists) if the key might be missing."
+                        f"Verify that `{condition_key}` is available for this specific action's request context. "
+                        f"Consider using `*IfExists` operators (e.g., `StringEqualsIfExists`) if the key might be missing."
                     )
                     return ConditionKeyValidationResult(is_valid=True, warning_message=warning_msg)
 
@@ -1000,7 +1002,7 @@ class AWSServiceFetcher:
                 suggestion=suggestion,
             )
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error(f"Error validating condition key {condition_key} for {action}: {e}")
             return ConditionKeyValidationResult(
                 is_valid=False,
@@ -1017,7 +1019,7 @@ class AWSServiceFetcher:
             for cache_file in self._cache_dir.glob("*.json"):
                 try:
                     cache_file.unlink()
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-exception-caught
                     logger.warning(f"Failed to delete cache file {cache_file}: {e}")
 
         logger.info("Cleared all caches")

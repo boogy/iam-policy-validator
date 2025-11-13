@@ -30,6 +30,10 @@ async def execute_policy(
     """
     issues = []
 
+    # Handle policies with no statements
+    if not policy.statement:
+        return issues
+
     # Check if any statement has Principal
     has_any_principal = any(
         stmt.principal is not None or stmt.not_principal is not None for stmt in policy.statement
@@ -37,24 +41,36 @@ async def execute_policy(
 
     # If policy has Principal but type is IDENTITY_POLICY (default), provide helpful info
     if has_any_principal and policy_type == "IDENTITY_POLICY":
+        # Check if it's a trust policy
+        from iam_validator.checks.policy_structure import is_trust_policy
+
+        if is_trust_policy(policy):
+            hint_msg = (
+                "Policy contains assume role actions - this is a TRUST POLICY. "
+                "Use --policy-type TRUST_POLICY for proper validation (suppresses missing Resource warnings, "
+                "enables trust-specific validation)"
+            )
+            suggestion_msg = "iam-validator validate --path <file> --policy-type TRUST_POLICY"
+        else:
+            hint_msg = "Policy contains Principal element - this suggests it's a RESOURCE POLICY. Use --policy-type RESOURCE_POLICY"
+            suggestion_msg = "iam-validator validate --path <file> --policy-type RESOURCE_POLICY"
+
         issues.append(
             ValidationIssue(
                 severity="info",
                 issue_type="policy_type_hint",
-                message="Policy contains Principal element - this suggests it's a resource policy. "
-                "Use --policy-type RESOURCE_POLICY for proper validation.",
+                message=hint_msg,
                 statement_index=0,
                 statement_sid=None,
                 line_number=None,
-                suggestion="If this is a resource policy (S3 bucket policy, SNS topic policy, etc.), "
-                "run validation with: iam-validator validate --path <file> --policy-type RESOURCE_POLICY",
+                suggestion=suggestion_msg,
             )
         )
         # Don't run further checks if we're just hinting
         return issues
 
-    # Resource policies MUST have Principal
-    if policy_type == "RESOURCE_POLICY":
+    # Resource policies and Trust policies MUST have Principal
+    if policy_type in ("RESOURCE_POLICY", "TRUST_POLICY"):
         for idx, statement in enumerate(policy.statement):
             has_principal = statement.principal is not None or statement.not_principal is not None
 
@@ -63,13 +79,13 @@ async def execute_policy(
                     ValidationIssue(
                         severity="error",
                         issue_type="missing_principal",
-                        message="Resource policy statement missing required Principal element. "
+                        message="Resource policy statement missing required `Principal` element. "
                         "Resource-based policies (S3 bucket policies, SNS topic policies, etc.) "
-                        "must include a Principal element to specify who can access the resource.",
+                        "must include a `Principal` element to specify who can access the resource.",
                         statement_index=idx,
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
-                        suggestion="Add a Principal element to specify who can access this resource.\n"
+                        suggestion="Add a `Principal` element to specify who can access this resource.\n"
                         "Example:\n"
                         "```json\n"
                         "{\n"
@@ -94,14 +110,14 @@ async def execute_policy(
                     ValidationIssue(
                         severity="warning",
                         issue_type="unexpected_principal",
-                        message="Identity policy should not contain Principal element. "
+                        message="Identity policy should not contain `Principal` element. "
                         "Identity-based policies (attached to IAM users, groups, or roles) "
-                        "do not need a Principal element because the principal is implicit "
+                        "do not need a `Principal` element because the principal is implicit "
                         "(the entity the policy is attached to).",
                         statement_index=idx,
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
-                        suggestion="Remove the Principal element from this identity policy statement.\n"
+                        suggestion="Remove the `Principal` element from this identity policy statement.\n"
                         "Example:\n"
                         "```json\n"
                         "{\n"
@@ -123,13 +139,13 @@ async def execute_policy(
                     ValidationIssue(
                         severity="error",
                         issue_type="invalid_principal",
-                        message="Service Control Policy must not contain Principal element. "
+                        message="Service Control Policy must not contain `Principal` element. "
                         "Service Control Policies (SCPs) in AWS Organizations do not support "
-                        "the Principal element. They apply to all principals in the organization or OU.",
+                        "the `Principal` element. They apply to all principals in the organization or OU.",
                         statement_index=idx,
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
-                        suggestion="Remove the Principal element from this SCP statement.\n"
+                        suggestion="Remove the `Principal` element from this SCP statement.\n"
                         "Example:\n"
                         "```json\n"
                         "{\n"
@@ -177,7 +193,7 @@ async def execute_policy(
                     ValidationIssue(
                         severity="error",
                         issue_type="invalid_rcp_not_principal",
-                        message="Resource Control Policy must not contain NotPrincipal element. "
+                        message="Resource Control Policy must not contain `NotPrincipal` element. "
                         "RCPs only support Principal with value '*'. Use Condition elements "
                         "to restrict specific principals.",
                         statement_index=idx,
@@ -192,13 +208,13 @@ async def execute_policy(
                     ValidationIssue(
                         severity="error",
                         issue_type="missing_rcp_principal",
-                        message="Resource Control Policy statement must have Principal: '*'. "
-                        "RCPs require the Principal element with value '*'. Use Condition "
+                        message="Resource Control Policy statement must have `Principal`: '*'. "
+                        "RCPs require the `Principal` element with value '*'. Use `Condition` "
                         "elements to restrict specific principals.",
                         statement_index=idx,
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
-                        suggestion='Add Principal: "*" to this RCP statement.',
+                        suggestion='Add `Principal: "*"` to this RCP statement.',
                     )
                 )
             elif statement.principal != "*":
@@ -209,13 +225,13 @@ async def execute_policy(
                         ValidationIssue(
                             severity="error",
                             issue_type="invalid_rcp_principal",
-                            message="Resource Control Policy Principal must be '*'. "
-                            f"Found: {statement.principal}. RCPs can only specify '*' in the "
-                            "Principal element. Use Condition elements to restrict specific principals.",
+                            message=f'Resource Control Policy `Principal` must be `"*"`. '
+                            f'Found: `{statement.principal}`. RCPs can only specify `"*"` in the '
+                            "`Principal` element. Use `Condition` elements to restrict specific principals.",
                             statement_index=idx,
                             statement_sid=statement.sid,
                             line_number=statement.line_number,
-                            suggestion='Change Principal to "*" and use Condition elements to restrict access.',
+                            suggestion='Change `Principal` to `"*"` and use `Condition` elements to restrict access.',
                         )
                     )
 
@@ -234,13 +250,13 @@ async def execute_policy(
                                 ValidationIssue(
                                     severity="error",
                                     issue_type="invalid_rcp_wildcard_action",
-                                    message="Resource Control Policy must not use '*' alone in Action element. "
-                                    "Customer-managed RCPs cannot use '*' as the action wildcard. "
-                                    "Use service-specific wildcards like 's3:*' instead.",
+                                    message="Resource Control Policy must not use `*` alone in `Action` element. "
+                                    "Customer-managed RCPs cannot use `*` as the action wildcard. "
+                                    "Use service-specific wildcards like `s3:*` instead.",
                                     statement_index=idx,
                                     statement_sid=statement.sid,
                                     line_number=statement.line_number,
-                                    suggestion="Replace '*' with service-specific actions from supported "
+                                    suggestion="Replace `*` with service-specific actions from supported "
                                     f"services: {', '.join(sorted(rcp_supported_services))}",
                                 )
                             )
@@ -275,12 +291,12 @@ async def execute_policy(
                     ValidationIssue(
                         severity="error",
                         issue_type="invalid_rcp_not_action",
-                        message="Resource Control Policy must not contain NotAction element. "
-                        "RCPs do not support NotAction. Use Action element instead.",
+                        message="Resource Control Policy must not contain `NotAction` element. "
+                        "RCPs do not support `NotAction`. Use `Action` element instead.",
                         statement_index=idx,
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
-                        suggestion="Replace NotAction with Action element listing the specific "
+                        suggestion="Replace `NotAction` with `Action` element listing the specific "
                         "actions to deny.",
                     )
                 )
@@ -294,11 +310,11 @@ async def execute_policy(
                     ValidationIssue(
                         severity="error",
                         issue_type="missing_rcp_resource",
-                        message="Resource Control Policy statement must have Resource or NotResource element.",
+                        message="Resource Control Policy statement must have `Resource` or `NotResource` element.",
                         statement_index=idx,
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
-                        suggestion='Add Resource: "*" or specify specific resource ARNs.',
+                        suggestion='Add `Resource: "*"` or specify specific resource ARNs.',
                     )
                 )
 

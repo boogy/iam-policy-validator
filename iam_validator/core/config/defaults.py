@@ -22,7 +22,6 @@ from iam_validator.core.config.condition_requirements import CONDITION_REQUIREME
 from iam_validator.core.config.principal_requirements import (
     get_default_principal_requirements,
 )
-from iam_validator.core.config.service_principals import DEFAULT_SERVICE_PRINCIPALS
 from iam_validator.core.config.wildcards import (
     DEFAULT_ALLOWED_WILDCARDS,
     DEFAULT_SERVICE_WILDCARDS,
@@ -195,61 +194,68 @@ DEFAULT_CONFIG = {
     # 9. PRINCIPAL VALIDATION
     # ========================================================================
     # Validates Principal elements in resource-based policies
-    # (S3 buckets, SNS topics, SQS queues, etc.)
-    # Only runs when --policy-type RESOURCE_POLICY is specified
+    # Applies to: S3 buckets, SNS topics, SQS queues, Lambda functions, etc.
+    # Only runs when: --policy-type RESOURCE_POLICY
     #
-    # See: iam_validator/core/config/service_principals.py for defaults
+    # Three control mechanisms:
+    #   1. blocked_principals - Block specific principals (deny list)
+    #   2. allowed_principals - Allow only specific principals (whitelist mode)
+    #   3. principal_condition_requirements - Require conditions for principals
+    #   4. allowed_service_principals - Always allow AWS service principals
     "principal_validation": {
         "enabled": True,
         "severity": "high",  # Security issue, not IAM validity error
         "description": "Validates Principal elements in resource policies for security best practices",
-        # blocked_principals: Principals that should NEVER be allowed (deny list)
-        # Default: ["*"] blocks public access to everyone
-        # Examples:
-        #   ["*"]  - Block public access
-        #   ["*", "arn:aws:iam::*:root"]  - Block public + all AWS accounts
+        # blocked_principals: Deny list - these principals are never allowed
+        # Default: ["*"] blocks public access
         "blocked_principals": ["*"],
-        # allowed_principals: When set, ONLY these principals are allowed (whitelist mode)
-        # Leave empty to allow all except blocked principals
-        # Examples:
-        #   []  - Allow all (except blocked)
-        #   ["arn:aws:iam::123456789012:root"]  - Only allow specific account
-        #   ["arn:aws:iam::*:role/OrgAccessRole"]  - Allow specific role in any account
+        # allowed_principals: Whitelist mode - when set, ONLY these are allowed
+        # Default: [] allows all (except blocked)
         "allowed_principals": [],
-        # require_conditions_for: Principals that MUST have specific IAM conditions
-        # Format: {principal_pattern: [required_condition_keys]}
-        # Default: Public access (*) must specify source to limit scope
-        # Examples:
-        #   "*": ["aws:SourceArn"]  - Public access must specify source ARN
-        #   "arn:aws:iam::*:root": ["aws:PrincipalOrgID"]  - Cross-account must be from org
-        "require_conditions_for": {
-            "*": [
-                "aws:SourceArn",
-                "aws:SourceAccount",
-                "aws:SourceVpce",
-                "aws:SourceIp",
-                "aws:SourceOrgID",
-                "aws:SourceOrgPaths",
-            ],
-        },
-        # principal_condition_requirements: Advanced condition requirements for principals
-        # Similar to action_condition_enforcement but for principals
-        # Supports all_of/any_of/none_of logic with rich metadata
-        # Default: 2 critical requirements enabled (public_access, prevent_insecure_transport)
+        # principal_condition_requirements: Require conditions for specific principals
+        # Supports all_of/any_of/none_of logic like action_condition_enforcement
+        # Default: 2 enabled (public_access, prevent_insecure_transport)
         # See: iam_validator/core/config/principal_requirements.py
-        # To customize requirements, use Python API:
-        #   from iam_validator.core.config import get_principal_requirements_by_names
-        #   requirements = get_principal_requirements_by_names(['public_access', 'cross_account_org'])
-        # To disable: set to empty list []
         "principal_condition_requirements": get_default_principal_requirements(),
-        # allowed_service_principals: AWS service principals that are always allowed
-        # Default: 16 common AWS services (cloudfront, s3, lambda, logs, etc.)
-        # These are typically safe as AWS services need access to resources
-        # See: iam_validator/core/config/service_principals.py
-        "allowed_service_principals": list(DEFAULT_SERVICE_PRINCIPALS),
+        # allowed_service_principals: AWS service principals (*.amazonaws.com)
+        # Default: ["aws:*"] allows ALL AWS service principals
+        # Note: "aws:*" is different from "*" (public access)
+        "allowed_service_principals": ["aws:*"],
     },
     # ========================================================================
-    # 10. POLICY TYPE VALIDATION
+    # 10. TRUST POLICY VALIDATION
+    # ========================================================================
+    # Validate trust policies (role assumption policies) for security best practices
+    # Ensures assume role actions have appropriate principals and conditions
+    #
+    # Key validations:
+    #   - Action-Principal type matching (e.g., AssumeRoleWithSAML needs Federated)
+    #   - Provider ARN format validation (SAML vs OIDC provider patterns)
+    #   - Required conditions per assume method
+    #
+    # Complements principal_validation check (which validates principal allowlists/blocklists)
+    # This check focuses on action-principal coupling specific to trust policies
+    #
+    # Auto-detection: Only runs on statements with assume role actions
+    "trust_policy_validation": {
+        "enabled": True,  # Enabled by default (auto-detects trust policies)
+        "severity": "high",  # Security issue
+        "description": "Validates trust policies for role assumption security and action-principal coupling",
+        # validation_rules: Custom rules override defaults
+        # Default rules validate:
+        #   - sts:AssumeRole → AWS or Service principals
+        #   - sts:AssumeRoleWithSAML → Federated (SAML provider) with SAML:aud
+        #   - sts:AssumeRoleWithWebIdentity → Federated (OIDC provider)
+        # Example custom rules:
+        # "validation_rules": {
+        #     "sts:AssumeRole": {
+        #         "allowed_principal_types": ["AWS"],  # Only AWS, not Service
+        #         "required_conditions": ["sts:ExternalId"],  # Always require ExternalId
+        #     }
+        # }
+    },
+    # ========================================================================
+    # 11. POLICY TYPE VALIDATION
     # ========================================================================
     # Validate policy type requirements (new in v1.3.0)
     # Ensures policies conform to the declared type (IDENTITY vs RESOURCE_POLICY)
@@ -264,7 +270,7 @@ DEFAULT_CONFIG = {
         "description": "Validates policies match declared type and enforces RCP requirements",
     },
     # ========================================================================
-    # 11. ACTION-RESOURCE MATCHING
+    # 12. ACTION-RESOURCE MATCHING
     # ========================================================================
     # Validate action-resource matching
     # Ensures resources match the required resource types for actions
@@ -304,7 +310,7 @@ DEFAULT_CONFIG = {
     # See: iam_validator/core/config/sensitive_actions.py for sensitive actions
     # ========================================================================
     # ========================================================================
-    # 12. WILDCARD ACTION
+    # 13. WILDCARD ACTION
     # ========================================================================
     # Check for wildcard actions (Action: "*")
     # Flags statements that allow all actions
@@ -323,7 +329,7 @@ DEFAULT_CONFIG = {
         ),
     },
     # ========================================================================
-    # 13. WILDCARD RESOURCE
+    # 14. WILDCARD RESOURCE
     # ========================================================================
     # Check for wildcard resources (Resource: "*")
     # Flags statements that apply to all resources
@@ -350,7 +356,7 @@ DEFAULT_CONFIG = {
         ),
     },
     # ========================================================================
-    # 14. FULL WILDCARD (CRITICAL)
+    # 15. FULL WILDCARD (CRITICAL)
     # ========================================================================
     # Check for BOTH Action: "*" AND Resource: "*" (CRITICAL)
     # This grants full administrative access (AdministratorAccess equivalent)
@@ -374,7 +380,7 @@ DEFAULT_CONFIG = {
         ),
     },
     # ========================================================================
-    # 15. SERVICE WILDCARD
+    # 16. SERVICE WILDCARD
     # ========================================================================
     # Check for service-level wildcards (e.g., "iam:*", "s3:*", "ec2:*")
     # These grant ALL permissions for a service (often too permissive)
@@ -404,7 +410,7 @@ DEFAULT_CONFIG = {
         ),
     },
     # ========================================================================
-    # 16. SENSITIVE ACTION
+    # 17. SENSITIVE ACTION
     # ========================================================================
     # Check for sensitive actions without IAM conditions
     # Sensitive actions: IAM changes, secrets access, destructive operations
@@ -479,7 +485,7 @@ DEFAULT_CONFIG = {
         ],
     },
     # ========================================================================
-    # 17. ACTION CONDITION ENFORCEMENT
+    # 18. ACTION CONDITION ENFORCEMENT
     # ========================================================================
     # Enforce specific IAM condition requirements for actions
     # Examples: iam:PassRole must specify iam:PassedToService,
