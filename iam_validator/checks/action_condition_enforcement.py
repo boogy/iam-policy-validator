@@ -859,15 +859,36 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         suggestions.append("Add at least ONE of these conditions:")
 
         for i, cond in enumerate(any_of_conditions, 1):
-            condition_key = cond.get("condition_key", "unknown")
-            description = cond.get("description", "")
-            expected_value = cond.get("expected_value")
+            # Handle nested all_of blocks
+            if "all_of" in cond:
+                # Nested all_of - show all required conditions together
+                all_of_list = cond["all_of"]
+                condition_keys = [c.get("condition_key", "unknown") for c in all_of_list]
+                condition_keys_formatted = " + ".join(f"`{k}`" for k in condition_keys)
 
-            option = f"\n- **Option {i}**: `{condition_key}`"
-            if description:
-                option += f" - {description}"
-            if expected_value is not None:
-                option += f" (value: `{expected_value}`)"
+                option = f"\n- **Option {i}**: {condition_keys_formatted} (both required)"
+
+                # Use description from first condition or combine them
+                descriptions = [c.get("description", "") for c in all_of_list if c.get("description")]
+                if descriptions:
+                    option += f" - {descriptions[0]}"
+
+                # Show example from first condition that has one
+                for c in all_of_list:
+                    if c.get("example"):
+                        # Example will be shown separately, just note it's available
+                        break
+            else:
+                # Simple condition (original behavior)
+                condition_key = cond.get("condition_key", "unknown")
+                description = cond.get("description", "")
+                expected_value = cond.get("expected_value")
+
+                option = f"\n- **Option {i}**: `{condition_key}`"
+                if description:
+                    option += f" - {description}"
+                if expected_value is not None:
+                    option += f" (value: `{expected_value}`)"
 
             suggestions.append(option)
 
