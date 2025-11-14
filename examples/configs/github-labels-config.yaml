@@ -1,0 +1,116 @@
+# ============================================================================
+# IAM Policy Validator - GitHub PR Labels Configuration
+# ============================================================================
+# This configuration demonstrates automatic GitHub PR label management based
+# on validation severity findings.
+#
+# When validation finds issues with configured severities, it automatically
+# applies the corresponding labels to the PR. When those issues are fixed,
+# the labels are removed. This helps reviewers quickly understand the status
+# of the PR without reading through all the validation comments.
+# ============================================================================
+
+settings:
+  # Define which severities should cause the build to fail
+  fail_on_severity:
+    - error      # IAM validity errors (invalid actions, malformed ARNs, etc.)
+    - critical   # Critical security risks (e.g., full wildcard policies)
+    - high       # High severity security issues
+
+  # Map severity levels to GitHub PR labels
+  # When validation finds issues with these severities, it will:
+  #   1. Apply the corresponding label(s) to the PR
+  #   2. Remove the label(s) if no issues with that severity exist
+  #
+  # Supports both single labels and lists of labels per severity:
+  #   - Single: error: "iam-validity-error"
+  #   - Multiple: error: ["iam-validity-error", "needs-fix"]
+  #
+  # This provides visual feedback to reviewers about the PR status:
+  #   - Labels present = issues need to be fixed
+  #   - Labels removed = issues resolved, ready for review
+  severity_labels:
+    error: "iam-validity-error"      # Applied when IAM validity errors found
+    critical: "security-critical"    # Applied when critical security issues found
+    high: "security-high"            # Applied when high severity issues found
+
+    # Example with multiple labels per severity:
+    # error: ["iam-validity-error", "needs-fix"]
+    # critical: ["security-critical", "needs-security-review", "high-priority"]
+    # high: ["security-high", "needs-review"]
+
+# ============================================================================
+# Example GitHub Actions Workflow
+# ============================================================================
+# To use this feature in GitHub Actions:
+#
+# name: Validate IAM Policies
+#
+# on:
+#   pull_request:
+#     paths:
+#       - 'policies/**/*.json'
+#
+# permissions:
+#   contents: read
+#   pull-requests: write    # Required for labels
+#   issues: write          # Required for labels
+#
+# jobs:
+#   validate:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#
+#       - name: Validate IAM Policies
+#         env:
+#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#           GITHUB_REPOSITORY: ${{ github.repository }}
+#           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+#         run: |
+#           pip install iam-policy-validator
+#           iam-validator validate \
+#             --path ./policies/ \
+#             --config examples/configs/github-labels-config.yaml \
+#             --github-comment \
+#             --github-review
+# ============================================================================
+
+# ============================================================================
+# Label Behavior Examples
+# ============================================================================
+# Scenario 1: Initial validation finds issues
+#   - Policy has invalid action (severity: error)
+#   - Policy has wildcard resource (severity: high)
+#   → Labels applied: "iam-validity-error", "security-high"
+#   → Reviewer sees: This PR needs fixes before review
+#
+# Scenario 2: Developer fixes the invalid action
+#   - Only wildcard resource remains (severity: high)
+#   → Labels applied: "security-high"
+#   → Labels removed: "iam-validity-error"
+#   → Reviewer sees: IAM validity is good, but security issue remains
+#
+# Scenario 3: Developer fixes all issues
+#   - No issues found
+#   → All labels removed
+#   → Reviewer sees: Clean PR, ready for final review
+# ============================================================================
+
+# ============================================================================
+# Additional Configuration
+# ============================================================================
+# You can customize individual checks below. For a comprehensive list of
+# all available checks and options, see:
+#   - examples/configs/full-reference-config.yaml
+#   - examples/configs/basic-config.yaml
+#   - examples/configs/strict-security.yaml
+# ============================================================================
+
+# Example: Disable specific checks
+# wildcard_resource:
+#   enabled: false
+
+# Example: Adjust severity levels
+# service_wildcard:
+#   severity: medium  # Default is "high"

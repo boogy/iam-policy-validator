@@ -75,6 +75,16 @@ DEFAULT_CONFIG = {
         # IAM Validity: error, warning, info
         # Security: critical, high, medium, low
         "fail_on_severity": list(constants.HIGH_SEVERITY_LEVELS),
+        # GitHub PR label mapping based on severity findings
+        # When issues with these severities are found, apply the corresponding labels
+        # If no issues with these severities exist, remove the labels if present
+        # Supports both single labels and lists of labels per severity
+        # Examples:
+        #   Single label per severity: {"error": "iam-validity-error", "critical": "security-critical"}
+        #   Multiple labels per severity: {"error": ["iam-error", "needs-fix"], "critical": ["security-critical", "needs-review"]}
+        #   Mixed: {"error": "iam-validity-error", "critical": ["security-critical", "needs-review"]}
+        # Default: {} (disabled)
+        "severity_labels": {},
     },
     # ========================================================================
     # AWS IAM Validation Checks (17 checks total)

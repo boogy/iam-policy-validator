@@ -13,7 +13,9 @@ from iam_validator.core.constants import (
     REVIEW_IDENTIFIER,
     SUMMARY_IDENTIFIER,
 )
+from iam_validator.core.label_manager import LabelManager
 from iam_validator.core.models import ValidationIssue, ValidationReport
+from iam_validator.core.report import ReportGenerator
 from iam_validator.integrations.github_integration import GitHubIntegration, ReviewEvent
 
 logger = logging.getLogger(__name__)
@@ -32,6 +34,7 @@ class PRCommenter:
         github: GitHubIntegration | None = None,
         cleanup_old_comments: bool = True,
         fail_on_severities: list[str] | None = None,
+        severity_labels: dict[str, str | list[str]] | None = None,
     ):
         """Initialize PR commenter.
 
@@ -40,16 +43,24 @@ class PRCommenter:
             cleanup_old_comments: Whether to clean up old bot comments before posting new ones
             fail_on_severities: List of severity levels that should trigger REQUEST_CHANGES
                                (e.g., ["error", "critical", "high"])
+            severity_labels: Mapping of severity levels to label name(s) for automatic label management
+                           Supports both single labels and lists of labels per severity.
+                           Examples:
+                             - Single: {"error": "iam-validity-error", "critical": "security-critical"}
+                             - Multiple: {"error": ["iam-error", "needs-fix"], "critical": ["security-critical", "needs-review"]}
+                             - Mixed: {"error": "iam-validity-error", "critical": ["security-critical", "needs-review"]}
         """
         self.github = github
         self.cleanup_old_comments = cleanup_old_comments
         self.fail_on_severities = fail_on_severities or ["error", "critical"]
+        self.severity_labels = severity_labels or {}
 
     async def post_findings_to_pr(
         self,
         report: ValidationReport,
         create_review: bool = True,
         add_summary_comment: bool = True,
+        manage_labels: bool = True,
     ) -> bool:
         """Post validation findings to a PR.
 
@@ -57,6 +68,7 @@ class PRCommenter:
             report: Validation report with findings
             create_review: Whether to create a PR review with line comments
             add_summary_comment: Whether to add a summary comment
+            manage_labels: Whether to manage PR labels based on severity findings
 
         Returns:
             True if successful, False otherwise
@@ -81,8 +93,6 @@ class PRCommenter:
 
         # Post summary comment (potentially as multiple parts)
         if add_summary_comment:
-            from iam_validator.core.report import ReportGenerator
-
             generator = ReportGenerator()
             comment_parts = generator.generate_github_comment_parts(report)
 
@@ -103,6 +113,18 @@ class PRCommenter:
             if not await self._post_review_comments(report):
                 logger.error("Failed to post review comments")
                 success = False
+
+        # Manage PR labels based on severity findings
+        if manage_labels and self.severity_labels:
+            label_manager = LabelManager(self.github, self.severity_labels)
+            label_success, added, removed = await label_manager.manage_labels_from_report(report)
+
+            if not label_success:
+                logger.error("Failed to manage PR labels")
+                success = False
+            else:
+                if added > 0 or removed > 0:
+                    logger.info(f"Label management: added {added}, removed {removed}")
 
         return success
 
@@ -288,7 +310,7 @@ class PRCommenter:
 
             return mapping
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning(f"Could not parse {policy_file} for line mapping: {e}")
             return {}
 
@@ -369,7 +391,7 @@ class PRCommenter:
 
             return None
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.debug(f"Could not search {policy_file}: {e}")
             return None
 
@@ -398,15 +420,20 @@ async def post_report_to_pr(
 
         report = ValidationReport.model_validate(report_data)
 
-        # Load config to get fail_on_severity setting
+        # Load config to get fail_on_severity and severity_labels settings
         from iam_validator.core.config.config_loader import ConfigLoader
 
         config = ConfigLoader.load_config(config_path)
         fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+        severity_labels = config.get_setting("severity_labels", {})
 
         # Post to PR
         async with GitHubIntegration() as github:
-            commenter = PRCommenter(github, fail_on_severities=fail_on_severities)
+            commenter = PRCommenter(
+                github,
+                fail_on_severities=fail_on_severities,
+                severity_labels=severity_labels,
+            )
             return await commenter.post_findings_to_pr(
                 report,
                 create_review=create_review,
@@ -419,6 +446,6 @@ async def post_report_to_pr(
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in report file: {e}")
         return False
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error(f"Failed to post report to PR: {e}")
         return False
