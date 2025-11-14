@@ -154,6 +154,45 @@ settings:
     # - medium  # Uncomment to fail on medium severity
     # - warning  # Uncomment to fail on IAM validity warnings
 
+  # GitHub PR label mapping based on severity findings
+  # When issues with these severities are found, apply the corresponding labels to the PR
+  # If no issues with these severities exist, remove the labels if present
+  # This helps signal to reviewers if the PR is ready for final review
+  #
+  # Supports both single labels and lists of labels per severity:
+  #
+  # Single label per severity:
+  #   severity_labels:
+  #     error: "iam-validity-error"
+  #     critical: "security-critical"
+  #
+  # Multiple labels per severity:
+  #   severity_labels:
+  #     error: ["iam-error", "needs-fix"]
+  #     critical: ["security-critical", "needs-security-review"]
+  #
+  # Mixed (some single, some multiple):
+  #   severity_labels:
+  #     error: "iam-validity-error"
+  #     critical: ["security-critical", "needs-security-review"]
+  #
+  # Example use cases:
+  #   - Apply multiple labels for better categorization
+  #   - Apply "needs-security-review" when critical/high issues are found
+  #   - Apply "needs-fix" for any validation errors
+  #   - Remove all labels when issues are fixed
+  #
+  # Note: Requires GitHub integration (--github-comment or --github-review flags)
+  # Default: [] (empty list = disabled)
+  severity_labels:
+    error: "iam-validity-error"
+    critical: "iam-security-critical"
+    high: "iam-security-high"
+    # medium: "security-medium"  # Uncomment to label medium severity issues
+    # Multiple labels example:
+    # error: ["iam-validity-error", "needs-fix"]
+    # critical: ["security-critical", "needs-security-review"]
+
   # Template Variable Support (applies to all ARN validation checks)
   #
   # When enabled, the validator is POSITION-AWARE and supports ANY variable name

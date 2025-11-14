@@ -302,12 +302,17 @@ Examples:
             from iam_validator.core.config.config_loader import ConfigLoader
             from iam_validator.core.pr_commenter import PRCommenter
 
-            # Load config to get fail_on_severity setting
+            # Load config to get fail_on_severity and severity_labels settings
             config = ConfigLoader.load_config(config_path)
             fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+            severity_labels = config.get_setting("severity_labels", {})
 
             async with GitHubIntegration() as github:
-                commenter = PRCommenter(github, fail_on_severities=fail_on_severities)
+                commenter = PRCommenter(
+                    github,
+                    fail_on_severities=fail_on_severities,
+                    severity_labels=severity_labels,
+                )
                 success = await commenter.post_findings_to_pr(
                     report,
                     create_review=getattr(args, "github_review", False),
@@ -426,12 +431,17 @@ Examples:
             from iam_validator.core.config.config_loader import ConfigLoader
             from iam_validator.core.pr_commenter import PRCommenter
 
-            # Load config to get fail_on_severity setting
+            # Load config to get fail_on_severity and severity_labels settings
             config = ConfigLoader.load_config(config_path)
             fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+            severity_labels = config.get_setting("severity_labels", {})
 
             async with GitHubIntegration() as github:
-                commenter = PRCommenter(github, fail_on_severities=fail_on_severities)
+                commenter = PRCommenter(
+                    github,
+                    fail_on_severities=fail_on_severities,
+                    severity_labels=severity_labels,
+                )
                 success = await commenter.post_findings_to_pr(
                     report,
                     create_review=False,  # Already posted per-file reviews in streaming mode
