@@ -31,7 +31,7 @@ class ServiceInfo(BaseModel):
 class ActionDetail(BaseModel):
     """Details about an AWS IAM action."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
 
     name: str = Field(alias="Name")
     action_condition_keys: list[str] | None = Field(
@@ -45,7 +45,7 @@ class ActionDetail(BaseModel):
 class ResourceType(BaseModel):
     """Details about an AWS resource type."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
 
     name: str = Field(alias="Name")
     arn_formats: list[str] | None = Field(default=None, alias="ARNFormats")
@@ -68,7 +68,7 @@ class ResourceType(BaseModel):
 class ConditionKey(BaseModel):
     """Details about an AWS condition key."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
 
     name: str = Field(alias="Name")
     description: str | None = Field(default=None, alias="Description")
@@ -78,7 +78,7 @@ class ConditionKey(BaseModel):
 class ServiceDetail(BaseModel):
     """Detailed information about an AWS service."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
 
     name: str = Field(alias="Name")
     prefix: str | None = None  # Not always present in API response
@@ -106,7 +106,7 @@ class ServiceDetail(BaseModel):
 class Statement(BaseModel):
     """IAM policy statement."""
 
-    model_config = ConfigDict(populate_by_name=True, extra="allow")
+    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True, extra="allow")
 
     sid: str | None = Field(default=None, alias="Sid")
     effect: str | None = Field(default=None, alias="Effect")
@@ -136,7 +136,7 @@ class Statement(BaseModel):
 class IAMPolicy(BaseModel):
     """IAM policy document."""
 
-    model_config = ConfigDict(populate_by_name=True, extra="allow")
+    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True, extra="allow")
 
     version: str | None = Field(default=None, alias="Version")
     statement: list[Statement] | None = Field(default=None, alias="Statement")

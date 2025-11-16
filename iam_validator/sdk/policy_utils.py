@@ -63,9 +63,13 @@ def normalize_policy(policy: IAMPolicy) -> IAMPolicy:
     """
     # Pydantic model already handles this via Field(alias="Statement")
     # which expects a list, but we can ensure it's always a list
-    statements: list[Statement] = (
-        policy.statement if isinstance(policy.statement, list) else [policy.statement]
-    )
+    if policy.statement is None:
+        statements: list[Statement] = []
+    elif isinstance(policy.statement, list):
+        statements = policy.statement
+    else:
+        # Single statement - wrap in list
+        statements = [policy.statement]
 
     # Normalize actions and resources in each statement
     normalized_statements: list[Statement] = []
@@ -118,6 +122,9 @@ def extract_actions(policy: IAMPolicy) -> list[str]:
     """
     actions = set()
 
+    if policy.statement is None:
+        return []
+
     for stmt in policy.statement:
         # Handle Action field
         if stmt.action:
@@ -150,6 +157,9 @@ def extract_resources(policy: IAMPolicy) -> list[str]:
     """
     resources = set()
 
+    if policy.statement is None:
+        return []
+
     for stmt in policy.statement:
         # Handle Resource field
         if stmt.resource:
@@ -181,7 +191,10 @@ def extract_condition_keys(policy: IAMPolicy) -> list[str]:
         >>> keys = extract_condition_keys(policy)
         >>> print(f"Policy uses condition keys: {', '.join(keys)}")
     """
-    condition_keys = set()
+    condition_keys: set[str] = set()
+
+    if policy.statement is None:
+        return []
 
     for stmt in policy.statement:
         if stmt.condition:
@@ -216,6 +229,9 @@ def find_statements_with_action(policy: IAMPolicy, action: str) -> list[Statemen
 
     matching_statements = []
 
+    if policy.statement is None:
+        return []
+
     for stmt in policy.statement:
         stmt_actions = stmt.get_actions()
 
@@ -249,6 +265,9 @@ def find_statements_with_resource(policy: IAMPolicy, resource: str) -> list[Stat
     import fnmatch
 
     matching_statements = []
+
+    if policy.statement is None:
+        return []
 
     for stmt in policy.statement:
         stmt_resources = stmt.get_resources()
@@ -286,7 +305,8 @@ def merge_policies(*policies: IAMPolicy) -> IAMPolicy:
 
     all_statements: list[Statement] = []
     for policy in policies:
-        all_statements.extend(policy.statement)
+        if policy.statement is not None:
+            all_statements.extend(policy.statement)
 
     # Use capitalized field names (aliases) for Pydantic model construction
     return IAMPolicy(
@@ -318,8 +338,9 @@ def get_policy_summary(policy: IAMPolicy) -> dict[str, Any]:
     condition_keys = extract_condition_keys(policy)
 
     # Count allow vs deny statements
-    allow_count = sum(1 for s in policy.statement if s.effect.lower() == "allow")
-    deny_count = sum(1 for s in policy.statement if s.effect.lower() == "deny")
+    statements = policy.statement or []
+    allow_count = sum(1 for s in statements if s.effect and s.effect.lower() == "allow")
+    deny_count = sum(1 for s in statements if s.effect and s.effect.lower() == "deny")
 
     # Check for wildcards
     has_wildcard_actions = any("*" in action for action in actions)
@@ -327,7 +348,7 @@ def get_policy_summary(policy: IAMPolicy) -> dict[str, Any]:
 
     return {
         "version": policy.version,
-        "statement_count": len(policy.statement),
+        "statement_count": len(statements),
         "allow_statements": allow_count,
         "deny_statements": deny_count,
         "action_count": len(actions),
@@ -396,6 +417,8 @@ def is_resource_policy(policy: IAMPolicy) -> bool:
         >>> if is_resource_policy(policy):
         ...     print("This is an S3 bucket policy or similar")
     """
+    if policy.statement is None:
+        return False
     return any(stmt.principal is not None for stmt in policy.statement)
 
 
@@ -414,6 +437,9 @@ def has_public_access(policy: IAMPolicy) -> bool:
         >>> if has_public_access(policy):
         ...     print("WARNING: This policy allows public access!")
     """
+    if policy.statement is None:
+        return False
+
     for stmt in policy.statement:
         if stmt.principal == "*":
             return True
