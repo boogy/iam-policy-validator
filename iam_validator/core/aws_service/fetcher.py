@@ -233,8 +233,16 @@ class AWSServiceFetcher:
             await self._cache.set(services_cache_key, loaded_services)
             return loaded_services
 
-        # Not in parsed cache, fetch the raw data from API
-        data = await self._client.fetch(self.BASE_URL)
+        # Not in parsed cache, check disk cache then fetch from API
+        data = await self._cache.get(
+            f"raw:{self.BASE_URL}", url=self.BASE_URL, base_url=self.BASE_URL
+        )
+        if data is None:
+            data = await self._client.fetch(self.BASE_URL)
+            # Cache the raw data
+            await self._cache.set(
+                f"raw:{self.BASE_URL}", data, url=self.BASE_URL, base_url=self.BASE_URL
+            )
 
         if not isinstance(data, list):
             raise ValueError("Expected list of services from root endpoint")
@@ -247,7 +255,7 @@ class AWSServiceFetcher:
                 if service and url:
                     services.append(ServiceInfo(service=str(service), url=str(url)))
 
-        # Cache the parsed services list (memory only - raw JSON already cached by client)
+        # Cache the parsed services list (memory only)
         await self._cache.set(services_cache_key, services)
 
         # Log only on first fetch (when parsed cache was empty)
@@ -312,13 +320,22 @@ class AWSServiceFetcher:
 
         for service in services:
             if service.service.lower() == service_name_lower:
-                # Fetch service detail from API
-                data = await self._client.fetch(service.url)
+                # Check disk cache first, then fetch from API
+                data = await self._cache.get(
+                    f"raw:{service.url}", url=service.url, base_url=self.BASE_URL
+                )
+                if data is None:
+                    # Fetch service detail from API
+                    data = await self._client.fetch(service.url)
+                    # Cache the raw data
+                    await self._cache.set(
+                        f"raw:{service.url}", data, url=service.url, base_url=self.BASE_URL
+                    )
 
                 # Validate and parse
                 service_detail = ServiceDetail.model_validate(data)
 
-                # Cache with service name as key (memory only - raw JSON already cached by client)
+                # Cache with service name as key (memory only)
                 await self._cache.set(cache_key, service_detail)
 
                 return service_detail
@@ -550,7 +567,7 @@ class AWSServiceFetcher:
         if action_pattern in ("*", "*:*"):
             return ["*"]
 
-        service_prefix, action_name = self._parser.parse_action(action_pattern)
+        service_prefix, _ = self._parser.parse_action(action_pattern)
         service_detail = await self.fetch_service_by_name(service_prefix)
         available = list(service_detail.actions.keys())
         return self._parser.expand_wildcard_to_actions(action_pattern, available, service_prefix)

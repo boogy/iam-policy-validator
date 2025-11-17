@@ -199,7 +199,7 @@ def extract_condition_keys(policy: IAMPolicy) -> list[str]:
     for stmt in policy.statement:
         if stmt.condition:
             # Condition format: {"StringEquals": {"aws:username": "johndoe"}}
-            for operator, key_values in stmt.condition.items():
+            for _, key_values in stmt.condition.items():
                 if isinstance(key_values, dict):
                     condition_keys.update(key_values.keys())
 
@@ -225,7 +225,7 @@ def find_statements_with_action(policy: IAMPolicy, action: str) -> list[Statemen
         >>> for stmt in stmts:
         ...     print(f"Statement {stmt.sid} allows s3:GetObject")
     """
-    import fnmatch
+    import fnmatch  # pylint: disable=import-outside-toplevel
 
     matching_statements = []
 
@@ -262,7 +262,7 @@ def find_statements_with_resource(policy: IAMPolicy, resource: str) -> list[Stat
         >>> stmts = find_statements_with_resource(policy, "arn:aws:s3:::my-bucket/*")
         >>> print(f"Found {len(stmts)} statements with this resource")
     """
-    import fnmatch
+    import fnmatch  # pylint: disable=import-outside-toplevel
 
     matching_statements = []
 
