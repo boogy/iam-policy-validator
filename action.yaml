@@ -140,7 +140,7 @@ runs:
     - name: Set up Python
       uses: actions/setup-python@cfd55ca82492758d853442341ad4d8010466803a # v6.0.0
       with:
-        python-version: "3.12"
+        python-version-file: "${{ github.action_path }}/.python-version"
 
     - name: Install uv
       uses: astral-sh/setup-uv@5a7eac68fb9809dea845d802897dc5c723910fa3 # v7.0.0
@@ -179,12 +179,31 @@ runs:
         restore-keys: |
           aws-services-${{ runner.os }}-
 
-    - name: Check cache status
+    # Github actions cache is immutable - once saved with a key, it cannot be updated
+    # Attempting to save with an existing key will silently do nothing
+    # This is why we need to update the file modification times to prevent unnecessary re-downloads for long running PRs
+    # https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#about-the-cache
+    - name: Check cache status and update timestamps
       run: |
         if [ -d ~/.cache/iam-validator/aws_services ]; then
           echo "✅ Cache directory exists"
-          echo "📁 Cache files: $(ls -1 ~/.cache/iam-validator/aws_services | wc -l)"
-          ls -lh ~/.cache/iam-validator/aws_services | head -5
+          FILE_COUNT=$(ls -1 ~/.cache/iam-validator/aws_services 2>/dev/null | wc -l)
+          echo "📁 Cache files: $FILE_COUNT"
+
+          if [ "$FILE_COUNT" -gt 0 ]; then
+            echo "📋 Sample of cached files:"
+            ls -lh ~/.cache/iam-validator/aws_services | head -5
+
+            # Update file modification times to prevent re-download due to TTL expiration
+            # GitHub Actions cache preserves original timestamps, which can cause files
+            # to appear expired even though they were just restored from cache
+            if [ "${{ steps.cache-aws-services.outputs.cache-hit }}" == "true" ]; then
+              echo ""
+              echo "🔄 Updating file modification times to prevent unnecessary re-downloads"
+              find ~/.cache/iam-validator/aws_services -type f -name "*.json" -exec touch {} +
+              echo "✅ Updated timestamps for cache hit"
+            fi
+          fi
         else
           echo "❌ Cache directory does not exist - will fetch from API"
         fi
@@ -450,7 +469,10 @@ runs:
       shell: bash
 
     - name: Save AWS service definitions cache
-      if: always()
+      # Only save cache if it was not restored (cache miss)
+      # GitHub Actions cache is immutable - once saved with a key, it cannot be updated
+      # Attempting to save with an existing key will silently do nothing
+      if: steps.cache-aws-services.outputs.cache-hit != 'true'
       uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ~/.cache/iam-validator/aws_services

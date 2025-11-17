@@ -94,9 +94,7 @@ class ServiceValidator:
                 if not allow_wildcards:
                     return False, "Wildcard actions are not allowed", True
 
-                has_matches, matched_actions = self._parser.match_wildcard_action(
-                    action_name, available_actions
-                )
+                has_matches, _ = self._parser.match_wildcard_action(action_name, available_actions)
 
                 if has_matches:
                     # Wildcard is valid and matches at least one action
@@ -161,7 +159,7 @@ class ServiceValidator:
                 get_global_conditions,
             )
 
-            service_prefix, action_name = self._parser.parse_action(action)
+            _, action_name = self._parser.parse_action(action)
 
             # Check if it's a global condition key
             is_global_key = False
@@ -323,7 +321,7 @@ class ServiceValidator:
             >>> resources = validator.get_resources_for_action("s3:GetObject", service)
         """
         try:
-            _, action_name = self._parser.parse_action(action)
+            _, action_name = self._parser.parse_action(action)  # pylint: disable=unused-variable
 
             # Find the action (case-insensitive)
             action_detail = service_detail.actions.get(action_name)
