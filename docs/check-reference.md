@@ -1136,6 +1136,30 @@ wildcard_action:
 
 **Exception:** Allowed if ALL actions are in the allowed_wildcards list (read-only operations).
 
+#### Dual Matching Strategy
+
+The check uses **two complementary matching strategies** for maximum flexibility:
+
+**1. Literal Match (Fast Path - no AWS API calls)**
+- Policy actions match config patterns exactly as strings
+- Example: Policy `"iam:Get*"` matches config `"iam:Get*"` → ✅ PASS
+- Performance benefit: No AWS API expansion needed
+
+**2. Expanded Match (Comprehensive Path - uses AWS API)**
+- Both policy actions and config patterns expand to actual AWS actions
+- Example: Policy `"iam:GetUser"` matches config `"iam:Get*"` (expanded) → ✅ PASS
+- Ensures semantic correctness
+
+**Supported Scenarios:**
+
+| Policy Action           | Config Pattern        | Match Type | Result |
+| ----------------------- | --------------------- | ---------- | ------ |
+| `iam:Get*`              | `iam:Get*`            | Literal    | ✅ Pass |
+| `iam:GetUser`           | `iam:Get*`            | Expanded   | ✅ Pass |
+| `iam:Get*, iam:List*`   | `iam:Get*, iam:List*` | Literal    | ✅ Pass |
+| `iam:Get*, iam:GetUser` | `iam:Get*`            | Literal    | ✅ Pass |
+| `iam:Delete*`           | `iam:Get*`            | None       | ❌ Fail |
+
 #### Configuration
 
 ```yaml
@@ -1143,10 +1167,17 @@ wildcard_resource:
   enabled: true
   severity: medium
   # Actions allowed with Resource: "*" (default from Python module)
+  # Supports BOTH literal matching and pattern expansion
   allowed_wildcards:
-    - "ec2:Describe*"
-    - "s3:List*"
-    - "iam:Get*"
+    # Wildcard patterns - match both literally and expanded
+    - "ec2:Describe*"    # Matches: ec2:Describe* OR ec2:DescribeInstances
+    - "s3:List*"         # Matches: s3:List* OR s3:ListBucket
+    - "iam:Get*"         # Matches: iam:Get* OR iam:GetUser
+
+    # Specific actions - match only via expansion
+    - "iam:GetUser"      # Matches: iam:GetUser only
+    - "s3:ListBucket"    # Matches: s3:ListBucket only
+
     # ... 25 patterns by default
 ```
 
@@ -1165,16 +1196,31 @@ wildcard_resource:
 **Issue:** `Statement applies to all resources (*)`
 **Severity:** `medium`
 
-✅ **PASS: Wildcard with allowed read-only actions**
+✅ **PASS: Wildcard actions with literal match (fast path)**
 ```json
 {
   "Statement": [{
     "Effect": "Allow",
-    "Action": ["ec2:DescribeInstances", "ec2:DescribeVolumes"],  // All allowed
-    "Resource": "*"  // OK for describe actions
+    "Action": ["iam:Get*", "iam:List*"],  // Wildcard actions
+    "Resource": "*"  // OK - matches config literally
   }]
 }
 ```
+**Config:** `allowed_wildcards: ["iam:Get*", "iam:List*"]`
+**Match:** Literal string match (no AWS API call needed)
+
+✅ **PASS: Specific actions with expanded match**
+```json
+{
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["ec2:DescribeInstances", "ec2:DescribeVolumes"],  // Specific actions
+    "Resource": "*"  // OK - all match when config expands
+  }]
+}
+```
+**Config:** `allowed_wildcards: ["ec2:Describe*"]`
+**Match:** Config expands to include these specific actions
 
 ✅ **PASS: Specific resource**
 ```json
@@ -1187,15 +1233,7 @@ wildcard_resource:
 }
 ```
 
-**Customize allowed wildcards:**
-```yaml
-wildcard_resource:
-  allowed_wildcards:
-    - "cloudwatch:Describe*"
-    - "cloudwatch:Get*"
-    - "cloudwatch:List*"
-    # Only these patterns allowed with Resource: "*"
-```
+**Performance Tip:** Use exact patterns in both policy and config for fastest validation (literal match path).
 
 ---
 

@@ -344,13 +344,41 @@ DEFAULT_CONFIG = {
     # Check for wildcard resources (Resource: "*")
     # Flags statements that apply to all resources
     # Exception: Allowed if ALL actions are in allowed_wildcards list
+    #
+    # DUAL MATCHING STRATEGY:
+    # The check uses two complementary matching strategies for maximum flexibility:
+    #
+    # 1. LITERAL MATCH (Fast Path - no AWS API calls):
+    #    Policy actions match config patterns exactly as strings
+    #    Example: Policy "iam:Get*" matches config "iam:Get*" → PASS
+    #
+    # 2. EXPANDED MATCH (Comprehensive Path - uses AWS API):
+    #    Both policy actions and config patterns expand to actual AWS actions
+    #    Example: Policy "iam:GetUser" matches config "iam:Get*" (expanded) → PASS
+    #
+    # SUPPORTED SCENARIOS:
+    #   Policy Action         Config Pattern        Match Type   Result
+    #   iam:Get*              iam:Get*              Literal      ✅ Pass
+    #   iam:GetUser           iam:Get*              Expanded     ✅ Pass
+    #   iam:Get*, iam:List*   iam:Get*, iam:List*   Literal      ✅ Pass
+    #   iam:Get*, iam:GetUser iam:Get*              Literal      ✅ Pass
+    #   iam:Delete*           iam:Get*              None         ❌ Fail
+    #
+    # PERFORMANCE TIP: Literal matching is faster (no AWS API expansion)
     "wildcard_resource": {
         "enabled": True,
         "severity": "medium",  # Security issue
         "description": "Checks for wildcard resources (*)",
         # Allowed wildcard patterns for actions that can be used with Resource: "*"
+        # Supports BOTH literal matching and pattern expansion via AWS API
+        #
         # Default: 25 read-only patterns (Describe*, List*, Get*)
         # See: iam_validator/core/config/wildcards.py
+        #
+        # Examples:
+        #   ["ec2:Describe*"]  # Matches: ec2:Describe* (literal) OR ec2:DescribeInstances (expanded)
+        #   ["iam:GetUser"]    # Matches: iam:GetUser only
+        #   ["s3:List*"]       # Matches: s3:List* (literal) OR s3:ListBucket (expanded)
         "allowed_wildcards": list(DEFAULT_ALLOWED_WILDCARDS),
         "message": "Statement applies to all resources (*)",
         "suggestion": "Replace wildcard with specific resource ARNs",
