@@ -347,3 +347,138 @@ class TestWildcardResourceCheck:
 
         # ARN with wildcard pattern is not the same as Resource: "*"
         assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_wildcard_actions_in_policy_with_allowed_wildcards(self, check, fetcher):
+        """Test that wildcard actions in policy match against allowed_wildcards config.
+
+        This is a regression test for the bug where policy actions like "iam:Get*"
+        were not being expanded before comparison with the expanded allowed_wildcards list.
+
+        Config: allowed_wildcards: ["iam:Get*", "iam:List*"]
+        Policy: Action: ["iam:Get*", "iam:List*"], Resource: "*"
+        Expected: No issues (wildcards should be allowed)
+        """
+        config = CheckConfig(
+            check_id="wildcard_resource",
+            enabled=True,
+            config={"allowed_wildcards": ["iam:Get*", "iam:List*"]},
+        )
+
+        statement = Statement(
+            Sid="GeneralReadOnly",
+            Effect="Allow",
+            Action=["iam:Get*", "iam:List*"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Both wildcard actions should be allowed because they match the allowed patterns
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_wildcard_actions_partial_match_with_allowed_wildcards(self, check, fetcher):
+        """Test that only partially matching wildcard actions are flagged.
+
+        Config: allowed_wildcards: ["iam:Get*"]
+        Policy: Action: ["iam:Get*", "iam:Delete*"], Resource: "*"
+        Expected: Issue flagged (iam:Delete* is not in allowed list)
+        """
+        config = CheckConfig(
+            check_id="wildcard_resource",
+            enabled=True,
+            config={"allowed_wildcards": ["iam:Get*"]},
+        )
+
+        statement = Statement(
+            Effect="Allow",
+            Action=["iam:Get*", "iam:Delete*"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # iam:Delete* doesn't match iam:Get*, so should be flagged
+        assert len(issues) == 1
+
+    @pytest.mark.asyncio
+    async def test_literal_match_without_expansion(self, check, fetcher):
+        """Test literal pattern matching (fast path) without AWS API expansion.
+
+        When policy actions exactly match config patterns (literal string match),
+        the check should pass without needing to expand via AWS API.
+
+        Config: allowed_wildcards: ["iam:Get*"]
+        Policy: Action: ["iam:Get*"], Resource: "*"
+        Expected: No issues (literal match: "iam:Get*" == "iam:Get*")
+        """
+        config = CheckConfig(
+            check_id="wildcard_resource",
+            enabled=True,
+            config={"allowed_wildcards": ["iam:Get*"]},
+        )
+
+        statement = Statement(
+            Effect="Allow",
+            Action=["iam:Get*"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should pass via literal match (fast path)
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_specific_action_with_wildcard_config_expansion(self, check, fetcher):
+        """Test specific actions matched against wildcard config (expansion path).
+
+        When policy has specific actions and config has wildcards, the config
+        should expand to match the specific actions.
+
+        Config: allowed_wildcards: ["iam:Get*"] -> expands to ["iam:GetUser", "iam:GetRole", ...]
+        Policy: Action: ["iam:GetUser"], Resource: "*"
+        Expected: No issues (iam:GetUser is in expanded list)
+        """
+        config = CheckConfig(
+            check_id="wildcard_resource",
+            enabled=True,
+            config={"allowed_wildcards": ["iam:Get*"]},
+        )
+
+        statement = Statement(
+            Effect="Allow",
+            Action=["iam:GetUser"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should pass via expansion match
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_mixed_literal_and_expanded_match(self, check, fetcher):
+        """Test mix of literal and expanded actions.
+
+        Policy: Action: ["iam:Get*", "iam:GetUser"], Resource: "*"
+        Config: allowed_wildcards: ["iam:Get*"]
+        Expected: No issues (iam:Get* matches literally, iam:GetUser matches via expansion)
+        """
+        config = CheckConfig(
+            check_id="wildcard_resource",
+            enabled=True,
+            config={"allowed_wildcards": ["iam:Get*"]},
+        )
+
+        statement = Statement(
+            Effect="Allow",
+            Action=["iam:Get*", "iam:GetUser"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should pass: iam:Get* matches literally, triggers fast path
+        assert len(issues) == 0

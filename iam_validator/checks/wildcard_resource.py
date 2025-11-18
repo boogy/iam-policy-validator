@@ -39,21 +39,43 @@ class WildcardResourceCheck(PolicyCheck):
             # to all matching AWS actions using the AWS API, then checking if the policy's
             # actions are in that expanded list. This ensures only validated AWS actions
             # are allowed with Resource: "*".
+            allowed_wildcards_config = config.config.get("allowed_wildcards", [])
             allowed_wildcards_expanded = await self._get_expanded_allowed_wildcards(config, fetcher)
 
             # Check if ALL actions (excluding full wildcard "*") are in the expanded list
             non_wildcard_actions = [a for a in actions if a != "*"]
 
-            if allowed_wildcards_expanded and non_wildcard_actions:
-                # Check if all actions are in the expanded allowed list (exact match)
-                all_actions_allowed = all(
-                    action in allowed_wildcards_expanded for action in non_wildcard_actions
+            if (allowed_wildcards_config or allowed_wildcards_expanded) and non_wildcard_actions:
+                # Strategy 1: Check literal pattern match (fast path)
+                # If policy action matches config pattern literally, allow it
+                # Example: Policy has "iam:Get*", config has "iam:Get*" -> match
+                all_actions_allowed_literal = all(
+                    action in allowed_wildcards_config for action in non_wildcard_actions
                 )
 
-                # If all actions are in the expanded list, skip the wildcard resource warning
-                if all_actions_allowed:
-                    # All actions are safe, Resource: "*" is acceptable
+                if all_actions_allowed_literal:
+                    # All actions match literally, Resource: "*" is acceptable
                     return issues
+
+                # Strategy 2: Check expanded pattern match (comprehensive path)
+                # Expand both policy actions and config patterns, then compare
+                # Example: Policy has "iam:Get*" -> ["iam:GetUser", ...],
+                #          config has "iam:Get*" -> ["iam:GetUser", ...] -> all match
+                if allowed_wildcards_expanded:
+                    expanded_statement_actions = await expand_wildcard_actions(
+                        non_wildcard_actions, fetcher
+                    )
+
+                    # Check if all expanded actions are in the expanded allowed list (exact match)
+                    all_actions_allowed_expanded = all(
+                        action in allowed_wildcards_expanded
+                        for action in expanded_statement_actions
+                    )
+
+                    # If all actions are in the expanded list, skip the wildcard resource warning
+                    if all_actions_allowed_expanded:
+                        # All actions are safe, Resource: "*" is acceptable
+                        return issues
 
             # Flag the issue if actions are not all allowed or no allowed_wildcards configured
             message = config.config.get(
