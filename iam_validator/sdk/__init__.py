@@ -23,6 +23,14 @@ Quick Start:
     >>> summary = get_policy_summary(policy)
     >>> print(f"Actions: {summary['action_count']}")
 
+    Query AWS service definitions:
+    >>> from iam_validator.sdk import AWSServiceFetcher, query_actions, query_arn_formats
+    >>> async with AWSServiceFetcher() as fetcher:
+    ...     # Query all S3 write actions
+    ...     write_actions = await query_actions(fetcher, "s3", access_level="write")
+    ...     # Get ARN formats for S3
+    ...     arns = await query_arn_formats(fetcher, "s3")
+
     Custom check development:
     >>> from iam_validator.sdk import PolicyCheck, CheckHelper
     >>> class MyCheck(PolicyCheck):
@@ -108,6 +116,20 @@ from iam_validator.sdk.policy_utils import (
     policy_to_dict,
     policy_to_json,
 )
+
+# === Query utilities (AWS service definition queries) ===
+from iam_validator.sdk.query_utils import (
+    get_actions_by_access_level,
+    get_actions_supporting_condition,
+    get_wildcard_only_actions,
+    query_action_details,
+    query_actions,
+    query_arn_format,
+    query_arn_formats,
+    query_arn_types,
+    query_condition_key,
+    query_condition_keys,
+)
 from iam_validator.sdk.shortcuts import (
     count_issues_by_severity,
     get_issues,
@@ -143,6 +165,17 @@ __all__ = [
     "policy_to_dict",
     "is_resource_policy",
     "has_public_access",
+    # === Query utilities ===
+    "query_actions",
+    "query_action_details",
+    "query_arn_formats",
+    "query_arn_types",
+    "query_arn_format",
+    "query_condition_keys",
+    "query_condition_key",
+    "get_actions_by_access_level",
+    "get_wildcard_only_actions",
+    "get_actions_supporting_condition",
     # === ARN utilities ===
     "arn_matches",
     "arn_strictly_valid",

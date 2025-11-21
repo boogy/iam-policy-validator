@@ -521,6 +521,82 @@ DEFAULT_CONFIG = {
         "ignore_patterns": [
             {"action_matches": "^iam:PassRole$"},
         ],
+        # Cross-statement privilege escalation patterns (policy-wide detection)
+        # These patterns detect dangerous action combinations across ANY statements in the policy
+        # Uses all_of logic: ALL actions must exist somewhere in the policy
+        "sensitive_actions": [
+            # User privilege escalation: Create user + attach admin policy
+            {
+                "all_of": ["iam:CreateUser", "iam:AttachUserPolicy"],
+                "severity": "critical",
+                "message": "Policy grants {actions} across statements - enables privilege escalation. {statements}",
+                "suggestion": (
+                    "This combination allows an attacker to:\n"
+                    "1. Create a new IAM user\n"
+                    "2. Attach AdministratorAccess policy to that user\n"
+                    "3. Escalate to full account access\n\n"
+                    "Mitigation options:\n"
+                    "• Remove both of these permissions\n"
+                    "• Add strict IAM conditions (MFA, IP restrictions, force a specific policy with `iam:PolicyARN` condition)\n"
+                ),
+            },
+            # Role privilege escalation: Create role + attach admin policy
+            {
+                "all_of": ["iam:CreateRole", "iam:AttachRolePolicy"],
+                "severity": "high",
+                "message": "Policy grants {actions} across statements - enables privilege escalation. {statements}",
+                "suggestion": (
+                    "This combination allows creating privileged roles with admin policies.\n\n"
+                    "Mitigation options:\n"
+                    "• Remove both of these permissions\n"
+                    "• Add strict IAM conditions with a Permissions Boundary and ABAC Tagging, force a specific policy with `iam:PolicyARN` condition\n"
+                ),
+            },
+            # Lambda backdoor: Create/update function + invoke
+            {
+                "all_of": ["lambda:CreateFunction", "lambda:InvokeFunction"],
+                "severity": "medium",
+                "message": "Policy grants {actions} across statements - enables code execution. {statements}",
+                "suggestion": (
+                    "This combination allows an attacker to:\n"
+                    "1. Create a Lambda function with malicious code\n"
+                    "2. Execute the function to perform operations with the Lambda's role\n\n"
+                    "Mitigation options:\n"
+                    "• Restrict Lambda creation to specific function names/paths\n"
+                    "• Require resource tags on functions and tag-based invocation controls\n"
+                    "• Require MFA for Lambda function creation\n"
+                    "• Use separate policies for creation vs invocation"
+                ),
+            },
+            # Lambda code modification backdoor
+            {
+                "all_of": ["lambda:UpdateFunctionCode", "lambda:InvokeFunction"],
+                "severity": "medium",
+                "message": "Policy grants {actions} across statements - enables code injection. {statements}",
+                "suggestion": (
+                    "This combination allows modifying existing Lambda functions and executing them.\n\n"
+                    "Mitigation options:\n"
+                    "• Use resource-based policies to restrict which functions can be modified\n"
+                    "• Require MFA for code updates\n"
+                    "• Use separate policies for code updates vs invocation\n"
+                    "• Implement code signing for Lambda functions"
+                ),
+            },
+            # EC2 instance privilege escalation
+            {
+                "all_of": ["ec2:RunInstances", "iam:PassRole"],
+                "severity": "high",
+                "message": "Policy grants {actions} across statements - enables privilege escalation via instance profile. {statements}",
+                "suggestion": (
+                    "This combination allows launching EC2 instances with privileged roles.\n\n"
+                    "Mitigation options:\n"
+                    "• Add iam:PassedToService condition requiring ec2.amazonaws.com\n"
+                    "• Restrict instance creation to specific AMIs or instance types\n"
+                    "• Limit PassRole to specific low-privilege roles\n"
+                    "• Require tagging and ABAC controls"
+                ),
+            },
+        ],
     },
     # ========================================================================
     # 18. ACTION CONDITION ENFORCEMENT
@@ -533,7 +609,7 @@ DEFAULT_CONFIG = {
     # Available requirements:
     #   Default (enabled):
     #     - iam_pass_role: Requires iam:PassedToService
-    #     - s3_org_id: Requires organization ID for S3 writes
+    #     - s3_org_boundary: Prevents S3 data exfiltration (reads + writes)
     #     - source_ip_restrictions: Restricts to corporate IPs
     #     - s3_secure_transport: Prevents insecure transport
     #     - prevent_public_ip: Prevents 0.0.0.0/0 IP ranges
@@ -543,10 +619,10 @@ DEFAULT_CONFIG = {
         "enabled": True,
         "severity": "high",  # Default severity (can be overridden per-requirement)
         "description": "Enforces conditions (MFA, IP, tags, etc.) for specific actions at both statement and policy level",
-        # STATEMENT-LEVEL: Load 5 requirements from Python module
-        # Deep copy to prevent mutation of the originals
-        # These check individual statements independently
-        "action_condition_requirements": __import__("copy").deepcopy(CONDITION_REQUIREMENTS),
+        # CRITICAL: This key is used by sensitive_action check for filtering
+        # It must be named "requirements" (not "action_condition_requirements")
+        # to enable automatic deduplication of warnings
+        "requirements": __import__("copy").deepcopy(CONDITION_REQUIREMENTS),
         # POLICY-LEVEL: Scan entire policy and enforce conditions across ALL matching statements
         # Example: "If ANY statement grants iam:CreateUser, then ALL such statements must have MFA"
         # Default: Empty list (opt-in feature)
@@ -571,6 +647,6 @@ def get_default_config() -> dict:
     Returns:
         A deep copy of the default configuration dictionary
     """
-    import copy
+    import copy  # pylint: disable=import-outside-toplevel
 
     return copy.deepcopy(DEFAULT_CONFIG)

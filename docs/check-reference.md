@@ -1498,13 +1498,13 @@ wildcard_action:
       action: "s3:.*"
       resource: ".*-tfstate.*"
 
-    # NEW: List of actions (any match = ignore)
+    # List of actions (any match = ignore)
     - action:
         - "^iam:PassRole$"
         - "^iam:CreateUser$"
         - "^iam:AttachUserPolicy$"
 
-    # NEW: List with regex patterns
+    # List with regex patterns
     - action:
         - "^s3:.*"        # All S3 actions
         - "^iam:Get.*"    # All IAM Get actions
@@ -1518,7 +1518,7 @@ wildcard_action:
 - `sid`: Match statement SID (exact or regex) - aliases: `statement_sid`
 - `condition_key`: Match condition key (regex) - aliases: `condition_key_matches`
 
-**List Support (New - works for ALL fields):**
+**List Support (Works for ALL fields):**
 Every field now supports lists of patterns for more concise configuration:
 - Single string: `action: "^s3:.*"` (matches any S3 action)
 - List: `action: ["^s3:GetObject$", "^s3:PutObject$"]` (matches either action)

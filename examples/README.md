@@ -7,12 +7,14 @@ This directory contains examples, configurations, and templates for using the IA
 ```
 examples/
 ├── access-analyzer/       # AWS Access Analyzer integration examples
-├── configs/               # Configuration file examples (9+ essential configs)
-├── custom_checks/         # Custom policy check examples
+├── configs/               # Configuration file examples (6 essential configs)
+├── custom_checks/         # Custom policy check examples (8 checks)
 ├── github-actions/        # GitHub Actions workflow examples
 ├── iam-test-policies/     # Test IAM policies (invalid/problematic cases)
-├── library-usage/         # Python library usage examples
+├── library-usage/         # Python library usage examples (5 examples)
+├── quick-start/           # Quick start example policies
 ├── trust-policies/        # Trust policy examples (role assumption)
+├── query-examples.sh      # Query command examples
 └── README.md              # This file
 ```
 
@@ -33,7 +35,7 @@ Validate entire directory (both JSON and YAML files):
 ```bash
 iam-validator validate \
   --path examples/iam-test-policies/ \
-  --config examples/configs/strict-security.yaml
+  --config examples/configs/minimal-validation-config.yaml
 ```
 
 ### GitHub Actions Integration
@@ -48,23 +50,32 @@ See [custom_checks/README.md](custom_checks/README.md) for creating custom valid
 
 ### 1. Configuration Files (`configs/`)
 
-Nine+ essential configurations covering common use cases:
+Six focused configurations covering essential use cases:
 
-- **`basic-config.yaml`** - Minimal configuration with defaults
+- **`minimal-validation-config.yaml`** ⭐ **START HERE** - Minimal configuration with defaults
   - Good starting point for most users
   - All checks enabled with standard settings
   - Fails on errors and critical issues
-
-- **`offline-validation.yaml`** - For environments without internet access
-  - Uses local AWS service definitions
-  - No API calls required
-  - Perfect for CI/CD pipelines and air-gapped environments
 
 - **`strict-security.yaml`** - Enterprise-grade security enforcement
   - Fails on medium+ severity issues
   - Minimal wildcard allowlist
   - Strict condition requirements for sensitive actions
-  - Elevated severity levels
+
+- **`offline-validation.yaml`** - For environments without internet access
+  - Uses local AWS service definitions via `aws_services_dir`
+  - No API calls required
+  - Perfect for CI/CD pipelines and air-gapped environments
+
+- **`full-reference-config.yaml`** - Complete configuration reference
+  - Shows all available options with inline documentation
+  - Use as a template for custom configurations
+
+- **`github-labels-config.yaml`** - GitHub PR label management
+  - Automatic label assignment based on severity findings
+
+- **`policy-level-condition-enforcement-config.yaml`** - Advanced condition enforcement
+  - Policy-level condition checks across all statements
 
 ### 2. Test IAM Policies (`iam-test-policies/`)
 
@@ -191,7 +202,7 @@ Use standard checks for most cases:
 ```bash
 iam-validator validate \
   --path ./policies/ \
-  --config examples/configs/basic-config.yaml
+  --config examples/configs/minimal-validation-config.yaml
 ```
 
 ### Custom Business Rules

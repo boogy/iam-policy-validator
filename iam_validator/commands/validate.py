@@ -187,15 +187,15 @@ Examples:
         )
 
         parser.add_argument(
-            "--no-summary",
+            "--summary",
             action="store_true",
-            help="Hide Executive Summary section in enhanced format output",
+            help="Show Executive Summary section in enhanced format output",
         )
 
         parser.add_argument(
-            "--no-severity-breakdown",
+            "--severity-breakdown",
             action="store_true",
-            help="Hide Issue Severity Breakdown section in enhanced format output",
+            help="Show Issue Severity Breakdown section in enhanced format output",
         )
 
     async def execute(self, args: argparse.Namespace) -> int:
@@ -285,9 +285,9 @@ Examples:
             # Pass options for enhanced format
             format_options = {}
             if args.format == "enhanced":
-                format_options["show_summary"] = not getattr(args, "no_summary", False)
-                format_options["show_severity_breakdown"] = not getattr(
-                    args, "no_severity_breakdown", False
+                format_options["show_summary"] = getattr(args, "summary", False)
+                format_options["show_severity_breakdown"] = getattr(
+                    args, "severity_breakdown", False
                 )
             output_content = generator.format_report(report, args.format, **format_options)
             if args.output:
@@ -351,7 +351,7 @@ Examples:
 
         # Clean up old review comments at the start (before posting any new ones)
         if getattr(args, "github_review", False):
-            await self._cleanup_old_comments()
+            await self._cleanup_old_comments(args)
 
         logging.info(f"Starting streaming validation from {len(args.paths)} path(s)")
 
@@ -414,9 +414,9 @@ Examples:
             # Pass options for enhanced format
             format_options = {}
             if args.format == "enhanced":
-                format_options["show_summary"] = not getattr(args, "no_summary", False)
-                format_options["show_severity_breakdown"] = not getattr(
-                    args, "no_severity_breakdown", False
+                format_options["show_summary"] = getattr(args, "summary", False)
+                format_options["show_severity_breakdown"] = getattr(
+                    args, "severity_breakdown", False
                 )
             output_content = generator.format_report(report, args.format, **format_options)
             if args.output:
@@ -460,24 +460,19 @@ Examples:
         else:
             return 0 if report.invalid_policies == 0 else 1
 
-    async def _cleanup_old_comments(self) -> None:
+    async def _cleanup_old_comments(self, args: argparse.Namespace) -> None:
         """Clean up old bot review comments from previous validation runs.
 
-        This ensures the PR stays clean without duplicate/stale comments.
+        Note: This method is kept for backward compatibility but cleanup is now handled
+        automatically by update_or_create_review_comments(). It will update existing
+        comments, create new ones, and delete resolved ones smartly.
+
+        Args:
+            args: Command-line arguments (kept for compatibility)
         """
-        try:
-            from iam_validator.core.pr_commenter import PRCommenter
-
-            async with GitHubIntegration() as github:
-                if not github.is_configured():
-                    return
-
-                logging.info("Cleaning up old review comments from previous runs...")
-                deleted = await github.cleanup_bot_review_comments(PRCommenter.REVIEW_IDENTIFIER)
-                if deleted > 0:
-                    logging.info(f"Removed {deleted} old comment(s)")
-        except Exception as e:
-            logging.warning(f"Failed to cleanup old comments: {e}")
+        # Cleanup is now handled automatically by update_or_create_review_comments()
+        # No action needed here
+        logging.debug("Comment cleanup will be handled automatically during review posting")
 
     async def _post_file_review(self, result, args: argparse.Namespace) -> None:
         """Post review comments for a single file immediately.

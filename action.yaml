@@ -103,6 +103,11 @@ inputs:
     required: false
     default: ""
 
+  aws-services-dir:
+    description: "Path to directory containing pre-downloaded AWS service definitions for offline mode (relative to repository root). Use 'iam-validator download-services' to create this directory. When specified, disables automatic caching and API calls."
+    required: false
+    default: ""
+
   log-level:
     description: "Logging level (debug, info, warning, error, critical)"
     required: false
@@ -197,11 +202,16 @@ runs:
             # Update file modification times to prevent re-download due to TTL expiration
             # GitHub Actions cache preserves original timestamps, which can cause files
             # to appear expired even though they were just restored from cache
+            # Always update timestamps if files exist, regardless of exact cache hit
+            echo ""
+            echo "🔄 Updating file modification times to prevent unnecessary re-downloads"
+            find ~/.cache/iam-validator/aws_services -type f -name "*.json" -exec touch {} +
+            echo "✅ Updated timestamps for all cached files"
+
             if [ "${{ steps.cache-aws-services.outputs.cache-hit }}" == "true" ]; then
-              echo ""
-              echo "🔄 Updating file modification times to prevent unnecessary re-downloads"
-              find ~/.cache/iam-validator/aws_services -type f -name "*.json" -exec touch {} +
-              echo "✅ Updated timestamps for cache hit"
+              echo "✅ Exact cache key match"
+            else
+              echo "ℹ️  Cache restored from previous week using restore-keys fallback"
             fi
           fi
         else
@@ -373,10 +383,14 @@ runs:
           ARGS="$ARGS --fail-on-warnings"
         fi
 
+        # Add policy-type flag (works for both validate and analyze commands)
+        if [ -n "${{ inputs.policy-type }}" ]; then
+          ARGS="$ARGS --policy-type ${{ inputs.policy-type }}"
+        fi
+
         # Add Access Analyzer specific options
         if [ "${{ inputs.use-access-analyzer }}" = "true" ]; then
           ARGS="$ARGS --region ${{ inputs.access-analyzer-region }}"
-          ARGS="$ARGS --policy-type ${{ inputs.policy-type }}"
 
           if [ "${{ inputs.run-all-checks }}" = "true" ]; then
             ARGS="$ARGS --run-all-checks"
@@ -421,6 +435,11 @@ runs:
         # Add custom-checks-dir if specified
         if [ -n "${{ inputs.custom-checks-dir }}" ]; then
           ARGS="$ARGS --custom-checks-dir ${{ github.workspace }}/${{ inputs.custom-checks-dir }}"
+        fi
+
+        # Add aws-services-dir if specified (for offline mode)
+        if [ -n "${{ inputs.aws-services-dir }}" ]; then
+          ARGS="$ARGS --aws-services-dir ${{ github.workspace }}/${{ inputs.aws-services-dir }}"
         fi
 
         echo "Running: uv run iam-validator $ARGS"
@@ -472,7 +491,8 @@ runs:
       # Only save cache if it was not restored (cache miss)
       # GitHub Actions cache is immutable - once saved with a key, it cannot be updated
       # Attempting to save with an existing key will silently do nothing
-      if: steps.cache-aws-services.outputs.cache-hit != 'true'
+      # Use always() to ensure cache is saved even if validation fails
+      if: always() && steps.cache-aws-services.outputs.cache-hit != 'true'
       uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ~/.cache/iam-validator/aws_services

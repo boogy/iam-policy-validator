@@ -37,6 +37,26 @@ DEFAULT_CATEGORY_SUGGESTIONS: Final[dict[str, dict[str, Any]]] = {
             '  "Bool": {"aws:MultiFactorAuthPresent": "true"}\n'
             "}"
         ),
+        "action_overrides": {
+            "iam:CreateAccessKey": {
+                "suggestion": (
+                    "This action creates long-term credentials that can be compromised. Restrict creation to authorized roles:\n"
+                    "• Require MFA (`aws:MultiFactorAuthPresent` = `true`) - CRITICAL\n"
+                    "• Limit to specific principal tags (`aws:PrincipalTag/role` = `security-admin`)\n"
+                    "• Restrict to corporate networks (`aws:SourceIp`)\n"
+                    "• Consider requiring approval tags (`aws:RequestTag/approved-by`)"
+                ),
+                "example": (
+                    '"Condition": {\n'
+                    '  "StringEquals": {\n'
+                    '    "aws:PrincipalTag/role": "security-admin"\n'
+                    "  },\n"
+                    '  "Bool": {"aws:MultiFactorAuthPresent": "true"},\n'
+                    '  "IpAddress": {"aws:SourceIp": ["10.0.0.0/8"]}\n'
+                    "}"
+                ),
+            },
+        },
     },
     "data_access": {
         "suggestion": (
@@ -90,6 +110,63 @@ DEFAULT_CATEGORY_SUGGESTIONS: Final[dict[str, dict[str, Any]]] = {
             "  }\n"
             "}"
         ),
+        "action_overrides": {
+            "s3:DeleteObject": {
+                "suggestion": (
+                    "This action permanently deletes S3 objects. Apply strict controls to prevent data loss:\n"
+                    "• Restrict to organization buckets (`aws:ResourceOrgID` = `${aws:PrincipalOrgID}`)\n"
+                    "• Ensure account ownership (`aws:ResourceAccount` = `${aws:PrincipalAccount}`)\n"
+                    "• Require MFA for additional protection (`aws:MultiFactorAuthPresent` = `true`)\n"
+                    "• Consider restricting to specific environments (`aws:ResourceTag/environment` != `production`)"
+                ),
+                "example": (
+                    '"Condition": {\n'
+                    '  "StringEquals": {\n'
+                    '    "aws:ResourceOrgID": "${aws:PrincipalOrgID}",\n'
+                    '    "aws:ResourceAccount": "${aws:PrincipalAccount}"\n'
+                    "  },\n"
+                    '  "Bool": {"aws:MultiFactorAuthPresent": "true"}\n'
+                    "}"
+                ),
+            },
+            "s3:PutBucketPolicy": {
+                "suggestion": (
+                    "This action modifies S3 bucket policies, which can expose data to unauthorized parties. Strictly control policy changes:\n"
+                    "• Require organization ownership (`aws:ResourceOrgID` = `${aws:PrincipalOrgID}`)\n"
+                    "• Ensure account ownership (`aws:ResourceAccount` = `${aws:PrincipalAccount}`)\n"
+                    "• Require MFA (`aws:MultiFactorAuthPresent` = `true`) - CRITICAL\n"
+                    "• Restrict to administrative roles (`aws:PrincipalTag/role` = `security-admin`)"
+                ),
+                "example": (
+                    '"Condition": {\n'
+                    '  "StringEquals": {\n'
+                    '    "aws:ResourceOrgID": "${aws:PrincipalOrgID}",\n'
+                    '    "aws:PrincipalTag/role": "security-admin"\n'
+                    "  },\n"
+                    '  "Bool": {"aws:MultiFactorAuthPresent": "true"}\n'
+                    "}"
+                ),
+            },
+            "ec2:RunInstances": {
+                "suggestion": (
+                    "This action launches EC2 instances, which can incur costs and create security risks. Control instance creation:\n"
+                    "• Require resource tagging (`aws:RequestTag/owner`, `aws:RequestTag/environment`)\n"
+                    "• Restrict instance types (`ec2:InstanceType`)\n"
+                    "• Limit to specific VPCs (`ec2:Vpc`)\n"
+                    "• Enforce encryption (`ec2:Encrypted` = `true`)\n"
+                    "• Match principal tags to resource tags for ownership tracking"
+                ),
+                "example": (
+                    '"Condition": {\n'
+                    '  "StringEquals": {\n'
+                    '    "aws:RequestTag/owner": "${aws:PrincipalTag/owner}",\n'
+                    '    "ec2:Vpc": "vpc-xxxxxxxxx"\n'
+                    "  },\n"
+                    '  "Bool": {"ec2:Encrypted": "true"}\n'
+                    "}"
+                ),
+            },
+        },
     },
 }
 

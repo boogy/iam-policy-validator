@@ -819,24 +819,26 @@ class ReportGenerator:
             issue: The validation issue to format
             policy_file: Optional policy file path (currently unused, kept for compatibility)
         """
-        # Use 1-indexed statement numbers for user-facing output
-        statement_num = issue.statement_index + 1
-
-        # Build statement location reference
-        # Note: We show plain text here instead of links because:
-        # 1. GitHub's diff anchor format only works for files in the PR diff
-        # 2. Inline review comments (posted separately) already provide perfect navigation
-        # 3. Summary comment is for overview, not detailed navigation
-        if issue.line_number:
-            location = f"Statement {statement_num} (Line {issue.line_number})"
-            if issue.statement_sid:
-                location = (
-                    f"`{issue.statement_sid}` (statement {statement_num}, line {issue.line_number})"
-                )
+        # Handle policy-level issues (statement_index = -1)
+        if issue.statement_index == -1:
+            location = "Policy-level"
         else:
-            location = f"Statement {statement_num}"
-            if issue.statement_sid:
-                location = f"`{issue.statement_sid}` (statement {statement_num})"
+            # Use 1-indexed statement numbers for user-facing output
+            statement_num = issue.statement_index + 1
+
+            # Build statement location reference
+            # Note: We show plain text here instead of links because:
+            # 1. GitHub's diff anchor format only works for files in the PR diff
+            # 2. Inline review comments (posted separately) already provide perfect navigation
+            # 3. Summary comment is for overview, not detailed navigation
+            if issue.line_number:
+                location = f"Statement {statement_num} (Line {issue.line_number})"
+                if issue.statement_sid:
+                    location = f"`{issue.statement_sid}` (statement {statement_num}, line {issue.line_number})"
+            else:
+                location = f"Statement {statement_num}"
+                if issue.statement_sid:
+                    location = f"`{issue.statement_sid}` (statement {statement_num})"
 
         parts = []
 

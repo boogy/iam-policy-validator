@@ -13,12 +13,41 @@ from iam_validator.core.constants import (
     REVIEW_IDENTIFIER,
     SUMMARY_IDENTIFIER,
 )
+from iam_validator.core.diff_parser import DiffParser
 from iam_validator.core.label_manager import LabelManager
 from iam_validator.core.models import ValidationIssue, ValidationReport
 from iam_validator.core.report import ReportGenerator
 from iam_validator.integrations.github_integration import GitHubIntegration, ReviewEvent
 
 logger = logging.getLogger(__name__)
+
+
+class ContextIssue:
+    """Represents an issue in a modified statement but on an unchanged line.
+
+    These issues are shown in the summary comment rather than as inline comments,
+    since GitHub only allows comments on lines that appear in the PR diff.
+    """
+
+    def __init__(
+        self,
+        file_path: str,
+        statement_index: int,
+        line_number: int,
+        issue: ValidationIssue,
+    ):
+        """Initialize context issue.
+
+        Args:
+            file_path: Relative path to the file
+            statement_index: Zero-based statement index
+            line_number: Line number where the issue exists
+            issue: The validation issue
+        """
+        self.file_path = file_path
+        self.statement_index = statement_index
+        self.line_number = line_number
+        self.issue = issue
 
 
 class PRCommenter:
@@ -41,6 +70,7 @@ class PRCommenter:
         Args:
             github: GitHubIntegration instance (will create one if None)
             cleanup_old_comments: Whether to clean up old bot comments before posting new ones
+                                 (kept for backward compatibility but now handled automatically)
             fail_on_severities: List of severity levels that should trigger REQUEST_CHANGES
                                (e.g., ["error", "critical", "high"])
             severity_labels: Mapping of severity levels to label name(s) for automatic label management
@@ -54,6 +84,8 @@ class PRCommenter:
         self.cleanup_old_comments = cleanup_old_comments
         self.fail_on_severities = fail_on_severities or ["error", "critical"]
         self.severity_labels = severity_labels or {}
+        # Track issues in modified statements that are on unchanged lines
+        self._context_issues: list[ContextIssue] = []
 
     async def post_findings_to_pr(
         self,
@@ -86,10 +118,15 @@ class PRCommenter:
 
         success = True
 
-        # Clean up old bot comments if enabled
-        if self.cleanup_old_comments and create_review:
-            logger.info("Cleaning up old review comments from previous runs...")
-            await self.github.cleanup_bot_review_comments(self.REVIEW_IDENTIFIER)
+        # Note: Cleanup is now handled smartly by update_or_create_review_comments()
+        # It will update existing comments, create new ones, and delete resolved ones
+
+        # Post line-specific review comments FIRST
+        # (This populates self._context_issues)
+        if create_review:
+            if not await self._post_review_comments(report):
+                logger.error("Failed to post review comments")
+                success = False
 
         # Post summary comment (potentially as multiple parts)
         if add_summary_comment:
@@ -108,12 +145,6 @@ class PRCommenter:
                 else:
                     logger.info("Posted summary comment")
 
-        # Post line-specific review comments
-        if create_review:
-            if not await self._post_review_comments(report):
-                logger.error("Failed to post review comments")
-                success = False
-
         # Manage PR labels based on severity findings
         if manage_labels and self.severity_labels:
             label_manager = LabelManager(self.github, self.severity_labels)
@@ -129,7 +160,11 @@ class PRCommenter:
         return success
 
     async def _post_review_comments(self, report: ValidationReport) -> bool:
-        """Post line-specific review comments.
+        """Post line-specific review comments with strict diff filtering.
+
+        Only posts comments on lines that were actually changed in the PR.
+        Issues in modified statements but on unchanged lines are tracked in
+        self._context_issues for inclusion in the summary comment.
 
         Args:
             report: Validation report
@@ -140,8 +175,25 @@ class PRCommenter:
         if not self.github:
             return False
 
+        # Clear context issues from previous runs
+        self._context_issues = []
+
+        # Fetch PR diff information
+        logger.info("Fetching PR diff information for strict filtering...")
+        pr_files = await self.github.get_pr_files()
+        if not pr_files:
+            logger.warning(
+                "Could not fetch PR diff information. "
+                "Falling back to unfiltered commenting (may fail if lines not in diff)."
+            )
+            parsed_diffs = {}
+        else:
+            parsed_diffs = DiffParser.parse_pr_files(pr_files)
+            logger.info(f"Parsed diffs for {len(parsed_diffs)} file(s)")
+
         # Group issues by file
-        comments_by_file: dict[str, list[dict[str, Any]]] = {}
+        inline_comments: list[dict[str, Any]] = []
+        context_issue_count = 0
 
         for result in report.results:
             if not result.issues:
@@ -155,75 +207,149 @@ class PRCommenter:
                 )
                 continue
 
-            # Try to determine line numbers from the policy file
-            line_mapping = self._get_line_mapping(result.policy_file)
+            # Get diff info for this file
+            diff_info = parsed_diffs.get(relative_path)
+            if not diff_info:
+                logger.debug(
+                    f"{relative_path} not in PR diff or no changes, skipping inline comments"
+                )
+                # Still process issues for summary
+                for issue in result.issues:
+                    if issue.statement_index is not None:
+                        line_num = self._find_issue_line(
+                            issue, result.policy_file, self._get_line_mapping(result.policy_file)
+                        )
+                        if line_num:
+                            self._context_issues.append(
+                                ContextIssue(relative_path, issue.statement_index, line_num, issue)
+                            )
+                            context_issue_count += 1
+                continue
 
+            # Get line mapping and modified statements for this file
+            line_mapping = self._get_line_mapping(result.policy_file)
+            modified_statements = DiffParser.get_modified_statements(
+                line_mapping, diff_info.changed_lines, result.policy_file
+            )
+
+            logger.debug(
+                f"{relative_path}: {len(diff_info.changed_lines)} changed lines, "
+                f"{len(modified_statements)} modified statements"
+            )
+
+            # Process each issue with strict filtering
             for issue in result.issues:
-                # Determine the line number for this issue
                 line_number = self._find_issue_line(issue, result.policy_file, line_mapping)
 
-                if line_number:
-                    comment = {
-                        "path": relative_path,  # Use relative path for GitHub
-                        "line": line_number,
-                        "body": issue.to_pr_comment(),
-                    }
-
-                    if relative_path not in comments_by_file:
-                        comments_by_file[relative_path] = []
-                    comments_by_file[relative_path].append(comment)
-                    logger.debug(
-                        f"Prepared review comment for {relative_path}:{line_number} - {issue.issue_type}"
-                    )
-                else:
+                if not line_number:
                     logger.debug(
                         f"Could not determine line number for issue in {relative_path}: {issue.issue_type}"
                     )
+                    continue
 
-        # If no line-specific comments, skip
-        if not comments_by_file:
-            logger.info("No line-specific comments to post")
-            return True
+                # SPECIAL CASE: Policy-level issues (privilege escalation, etc.)
+                # Post to first available line in diff, preferring line 1 if available
+                if issue.statement_index == -1:
+                    # Try to find the best line to post the comment
+                    comment_line = None
 
-        # Flatten comments list
-        all_comments = []
-        for file_comments in comments_by_file.values():
-            all_comments.extend(file_comments)
+                    if line_number in diff_info.changed_lines:
+                        # Best case: line 1 is in the diff
+                        comment_line = line_number
+                    elif diff_info.changed_lines:
+                        # Fallback: use the first changed line in the file
+                        # This ensures policy-level issues always appear as inline comments
+                        comment_line = min(diff_info.changed_lines)
+                        logger.debug(
+                            f"Policy-level issue at line {line_number}, posting to first changed line {comment_line}"
+                        )
 
+                    if comment_line:
+                        # Post as inline comment at the determined line
+                        inline_comments.append(
+                            {
+                                "path": relative_path,
+                                "line": comment_line,
+                                "body": issue.to_pr_comment(),
+                            }
+                        )
+                        logger.debug(
+                            f"Policy-level inline comment: {relative_path}:{comment_line} - {issue.issue_type}"
+                        )
+                    else:
+                        # No changed lines in file - add to summary comment
+                        self._context_issues.append(
+                            ContextIssue(relative_path, issue.statement_index, line_number, issue)
+                        )
+                        context_issue_count += 1
+                        logger.debug(
+                            f"Policy-level issue (no diff lines): {relative_path} - {issue.issue_type}"
+                        )
+                # STRICT FILTERING: Only comment if line is in the diff
+                elif line_number in diff_info.changed_lines:
+                    # Exact match - post inline comment
+                    inline_comments.append(
+                        {
+                            "path": relative_path,
+                            "line": line_number,
+                            "body": issue.to_pr_comment(),
+                        }
+                    )
+                    logger.debug(
+                        f"Inline comment: {relative_path}:{line_number} - {issue.issue_type}"
+                    )
+                elif issue.statement_index in modified_statements:
+                    # Issue in modified statement but on unchanged line - save for summary
+                    self._context_issues.append(
+                        ContextIssue(relative_path, issue.statement_index, line_number, issue)
+                    )
+                    context_issue_count += 1
+                    logger.debug(
+                        f"Context issue: {relative_path}:{line_number} (statement {issue.statement_index} modified) - {issue.issue_type}"
+                    )
+                else:
+                    # Issue in completely unchanged statement - ignore for inline and summary
+                    logger.debug(
+                        f"Skipped issue in unchanged statement: {relative_path}:{line_number} - {issue.issue_type}"
+                    )
+
+        # Log filtering results
         logger.info(
-            f"Posting {len(all_comments)} review comments across {len(comments_by_file)} file(s)"
+            f"Diff filtering results: {len(inline_comments)} inline comments, "
+            f"{context_issue_count} context issues for summary"
         )
 
-        # Log files that will receive comments (for debugging)
-        for file_path, file_comments in comments_by_file.items():
-            logger.debug(f"  {file_path}: {len(file_comments)} comment(s)")
+        # If no inline comments, skip review creation but still return success
+        if not inline_comments:
+            logger.info("No inline comments to post (after diff filtering)")
+            return True
 
         # Determine review event based on fail_on_severities config
-        # Check if any issue has a severity that should trigger REQUEST_CHANGES
         has_blocking_issues = any(
             issue.severity in self.fail_on_severities
             for result in report.results
             for issue in result.issues
         )
 
-        # Set review event: request changes if any blocking issues, else comment
         event = ReviewEvent.REQUEST_CHANGES if has_blocking_issues else ReviewEvent.COMMENT
-        logger.info(f"Creating PR review with event: {event.value}")
+        logger.info(
+            f"Creating PR review with {len(inline_comments)} comments, event: {event.value}"
+        )
 
-        # Post review with comments (use minimal body since summary comment has the details)
-        # Only include the identifier for cleanup purposes
+        # Post review with smart update-or-create logic
         review_body = f"{self.REVIEW_IDENTIFIER}"
 
-        success = await self.github.create_review_with_comments(
-            comments=all_comments,
+        success = await self.github.update_or_create_review_comments(
+            comments=inline_comments,
             body=review_body,
             event=event,
+            identifier=self.REVIEW_IDENTIFIER,
         )
 
         if success:
-            logger.info(f"Successfully created PR review with {len(all_comments)} comments")
+            logger.info("Successfully managed PR review comments (update/create/delete)")
         else:
-            logger.error("Failed to create PR review")
+            logger.error("Failed to manage PR review comments")
 
         return success
 
@@ -238,8 +364,8 @@ class PRCommenter:
         Returns:
             Relative path from repository root, or None if cannot be determined
         """
-        import os
-        from pathlib import Path
+        import os  # pylint: disable=import-outside-toplevel
+        from pathlib import Path  # pylint: disable=import-outside-toplevel
 
         # If already relative, use as-is
         if not os.path.isabs(policy_file):
@@ -421,7 +547,9 @@ async def post_report_to_pr(
         report = ValidationReport.model_validate(report_data)
 
         # Load config to get fail_on_severity and severity_labels settings
-        from iam_validator.core.config.config_loader import ConfigLoader
+        from iam_validator.core.config.config_loader import (  # pylint: disable=import-outside-toplevel
+            ConfigLoader,
+        )
 
         config = ConfigLoader.load_config(config_path)
         fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])

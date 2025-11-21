@@ -28,8 +28,11 @@ DEFAULT_ALLOWED_WILDCARDS: Final[tuple[str, ...]] = (
     "cloudwatch:List*",
     # DynamoDB
     "dynamodb:Describe*",
+    "dynamodb:Get*",
+    "dynamodb:List*",
     # EC2
     "ec2:Describe*",
+    "ec2:List*",
     # Elastic Load Balancing
     "elasticloadbalancing:Describe*",
     # IAM (non-sensitive read operations)
