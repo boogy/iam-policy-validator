@@ -1,6 +1,6 @@
 """Sensitive action check - detects sensitive actions without IAM conditions."""
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from iam_validator.checks.utils.policy_level_checks import check_policy_level_actions
 from iam_validator.checks.utils.sensitive_action_matcher import (
@@ -15,6 +15,71 @@ from iam_validator.core.models import Statement, ValidationIssue
 
 if TYPE_CHECKING:
     from iam_validator.core.models import IAMPolicy
+
+
+def get_suggestion_from_requirement(requirement: dict[str, Any]) -> tuple[str, str] | None:
+    """
+    Extract suggestion and example from a condition requirement.
+
+    This is a public utility function that can be used by custom checks
+    to extract user-friendly suggestions from condition requirement structures.
+
+    Args:
+        requirement: Condition requirement dictionary containing:
+            - suggestion_text: Human-readable guidance text
+            - required_conditions: Conditions structure (list or dict with any_of/all_of/none_of)
+
+    Returns:
+        Tuple of (suggestion_text, example) if available, None otherwise
+
+    Example:
+        >>> from iam_validator.core.config.condition_requirements import IAM_PASS_ROLE_REQUIREMENT
+        >>> suggestion, example = get_suggestion_from_requirement(IAM_PASS_ROLE_REQUIREMENT)
+        >>> print(suggestion)
+        This action allows passing IAM roles to AWS services...
+    """
+    # Check if requirement has suggestion_text
+    if "suggestion_text" not in requirement:
+        return None
+
+    suggestion_text = requirement["suggestion_text"]
+
+    # Extract example from required_conditions
+    example = ""
+    required_conditions = requirement.get("required_conditions", [])
+
+    # Handle different condition structures (list, dict with any_of/all_of/none_of)
+    if isinstance(required_conditions, list) and required_conditions:
+        # Get first condition's example
+        first_condition = required_conditions[0]
+        example = first_condition.get("example", "")
+    elif isinstance(required_conditions, dict):
+        # Handle any_of, all_of, none_of structures
+        for logic_key in ["any_of", "all_of", "none_of"]:
+            if logic_key in required_conditions:
+                conditions = required_conditions[logic_key]
+                if isinstance(conditions, list) and conditions:
+                    # Get first option's example
+                    first_option = conditions[0]
+                    if isinstance(first_option, dict):
+                        if "example" in first_option:
+                            example = first_option["example"]
+                            break
+                        # Handle nested all_of/any_of/none_of structures
+                        for nested_key in ["all_of", "any_of", "none_of"]:
+                            if nested_key in first_option and isinstance(
+                                first_option[nested_key], list
+                            ):
+                                for nested in first_option[nested_key]:
+                                    if "example" in nested:
+                                        example = nested["example"]
+                                        break
+                                if example:
+                                    break
+                        if example:
+                            break
+
+    return (suggestion_text, example)
 
 
 class SensitiveActionCheck(PolicyCheck):
@@ -48,11 +113,45 @@ class SensitiveActionCheck(PolicyCheck):
         # Fall back to default severity
         return self.get_severity(config)
 
+    def _get_actions_covered_by_condition_enforcement(self, config: CheckConfig) -> set[str]:
+        """
+        Get set of actions that are covered by action_condition_enforcement requirements.
+
+        This prevents duplicate warnings when an action is already validated by
+        formal condition requirements.
+
+        Args:
+            config: Check configuration with root_config access
+
+        Returns:
+            Set of action strings that are covered by condition requirements
+        """
+        covered_actions: set[str] = set()
+
+        # Access action_condition_enforcement config from root_config
+        ace_config = config.root_config.get("action_condition_enforcement", {})
+        requirements = ace_config.get("requirements", [])
+
+        for requirement in requirements:
+            # Get actions from requirement
+            actions_config = requirement.get("actions", [])
+            if isinstance(actions_config, list):
+                covered_actions.update(actions_config)
+
+        return covered_actions
+
     def _get_category_specific_suggestion(
         self, action: str, config: CheckConfig
     ) -> tuple[str, str]:
         """
-        Get category-specific suggestion and example for an action.
+        Get category-specific suggestion and example for an action using two-tier lookup.
+
+        This method provides suggestions for the sensitive_action check, which flags
+        actions that have NO conditions. It does NOT validate specific conditions
+        (that's handled by the action_condition_enforcement check).
+
+        Tier 1: Check action_overrides in category suggestions for important actions
+        Tier 2: Fall back to category-level default suggestions
 
         Args:
             action: The AWS action to check
@@ -61,20 +160,23 @@ class SensitiveActionCheck(PolicyCheck):
         Returns:
             Tuple of (suggestion_text, example_text) tailored to the action's category
         """
+        # TIER 1: Check action-specific overrides in category suggestions
         category = get_category_for_action(action)
-
-        # Get category suggestions from config (ABAC-focused by default)
-        # See: iam_validator/core/config/category_suggestions.py
         category_suggestions = config.config.get("category_suggestions", {})
 
-        # Get category-specific content or fall back to generic ABAC guidance
         if category and category in category_suggestions:
-            return (
-                category_suggestions[category]["suggestion"],
-                category_suggestions[category]["example"],
-            )
+            category_data = category_suggestions[category]
 
-        # Generic ABAC fallback for uncategorized actions
+            # Check if there's an action-specific override
+            action_overrides = category_data.get("action_overrides", {})
+            if action in action_overrides:
+                override = action_overrides[action]
+                return (override["suggestion"], override["example"])
+
+            # TIER 2: Fall back to category-level defaults
+            return (category_data["suggestion"], category_data["example"])
+
+        # Ultimate fallback: Generic ABAC guidance for uncategorized actions
         return (
             "Add IAM conditions to limit when this action can be used. Use ABAC for scalability:\n"
             "• Match principal tags to resource tags (`aws:PrincipalTag/<tag-name>` = `aws:ResourceTag/<tag-name>`)\n"
@@ -114,6 +216,16 @@ class SensitiveActionCheck(PolicyCheck):
         )
 
         if is_sensitive and not has_conditions:
+            # Filter out actions already covered by action_condition_enforcement
+            # This prevents duplicate warnings with different messages
+            covered_actions = self._get_actions_covered_by_condition_enforcement(config)
+            matched_actions = [
+                action for action in matched_actions if action not in covered_actions
+            ]
+
+            # If all matched actions are covered elsewhere, skip this check
+            if not matched_actions:
+                return issues
             # Create appropriate message based on matched actions using configurable templates
             if len(matched_actions) == 1:
                 message_template = config.config.get(

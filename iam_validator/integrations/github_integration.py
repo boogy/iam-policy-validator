@@ -291,7 +291,7 @@ class GitHubIntegration:
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error: {e.response.status_code} - {e.response.text}")
             return None
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error(f"Request failed: {e}")
             return None
 
@@ -486,6 +486,57 @@ class GitHubIntegration:
             return result
         return []
 
+    async def get_bot_review_comments_with_location(
+        self, identifier: str = constants.BOT_IDENTIFIER
+    ) -> dict[tuple[str, int, str], dict[str, Any]]:
+        """Get bot review comments indexed by file path, line number, and issue type.
+
+        This enables efficient lookup to update existing comments.
+        Uses (path, line, issue_type) as key to support multiple issues at the same line.
+
+        Args:
+            identifier: String to identify bot comments
+
+        Returns:
+            Dict mapping (file_path, line_number, issue_type) to comment metadata dict
+            Comment dict contains: id, body, path, line, issue_type, commit_id
+        """
+        comments = await self.get_review_comments()
+        bot_comments_map: dict[tuple[str, int, str], dict[str, Any]] = {}
+
+        for comment in comments:
+            if not isinstance(comment, dict):
+                continue
+
+            body = comment.get("body", "")
+            comment_id = comment.get("id")
+            path = comment.get("path")
+            line = comment.get("line") or comment.get("original_line")
+
+            # Check if this is a bot comment with valid location
+            if (
+                identifier in str(body)
+                and isinstance(comment_id, int)
+                and isinstance(path, str)
+                and isinstance(line, int)
+            ):
+                # Extract issue type from HTML comment
+                issue_type_match = re.search(r"<!-- issue-type: (\w+) -->", body)
+                issue_type = issue_type_match.group(1) if issue_type_match else "unknown"
+
+                key = (path, line, issue_type)
+                bot_comments_map[key] = {
+                    "id": comment_id,
+                    "body": body,
+                    "path": path,
+                    "line": line,
+                    "issue_type": issue_type,
+                    "commit_id": comment.get("commit_id"),
+                }
+
+        logger.debug(f"Found {len(bot_comments_map)} bot review comments at specific locations")
+        return bot_comments_map
+
     async def delete_review_comment(self, comment_id: int) -> bool:
         """Delete a specific review comment.
 
@@ -502,6 +553,47 @@ class GitHubIntegration:
 
         if result is not None:  # DELETE returns empty dict on success
             logger.info(f"Successfully deleted review comment {comment_id}")
+            return True
+        return False
+
+    async def resolve_review_comment(self, comment_id: int) -> bool:
+        """Resolve a specific review comment.
+
+        Args:
+            comment_id: ID of the comment to resolve
+
+        Returns:
+            True if successful, False otherwise
+        """
+        result = await self._make_request(
+            "PATCH",
+            f"pulls/comments/{comment_id}",
+            json={"state": "resolved"},
+        )
+
+        if result is not None:
+            logger.info(f"Successfully resolved review comment {comment_id}")
+            return True
+        return False
+
+    async def update_review_comment(self, comment_id: int, new_body: str) -> bool:
+        """Update the body text of an existing review comment.
+
+        Args:
+            comment_id: ID of the comment to update
+            new_body: New comment text (markdown supported)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        result = await self._make_request(
+            "PATCH",
+            f"pulls/comments/{comment_id}",
+            json={"body": new_body},
+        )
+
+        if result is not None:
+            logger.debug(f"Successfully updated review comment {comment_id}")
             return True
         return False
 
@@ -535,6 +627,40 @@ class GitHubIntegration:
             logger.info(f"Cleaned up {deleted_count} old review comments")
 
         return deleted_count
+
+    async def cleanup_bot_review_comments_by_resolving(
+        self, identifier: str = constants.BOT_IDENTIFIER
+    ) -> int:
+        """Resolve all review comments from the bot (from previous runs).
+
+        This marks old/outdated comments as resolved instead of deleting them,
+        preserving them in the PR for audit trail purposes.
+
+        Args:
+            identifier: String to identify bot comments
+
+        Returns:
+            Number of comments resolved
+        """
+        comments = await self.get_review_comments()
+        resolved_count = 0
+
+        for comment in comments:
+            if not isinstance(comment, dict):
+                continue
+
+            body = comment.get("body", "")
+            comment_id = comment.get("id")
+
+            # Check if this is a bot comment
+            if identifier in str(body) and isinstance(comment_id, int):
+                if await self.resolve_review_comment(comment_id):
+                    resolved_count += 1
+
+        if resolved_count > 0:
+            logger.info(f"Resolved {resolved_count} old review comments")
+
+        return resolved_count
 
     async def create_review_comment(
         self,
@@ -645,6 +771,129 @@ class GitHubIntegration:
             logger.info(f"Successfully created review with {len(comments)} comments")
             return True
         return False
+
+    async def update_or_create_review_comments(
+        self,
+        comments: list[dict[str, Any]],
+        body: str = "",
+        event: ReviewEvent = ReviewEvent.COMMENT,
+        identifier: str = constants.REVIEW_IDENTIFIER,
+    ) -> bool:
+        """Smart comment management: update existing, create new, delete resolved.
+
+        This method implements a three-step process:
+        1. Fetch existing bot comments at each location
+        2. For each new comment: update if exists, create if new
+        3. Delete old comments where issues have been resolved
+
+        Args:
+            comments: List of comment dicts with keys: path, line, body, (optional) side
+            body: The overall review body text
+            event: The review event type (APPROVE, REQUEST_CHANGES, COMMENT)
+            identifier: String to identify bot comments (for matching existing)
+
+        Returns:
+            True if successful, False otherwise
+
+        Example:
+            # First run: Creates 3 comments
+            comments = [
+                {"path": "policy.json", "line": 5, "body": "Issue A"},
+                {"path": "policy.json", "line": 10, "body": "Issue B"},
+                {"path": "policy.json", "line": 15, "body": "Issue C"},
+            ]
+
+            # Second run: Updates Issue A, keeps B, deletes C (resolved), adds D
+            comments = [
+                {"path": "policy.json", "line": 5, "body": "Issue A (updated)"},
+                {"path": "policy.json", "line": 10, "body": "Issue B"},  # Same = no update
+                {"path": "policy.json", "line": 20, "body": "Issue D"},  # New
+            ]
+            # Result: line 15 comment deleted (resolved), line 5 updated, line 20 created
+        """
+        # Step 1: Get existing bot comments mapped by location
+        existing_comments = await self.get_bot_review_comments_with_location(identifier)
+        logger.debug(f"Found {len(existing_comments)} existing bot comments")
+
+        # Track which existing comments we've seen (to know what to delete later)
+        seen_locations: set[tuple[str, int, str]] = set()
+        updated_count = 0
+        created_count = 0
+
+        # Step 2: Update or create each new comment
+        new_comments_for_review: list[dict[str, Any]] = []
+
+        for comment in comments:
+            path = comment["path"]
+            line = comment["line"]
+            new_body = comment["body"]
+
+            # Extract issue type from comment body HTML comment
+            issue_type_match = re.search(r"<!-- issue-type: (\w+) -->", new_body)
+            issue_type = issue_type_match.group(1) if issue_type_match else "unknown"
+
+            location = (path, line, issue_type)
+            seen_locations.add(location)
+
+            existing = existing_comments.get(location)
+
+            if existing:
+                # Comment exists at this location - check if body changed
+                if existing["body"] != new_body:
+                    # Update the existing comment
+                    success = await self.update_review_comment(existing["id"], new_body)
+                    if success:
+                        updated_count += 1
+                        logger.debug(f"Updated comment at {path}:{line}")
+                    else:
+                        logger.warning(f"Failed to update comment at {path}:{line}")
+                else:
+                    # Body unchanged, skip update
+                    logger.debug(f"Comment at {path}:{line} unchanged, skipping update")
+            else:
+                # New comment - collect for batch creation
+                new_comments_for_review.append(comment)
+
+        # Step 3: Create new comments via review API (if any)
+        if new_comments_for_review:
+            success = await self.create_review_with_comments(
+                new_comments_for_review,
+                body=body,
+                event=event,
+            )
+            if success:
+                created_count = len(new_comments_for_review)
+                logger.info(f"Created {created_count} new review comments")
+            else:
+                logger.error("Failed to create new review comments")
+                return False
+
+        # Step 4: Delete comments for resolved issues (not in new comment set)
+        # IMPORTANT: Only delete comments for files that are in the current batch
+        # to avoid deleting comments from other files processed in the same run
+        deleted_count = 0
+        files_in_batch = {comment["path"] for comment in comments}
+
+        for location, existing in existing_comments.items():
+            # Only delete if:
+            # 1. This location is not in the new comment set (resolved issue)
+            # 2. AND this file is in the current batch (don't touch other files' comments)
+            if location not in seen_locations and existing["path"] in files_in_batch:
+                # This comment location is no longer in the new issues - delete it
+                success = await self.delete_review_comment(existing["id"])
+                if success:
+                    deleted_count += 1
+                    logger.debug(
+                        f"Deleted resolved comment at {existing['path']}:{existing['line']}"
+                    )
+
+        # Summary
+        logger.info(
+            f"Review comment management: {updated_count} updated, "
+            f"{created_count} created, {deleted_count} deleted (resolved)"
+        )
+
+        return True
 
     # ==================== PR Labels ====================
 

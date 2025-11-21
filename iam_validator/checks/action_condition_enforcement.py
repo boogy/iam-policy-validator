@@ -133,6 +133,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
+from iam_validator.utils.regex import compile_and_cache
 
 if TYPE_CHECKING:
     from iam_validator.core.models import IAMPolicy
@@ -184,10 +185,16 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         issues = []
 
         # Get action condition requirements from config
-        # Support both old (policy_level_requirements) and new (action_condition_requirements) keys
+        # Support legacy keys for backward compatibility:
+        #  - "requirements" (current/preferred)
+        #  - "action_condition_requirements" (legacy)
+        #  - "policy_level_requirements" (legacy)
         requirements = config.config.get(
-            "action_condition_requirements",
-            config.config.get("policy_level_requirements", []),
+            "requirements",
+            config.config.get(
+                "action_condition_requirements",
+                config.config.get("policy_level_requirements", []),
+            ),
         )
 
         if not requirements:
@@ -683,7 +690,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         matching_actions: list[str] = []
 
         # Handle simple list format (backward compatibility)
-        if isinstance(actions_config, list) and actions_config:
+        # Also handle requirements with only action_patterns (when actions is empty list)
+        if isinstance(actions_config, list) and (actions_config or action_patterns):
             # Simple list - check if any action matches
             for stmt_action in statement_actions:
                 if stmt_action == "*":
@@ -701,9 +709,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                         matched = True
                         break
 
-                # If not matched by actions, check if wildcard overlaps with patterns
-                if not matched and "*" in stmt_action:
-                    # For wildcards, also check pattern overlap directly
+                # If not matched by actions, check against action_patterns directly
+                if not matched and action_patterns:
+                    # Check if statement action matches any of the patterns
                     matched = await self._action_matches(stmt_action, "", action_patterns, fetcher)
 
                 if matched and stmt_action not in matching_actions:
@@ -804,10 +812,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         # AWS wildcard match in required_action (e.g., "s3:*", "s3:Get*")
         if "*" in required_action:
-            # Convert AWS wildcard to regex
+            # Convert AWS wildcard to regex and cache compilation
             wildcard_pattern = required_action.replace("*", ".*").replace("?", ".")
             try:
-                if re.match(f"^{wildcard_pattern}$", statement_action):
+                compiled_pattern = compile_and_cache(f"^{wildcard_pattern}$")
+                if compiled_pattern.match(statement_action):
                     return True
             except re.error:
                 # Invalid regex pattern - skip this match attempt
@@ -824,7 +833,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 # Required action is specific (e.g., "iam:CreateUser")
                 # Check if statement wildcard would grant it
                 try:
-                    if re.match(f"^{stmt_wildcard_pattern}$", required_action):
+                    compiled_pattern = compile_and_cache(f"^{stmt_wildcard_pattern}$")
+                    if compiled_pattern.match(required_action):
                         return True
                 except re.error:
                     # Invalid regex pattern - skip this match attempt
@@ -856,7 +866,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                         full_granted_action = f"{service_prefix}:{granted_action}"
                         for pattern in patterns:
                             try:
-                                if re.match(pattern, full_granted_action):
+                                compiled_pattern = compile_and_cache(pattern)
+                                if compiled_pattern.match(full_granted_action):
                                     return True
                             except re.error:
                                 continue
@@ -866,7 +877,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     stmt_prefix = statement_action.rstrip("*")
                     for pattern in patterns:
                         try:
-                            if re.match(pattern, stmt_prefix):
+                            compiled_pattern = compile_and_cache(pattern)
+                            if compiled_pattern.match(stmt_prefix):
                                 return True
                         except re.error:
                             continue
@@ -874,7 +886,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # Regex pattern match (from action_patterns config)
         for pattern in patterns:
             try:
-                if re.match(pattern, statement_action):
+                compiled_pattern = compile_and_cache(pattern)
+                if compiled_pattern.match(statement_action):
                     return True
             except re.error:
                 continue
@@ -964,7 +977,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             statement_index=statement_idx,
                             issue_type="missing_required_condition_any_of",
                             message=(
-                                f"Actions `{matching_actions_formatted}` require at least ONE of these conditions: "
+                                f"Actions {matching_actions_formatted} require at least ONE of these conditions: "
                                 f"{condition_keys_formatted}"
                             ),
                             action=", ".join(matching_actions),

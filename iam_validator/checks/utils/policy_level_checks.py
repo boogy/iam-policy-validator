@@ -49,6 +49,7 @@ def check_policy_level_actions(
                     all_actions,
                     statement_map,
                     item["all_of"],
+                    item,  # Pass the entire item config (includes severity, message, suggestion)
                     check_config,
                     check_type,
                     get_severity_func,
@@ -62,6 +63,7 @@ def check_policy_level_actions(
             all_actions,
             statement_map,
             config["all_of"],
+            config,  # Pass the entire config dict (includes severity, message, suggestion)
             check_config,
             check_type,
             get_severity_func,
@@ -76,6 +78,7 @@ def _check_all_of_pattern(
     all_actions: list[str],
     statement_map: dict[str, list[tuple[int, str | None]]],
     required_actions: list[str],
+    item_config: dict,
     check_config: CheckConfig,
     check_type: str,
     get_severity_func,
@@ -87,6 +90,7 @@ def _check_all_of_pattern(
         all_actions: All actions across the entire policy
         statement_map: Mapping of action -> [(statement_idx, sid), ...]
         required_actions: List of required actions or patterns
+        item_config: Configuration for this specific pattern (includes severity, message, suggestion)
         check_config: Full check configuration
         check_type: Either "actions" (exact match) or "patterns" (regex match)
         get_severity_func: Function to get severity for the check
@@ -113,31 +117,64 @@ def _check_all_of_pattern(
     # Check if ALL required actions/patterns are present
     if len(matched_actions) >= len(required_actions):
         # Privilege escalation detected!
-        severity = get_severity_func(check_config, "sensitive_action_check", "error")
+        # Use severity from item_config if available, otherwise use default from check
+        severity = item_config.get("severity") or get_severity_func(check_config)
 
         # Collect which statements these actions appear in
         statement_refs = []
+        action_to_statements = {}  # Map action -> list of statement references
+
         for action in matched_actions:
+            action_to_statements[action] = []
             if action in statement_map:
                 for stmt_idx, sid in statement_map[action]:
-                    sid_str = f"'{sid}'" if sid else f"#{stmt_idx}"
+                    # Use index notation instead of # to avoid GitHub PR link interpretation
+                    sid_str = f"'{sid}'" if sid else f"[{stmt_idx}]"
                     statement_refs.append(f"Statement {sid_str}: {action}")
+                    action_to_statements[action].append(f"Statement {sid_str}")
 
-        action_list = "', '".join(matched_actions)
+        # Format actions with backticks and statement references
+        action_list = "`, `".join(matched_actions)
         stmt_details = "\n  - ".join(statement_refs)
+
+        # Build a compact statement summary for the message
+        action_stmt_summary = []
+        for action in matched_actions:
+            stmts = action_to_statements.get(action, [])
+            if stmts:
+                action_stmt_summary.append(f"`{action}` in {', '.join(stmts)}")
+
+        stmt_summary = "; ".join(action_stmt_summary)
+
+        # Use custom message if provided in item_config, otherwise use default
+        # Support {actions} and {statements} placeholders in custom messages
+        message_template = item_config.get(
+            "message",
+            f"Policy grants [`{action_list}`] across statements - enables privilege escalation. Found: {stmt_summary}",
+        )
+        # Replace placeholders if present in custom message
+        message = message_template.replace("{actions}", f"`{action_list}`").replace(
+            "{statements}", stmt_summary
+        )
+
+        # Use custom suggestion if provided in item_config, otherwise use default
+        suggestion = item_config.get(
+            "suggestion",
+            f"These actions combined allow privilege escalation. Consider:\n"
+            f"  1. Splitting into separate policies for different users/roles\n"
+            f"  2. Adding strict conditions to limit when these actions can be used together\n"
+            f"  3. Reviewing if all these permissions are truly necessary\n\n"
+            f"Actions found in:\n  - {stmt_details}",
+        )
 
         return ValidationIssue(
             severity=severity,
             statement_sid=None,  # Policy-level issue
             statement_index=-1,  # -1 indicates policy-level issue
             issue_type="privilege_escalation",
-            message=f"Policy-level privilege escalation detected: grants all of ['{action_list}'] across multiple statements",
-            suggestion=f"These actions combined allow privilege escalation. Consider:\n"
-            f"  1. Splitting into separate policies for different users/roles\n"
-            f"  2. Adding strict conditions to limit when these actions can be used together\n"
-            f"  3. Reviewing if all these permissions are truly necessary\n\n"
-            f"Actions found in:\n  - {stmt_details}",
-            line_number=None,
+            message=message,
+            suggestion=suggestion,
+            line_number=1,  # Policy-level issues point to line 1 (top of policy)
         )
 
     return None

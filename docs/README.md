@@ -26,6 +26,8 @@ Comprehensive documentation for validating AWS IAM policies with confidence.
 - **[GitHub Actions Examples](github-actions-examples.md)** - Workflow patterns and examples
 - **[Python Library Usage](python-library-usage.md)** - Programmatic validation in Python
 - **[Custom Checks Guide](custom-checks.md)** - Write organization-specific checks
+- **[Query Command](query-command.md)** - Query AWS service definitions (actions, ARNs, condition keys)
+- **[Shell Completion](shell-completion.md)** - Bash and Zsh autocompletion setup
 
 ### Advanced Topics
 - **[Modular Configuration](modular-configuration.md)** - Python-based configuration architecture
@@ -75,6 +77,8 @@ Find practical examples in [examples/](../examples/):
 - **Configure the validator** → [Configuration Reference](configuration.md)
 - **Use in GitHub Actions** → [GitHub Actions Guide](github-actions-workflows.md)
 - **Use as Python library** → [Python Library Guide](python-library-usage.md)
+- **Query AWS service definitions** → [Query Command Guide](query-command.md)
+- **Enable shell autocompletion** → [Shell Completion Guide](shell-completion.md)
 - **Validate trust policies** → [Trust Policy Examples](../examples/trust-policies/README.md)
 - **Write custom checks** → [Custom Checks Guide](custom-checks.md)
 - **Detect privilege escalation** → [Privilege Escalation Guide](privilege-escalation.md)

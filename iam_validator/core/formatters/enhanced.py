@@ -61,7 +61,6 @@ class EnhancedFormatter(OutputFormatter):
         )
 
         # Header with title
-        console.print()
         title = Text(
             f"IAM Policy Validation Report (v{__version__})",
             style="bold cyan",
@@ -75,7 +74,6 @@ class EnhancedFormatter(OutputFormatter):
                 width=constants.CONSOLE_PANEL_WIDTH,
             )
         )
-        console.print()
 
         # Executive Summary with progress bars (optional)
         if show_summary:
@@ -83,12 +81,15 @@ class EnhancedFormatter(OutputFormatter):
 
         # Severity breakdown if there are issues (optional)
         if show_severity_breakdown and report.total_issues > 0:
-            console.print()
             self._print_severity_breakdown(console, report)
 
-        console.print()
-        console.print(Rule(title="[bold]Detailed Results", style=constants.CONSOLE_HEADER_COLOR))
-        console.print()
+        console.print(
+            Rule(
+                title="[bold]Detailed Results",
+                style=constants.CONSOLE_HEADER_COLOR,
+            ),
+            width=constants.CONSOLE_PANEL_WIDTH,
+        )
 
         # Detailed results using tree structure
         for idx, result in enumerate(report.results, 1):
@@ -99,7 +100,7 @@ class EnhancedFormatter(OutputFormatter):
         self._print_final_status(console, report)
 
         # Get the formatted output
-        output = string_buffer.getvalue()
+        output = string_buffer.getvalue().rstrip("\n")
         string_buffer.close()
 
         return output
@@ -305,13 +306,10 @@ class EnhancedFormatter(OutputFormatter):
         if not result.issues:
             console.print(header)
             console.print("     [dim italic]No issues detected[/dim italic]")
-            console.print()
             return
 
         console.print(header)
         console.print(f"     [dim]{len(result.issues)} issue(s) found[/dim]")
-        console.print()
-
         # Create tree structure for issues
         tree = Tree(f"[bold]Issues ({len(result.issues)})[/bold]", guide_style="bright_black")
 
@@ -372,10 +370,14 @@ class EnhancedFormatter(OutputFormatter):
     def _add_issue_to_tree(self, branch: Tree, issue, color: str) -> None:
         """Add an issue to a tree branch."""
         # Build location string (use 1-indexed statement numbers for user-facing output)
-        statement_num = issue.statement_index + 1
-        location = f"Statement {statement_num}"
-        if issue.statement_sid:
-            location = f"{issue.statement_sid} (#{statement_num})"
+        # Handle policy-level issues (statement_index = -1)
+        if issue.statement_index == -1:
+            location = "Policy-level"
+        else:
+            statement_num = issue.statement_index + 1
+            location = f"Statement {statement_num}"
+            if issue.statement_sid:
+                location = f"{issue.statement_sid} (#{statement_num})"
         if issue.line_number is not None:
             location += f" @L{issue.line_number}"
 
@@ -399,19 +401,24 @@ class EnhancedFormatter(OutputFormatter):
                 details.append(f"Condition: {issue.condition_key}")
             msg_node.add(Text(" • ".join(details), style="dim cyan"))
 
-        # Suggestion
-        if issue.suggestion:
-            suggestion_text = Text()
-            suggestion_text.append("💡 ", style="yellow")
-            suggestion_text.append(issue.suggestion, style="italic yellow")
-            msg_node.add(suggestion_text)
+        # Suggestion and Example - combine into single node to reduce spacing
+        if issue.suggestion or issue.example:
+            combined_text = Text()
 
-        # Example (if present, show with indentation)
-        if issue.example:
-            msg_node.add(Text("Example:", style="bold cyan"))
-            # Show example code with syntax highlighting
-            example_text = Text(issue.example, style="dim")
-            msg_node.add(example_text)
+            # Add suggestion
+            if issue.suggestion:
+                combined_text.append("💡 ", style="yellow")
+                combined_text.append(issue.suggestion, style="italic yellow")
+
+            # Add example on same node (reduces vertical spacing)
+            if issue.example:
+                if issue.suggestion:
+                    combined_text.append("\n", style="yellow")  # Single newline separator
+                combined_text.append("Example:", style="bold cyan")
+                combined_text.append("\n")
+                combined_text.append(issue.example, style="dim")
+
+            msg_node.add(combined_text)
 
     def _print_final_status(self, console: Console, report: ValidationReport) -> None:
         """Print final status panel."""
@@ -461,7 +468,7 @@ class EnhancedFormatter(OutputFormatter):
         # Combine status and message
         final_text = Text()
         final_text.append(status)
-        final_text.append("\n\n")
+        final_text.append("\n")  # Reduced from \n\n to single newline
         final_text.append(message)
 
         console.print(

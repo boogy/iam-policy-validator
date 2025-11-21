@@ -57,7 +57,7 @@
 #       - filepath: "^(test|examples)/.*"
 #       - sid: "AllowReadOnlyAccess"
 #
-#       # Lists (NEW: works for ALL fields!)
+#       # Lists (Works for ALL fields!)
 #       - filepath:
 #           - "^test/.*"
 #           - "^examples/.*"
@@ -193,6 +193,13 @@ settings:
     # error: ["iam-validity-error", "needs-fix"]
     # critical: ["security-critical", "needs-security-review"]
 
+  # Note: Review comment management is now automatic!
+  # The validator smartly manages PR review comments:
+  #   - Updates existing comments when issues persist (preserves conversation threads)
+  #   - Creates new comments for new issues
+  #   - Deletes comments when issues are resolved
+  # No configuration needed - this happens automatically for all PR reviews.
+
   # Template Variable Support (applies to all ARN validation checks)
   #
   # When enabled, the validator is POSITION-AWARE and supports ANY variable name
@@ -228,7 +235,7 @@ settings:
 # Disable all with: settings.enable_builtin_checks: false (useful with Access Analyzer)
 # Or disable individually with: enabled: false
 #
-# ⚡ NEW: All default values now come from Python modules!
+# All default values now come from Python modules!
 #   - Located in: iam_validator/core/config/
 #   - No parsing overhead, compiled to .pyc
 #   - See: docs/modular-configuration.md
@@ -510,12 +517,12 @@ action_resource_matching:
 # ============================================================================
 # Individual checks for security anti-patterns
 #
-# ⚡ NEW: Default wildcards now defined in Python!
+# Default wildcards now defined in Python!
 #   - Located in: iam_validator/core/config/wildcards.py
 #   - 25 allowed patterns by default (read-only operations)
 #   - Easy to extend and customize
 #
-# ⚡ NEW: Sensitive actions now defined in Python by category!
+# Sensitive actions now defined in Python by category!
 #   - Located in: iam_validator/core/config/sensitive_actions.py
 #   - 490 actions across 4 security risk categories:
 #     • CredentialExposure (46 actions) - Exposes credentials/secrets
@@ -763,13 +770,13 @@ sensitive_action:
   #   - action: "^iam:AttachRolePolicy$"   # Ignore iam:AttachRolePolicy
   #   - action: "^s3:GetObject$"           # Ignore s3:GetObject
   #
-  #   # NEW: List of actions (more concise)
+  #   List of actions (more concise)
   #   - action:
   #       - "^iam:PassRole$"
   #       - "^iam:CreateUser$"
   #       - "^iam:AttachUserPolicy$"
   #
-  #   # NEW: List with wildcards
+  #   List with wildcards
   #   - action:
   #       - "^s3:Get.*"     # All S3 Get actions
   #       - "^iam:List.*"   # All IAM List actions
@@ -814,7 +821,9 @@ action_condition_enforcement:
   #   python -c "from iam_validator.core.config import get_default_requirements; import json; print(json.dumps([r.get('actions', r.get('action_patterns', [])) for r in get_default_requirements()], indent=2))"
   #
   # To override, uncomment and customize:
-  # action_condition_requirements:
+  # Configure condition requirements (use "requirements" key for automatic deduplication)
+  # This key is also used by sensitive_action check to avoid duplicate warnings
+  # requirements:
   #   # iam:PassRole - Prevent privilege escalation by restricting which services can use the role
   #   - actions:
   #       - "iam:PassRole"

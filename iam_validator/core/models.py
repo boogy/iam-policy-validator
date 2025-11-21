@@ -233,6 +233,8 @@ class ValidationIssue(BaseModel):
         if include_identifier:
             parts.append(f"{constants.REVIEW_IDENTIFIER}\n")
             parts.append(f"{constants.BOT_IDENTIFIER}\n")
+            # Add issue type identifier to allow multiple issues at same line
+            parts.append(f"<!-- issue-type: {self.issue_type} -->\n")
 
         # Build statement context for better navigation
         statement_context = f"Statement[{self.statement_index}]"
