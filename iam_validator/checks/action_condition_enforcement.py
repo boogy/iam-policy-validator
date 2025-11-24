@@ -125,6 +125,22 @@ Configuration in iam-validator.yaml:
                 - "iam:DeleteUser"
                 - "s3:DeleteBucket"
             description: "These dangerous actions should never be used"
+
+          # Per-requirement ignore_patterns: Skip specific requirements for certain files/actions
+          - actions:
+              - "iam:CreateRole"
+              - "iam:PutRolePolicy"
+              - "iam:AttachRolePolicy"
+            required_conditions:
+              - condition_key: "iam:PermissionsBoundary"
+                description: "Require permissions boundary for IAM operations"
+            ignore_patterns:
+              # Ignore this requirement for iam-openid modules (they enforce boundary by default)
+              - filepath_regex: ".*modules//?iam-openid.*"
+
+Note: ignore_patterns can be specified at TWO levels:
+  1. Check-level (applies to ALL requirements): Useful for broad exclusions
+  2. Requirement-level (applies to ONE requirement): Useful for fine-grained control
 """
 
 import re
@@ -132,6 +148,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
+from iam_validator.core.ignore_patterns import IgnorePatternMatcher
 from iam_validator.core.models import Statement, ValidationIssue
 from iam_validator.utils.regex import compile_and_cache
 
@@ -181,7 +198,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         Returns:
             List of ValidationIssue objects found by this check
         """
-        del policy_file, kwargs  # Not used in current implementation
+        del kwargs  # Not used in current implementation
         issues = []
 
         # Get action condition requirements from config
@@ -211,15 +228,59 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             if uses_logical_operators:
                 # Policy-wide detection (all_of/any_of/none_of)
                 policy_issues = await self._check_policy_wide(policy, requirement, fetcher, config)
+                # Filter by requirement-level ignore_patterns
+                policy_issues = self._filter_requirement_issues(
+                    policy_issues, requirement.get("ignore_patterns", []), policy_file
+                )
                 issues.extend(policy_issues)
             else:
                 # Per-statement check (simple list)
                 statement_issues = await self._check_per_statement(
                     policy, requirement, fetcher, config
                 )
+                # Filter by requirement-level ignore_patterns
+                statement_issues = self._filter_requirement_issues(
+                    statement_issues, requirement.get("ignore_patterns", []), policy_file
+                )
                 issues.extend(statement_issues)
 
         return issues
+
+    def _filter_requirement_issues(
+        self,
+        issues: list[ValidationIssue],
+        ignore_patterns: list[dict[str, Any]],
+        filepath: str,
+    ) -> list[ValidationIssue]:
+        """
+        Filter issues based on requirement-level ignore patterns.
+
+        This allows each requirement within action_condition_enforcement to have its own
+        ignore patterns, enabling fine-grained control over which findings to suppress.
+
+        Args:
+            issues: List of validation issues to filter
+            ignore_patterns: List of ignore pattern dictionaries for this requirement
+            filepath: Path to the policy file being checked
+
+        Returns:
+            Filtered list of issues (issues matching ignore patterns are removed)
+
+        Example:
+            A requirement can ignore specific files while other requirements check them:
+            - actions: ["iam:CreateRole"]
+              required_conditions: [...]
+              ignore_patterns:
+                - filepath_regex: ".*modules/iam-openid.*"
+        """
+        if not ignore_patterns:
+            return issues
+
+        return [
+            issue
+            for issue in issues
+            if not IgnorePatternMatcher.should_ignore_issue(issue, filepath, ignore_patterns)
+        ]
 
     async def _check_policy_wide(
         self,
