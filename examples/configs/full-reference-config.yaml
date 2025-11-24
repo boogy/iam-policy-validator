@@ -38,6 +38,11 @@
 # Every check supports ignore_patterns to filter specific findings while keeping
 # the check enabled. This is more flexible than disabling checks entirely.
 #
+# LEVELS OF IGNORE PATTERNS:
+#   1. Check-level: Applied to ALL requirements/findings in the check
+#   2. Requirement-level: Applied to SPECIFIC requirements only
+#      (Currently supported in: action_condition_enforcement)
+#
 # Pattern Matching Logic:
 #   - Multiple fields in ONE pattern = AND logic (all must match)
 #   - Multiple patterns = OR logic (any pattern matches → ignore)
@@ -861,6 +866,11 @@ action_condition_enforcement:
   #               "iam:PermissionsBoundary": "arn:aws:iam::123456789012:policy/XCompanyBoundaries"
   #             }
   #           }
+  #     # Per-requirement ignore_patterns: Skip this requirement for specific files
+  #     # This allows fine-grained control - other requirements still apply to these files
+  #     ignore_patterns:
+  #       # OpenID roles enforce permission boundary by default, so don't validate it
+  #       - filepath: ".*modules//?iam-openid.*"
   #
   #   # S3 write operations - Require organization ID
   #   - actions:

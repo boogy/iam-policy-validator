@@ -438,3 +438,105 @@ class TestActionConditionEnforcement:
         assert len(issues) == 1
         assert issues[0].issue_type == "forbidden_condition_present"
         assert "0.0.0.0/0" in issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_per_requirement_ignore_patterns(self, check, mock_fetcher):
+        """Test that per-requirement ignore_patterns work correctly."""
+        # Config with two requirements, one with ignore_patterns
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            severity="high",
+            config={
+                "requirements": [
+                    # Requirement 1: Permissions boundary (with ignore_patterns)
+                    {
+                        "actions": ["iam:CreateRole", "iam:PutRolePolicy"],
+                        "required_conditions": [
+                            {"condition_key": "iam:PermissionsBoundary"}
+                        ],
+                        "ignore_patterns": [
+                            {"filepath_regex": ".*iam-openid.*"}
+                        ],
+                    },
+                    # Requirement 2: PassRole (no ignore_patterns)
+                    {
+                        "actions": ["iam:PassRole"],
+                        "required_conditions": [
+                            {"condition_key": "iam:PassedToService"}
+                        ],
+                    },
+                ]
+            },
+        )
+
+        # Statement with both actions, no conditions
+        statement = Statement(
+            sid="TestStatement",
+            effect="Allow",
+            action=["iam:CreateRole", "iam:PassRole"],
+            resource="*",
+        )
+
+        policy = IAMPolicy(version="2012-10-17", statement=[statement])
+
+        # Test 1: Regular file - both requirements should trigger
+        issues = await check.execute_policy(policy, "policies/regular.json", mock_fetcher, config)
+        assert len(issues) == 2
+        assert any("iam:PermissionsBoundary" in i.message for i in issues)
+        assert any("iam:PassedToService" in i.message for i in issues)
+
+        # Test 2: iam-openid file - only PassRole requirement should trigger
+        issues = await check.execute_policy(
+            policy, "modules/iam-openid/main.tf", mock_fetcher, config
+        )
+        assert len(issues) == 1
+        assert "iam:PassedToService" in issues[0].message
+        assert "iam:PermissionsBoundary" not in issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_per_requirement_ignore_patterns_policy_wide(self, check, mock_fetcher):
+        """Test that per-requirement ignore_patterns work with policy-wide (any_of) checks."""
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            severity="high",
+            config={
+                "requirements": [
+                    # Requirement with any_of and ignore_patterns
+                    {
+                        "actions": {
+                            "any_of": ["iam:CreateUser", "iam:AttachUserPolicy"]
+                        },
+                        "required_conditions": [
+                            {
+                                "condition_key": "aws:MultiFactorAuthPresent",
+                                "expected_value": True,
+                            }
+                        ],
+                        "ignore_patterns": [
+                            {"filepath_regex": ".*test.*"}
+                        ],
+                    },
+                ]
+            },
+        )
+
+        # Statement with iam:CreateUser, no MFA
+        statement = Statement(
+            sid="TestStatement",
+            effect="Allow",
+            action=["iam:CreateUser"],
+            resource="*",
+        )
+
+        policy = IAMPolicy(version="2012-10-17", statement=[statement])
+
+        # Test 1: Regular file - should trigger
+        issues = await check.execute_policy(policy, "policies/prod.json", mock_fetcher, config)
+        assert len(issues) == 1
+        assert "aws:MultiFactorAuthPresent" in issues[0].message
+
+        # Test 2: Test file - should be ignored
+        issues = await check.execute_policy(policy, "policies/test.json", mock_fetcher, config)
+        assert len(issues) == 0
