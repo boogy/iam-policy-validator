@@ -519,7 +519,7 @@ DEFAULT_CONFIG = {
         # Useful when you have specific condition enforcement for certain actions
         # Example: Ignore iam:PassRole since it's checked by action_condition_enforcement
         "ignore_patterns": [
-            {"action_matches": "^iam:PassRole$"},
+            {"action": "^iam:PassRole$"},
         ],
         # Cross-statement privilege escalation patterns (policy-wide detection)
         # These patterns detect dangerous action combinations across ANY statements in the policy
@@ -537,7 +537,19 @@ DEFAULT_CONFIG = {
                     "3. Escalate to full account access\n\n"
                     "Mitigation options:\n"
                     "• Remove both of these permissions\n"
-                    "• Add strict IAM conditions (MFA, IP restrictions, force a specific policy with `iam:PolicyARN` condition)\n"
+                    "• Add strict IAM conditions (IP restrictions, tags, force a specific policy with `iam:PolicyARN` condition)\n"
+                ),
+                "example": (
+                    "{\n"
+                    '  "Condition": {\n'
+                    '    "StringEquals": {\n'
+                    '      "iam:PolicyARN": "arn:aws:iam::*:policy/ReadOnlyAccess"\n'
+                    "    },\n"
+                    '    "IpAddress": {\n'
+                    '      "aws:SourceIp": ["10.0.0.0/8"]\n'
+                    "    }\n"
+                    "  }\n"
+                    "}\n"
                 ),
             },
             # Role privilege escalation: Create role + attach admin policy
@@ -550,6 +562,23 @@ DEFAULT_CONFIG = {
                     "Mitigation options:\n"
                     "• Remove both of these permissions\n"
                     "• Add strict IAM conditions with a Permissions Boundary and ABAC Tagging, force a specific policy with `iam:PolicyARN` condition\n"
+                ),
+                "example": (
+                    "{\n"
+                    '  "Condition": {\n'
+                    '    "StringEquals": {\n'
+                    '      "iam:PermissionsBoundary": "arn:aws:iam::*:policy/MaxPermissions"\n'
+                    "    }\n"
+                    "  }\n"
+                    "}\n"
+                    "OR\n"
+                    "{\n"
+                    '  "Condition": {\n'
+                    '    "StringEquals": {\n'
+                    '      "iam:PolicyARN": "arn:aws:iam::*:policy/MaxPermissions"\n'
+                    "    }\n"
+                    "  }\n"
+                    "}\n"
                 ),
             },
             # Lambda backdoor: Create/update function + invoke
@@ -567,6 +596,18 @@ DEFAULT_CONFIG = {
                     "• Require MFA for Lambda function creation\n"
                     "• Use separate policies for creation vs invocation"
                 ),
+                "example": (
+                    "{\n"
+                    '  "Condition": {\n'
+                    '    "StringEquals": {\n'
+                    '      "aws:PrincipalTag/team": "${aws:ResourceTag/team}"\n'
+                    "    },\n"
+                    '    "SourceIp": {\n'
+                    '      "aws:SourceIp": ["10.0.0.0/8"]\n'
+                    "    }\n"
+                    "  }\n"
+                    "}\n"
+                ),
             },
             # Lambda code modification backdoor
             {
@@ -581,6 +622,15 @@ DEFAULT_CONFIG = {
                     "• Use separate policies for code updates vs invocation\n"
                     "• Implement code signing for Lambda functions"
                 ),
+                "example": (
+                    "{\n"
+                    '  "Condition": {\n'
+                    '    "StringEquals": {\n'
+                    '      "aws:ResourceAccount": "${aws:PrincipalAccount}"\n'
+                    "    }\n"
+                    "  }\n"
+                    "}\n"
+                ),
             },
             # EC2 instance privilege escalation
             {
@@ -594,6 +644,18 @@ DEFAULT_CONFIG = {
                     "• Restrict instance creation to specific AMIs or instance types\n"
                     "• Limit PassRole to specific low-privilege roles\n"
                     "• Require tagging and ABAC controls"
+                ),
+                "example": (
+                    "{\n"
+                    '  "Condition": {\n'
+                    '    "StringEquals": {\n'
+                    '      "iam:PassedToService": "ec2.amazonaws.com"\n'
+                    "    },\n"
+                    '    "ArnLike": {\n'
+                    '      "iam:AssociatedResourceArn": "arn:aws:ec2:*:*:instance/*"\n'
+                    "    }\n"
+                    "  }\n"
+                    "}\n"
                 ),
             },
         ],
