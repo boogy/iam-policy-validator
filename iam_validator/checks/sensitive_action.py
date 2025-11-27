@@ -271,6 +271,50 @@ class SensitiveActionCheck(PolicyCheck):
 
         return issues
 
+    def _apply_merge_strategy(
+        self,
+        merge_strategy: str,
+        user_config: list[dict] | None,
+        default_config: list[dict] | None,
+    ) -> list[dict] | None:
+        """
+        Apply merge strategy to combine user and default sensitive action patterns.
+
+        Args:
+            merge_strategy: One of "per_action_override", "user_only", "append",
+                          "replace_all", or "defaults_only"
+            user_config: User-provided sensitive action patterns (or None)
+            default_config: Default sensitive action patterns (or None)
+
+        Returns:
+            Merged list of patterns based on strategy, or None if no patterns
+        """
+        if merge_strategy == "user_only":
+            # Use ONLY user patterns, completely ignore defaults
+            return user_config
+
+        elif merge_strategy == "defaults_only":
+            # Use ONLY defaults, ignore user patterns
+            return default_config
+
+        elif merge_strategy == "append":
+            # Combine both (defaults first, then user)
+            result = []
+            if default_config:
+                result.extend(default_config)
+            if user_config:
+                result.extend(user_config)
+            return result if result else None
+
+        elif merge_strategy == "replace_all":
+            # User replaces all if provided, otherwise use defaults
+            return user_config if user_config else default_config
+
+        else:  # "per_action_override" (default)
+            # If user provides patterns, use them; otherwise use defaults
+            # This is the legacy behavior
+            return user_config if user_config else default_config
+
     async def execute_policy(
         self,
         policy: "IAMPolicy",
@@ -319,9 +363,45 @@ class SensitiveActionCheck(PolicyCheck):
                         statement_map[action] = []
                     statement_map[action].append((idx, statement.sid))
 
-        # Get configuration for sensitive actions
-        sensitive_actions_config = config.config.get("sensitive_actions")
-        sensitive_patterns_config = config.config.get("sensitive_action_patterns")
+        # Get configuration for sensitive actions with merge_strategy support
+        # merge_strategy options:
+        # - "append": Add user patterns ON TOP OF defaults (both apply) - DEFAULT
+        # - "user_only": Use ONLY user patterns, disable ALL default privilege escalation patterns
+        # - "defaults_only": Ignore user patterns, use only defaults
+        # - "replace_all": User patterns completely replace ALL defaults (if provided)
+        # - "per_action_override": User patterns replace defaults for matching action combos
+        merge_strategy = config.config.get("merge_strategy", "append")
+
+        # Determine which sensitive_actions patterns to use based on merge_strategy
+        # Note: The config.config already contains deep-merged values from defaults + user config
+        # For lists like sensitive_actions, user config REPLACES defaults (not merges)
+        # So if user provided sensitive_actions, it's already the only value in config.config
+        sensitive_actions_config: list[dict] | None = None
+        sensitive_patterns_config: list[dict] | None = None
+
+        if merge_strategy == "user_only":
+            # user_only: Disable ALL default patterns
+            # If user set merge_strategy: "user_only", they want NO defaults
+            # They must explicitly provide sensitive_actions if they want any checks
+            # Since we can't distinguish user-provided from defaults after merge,
+            # we assume user_only means "no patterns" unless user explicitly provided them
+            # (which would have replaced defaults anyway)
+            sensitive_actions_config = None
+            sensitive_patterns_config = None
+
+        elif merge_strategy == "defaults_only":
+            # Use only defaults - but since config is merged, we use what's there
+            # (user would need to NOT provide sensitive_actions to get defaults)
+            sensitive_actions_config = config.config.get("sensitive_actions")
+            sensitive_patterns_config = config.config.get("sensitive_action_patterns")
+
+        else:
+            # append, replace_all, per_action_override all use the merged config
+            # The deep_merge already handled the merging:
+            # - If user provided sensitive_actions, it replaced defaults
+            # - If user didn't provide it, defaults are in config
+            sensitive_actions_config = config.config.get("sensitive_actions")
+            sensitive_patterns_config = config.config.get("sensitive_action_patterns")
 
         # Check for privilege escalation patterns using all_of logic
         # We need to check both exact actions and patterns

@@ -98,15 +98,21 @@ def _check_all_of_pattern(
     Returns:
         ValidationIssue if privilege escalation detected, None otherwise
     """
+    # Filter out actions that match ignore_patterns BEFORE checking for privilege escalation
+    # This allows users to exclude specific actions from privilege escalation detection
+    # by adding them to ignore_patterns in sensitive_action config
+    filtered_actions = check_config.filter_actions(frozenset(all_actions))
+    all_actions_filtered = list(filtered_actions)
+
     matched_actions = []
 
     if check_type == "actions":
         # Exact matching
-        matched_actions = [a for a in all_actions if a in required_actions]
+        matched_actions = [a for a in all_actions_filtered if a in required_actions]
     else:
         # Pattern matching - for each pattern, find actions that match
         for pattern in required_actions:
-            for action in all_actions:
+            for action in all_actions_filtered:
                 try:
                     if re.match(pattern, action):
                         matched_actions.append(action)
@@ -167,6 +173,9 @@ def _check_all_of_pattern(
             f"Actions found in:\n  - {stmt_details}",
         )
 
+        # Use custom example if provided in item_config
+        example = item_config.get("example")
+
         return ValidationIssue(
             severity=severity,
             statement_sid=None,  # Policy-level issue
@@ -174,6 +183,7 @@ def _check_all_of_pattern(
             issue_type="privilege_escalation",
             message=message,
             suggestion=suggestion,
+            example=example,
             line_number=1,  # Policy-level issues point to line 1 (top of policy)
         )
 

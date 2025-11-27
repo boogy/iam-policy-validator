@@ -882,6 +882,17 @@ class ReportGenerator:
                 parts.append(f"> 💡 **Suggestion:** {issue.suggestion}")
                 parts.append("")
 
+        # Handle separate example field (if not already in suggestion)
+        if issue.example and "\nExample:\n" not in (issue.suggestion or ""):
+            parts.append("<details>")
+            parts.append("<summary>📖 View Example</summary>")
+            parts.append("")
+            parts.append("```json")
+            parts.append(issue.example)
+            parts.append("```")
+            parts.append("</details>")
+            parts.append("")
+
         return "\n".join(parts)
 
     def save_json_report(self, report: ValidationReport, file_path: str) -> None:
