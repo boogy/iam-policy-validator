@@ -1267,7 +1267,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             statement_sid=statement.sid,
             statement_index=statement_idx,
             issue_type="missing_required_condition",
-            message=f"{message_prefix} Action(s) `{matching_actions_str}` require condition `{condition_key}`",
+            message=f"{message_prefix} Action(s) {matching_actions_str} require condition `{condition_key}`",
             action=", ".join(matching_actions),
             condition_key=condition_key,
             suggestion=suggestion_text,
