@@ -31,6 +31,11 @@ inputs:
     required: false
     default: "true"
 
+  allow-owner-ignore:
+    description: "Allow CODEOWNERS to ignore findings by replying 'ignore' to review comments"
+    required: false
+    default: "true"
+
   github-summary:
     description: "Write summary to GitHub Actions job summary (visible in Actions tab)"
     required: false
@@ -440,6 +445,11 @@ runs:
         # Add aws-services-dir if specified (for offline mode)
         if [ -n "${{ inputs.aws-services-dir }}" ]; then
           ARGS="$ARGS --aws-services-dir ${{ github.workspace }}/${{ inputs.aws-services-dir }}"
+        fi
+
+        # Add owner-ignore flag (default is enabled, so only add flag when disabled)
+        if [ "${{ inputs.allow-owner-ignore }}" = "false" ]; then
+          ARGS="$ARGS --no-owner-ignore"
         fi
 
         echo "Running: uv run iam-validator $ARGS"

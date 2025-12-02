@@ -198,6 +198,19 @@ Examples:
             help="Show Issue Severity Breakdown section in enhanced format output",
         )
 
+        parser.add_argument(
+            "--allow-owner-ignore",
+            action="store_true",
+            default=True,
+            help="Allow CODEOWNERS to ignore findings by replying 'ignore' to review comments (default: enabled)",
+        )
+
+        parser.add_argument(
+            "--no-owner-ignore",
+            action="store_true",
+            help="Disable CODEOWNERS ignore feature",
+        )
+
     async def execute(self, args: argparse.Namespace) -> int:
         """Execute the validate command."""
         # Check if streaming mode is enabled
@@ -302,16 +315,26 @@ Examples:
             from iam_validator.core.config.config_loader import ConfigLoader
             from iam_validator.core.pr_commenter import PRCommenter
 
-            # Load config to get fail_on_severity and severity_labels settings
+            # Load config to get fail_on_severity, severity_labels, and ignore settings
             config = ConfigLoader.load_config(config_path)
             fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
             severity_labels = config.get_setting("severity_labels", {})
+
+            # Get ignore settings from config, but CLI flag can override
+            ignore_settings = config.get_setting("ignore_settings", {})
+            enable_ignore = ignore_settings.get("enabled", True)
+            # CLI --no-owner-ignore takes precedence
+            if getattr(args, "no_owner_ignore", False):
+                enable_ignore = False
+            allowed_users = ignore_settings.get("allowed_users", [])
 
             async with GitHubIntegration() as github:
                 commenter = PRCommenter(
                     github,
                     fail_on_severities=fail_on_severities,
                     severity_labels=severity_labels,
+                    enable_codeowners_ignore=enable_ignore,
+                    allowed_ignore_users=allowed_users,
                 )
                 success = await commenter.post_findings_to_pr(
                     report,
@@ -431,16 +454,26 @@ Examples:
             from iam_validator.core.config.config_loader import ConfigLoader
             from iam_validator.core.pr_commenter import PRCommenter
 
-            # Load config to get fail_on_severity and severity_labels settings
+            # Load config to get fail_on_severity, severity_labels, and ignore settings
             config = ConfigLoader.load_config(config_path)
             fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
             severity_labels = config.get_setting("severity_labels", {})
+
+            # Get ignore settings from config, but CLI flag can override
+            ignore_settings = config.get_setting("ignore_settings", {})
+            enable_ignore = ignore_settings.get("enabled", True)
+            # CLI --no-owner-ignore takes precedence
+            if getattr(args, "no_owner_ignore", False):
+                enable_ignore = False
+            allowed_users = ignore_settings.get("allowed_users", [])
 
             async with GitHubIntegration() as github:
                 commenter = PRCommenter(
                     github,
                     fail_on_severities=fail_on_severities,
                     severity_labels=severity_labels,
+                    enable_codeowners_ignore=enable_ignore,
+                    allowed_ignore_users=allowed_users,
                 )
                 success = await commenter.post_findings_to_pr(
                     report,
@@ -487,10 +520,18 @@ Examples:
                 if not github.is_configured():
                     return
 
-                # Load config to get fail_on_severity setting
+                # Load config to get fail_on_severity and ignore settings
                 config_path = getattr(args, "config", None)
                 config = ConfigLoader.load_config(config_path)
                 fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+
+                # Get ignore settings from config, but CLI flag can override
+                ignore_settings = config.get_setting("ignore_settings", {})
+                enable_ignore = ignore_settings.get("enabled", True)
+                # CLI --no-owner-ignore takes precedence
+                if getattr(args, "no_owner_ignore", False):
+                    enable_ignore = False
+                allowed_users = ignore_settings.get("allowed_users", [])
 
                 # In streaming mode, don't cleanup comments (we want to keep earlier files)
                 # Cleanup will happen once at the end
@@ -498,6 +539,8 @@ Examples:
                     github,
                     cleanup_old_comments=False,
                     fail_on_severities=fail_on_severities,
+                    enable_codeowners_ignore=enable_ignore,
+                    allowed_ignore_users=allowed_users,
                 )
 
                 # Create a mini-report for just this file
