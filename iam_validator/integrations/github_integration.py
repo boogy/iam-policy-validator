@@ -394,7 +394,6 @@ class GitHubIntegration:
                     continue
 
             except Exception as e:  # pylint: disable=broad-exception-caught
-                last_error = e
                 logger.error(f"Unexpected error on {method} {endpoint}: {e}")
                 return None
 

@@ -1,7 +1,5 @@
 """Tests for CODEOWNERS file parser."""
 
-import pytest
-
 from iam_validator.core.codeowners import (
     CodeOwnerRule,
     CodeOwnersParser,

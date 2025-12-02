@@ -15,6 +15,50 @@ if TYPE_CHECKING:
     from iam_validator.core.models import ValidationIssue
 
 
+def compute_finding_hash(
+    file_path: str,
+    check_id: str | None,
+    issue_type: str,
+    statement_sid: str | None,
+    statement_index: int,
+    action: str | None = None,
+    resource: str | None = None,
+    condition_key: str | None = None,
+) -> str:
+    """Compute a deterministic 16-character hash for a finding.
+
+    This is a standalone function to avoid cyclic imports when called
+    from models.py.
+
+    Args:
+        file_path: Relative path to the policy file
+        check_id: Check that found the issue
+        issue_type: Type of issue
+        statement_sid: Statement ID if available
+        statement_index: Statement index
+        action: Specific action (optional)
+        resource: Specific resource (optional)
+        condition_key: Condition key (optional)
+
+    Returns:
+        16-character hex string uniquely identifying this finding
+    """
+    # Use SID if available, otherwise fall back to index
+    statement_id = statement_sid if statement_sid else f"idx:{statement_index}"
+
+    components = [
+        file_path,
+        check_id or "",
+        issue_type,
+        statement_id,
+        action or "",
+        resource or "",
+        condition_key or "",
+    ]
+    combined = "|".join(components)
+    return hashlib.sha256(combined.encode()).hexdigest()[:16]
+
+
 @dataclass(frozen=True, slots=True)
 class FindingFingerprint:
     """Unique identifier for a validation finding across runs.
@@ -53,20 +97,16 @@ class FindingFingerprint:
         Returns:
             16-character hex string uniquely identifying this finding
         """
-        # Use SID if available, otherwise fall back to index
-        statement_id = self.statement_sid if self.statement_sid else f"idx:{self.statement_index}"
-
-        components = [
-            self.file_path,
-            self.check_id or "",
-            self.issue_type,
-            statement_id,
-            self.action or "",
-            self.resource or "",
-            self.condition_key or "",
-        ]
-        combined = "|".join(components)
-        return hashlib.sha256(combined.encode()).hexdigest()[:16]
+        return compute_finding_hash(
+            file_path=self.file_path,
+            check_id=self.check_id,
+            issue_type=self.issue_type,
+            statement_sid=self.statement_sid,
+            statement_index=self.statement_index,
+            action=self.action,
+            resource=self.resource,
+            condition_key=self.condition_key,
+        )
 
     @classmethod
     def from_issue(cls, issue: ValidationIssue, file_path: str) -> FindingFingerprint:

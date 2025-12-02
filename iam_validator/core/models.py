@@ -249,10 +249,19 @@ class ValidationIssue(BaseModel):
             parts.append(f"<!-- issue-type: {self.issue_type} -->\n")
             # Add finding ID for ignore tracking
             if file_path:
-                from iam_validator.core.finding_fingerprint import FindingFingerprint
+                from iam_validator.core.finding_fingerprint import compute_finding_hash
 
-                fingerprint = FindingFingerprint.from_issue(self, file_path)
-                parts.append(f"<!-- finding-id: {fingerprint.to_hash()} -->\n")
+                finding_hash = compute_finding_hash(
+                    file_path=file_path,
+                    check_id=self.check_id,
+                    issue_type=self.issue_type,
+                    statement_sid=self.statement_sid,
+                    statement_index=self.statement_index,
+                    action=self.action,
+                    resource=self.resource,
+                    condition_key=self.condition_key,
+                )
+                parts.append(f"<!-- finding-id: {finding_hash} -->\n")
 
         # Build statement context for better navigation
         statement_context = f"Statement[{self.statement_index}]"
