@@ -118,14 +118,36 @@ class TestPRCommenterDiffFiltering:
         """Test that when PR files can't be fetched, filtering falls back gracefully."""
         mock_github.get_pr_files.return_value = []
 
+        # With cleanup_old_comments=False (streaming mode), cleanup is skipped
         commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
 
         with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": tempfile.gettempdir()}):
             success = await commenter._post_review_comments(validation_report_with_issues)
 
         assert success is True
-        # Should skip review creation but not fail
+        # With cleanup_old_comments=False, no call is made when there are no inline comments
+        # (cleanup happens at the end of streaming mode, not per-file)
         mock_github.update_or_create_review_comments.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_diff_filtering_with_cleanup_enabled(
+        self, mock_github, validation_report_with_issues
+    ):
+        """Test that when cleanup is enabled and no inline comments, cleanup still runs."""
+        mock_github.get_pr_files.return_value = []
+
+        # With cleanup_old_comments=True (batch mode), cleanup should run even with no comments
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=True)
+
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": tempfile.gettempdir()}):
+            success = await commenter._post_review_comments(validation_report_with_issues)
+
+        assert success is True
+        # Should call update_or_create_review_comments for cleanup with empty comments
+        mock_github.update_or_create_review_comments.assert_called_once()
+        call_args = mock_github.update_or_create_review_comments.call_args
+        assert call_args.kwargs["comments"] == []  # No inline comments (diff filtering)
+        assert call_args.kwargs["validated_files"] is not None  # But validated_files passed for cleanup
 
     @pytest.mark.asyncio
     async def test_strict_filtering_inline_comments_only_changed_lines(

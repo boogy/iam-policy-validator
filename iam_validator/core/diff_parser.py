@@ -87,15 +87,19 @@ class DiffParser:
             patch = file_info.get("patch")
 
             # Files without patches (e.g., binary files, very large files)
+            # For added/modified files, we use a "no_patch" marker to indicate
+            # that we should allow comments on any line (handled in pr_commenter)
             if not patch or not isinstance(patch, str):
-                logger.debug(f"No patch available for {filename}, skipping diff parsing")
-                # Still track the file with empty change sets
+                logger.debug(f"No patch available for {filename} (status={status})")
+                # Mark as "no_patch" so pr_commenter can handle this specially
+                # For added/modified files without patch, we'll allow inline comments
+                # on any line since GitHub likely truncated the diff due to size
                 parsed[filename] = ParsedDiff(
                     file_path=filename,
-                    changed_lines=set(),
+                    changed_lines=set(),  # Empty, but status indicates handling
                     added_lines=set(),
                     deleted_lines=set(),
-                    status=status,
+                    status=f"{status}_no_patch",  # Mark as no_patch variant
                 )
                 continue
 

@@ -2,6 +2,7 @@
 
 from typing import ClassVar
 
+from iam_validator.checks.utils.action_parser import parse_action
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
@@ -36,9 +37,10 @@ class ServiceWildcardCheck(PolicyCheck):
             if action == "*":
                 continue
 
-            # Check if it's a service-level wildcard (e.g., "iam:*", "s3:*")
-            if ":" in action and action.endswith(":*"):
-                service = action.split(":")[0]
+            # Parse action and check if it's a service-level wildcard (e.g., "iam:*", "s3:*")
+            parsed = parse_action(action)
+            if parsed and parsed.action_name == "*":
+                service = parsed.service
 
                 # Check if this service is in the allowed list
                 if service not in allowed_services:
@@ -72,6 +74,7 @@ class ServiceWildcardCheck(PolicyCheck):
                             suggestion=suggestion,
                             example=example if example else None,
                             line_number=statement.line_number,
+                            field_name="action",
                         )
                     )
 

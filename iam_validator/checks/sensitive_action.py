@@ -266,6 +266,7 @@ class SensitiveActionCheck(PolicyCheck):
                     suggestion=suggestion_text,
                     example=example if example else None,
                     line_number=statement.line_number,
+                    field_name="action",
                 )
             )
 

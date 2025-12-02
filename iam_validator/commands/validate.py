@@ -64,6 +64,10 @@ Examples:
 
   # Only GitHub Actions job summary
   iam-validator validate --path ./policies/ --github-summary
+
+  # CI mode: show enhanced output in logs, save JSON to file
+  iam-validator validate --path ./policies/ --ci --github-review
+  iam-validator validate --path ./policies/ --ci --ci-output results.json
         """
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
@@ -198,6 +202,33 @@ Examples:
             help="Show Issue Severity Breakdown section in enhanced format output",
         )
 
+        parser.add_argument(
+            "--allow-owner-ignore",
+            action="store_true",
+            default=True,
+            help="Allow CODEOWNERS to ignore findings by replying 'ignore' to review comments (default: enabled)",
+        )
+
+        parser.add_argument(
+            "--no-owner-ignore",
+            action="store_true",
+            help="Disable CODEOWNERS ignore feature",
+        )
+
+        parser.add_argument(
+            "--ci",
+            action="store_true",
+            help="CI mode: print enhanced console output for visibility in job logs, "
+            "and write JSON report to file (use --ci-output to specify filename, "
+            "defaults to 'validation-report.json').",
+        )
+
+        parser.add_argument(
+            "--ci-output",
+            default="validation-report.json",
+            help="Output file for JSON report in CI mode (default: validation-report.json)",
+        )
+
     async def execute(self, args: argparse.Namespace) -> int:
         """Execute the validate command."""
         # Check if streaming mode is enabled
@@ -266,8 +297,15 @@ Examples:
         generator = ReportGenerator()
         report = generator.generate_report(results, parsing_errors=loader.parsing_errors)
 
-        # Output results
-        if args.format is None:
+        # Handle --ci flag: show enhanced output in console, write JSON to file
+        ci_mode = getattr(args, "ci", False)
+        if ci_mode:
+            # CI mode: enhanced output to console, JSON to file
+            self._print_ci_console_output(report, generator)
+            ci_output_file = getattr(args, "ci_output", "validation-report.json")
+            generator.save_json_report(report, ci_output_file)
+            logging.info(f"Saved JSON report to {ci_output_file}")
+        elif args.format is None:
             # Default: use classic console output (direct Rich printing)
             generator.print_console_report(report)
         elif args.format == "json":
@@ -302,16 +340,26 @@ Examples:
             from iam_validator.core.config.config_loader import ConfigLoader
             from iam_validator.core.pr_commenter import PRCommenter
 
-            # Load config to get fail_on_severity and severity_labels settings
+            # Load config to get fail_on_severity, severity_labels, and ignore settings
             config = ConfigLoader.load_config(config_path)
             fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
             severity_labels = config.get_setting("severity_labels", {})
+
+            # Get ignore settings from config, but CLI flag can override
+            ignore_settings = config.get_setting("ignore_settings", {})
+            enable_ignore = ignore_settings.get("enabled", True)
+            # CLI --no-owner-ignore takes precedence
+            if getattr(args, "no_owner_ignore", False):
+                enable_ignore = False
+            allowed_users = ignore_settings.get("allowed_users", [])
 
             async with GitHubIntegration() as github:
                 commenter = PRCommenter(
                     github,
                     fail_on_severities=fail_on_severities,
                     severity_labels=severity_labels,
+                    enable_codeowners_ignore=enable_ignore,
+                    allowed_ignore_users=allowed_users,
                 )
                 success = await commenter.post_findings_to_pr(
                     report,
@@ -348,10 +396,8 @@ Examples:
 
         all_results = []
         total_processed = 0
-
-        # Clean up old review comments at the start (before posting any new ones)
-        if getattr(args, "github_review", False):
-            await self._cleanup_old_comments(args)
+        # Track all validated files across the streaming session for final cleanup
+        all_validated_files: set[str] = set()
 
         logging.info(f"Starting streaming validation from {len(args.paths)} path(s)")
 
@@ -374,6 +420,11 @@ Examples:
                 result = results[0]
                 all_results.append(result)
 
+                # Track validated file (convert to relative path for cleanup)
+                relative_path = self._make_relative_path(file_path)
+                if relative_path:
+                    all_validated_files.add(relative_path)
+
                 # Print immediate feedback for this file
                 if args.format == "console":
                     if result.is_valid:
@@ -383,6 +434,8 @@ Examples:
                         # Note: validation_success tracks overall status
 
                 # Post to GitHub immediately for this file (progressive PR comments)
+                # skip_cleanup=True because we process files one at a time and don't want
+                # to delete comments from files processed earlier. Cleanup runs at the end.
                 if getattr(args, "github_review", False):
                     await self._post_file_review(result, args)
 
@@ -392,11 +445,23 @@ Examples:
 
         logging.info(f"\nCompleted validation of {total_processed} policies")
 
+        # Run final cleanup after all files are processed
+        # This uses the full report to know all current findings and deletes stale comments
+        if getattr(args, "github_review", False):
+            await self._run_final_review_cleanup(args, all_results, all_validated_files)
+
         # Generate final summary report
         report = generator.generate_report(all_results)
 
-        # Output final results
-        if args.format == "console":
+        # Handle --ci flag: show enhanced output in console, write JSON to file
+        ci_mode = getattr(args, "ci", False)
+        if ci_mode:
+            # CI mode: enhanced output to console, JSON to file
+            self._print_ci_console_output(report, generator)
+            ci_output_file = getattr(args, "ci_output", "validation-report.json")
+            generator.save_json_report(report, ci_output_file)
+            logging.info(f"Saved JSON report to {ci_output_file}")
+        elif args.format == "console":
             # Classic console output (direct Rich printing from report.py)
             generator.print_console_report(report)
         elif args.format == "json":
@@ -431,16 +496,26 @@ Examples:
             from iam_validator.core.config.config_loader import ConfigLoader
             from iam_validator.core.pr_commenter import PRCommenter
 
-            # Load config to get fail_on_severity and severity_labels settings
+            # Load config to get fail_on_severity, severity_labels, and ignore settings
             config = ConfigLoader.load_config(config_path)
             fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
             severity_labels = config.get_setting("severity_labels", {})
+
+            # Get ignore settings from config, but CLI flag can override
+            ignore_settings = config.get_setting("ignore_settings", {})
+            enable_ignore = ignore_settings.get("enabled", True)
+            # CLI --no-owner-ignore takes precedence
+            if getattr(args, "no_owner_ignore", False):
+                enable_ignore = False
+            allowed_users = ignore_settings.get("allowed_users", [])
 
             async with GitHubIntegration() as github:
                 commenter = PRCommenter(
                     github,
                     fail_on_severities=fail_on_severities,
                     severity_labels=severity_labels,
+                    enable_codeowners_ignore=enable_ignore,
+                    allowed_ignore_users=allowed_users,
                 )
                 success = await commenter.post_findings_to_pr(
                     report,
@@ -487,10 +562,18 @@ Examples:
                 if not github.is_configured():
                     return
 
-                # Load config to get fail_on_severity setting
+                # Load config to get fail_on_severity and ignore settings
                 config_path = getattr(args, "config", None)
                 config = ConfigLoader.load_config(config_path)
                 fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+
+                # Get ignore settings from config, but CLI flag can override
+                ignore_settings = config.get_setting("ignore_settings", {})
+                enable_ignore = ignore_settings.get("enabled", True)
+                # CLI --no-owner-ignore takes precedence
+                if getattr(args, "no_owner_ignore", False):
+                    enable_ignore = False
+                allowed_users = ignore_settings.get("allowed_users", [])
 
                 # In streaming mode, don't cleanup comments (we want to keep earlier files)
                 # Cleanup will happen once at the end
@@ -498,13 +581,15 @@ Examples:
                     github,
                     cleanup_old_comments=False,
                     fail_on_severities=fail_on_severities,
+                    enable_codeowners_ignore=enable_ignore,
+                    allowed_ignore_users=allowed_users,
                 )
 
                 # Create a mini-report for just this file
                 generator = ReportGenerator()
                 mini_report = generator.generate_report([result])
 
-                # Post line-specific comments
+                # Post line-specific comments (skip cleanup - runs at end of streaming)
                 await commenter.post_findings_to_pr(
                     mini_report,
                     create_review=True,
@@ -512,6 +597,109 @@ Examples:
                 )
         except Exception as e:
             logging.warning(f"Failed to post review for {result.policy_file}: {e}")
+
+    def _make_relative_path(self, file_path: str) -> str | None:
+        """Convert absolute path to relative path for GitHub.
+
+        Args:
+            file_path: Absolute or relative path to file
+
+        Returns:
+            Relative path from repository root, or None if cannot be determined
+        """
+        from pathlib import Path
+
+        # If already relative, use as-is
+        if not os.path.isabs(file_path):
+            return file_path
+
+        # Try to get workspace path from environment
+        workspace = os.getenv("GITHUB_WORKSPACE")
+        if workspace:
+            try:
+                abs_file_path = Path(file_path).resolve()
+                workspace_path = Path(workspace).resolve()
+
+                if abs_file_path.is_relative_to(workspace_path):
+                    relative = abs_file_path.relative_to(workspace_path)
+                    return str(relative).replace("\\", "/")
+            except (ValueError, OSError):
+                pass
+
+        # Fallback: try current working directory
+        try:
+            cwd = Path.cwd()
+            abs_file_path = Path(file_path).resolve()
+            if abs_file_path.is_relative_to(cwd):
+                relative = abs_file_path.relative_to(cwd)
+                return str(relative).replace("\\", "/")
+        except (ValueError, OSError):
+            pass
+
+        return None
+
+    async def _run_final_review_cleanup(
+        self,
+        args: argparse.Namespace,
+        all_results: list,
+        all_validated_files: set[str],
+    ) -> None:
+        """Run final cleanup after all files are processed in streaming mode.
+
+        This deletes stale comments for findings that are no longer present,
+        using the complete set of validated files and current findings.
+
+        Args:
+            args: Command-line arguments
+            all_results: All validation results from the streaming session
+            all_validated_files: Set of all validated file paths (relative)
+        """
+        try:
+            from iam_validator.core.config.config_loader import ConfigLoader
+            from iam_validator.core.pr_commenter import PRCommenter
+
+            async with GitHubIntegration() as github:
+                if not github.is_configured():
+                    return
+
+                # Load config
+                config_path = getattr(args, "config", None)
+                config = ConfigLoader.load_config(config_path)
+                fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+
+                # Get ignore settings
+                ignore_settings = config.get_setting("ignore_settings", {})
+                enable_ignore = ignore_settings.get("enabled", True)
+                if getattr(args, "no_owner_ignore", False):
+                    enable_ignore = False
+                allowed_users = ignore_settings.get("allowed_users", [])
+
+                # Create commenter WITH cleanup enabled for the final pass
+                commenter = PRCommenter(
+                    github,
+                    cleanup_old_comments=True,  # Enable cleanup for final pass
+                    fail_on_severities=fail_on_severities,
+                    enable_codeowners_ignore=enable_ignore,
+                    allowed_ignore_users=allowed_users,
+                )
+
+                # Create a full report with all results
+                generator = ReportGenerator()
+                full_report = generator.generate_report(all_results)
+
+                # Post with create_review=True to run the full update/create/delete logic
+                # but pass all_validated_files so cleanup knows the full scope
+                logging.info("Running final comment cleanup...")
+                await commenter.post_findings_to_pr(
+                    full_report,
+                    create_review=True,
+                    add_summary_comment=False,
+                    manage_labels=False,  # Labels are managed separately
+                    process_ignores=False,  # Already processed per-file
+                )
+
+        except Exception as e:
+            logging.warning(f"Failed to run final review cleanup: {e}")
 
     def _write_github_actions_summary(self, report: ValidationReport) -> None:
         """Write a high-level summary to GitHub Actions job summary.
@@ -609,3 +797,34 @@ Examples:
 
         except Exception as e:
             logging.warning(f"Failed to write GitHub Actions summary: {e}")
+
+    def _print_ci_console_output(
+        self, report: ValidationReport, generator: ReportGenerator
+    ) -> None:
+        """Print enhanced console output for CI visibility.
+
+        This shows validation results in the CI job logs in a human-readable format.
+        JSON output is written to a separate file (specified by --ci-output).
+
+        Args:
+            report: Validation report to print
+            generator: ReportGenerator instance
+        """
+        # Generate enhanced format output with summary and severity breakdown
+        try:
+            enhanced_output = generator.format_report(
+                report,
+                "enhanced",
+                show_summary=True,
+                show_severity_breakdown=True,
+            )
+            print(enhanced_output)
+
+        except Exception as e:
+            # Fallback to basic summary if enhanced format fails
+            logging.warning(f"Failed to generate enhanced output: {e}")
+            print("\nValidation Summary:")
+            print(f"  Total policies: {report.total_policies}")
+            print(f"  Valid: {report.valid_policies}")
+            print(f"  Invalid: {report.invalid_policies}")
+            print(f"  Total issues: {report.total_issues}\n")

@@ -645,6 +645,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     action=", ".join(actions),
                     suggestion=f"Remove these forbidden actions. Found in: {', '.join(statement_refs)}. {description}",
                     line_number=stmt.line_number,
+                    field_name="action",
                 )
             )
 
@@ -683,6 +684,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     action=", ".join(sorted(set(found_actions))),
                     suggestion=f"Review these statements: {', '.join(statement_refs)}. {description}",
                     line_number=first_stmt.line_number,
+                    field_name="action",
                 )
             )
             return issues
@@ -772,6 +774,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     action=", ".join(sorted(all_actions)),
                     suggestion=f"Review these statements: {', '.join(statement_refs)}. {description}",
                     line_number=first_stmt.line_number,
+                    field_name="action",
                 )
             )
             return issues
@@ -1129,6 +1132,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             suggestion=suggestion,
                             example=example if example else None,
                             line_number=statement.line_number,
+                            field_name="condition",
                         )
                     )
 
@@ -1273,6 +1277,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             suggestion=suggestion_text,
             example=example_code,
             line_number=statement.line_number,
+            field_name="condition",
         )
 
     def _build_suggestion(
@@ -1433,4 +1438,5 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             condition_key=condition_key,
             suggestion=suggestion,
             line_number=statement.line_number,
+            field_name="condition",
         )

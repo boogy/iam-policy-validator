@@ -100,6 +100,9 @@ class AWSServiceFetcher:
         "wafv2",
     ]
 
+    # Default concurrency limits
+    DEFAULT_MAX_CONCURRENT_REQUESTS = 10
+
     def __init__(
         self,
         timeout: float = constants.DEFAULT_HTTP_TIMEOUT_SECONDS,
@@ -112,6 +115,7 @@ class AWSServiceFetcher:
         prefetch_common: bool = True,
         cache_dir: Path | str | None = None,
         aws_services_dir: Path | str | None = None,
+        max_concurrent_requests: int = DEFAULT_MAX_CONCURRENT_REQUESTS,
     ):
         """Initialize AWS service fetcher.
 
@@ -130,10 +134,13 @@ class AWSServiceFetcher:
                             instead of making API calls. Directory should contain:
                             - _services.json: List of all services
                             - {service}.json: Individual service files (e.g., s3.json)
+            max_concurrent_requests: Maximum number of concurrent HTTP requests (default: 10)
         """
         self.prefetch_common = prefetch_common
         self.aws_services_dir = Path(aws_services_dir) if aws_services_dir else None
         self._prefetched_services: set[str] = set()
+        # Semaphore for limiting concurrent requests
+        self._request_semaphore = asyncio.Semaphore(max_concurrent_requests)
 
         # Initialize storage component
         self._storage = ServiceFileStorage(
@@ -343,7 +350,10 @@ class AWSServiceFetcher:
         raise ValueError(f"Service `{service_name}` not found")
 
     async def fetch_multiple_services(self, service_names: list[str]) -> dict[str, ServiceDetail]:
-        """Fetch multiple services concurrently with optimized batching.
+        """Fetch multiple services concurrently with controlled parallelism.
+
+        Uses a semaphore to limit concurrent requests and prevent overwhelming
+        the AWS service reference API.
 
         Args:
             service_names: List of service names to fetch
@@ -361,14 +371,16 @@ class AWSServiceFetcher:
         """
 
         async def fetch_single(name: str) -> tuple[str, ServiceDetail]:
-            try:
-                detail = await self.fetch_service_by_name(name)
-                return name, detail
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                logger.error(f"Failed to fetch service {name}: {e}")
-                raise
+            # Use semaphore to limit concurrent requests
+            async with self._request_semaphore:
+                try:
+                    detail = await self.fetch_service_by_name(name)
+                    return name, detail
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    logger.error(f"Failed to fetch service {name}: {e}")
+                    raise
 
-        # Fetch all services concurrently
+        # Fetch all services concurrently (semaphore controls parallelism)
         tasks = [fetch_single(name) for name in service_names]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 

@@ -61,6 +61,7 @@ class ConditionKeyValidationCheck(PolicyCheck):
                                 condition_key=condition_key,
                                 line_number=line_number,
                                 suggestion=result.suggestion,
+                                field_name="condition",
                             )
                         )
                         # Only report once per condition key (not per action)
@@ -78,6 +79,7 @@ class ConditionKeyValidationCheck(PolicyCheck):
                                 action=action,
                                 condition_key=condition_key,
                                 line_number=line_number,
+                                field_name="condition",
                             )
                         )
                         # Only report once per condition key (not per action)

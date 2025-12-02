@@ -70,6 +70,7 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
                         message=issue_msg,
                         suggestion=suggestion,
                         line_number=statement.line_number,
+                        field_name="sid",
                     )
                 )
 
@@ -99,6 +100,7 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
                     message=f"Statement ID `{duplicate_sid}` is used **{count} times** in this policy (found in statements `{statement_numbers}`)",
                     suggestion="Change this SID to a unique value. Statement IDs help identify and reference specific statements, so duplicates can cause confusion.",
                     line_number=statement.line_number,
+                    field_name="sid",
                 )
             )
 

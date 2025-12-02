@@ -24,6 +24,7 @@ Example:
 import re
 from typing import ClassVar
 
+from iam_validator.checks.utils.action_parser import get_action_case_insensitive, parse_action
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
@@ -91,27 +92,25 @@ class ActionResourceMatchingCheck(PolicyCheck):
 
         # Check each action
         for action in actions:
-            # Skip wildcard actions
-            if action == "*" or ":" not in action:
-                continue
-
-            # Parse service and action name
-            try:
-                service, action_name = action.split(":", 1)
-            except ValueError:
-                continue  # Invalid action format, handled by action_validation
+            # Parse and validate action
+            parsed = parse_action(action)
+            if not parsed:
+                continue  # Invalid action format (or "*"), handled by action_validation
 
             # Skip wildcard actions
-            if "*" in service or "*" in action_name:
+            if parsed.has_wildcard:
                 continue
+
+            service = parsed.service
+            action_name = parsed.action_name
 
             # Get service definition
             service_detail = await fetcher.fetch_service_by_name(service)
             if not service_detail:
                 continue  # Unknown service, handled by action_validation
 
-            # Get action definition
-            action_detail = service_detail.actions.get(action_name)
+            # Get action definition (case-insensitive since AWS actions are case-insensitive)
+            action_detail = get_action_case_insensitive(service_detail.actions, action_name)
             if not action_detail:
                 continue  # Unknown action, handled by action_validation
 
@@ -262,6 +261,7 @@ class ActionResourceMatchingCheck(PolicyCheck):
             ),
             suggestion=suggestion,
             line_number=line_number,
+            field_name="resource",
         )
 
     def _get_suggestion(

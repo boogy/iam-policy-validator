@@ -27,16 +27,121 @@ Example usage:
 
 import json
 import logging
+import re
 from collections.abc import Generator
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import overload
+from typing import Any, overload
 
 import yaml
 from pydantic import ValidationError
 
 from iam_validator.core.models import IAMPolicy
 
+
+@dataclass
+class StatementLineMap:
+    """Line numbers for each field in a statement.
+
+    Used for precise line-level PR comments on specific fields
+    (e.g., pointing to the exact Action line, not just the statement start).
+    """
+
+    statement_start: int  # Opening brace line
+    sid: int | None = None
+    effect: int | None = None
+    action: int | None = None
+    not_action: int | None = None
+    resource: int | None = None
+    not_resource: int | None = None
+    condition: int | None = None
+    principal: int | None = None
+    not_principal: int | None = None
+
+    def get_line_for_field(self, field_name: str) -> int:
+        """Get line number for a specific field, fallback to statement start.
+
+        Args:
+            field_name: Field name (case-insensitive): action, resource, condition, etc.
+
+        Returns:
+            Line number for the field, or statement_start if not found
+        """
+        field_map = {
+            "sid": self.sid,
+            "effect": self.effect,
+            "action": self.action,
+            "notaction": self.not_action,
+            "resource": self.resource,
+            "notresource": self.not_resource,
+            "condition": self.condition,
+            "principal": self.principal,
+            "notprincipal": self.not_principal,
+        }
+        line = field_map.get(field_name.lower().replace("_", ""))
+        return line if line is not None else self.statement_start
+
+
+@dataclass
+class PolicyLineMap:
+    """Line mappings for all statements in a policy file.
+
+    Provides field-level line number lookup for PR comment placement.
+    """
+
+    statements: list[StatementLineMap] = field(default_factory=list)
+
+    def get_statement_map(self, index: int) -> StatementLineMap | None:
+        """Get line map for a specific statement by index.
+
+        Args:
+            index: Statement index (0-based)
+
+        Returns:
+            StatementLineMap or None if index out of range
+        """
+        if 0 <= index < len(self.statements):
+            return self.statements[index]
+        return None
+
+    def get_line_for_field(self, statement_index: int, field_name: str) -> int | None:
+        """Get line number for a field in a specific statement.
+
+        Args:
+            statement_index: Statement index (0-based)
+            field_name: Field name (action, resource, condition, etc.)
+
+        Returns:
+            Line number or None if statement not found
+        """
+        stmt_map = self.get_statement_map(statement_index)
+        if stmt_map:
+            return stmt_map.get_line_for_field(field_name)
+        return None
+
+
 logger = logging.getLogger(__name__)
+
+
+class PolicyValidationLimits:
+    """Validation limits for policy loading.
+
+    These limits protect against DoS attacks via maliciously crafted policies
+    and ensure reasonable resource usage.
+    """
+
+    # Maximum file size in bytes (default: 10MB - AWS limit is 6KB for managed policies)
+    MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024
+    # Maximum JSON/YAML nesting depth
+    MAX_DEPTH: int = 50
+    # Maximum number of statements per policy (AWS limit is ~20-30 depending on size)
+    MAX_STATEMENTS: int = 100
+    # Maximum number of actions per statement
+    MAX_ACTIONS_PER_STATEMENT: int = 500
+    # Maximum number of resources per statement
+    MAX_RESOURCES_PER_STATEMENT: int = 500
+    # Maximum string length for any field
+    MAX_STRING_LENGTH: int = 10000
 
 
 class PolicyLoader:
@@ -49,16 +154,89 @@ class PolicyLoader:
     # Directories to skip when scanning recursively (cache, build artifacts, etc.)
     SKIP_DIRECTORIES = {".cache", ".git", "node_modules", "__pycache__", ".venv", "venv"}
 
-    def __init__(self, max_file_size_mb: int = 100) -> None:
+    def __init__(
+        self,
+        max_file_size_mb: int = 100,
+        enforce_limits: bool = True,
+    ) -> None:
         """Initialize the policy loader.
 
         Args:
             max_file_size_mb: Maximum file size in MB to load (default: 100MB)
+            enforce_limits: Whether to enforce validation limits (default: True)
         """
         self.loaded_policies: list[tuple[str, IAMPolicy]] = []
         self.max_file_size_bytes = max_file_size_mb * 1024 * 1024
+        self.enforce_limits = enforce_limits
         # Track parsing/validation errors for reporting
         self.parsing_errors: list[tuple[str, str]] = []  # (file_path, error_message)
+
+    @staticmethod
+    def check_json_depth(
+        obj: Any, max_depth: int = PolicyValidationLimits.MAX_DEPTH, current_depth: int = 0
+    ) -> bool:
+        """Check if JSON object exceeds maximum nesting depth.
+
+        Args:
+            obj: JSON object to check
+            max_depth: Maximum allowed depth
+            current_depth: Current recursion depth
+
+        Returns:
+            True if within limits, raises ValueError if exceeded
+        """
+        if current_depth > max_depth:
+            raise ValueError(f"JSON nesting depth exceeds maximum of {max_depth}")
+
+        if isinstance(obj, dict):
+            for value in obj.values():
+                PolicyLoader.check_json_depth(value, max_depth, current_depth + 1)
+        elif isinstance(obj, list):
+            for item in obj:
+                PolicyLoader.check_json_depth(item, max_depth, current_depth + 1)
+
+        return True
+
+    @staticmethod
+    def validate_policy_limits(data: dict[str, Any]) -> list[str]:
+        """Validate policy data against size limits.
+
+        Args:
+            data: Parsed policy dictionary
+
+        Returns:
+            List of validation warnings (empty if all limits passed)
+        """
+        warnings: list[str] = []
+        limits = PolicyValidationLimits
+
+        # Check statement count
+        statements = data.get("Statement", [])
+        if isinstance(statements, list) and len(statements) > limits.MAX_STATEMENTS:
+            warnings.append(
+                f"Policy has {len(statements)} statements, exceeds recommended max of {limits.MAX_STATEMENTS}"
+            )
+
+        # Check each statement
+        for i, stmt in enumerate(statements if isinstance(statements, list) else []):
+            if not isinstance(stmt, dict):
+                continue
+
+            # Check actions
+            actions = stmt.get("Action", [])
+            if isinstance(actions, list) and len(actions) > limits.MAX_ACTIONS_PER_STATEMENT:
+                warnings.append(
+                    f"Statement {i} has {len(actions)} actions, exceeds recommended max of {limits.MAX_ACTIONS_PER_STATEMENT}"
+                )
+
+            # Check resources
+            resources = stmt.get("Resource", [])
+            if isinstance(resources, list) and len(resources) > limits.MAX_RESOURCES_PER_STATEMENT:
+                warnings.append(
+                    f"Statement {i} has {len(resources)} resources, exceeds recommended max of {limits.MAX_RESOURCES_PER_STATEMENT}"
+                )
+
+        return warnings
 
     @staticmethod
     def _find_statement_line_numbers(file_content: str) -> list[int]:
@@ -127,6 +305,137 @@ class PolicyLoader:
                     current_statement_first_field = line_num
 
         return statement_lines
+
+    @staticmethod
+    def _find_yaml_statement_line_numbers(file_content: str) -> list[int]:
+        """Find line numbers for each statement in a YAML policy file.
+
+        Uses PyYAML's line tracking to find where each statement starts.
+
+        Args:
+            file_content: Raw content of the YAML policy file
+
+        Returns:
+            List of line numbers (1-indexed) for each statement
+        """
+
+        class LineTrackingLoader(yaml.SafeLoader):
+            """Custom YAML loader that tracks line numbers for mappings."""
+
+            pass
+
+        def construct_mapping_with_line(loader: yaml.SafeLoader, node: yaml.MappingNode) -> dict:
+            """Construct a mapping while preserving line number info."""
+            mapping = loader.construct_mapping(node)
+            # Store line number as a special key (1-indexed)
+            mapping["__line__"] = node.start_mark.line + 1
+            return mapping
+
+        # Register custom constructor for mappings
+        LineTrackingLoader.add_constructor(
+            yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+            construct_mapping_with_line,
+        )
+
+        try:
+            data = yaml.load(file_content, Loader=LineTrackingLoader)  # noqa: S506
+        except yaml.YAMLError:
+            return []
+
+        if not data or not isinstance(data, dict):
+            return []
+
+        # Extract statement line numbers
+        statement_line_numbers = []
+        statements = data.get("Statement", [])
+
+        if isinstance(statements, list):
+            for stmt in statements:
+                if isinstance(stmt, dict) and "__line__" in stmt:
+                    statement_line_numbers.append(stmt["__line__"])
+
+        return statement_line_numbers
+
+    @staticmethod
+    def parse_statement_field_lines(file_content: str) -> PolicyLineMap:
+        """Parse JSON to find exact line numbers for each field in each statement.
+
+        This provides field-level line mapping for precise PR comment placement.
+        For example, an issue about Action: "*" will point to the Action line,
+        not just the statement's opening brace.
+
+        Args:
+            file_content: Raw content of the JSON policy file
+
+        Returns:
+            PolicyLineMap with field-level line numbers for all statements
+        """
+        lines = file_content.split("\n")
+        policy_map = PolicyLineMap()
+
+        in_statement_array = False
+        brace_depth = 0
+        current_stmt: StatementLineMap | None = None
+
+        # Field name pattern (case-insensitive for robustness)
+        field_pattern = re.compile(
+            r'^\s*"(Sid|Effect|Action|NotAction|Resource|NotResource|Condition|Principal|NotPrincipal)"\s*:',
+            re.IGNORECASE,
+        )
+
+        for line_num, line in enumerate(lines, start=1):
+            # Look for "Statement" array
+            if '"Statement"' in line or "'Statement'" in line:
+                in_statement_array = True
+                continue
+
+            if not in_statement_array:
+                continue
+
+            # Track braces
+            for char in line:
+                if char == "{":
+                    if brace_depth == 0:
+                        # Start of a new statement
+                        current_stmt = StatementLineMap(statement_start=line_num)
+                    brace_depth += 1
+                elif char == "}":
+                    brace_depth -= 1
+                    if brace_depth == 0 and current_stmt is not None:
+                        # End of statement - save it
+                        policy_map.statements.append(current_stmt)
+                        current_stmt = None
+                elif char == "]" and brace_depth == 0:
+                    # End of Statement array
+                    in_statement_array = False
+                    break
+
+            # Parse field names at brace_depth == 1 (direct children of statement)
+            if in_statement_array and brace_depth == 1 and current_stmt is not None:
+                match = field_pattern.match(line)
+                if match:
+                    field_name = match.group(1).lower()
+                    # Map to dataclass attribute
+                    if field_name == "sid":
+                        current_stmt.sid = line_num
+                    elif field_name == "effect":
+                        current_stmt.effect = line_num
+                    elif field_name == "action":
+                        current_stmt.action = line_num
+                    elif field_name == "notaction":
+                        current_stmt.not_action = line_num
+                    elif field_name == "resource":
+                        current_stmt.resource = line_num
+                    elif field_name == "notresource":
+                        current_stmt.not_resource = line_num
+                    elif field_name == "condition":
+                        current_stmt.condition = line_num
+                    elif field_name == "principal":
+                        current_stmt.principal = line_num
+                    elif field_name == "notprincipal":
+                        current_stmt.not_principal = line_num
+
+        return policy_map
 
     def _check_file_size(self, path: Path) -> bool:
         """Check if file size is within limits.
@@ -197,14 +506,14 @@ class PolicyLoader:
             with open(path, encoding="utf-8") as f:
                 file_content = f.read()
 
-            # Parse line numbers for JSON files
+            # Parse line numbers based on file type
             statement_line_numbers = []
             if path.suffix.lower() == ".json":
                 statement_line_numbers = self._find_statement_line_numbers(file_content)
                 data = json.loads(file_content)
             else:  # .yaml or .yml
+                statement_line_numbers = self._find_yaml_statement_line_numbers(file_content)
                 data = yaml.safe_load(file_content)
-                # TODO: Add YAML line number tracking if needed
 
             # Validate and parse the policy
             policy = IAMPolicy.model_validate(data)

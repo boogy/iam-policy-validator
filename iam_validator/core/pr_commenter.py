@@ -16,6 +16,7 @@ from iam_validator.core.constants import (
 from iam_validator.core.diff_parser import DiffParser
 from iam_validator.core.label_manager import LabelManager
 from iam_validator.core.models import ValidationIssue, ValidationReport
+from iam_validator.core.policy_loader import PolicyLineMap, PolicyLoader
 from iam_validator.core.report import ReportGenerator
 from iam_validator.integrations.github_integration import GitHubIntegration, ReviewEvent
 
@@ -64,13 +65,16 @@ class PRCommenter:
         cleanup_old_comments: bool = True,
         fail_on_severities: list[str] | None = None,
         severity_labels: dict[str, str | list[str]] | None = None,
+        enable_codeowners_ignore: bool = True,
+        allowed_ignore_users: list[str] | None = None,
     ):
         """Initialize PR commenter.
 
         Args:
             github: GitHubIntegration instance (will create one if None)
-            cleanup_old_comments: Whether to clean up old bot comments before posting new ones
-                                 (kept for backward compatibility but now handled automatically)
+            cleanup_old_comments: Whether to clean up old bot comments after posting new ones.
+                                 Set to False in streaming mode where files are processed one at a time
+                                 to avoid deleting comments from files processed earlier.
             fail_on_severities: List of severity levels that should trigger REQUEST_CHANGES
                                (e.g., ["error", "critical", "high"])
             severity_labels: Mapping of severity levels to label name(s) for automatic label management
@@ -79,13 +83,21 @@ class PRCommenter:
                              - Single: {"error": "iam-validity-error", "critical": "security-critical"}
                              - Multiple: {"error": ["iam-error", "needs-fix"], "critical": ["security-critical", "needs-review"]}
                              - Mixed: {"error": "iam-validity-error", "critical": ["security-critical", "needs-review"]}
+            enable_codeowners_ignore: Whether to enable CODEOWNERS-based ignore feature
+            allowed_ignore_users: Fallback users who can ignore findings when no CODEOWNERS
         """
         self.github = github
         self.cleanup_old_comments = cleanup_old_comments
         self.fail_on_severities = fail_on_severities or ["error", "critical"]
         self.severity_labels = severity_labels or {}
+        self.enable_codeowners_ignore = enable_codeowners_ignore
+        self.allowed_ignore_users = allowed_ignore_users or []
         # Track issues in modified statements that are on unchanged lines
         self._context_issues: list[ContextIssue] = []
+        # Track ignored finding IDs for the current run
+        self._ignored_finding_ids: frozenset[str] = frozenset()
+        # Cache for PolicyLineMap per file (for field-level line detection)
+        self._policy_line_maps: dict[str, PolicyLineMap] = {}
 
     async def post_findings_to_pr(
         self,
@@ -93,6 +105,7 @@ class PRCommenter:
         create_review: bool = True,
         add_summary_comment: bool = True,
         manage_labels: bool = True,
+        process_ignores: bool = True,
     ) -> bool:
         """Post validation findings to a PR.
 
@@ -101,6 +114,7 @@ class PRCommenter:
             create_review: Whether to create a PR review with line comments
             add_summary_comment: Whether to add a summary comment
             manage_labels: Whether to manage PR labels based on severity findings
+            process_ignores: Whether to process pending ignore commands
 
         Returns:
             True if successful, False otherwise
@@ -118,12 +132,22 @@ class PRCommenter:
 
         success = True
 
+        # Process pending ignore commands first (if enabled)
+        if process_ignores and self.enable_codeowners_ignore:
+            await self._process_ignore_commands()
+
+        # Load ignored findings for filtering
+        if self.enable_codeowners_ignore:
+            await self._load_ignored_findings()
+
         # Note: Cleanup is now handled smartly by update_or_create_review_comments()
         # It will update existing comments, create new ones, and delete resolved ones
 
         # Post line-specific review comments FIRST
         # (This populates self._context_issues)
+        logger.warning(f"[DEBUG] create_review={create_review}, add_summary_comment={add_summary_comment}")
         if create_review:
+            logger.warning("[DEBUG] Calling _post_review_comments...")
             if not await self._post_review_comments(report):
                 logger.error("Failed to post review comments")
                 success = False
@@ -189,7 +213,18 @@ class PRCommenter:
             parsed_diffs = {}
         else:
             parsed_diffs = DiffParser.parse_pr_files(pr_files)
-            logger.info(f"Parsed diffs for {len(parsed_diffs)} file(s)")
+            # Use warning level for diagnostics to ensure visibility
+            logger.warning(f"[DIFF] Parsed diffs for {len(parsed_diffs)} file(s): {list(parsed_diffs.keys())}")
+
+        # Collect ALL validated files (for cleanup of resolved findings)
+        # This includes files with no issues - we need to track them so stale comments get deleted
+        validated_files: set[str] = set()
+        for result in report.results:
+            relative_path = self._make_relative_path(result.policy_file)
+            if relative_path:
+                validated_files.add(relative_path)
+
+        logger.debug(f"Tracking {len(validated_files)} validated files for comment cleanup")
 
         # Group issues by file
         inline_comments: list[dict[str, Any]] = []
@@ -207,14 +242,30 @@ class PRCommenter:
                 )
                 continue
 
+            # Use warning level for path diagnostics to ensure visibility
+            logger.warning(f"[PATH] Processing: {result.policy_file} -> '{relative_path}'")
+
             # Get diff info for this file
             diff_info = parsed_diffs.get(relative_path)
             if not diff_info:
-                logger.debug(
-                    f"{relative_path} not in PR diff or no changes, skipping inline comments"
+                # Log ALL available paths to help diagnose path mismatches
+                all_paths = list(parsed_diffs.keys())
+                logger.warning(
+                    f"'{relative_path}' not found in PR diff. "
+                    f"Available paths ({len(all_paths)}): {all_paths}"
                 )
-                # Still process issues for summary
+                # Check for partial matches to help diagnose
+                for avail_path in all_paths:
+                    if relative_path.endswith(avail_path.split("/")[-1]):
+                        logger.warning(
+                            f"  Possible match by filename: '{avail_path}' "
+                            f"(basename matches '{relative_path.split('/')[-1]}')"
+                        )
+                # Still process issues for summary (excluding ignored)
                 for issue in result.issues:
+                    # Skip ignored issues
+                    if self._is_issue_ignored(issue, relative_path):
+                        continue
                     if issue.statement_index is not None:
                         line_num = self._find_issue_line(
                             issue, result.policy_file, self._get_line_mapping(result.policy_file)
@@ -232,13 +283,27 @@ class PRCommenter:
                 line_mapping, diff_info.changed_lines, result.policy_file
             )
 
-            logger.debug(
-                f"{relative_path}: {len(diff_info.changed_lines)} changed lines, "
-                f"{len(modified_statements)} modified statements"
-            )
+            # Check if this file has no patch (large file or GitHub truncated the diff)
+            # In this case, we allow inline comments on any line since the file is in the PR
+            allow_all_lines = diff_info.status.endswith("_no_patch")
+            if allow_all_lines:
+                logger.warning(
+                    f"[MATCH] {relative_path}: No patch available (status={diff_info.status}), "
+                    "allowing inline comments on any line"
+                )
+            else:
+                logger.warning(
+                    f"[MATCH] {relative_path}: FOUND in diff with {len(diff_info.changed_lines)} changed lines, "
+                    f"{len(modified_statements)} modified statements, status={diff_info.status}"
+                )
 
-            # Process each issue with strict filtering
+            # Process each issue with filtering (relaxed for no_patch files)
             for issue in result.issues:
+                # Skip ignored issues
+                if self._is_issue_ignored(issue, relative_path):
+                    logger.debug(f"Skipped ignored issue in {relative_path}: {issue.issue_type}")
+                    continue
+
                 line_number = self._find_issue_line(issue, result.policy_file, line_mapping)
 
                 if not line_number:
@@ -253,7 +318,10 @@ class PRCommenter:
                     # Try to find the best line to post the comment
                     comment_line = None
 
-                    if line_number in diff_info.changed_lines:
+                    if allow_all_lines:
+                        # No patch - post at the actual line
+                        comment_line = line_number
+                    elif line_number in diff_info.changed_lines:
                         # Best case: line 1 is in the diff
                         comment_line = line_number
                     elif diff_info.changed_lines:
@@ -270,7 +338,7 @@ class PRCommenter:
                             {
                                 "path": relative_path,
                                 "line": comment_line,
-                                "body": issue.to_pr_comment(),
+                                "body": issue.to_pr_comment(file_path=relative_path),
                             }
                         )
                         logger.debug(
@@ -285,18 +353,19 @@ class PRCommenter:
                         logger.debug(
                             f"Policy-level issue (no diff lines): {relative_path} - {issue.issue_type}"
                         )
-                # STRICT FILTERING: Only comment if line is in the diff
-                elif line_number in diff_info.changed_lines:
-                    # Exact match - post inline comment
+                # RELAXED FILTERING for no_patch files, STRICT for others
+                elif allow_all_lines or line_number in diff_info.changed_lines:
+                    # No patch: allow all lines, or exact match with changed lines
                     inline_comments.append(
                         {
                             "path": relative_path,
                             "line": line_number,
-                            "body": issue.to_pr_comment(),
+                            "body": issue.to_pr_comment(file_path=relative_path),
                         }
                     )
                     logger.debug(
                         f"Inline comment: {relative_path}:{line_number} - {issue.issue_type}"
+                        f"{' (no_patch)' if allow_all_lines else ''}"
                     )
                 elif issue.statement_index in modified_statements:
                     # Issue in modified statement but on unchanged line - save for summary
@@ -319,14 +388,31 @@ class PRCommenter:
             f"{context_issue_count} context issues for summary"
         )
 
-        # If no inline comments, skip review creation but still return success
+        # Even if no inline comments, we still need to run cleanup to delete stale comments
+        # from previous runs where findings have been resolved (unless cleanup is disabled)
         if not inline_comments:
             logger.info("No inline comments to post (after diff filtering)")
+            # Still run cleanup to delete any stale comments from resolved findings
+            # (unless skip_cleanup is set for streaming mode)
+            if validated_files and self.cleanup_old_comments:
+                logger.debug("Running cleanup for stale comments from resolved findings...")
+                await self.github.update_or_create_review_comments(
+                    comments=[],
+                    body="",
+                    event=ReviewEvent.COMMENT,
+                    identifier=self.REVIEW_IDENTIFIER,
+                    validated_files=validated_files,
+                    skip_cleanup=False,  # Explicitly run cleanup
+                )
             return True
 
         # Determine review event based on fail_on_severities config
+        # Exclude ignored findings from blocking issues
         has_blocking_issues = any(
             issue.severity in self.fail_on_severities
+            and not self._is_issue_ignored(
+                issue, self._make_relative_path(result.policy_file) or ""
+            )
             for result in report.results
             for issue in result.issues
         )
@@ -337,6 +423,9 @@ class PRCommenter:
         )
 
         # Post review with smart update-or-create logic
+        # Pass validated_files to ensure stale comments are deleted even for files
+        # that no longer have any findings (issues were resolved)
+        # Use skip_cleanup based on cleanup_old_comments flag (False in streaming mode)
         review_body = f"{self.REVIEW_IDENTIFIER}"
 
         success = await self.github.update_or_create_review_comments(
@@ -344,6 +433,8 @@ class PRCommenter:
             body=review_body,
             event=event,
             identifier=self.REVIEW_IDENTIFIER,
+            validated_files=validated_files,
+            skip_cleanup=not self.cleanup_old_comments,  # Skip cleanup in streaming mode
         )
 
         if success:
@@ -369,10 +460,15 @@ class PRCommenter:
 
         # If already relative, use as-is
         if not os.path.isabs(policy_file):
+            logger.debug(f"Path already relative: {policy_file}")
             return policy_file
 
         # Try to get workspace path from environment
         workspace = os.getenv("GITHUB_WORKSPACE")
+        # Log first call only to avoid spam
+        if not hasattr(self, "_logged_workspace"):
+            self._logged_workspace = True
+            logger.warning(f"[ENV] GITHUB_WORKSPACE={workspace}")
         if workspace:
             try:
                 # Convert to Path objects for proper path handling
@@ -383,7 +479,10 @@ class PRCommenter:
                 if abs_file_path.is_relative_to(workspace_path):
                     relative = abs_file_path.relative_to(workspace_path)
                     # Use forward slashes for GitHub (works on all platforms)
-                    return str(relative).replace("\\", "/")
+                    result = str(relative).replace("\\", "/")
+                    return result
+                else:
+                    logger.warning(f"[PATH] File not within workspace: {abs_file_path} not in {workspace_path}")
             except (ValueError, OSError) as e:
                 logger.debug(f"Could not compute relative path for {policy_file}: {e}")
 
@@ -448,6 +547,10 @@ class PRCommenter:
     ) -> int | None:
         """Find the line number for an issue.
 
+        Uses field-level line detection when available for precise comment placement.
+        For example, an issue about an invalid Action will point to the exact
+        Action line, not just the statement start.
+
         Args:
             issue: Validation issue
             policy_file: Path to policy file
@@ -460,16 +563,50 @@ class PRCommenter:
         if issue.line_number:
             return issue.line_number
 
-        # Otherwise, use statement mapping
+        # Try field-level line detection first (most precise)
+        if issue.field_name and issue.statement_index >= 0:
+            policy_line_map = self._get_policy_line_map(policy_file)
+            if policy_line_map:
+                field_line = policy_line_map.get_line_for_field(
+                    issue.statement_index, issue.field_name
+                )
+                if field_line:
+                    return field_line
+
+        # Fallback: use statement mapping
         if issue.statement_index in line_mapping:
             return line_mapping[issue.statement_index]
 
-        # Fallback: try to find specific field in file
+        # Fallback: try to find specific field in file by searching
         search_term = issue.action or issue.resource or issue.condition_key
         if search_term:
             return self._search_for_field_line(policy_file, issue.statement_index, search_term)
 
         return None
+
+    def _get_policy_line_map(self, policy_file: str) -> PolicyLineMap | None:
+        """Get cached PolicyLineMap for field-level line detection.
+
+        Args:
+            policy_file: Path to policy file
+
+        Returns:
+            PolicyLineMap or None if parsing failed
+        """
+        if policy_file in self._policy_line_maps:
+            return self._policy_line_maps[policy_file]
+
+        try:
+            with open(policy_file, encoding="utf-8") as f:
+                content = f.read()
+
+            policy_map = PolicyLoader.parse_statement_field_lines(content)
+            self._policy_line_maps[policy_file] = policy_map
+            return policy_map
+
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.debug(f"Could not parse field lines for {policy_file}: {e}")
+            return None
 
     def _search_for_field_line(
         self, policy_file: str, statement_idx: int, search_term: str
@@ -521,6 +658,57 @@ class PRCommenter:
             logger.debug(f"Could not search {policy_file}: {e}")
             return None
 
+    async def _process_ignore_commands(self) -> None:
+        """Process pending ignore commands from PR comments."""
+        if not self.github:
+            return
+
+        from iam_validator.core.ignore_processor import (  # pylint: disable=import-outside-toplevel
+            IgnoreCommandProcessor,
+        )
+
+        processor = IgnoreCommandProcessor(
+            github=self.github,
+            allowed_users=self.allowed_ignore_users,
+        )
+        ignored_count = await processor.process_pending_ignores()
+        if ignored_count > 0:
+            logger.info(f"Processed {ignored_count} ignore command(s)")
+
+    async def _load_ignored_findings(self) -> None:
+        """Load ignored findings for the current PR."""
+        if not self.github:
+            return
+
+        from iam_validator.core.ignored_findings import (  # pylint: disable=import-outside-toplevel
+            IgnoredFindingsStore,
+        )
+
+        store = IgnoredFindingsStore(self.github)
+        self._ignored_finding_ids = await store.get_ignored_ids()
+        if self._ignored_finding_ids:
+            logger.debug(f"Loaded {len(self._ignored_finding_ids)} ignored finding(s)")
+
+    def _is_issue_ignored(self, issue: ValidationIssue, file_path: str) -> bool:
+        """Check if an issue should be ignored.
+
+        Args:
+            issue: The validation issue
+            file_path: Relative path to the policy file
+
+        Returns:
+            True if the issue is ignored
+        """
+        if not self._ignored_finding_ids:
+            return False
+
+        from iam_validator.core.finding_fingerprint import (  # pylint: disable=import-outside-toplevel
+            FindingFingerprint,
+        )
+
+        fingerprint = FindingFingerprint.from_issue(issue, file_path)
+        return fingerprint.to_hash() in self._ignored_finding_ids
+
 
 async def post_report_to_pr(
     report_file: str,
@@ -555,12 +743,19 @@ async def post_report_to_pr(
         fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
         severity_labels = config.get_setting("severity_labels", {})
 
+        # Get ignore settings
+        ignore_settings = config.get_setting("ignore_settings", {})
+        enable_codeowners_ignore = ignore_settings.get("enabled", True)
+        allowed_ignore_users = ignore_settings.get("allowed_users", [])
+
         # Post to PR
         async with GitHubIntegration() as github:
             commenter = PRCommenter(
                 github,
                 fail_on_severities=fail_on_severities,
                 severity_labels=severity_labels,
+                enable_codeowners_ignore=enable_codeowners_ignore,
+                allowed_ignore_users=allowed_ignore_users,
             )
             return await commenter.post_findings_to_pr(
                 report,

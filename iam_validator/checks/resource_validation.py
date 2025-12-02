@@ -70,6 +70,7 @@ class ResourceValidationCheck(PolicyCheck):
                         resource=resource[:100] + "...",
                         suggestion="`ARN` is too long and may be invalid",
                         line_number=line_number,
+                        field_name="resource",
                     )
                 )
                 continue
@@ -98,6 +99,7 @@ class ResourceValidationCheck(PolicyCheck):
                                 resource=resource,
                                 suggestion="`ARN` should follow format: `arn:partition:service:region:account-id:resource` (template variables like `${aws_account_id}` are supported)",
                                 line_number=line_number,
+                                field_name="resource",
                             )
                         )
                     else:
@@ -111,6 +113,7 @@ class ResourceValidationCheck(PolicyCheck):
                                 resource=resource,
                                 suggestion="`ARN` should follow format: `arn:partition:service:region:account-id:resource`",
                                 line_number=line_number,
+                                field_name="resource",
                             )
                         )
             except Exception:  # pylint: disable=broad-exception-caught
@@ -125,6 +128,7 @@ class ResourceValidationCheck(PolicyCheck):
                         resource=resource,
                         suggestion="`ARN` validation failed - may contain unexpected characters",
                         line_number=line_number,
+                        field_name="resource",
                     )
                 )
 

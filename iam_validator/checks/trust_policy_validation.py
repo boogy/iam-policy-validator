@@ -262,6 +262,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
                         example=self._get_example_for_action(
                             action, allowed_types[0] if allowed_types else "AWS"
                         ),
+                        field_name="principal",
                     )
                 )
 
@@ -312,6 +313,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
                         f"Expected pattern: `{provider_pattern}`\n"
                         f"Found: `{principal}`",
                         example=self._get_provider_example(provider_type),
+                        field_name="principal",
                     )
                 )
 
@@ -378,6 +380,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
                     f"Missing: `{missing_list}`\n\n"
                     f"{rule.get('description', '')}",
                     example=self._get_condition_example(action, required_conditions[0]),
+                    field_name="condition",
                 )
             )
 

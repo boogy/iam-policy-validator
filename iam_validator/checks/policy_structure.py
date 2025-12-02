@@ -352,6 +352,7 @@ def validate_statement_structure(
                 message="`Statement` is missing the required `Effect` field",
                 suggestion="Add an `Effect` field with value `Allow` or `Deny`",
                 example='"Effect": "Allow"',
+                field_name="effect",
             )
         )
     elif statement_dict["Effect"] not in VALID_EFFECTS:
@@ -364,6 +365,7 @@ def validate_statement_structure(
                 message=f"Invalid `Effect` value: `{statement_dict['Effect']}`. Must be `Allow` or `Deny`",
                 suggestion="Change `Effect` to either `Allow` or `Deny`",
                 example='"Effect": "Allow"',
+                field_name="effect",
             )
         )
 
@@ -379,6 +381,7 @@ def validate_statement_structure(
                     message=f"`Sid` must be a `string`, not `{type(sid).__name__}`",
                     suggestion='Wrap the `Sid` value in quotes to make it a string: `"Sid": "AllowS3Access"`',
                     example='"Sid": "AllowS3Access"',
+                    field_name="sid",
                 )
             )
         elif not SID_PATTERN.match(sid):
@@ -393,6 +396,7 @@ def validate_statement_structure(
                     issue_type="invalid_sid_format",
                     message=f"`Sid` `{sid}` contains non-alphanumeric characters: `{invalid_chars}`",
                     suggestion="According to AWS IAM policy grammar, `Sid` should contain only alphanumeric characters `(A-Z, a-z, 0-9)`.",
+                    field_name="sid",
                 )
             )
 
@@ -406,6 +410,7 @@ def validate_statement_structure(
                 issue_type="principal_conflict",
                 message="`Statement` contains both `Principal` and `NotPrincipal` fields",
                 suggestion="Use either `Principal` or `NotPrincipal`, not both",
+                field_name="principal",
             )
         )
 
@@ -422,6 +427,7 @@ def validate_statement_structure(
                 issue_type="action_conflict",
                 message="`Statement` contains both `Action` and `NotAction` fields",
                 suggestion="Use either `Action` or `NotAction`, not both",
+                field_name="action",
             )
         )
     elif not has_action and not has_not_action:
@@ -434,6 +440,7 @@ def validate_statement_structure(
                 message="`Statement` is missing both `Action` and `NotAction` fields",
                 suggestion="Add either an `Action` or `NotAction` field to specify which AWS actions this statement applies to",
                 example=('"Action": [\n  "s3:GetObject",\n  "s3:PutObject"\n]'),
+                field_name="action",
             )
         )
 
@@ -450,6 +457,7 @@ def validate_statement_structure(
                 issue_type="resource_conflict",
                 message="`Statement` contains both `Resource` and `NotResource` fields",
                 suggestion="Use either `Resource` or `NotResource`, not both",
+                field_name="resource",
             )
         )
     elif not has_resource and not has_not_resource:
@@ -469,6 +477,7 @@ def validate_statement_structure(
                     message="`Statement` is missing both `Resource` and `NotResource` fields",
                     suggestion="Most policies require a `Resource` field. Add a `Resource` or `NotResource` field to specify which AWS resources this statement applies to.",
                     example=('"Resource": "*" OR "Resource": "arn:aws:s3:::my-bucket/*"'),
+                    field_name="resource",
                 )
             )
 

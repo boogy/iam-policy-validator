@@ -71,6 +71,7 @@ class MFAConditionCheck(PolicyCheck):
                             statement_index=statement_idx,
                             issue_type="mfa_antipattern_bool_false",
                             line_number=line_number,
+                            field_name="condition",
                         )
                     )
 
@@ -97,6 +98,7 @@ class MFAConditionCheck(PolicyCheck):
                             statement_index=statement_idx,
                             issue_type="mfa_antipattern_null_false",
                             line_number=line_number,
+                            field_name="condition",
                         )
                     )
 

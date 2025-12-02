@@ -60,6 +60,7 @@ class ActionValidationCheck(PolicyCheck):
                         message=error_msg or f"Invalid action: `{action}`",
                         action=action,
                         line_number=line_number,
+                        field_name="action",
                     )
                 )
 

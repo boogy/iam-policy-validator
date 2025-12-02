@@ -108,6 +108,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                             statement_index=statement_idx,
                             issue_type="type_mismatch_usable",
                             line_number=line_number,
+                            field_name="condition",
                         )
                     )
                 # Check if operator type matches key type
@@ -124,6 +125,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                             issue_type="type_mismatch",
                             condition_key=condition_key,
                             line_number=line_number,
+                            field_name="condition",
                         )
                     )
 
@@ -141,6 +143,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                             issue_type="invalid_value_format",
                             condition_key=condition_key,
                             line_number=line_number,
+                            field_name="condition",
                         )
                     )
 

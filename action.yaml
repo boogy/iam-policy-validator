@@ -31,10 +31,20 @@ inputs:
     required: false
     default: "true"
 
+  allow-owner-ignore:
+    description: "Allow CODEOWNERS to ignore findings by replying 'ignore' to review comments"
+    required: false
+    default: "true"
+
   github-summary:
     description: "Write summary to GitHub Actions job summary (visible in Actions tab)"
     required: false
     default: "false"
+
+  show-console-output:
+    description: "Show enhanced validation results in job logs (CI mode). Set to 'false' to suppress console output"
+    required: false
+    default: "true"
 
   format:
     description: "Output format (console, enhanced, json, markdown, sarif, csv, html)"
@@ -442,17 +452,26 @@ runs:
           ARGS="$ARGS --aws-services-dir ${{ github.workspace }}/${{ inputs.aws-services-dir }}"
         fi
 
-        echo "Running: uv run iam-validator $ARGS"
+        # Add owner-ignore flag (default is enabled, so only add flag when disabled)
+        if [ "${{ inputs.allow-owner-ignore }}" = "false" ]; then
+          ARGS="$ARGS --no-owner-ignore"
+        fi
 
         # Create temp file for JSON metrics extraction
         METRICS_FILE=$(mktemp)
 
-        # Save original format and override to JSON for metrics parsing
-        ORIGINAL_FORMAT="${{ inputs.format }}"
-        METRICS_ARGS="${ARGS//--format $ORIGINAL_FORMAT/--format json --output $METRICS_FILE}"
+        # Build the final command based on show-console-output setting
+        if [ "${{ inputs.show-console-output }}" = "true" ]; then
+          # CI mode: show enhanced output in console, write JSON to temp file for metrics
+          # Remove --format from ARGS and add --ci flags
+          FINAL_ARGS="${ARGS//--format ${{ inputs.format }}/--ci --ci-output $METRICS_FILE}"
+        else
+          # Quiet mode: only JSON output for metrics, no console output
+          FINAL_ARGS="${ARGS//--format ${{ inputs.format }}/--format json --output $METRICS_FILE}"
+        fi
 
-        # Run validation and capture exit code
-        uv run iam-validator $METRICS_ARGS 2>&1 || EXIT_CODE=$?
+        echo "Running: uv run iam-validator $FINAL_ARGS"
+        uv run iam-validator $FINAL_ARGS 2>&1 || EXIT_CODE=$?
 
         # Extract metrics from JSON output
         if [ -f "$METRICS_FILE" ] && [ -s "$METRICS_FILE" ]; then
@@ -466,12 +485,14 @@ runs:
           echo "invalid-policies=$INVALID_POLICIES" >> $GITHUB_OUTPUT
           echo "total-issues=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
 
-          # Output summary to console as well
-          echo "📊 Validation Metrics:"
-          echo "  Total policies: $TOTAL_POLICIES"
-          echo "  Valid: $VALID_POLICIES"
-          echo "  Invalid: $INVALID_POLICIES"
-          echo "  Total issues: $TOTAL_ISSUES"
+          # Only show metrics summary if console output is disabled (to avoid duplication)
+          if [ "${{ inputs.show-console-output }}" != "true" ]; then
+            echo "📊 Validation Metrics:"
+            echo "  Total policies: $TOTAL_POLICIES"
+            echo "  Valid: $VALID_POLICIES"
+            echo "  Invalid: $INVALID_POLICIES"
+            echo "  Total issues: $TOTAL_ISSUES"
+          fi
 
           rm -f "$METRICS_FILE"
         else
