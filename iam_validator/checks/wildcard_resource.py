@@ -34,6 +34,18 @@ class WildcardResourceCheck(PolicyCheck):
 
         # Check for wildcard resource (Resource: "*")
         if "*" in resources:
+            # First, filter out actions that don't support resource-level permissions
+            # These actions legitimately require Resource: "*"
+            actions_requiring_specific_resources = await self._filter_actions_requiring_resources(
+                actions, fetcher
+            )
+
+            # If all actions don't support resources, wildcard is appropriate - no issue
+            if not actions_requiring_specific_resources:
+                return issues
+
+            # Use filtered actions for the rest of the check
+            actions = actions_requiring_specific_resources
             # Check if all actions are in the allowed_wildcards list
             # allowed_wildcards works by expanding wildcard patterns (like "ec2:Describe*")
             # to all matching AWS actions using the AWS API, then checking if the policy's
@@ -145,3 +157,77 @@ class WildcardResourceCheck(PolicyCheck):
         expanded_actions = await expand_wildcard_actions(patterns_to_expand, fetcher)
 
         return frozenset(expanded_actions)
+
+    async def _filter_actions_requiring_resources(
+        self, actions: list[str], fetcher: AWSServiceFetcher
+    ) -> list[str]:
+        """Filter actions to only those that support resource-level permissions.
+
+        Some AWS actions don't support resource-level permissions and legitimately
+        require Resource: "*". This method filters out those actions so we only
+        flag wildcards for actions that could be scoped to specific resources.
+
+        Examples of actions that don't support resources:
+        - iam:ListUsers (must use Resource: "*")
+        - sts:GetCallerIdentity (must use Resource: "*")
+        - ec2:DescribeInstances (must use Resource: "*")
+
+        Args:
+            actions: List of actions from the policy statement
+            fetcher: AWS service fetcher for looking up action definitions
+
+        Returns:
+            List of actions that DO support resource-level permissions
+        """
+        actions_requiring_resources = []
+
+        for action in actions:
+            # Full wildcard "*" - keep it (it's too broad to determine)
+            if action == "*":
+                actions_requiring_resources.append(action)
+                continue
+
+            # Skip malformed actions
+            if ":" not in action:
+                actions_requiring_resources.append(action)
+                continue
+
+            # Parse service and action name
+            try:
+                service, action_name = action.split(":", 1)
+            except ValueError:
+                actions_requiring_resources.append(action)
+                continue
+
+            # Wildcard in service or action name - keep it (can't determine resource support)
+            if "*" in service or "*" in action_name:
+                actions_requiring_resources.append(action)
+                continue
+
+            # Look up the action in AWS service definitions
+            try:
+                service_detail = await fetcher.fetch_service_by_name(service)
+            except (ValueError, Exception):  # pylint: disable=broad-exception-caught
+                # Unknown service - keep it (be conservative)
+                actions_requiring_resources.append(action)
+                continue
+
+            if not service_detail:
+                # Unknown service - keep it (be conservative)
+                actions_requiring_resources.append(action)
+                continue
+
+            action_detail = service_detail.actions.get(action_name)
+            if not action_detail:
+                # Unknown action - keep it (be conservative)
+                actions_requiring_resources.append(action)
+                continue
+
+            # Check if action supports resource-level permissions
+            # action_detail.resources is empty for actions that don't support resources
+            if action_detail.resources:
+                # Action supports resources - should be flagged for wildcard
+                actions_requiring_resources.append(action)
+            # Else: action doesn't support resources, Resource: "*" is appropriate
+
+        return actions_requiring_resources
