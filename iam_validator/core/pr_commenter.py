@@ -16,6 +16,7 @@ from iam_validator.core.constants import (
 from iam_validator.core.diff_parser import DiffParser
 from iam_validator.core.label_manager import LabelManager
 from iam_validator.core.models import ValidationIssue, ValidationReport
+from iam_validator.core.policy_loader import PolicyLineMap, PolicyLoader
 from iam_validator.core.report import ReportGenerator
 from iam_validator.integrations.github_integration import GitHubIntegration, ReviewEvent
 
@@ -64,6 +65,8 @@ class PRCommenter:
         cleanup_old_comments: bool = True,
         fail_on_severities: list[str] | None = None,
         severity_labels: dict[str, str | list[str]] | None = None,
+        enable_codeowners_ignore: bool = True,
+        allowed_ignore_users: list[str] | None = None,
     ):
         """Initialize PR commenter.
 
@@ -79,13 +82,21 @@ class PRCommenter:
                              - Single: {"error": "iam-validity-error", "critical": "security-critical"}
                              - Multiple: {"error": ["iam-error", "needs-fix"], "critical": ["security-critical", "needs-review"]}
                              - Mixed: {"error": "iam-validity-error", "critical": ["security-critical", "needs-review"]}
+            enable_codeowners_ignore: Whether to enable CODEOWNERS-based ignore feature
+            allowed_ignore_users: Fallback users who can ignore findings when no CODEOWNERS
         """
         self.github = github
         self.cleanup_old_comments = cleanup_old_comments
         self.fail_on_severities = fail_on_severities or ["error", "critical"]
         self.severity_labels = severity_labels or {}
+        self.enable_codeowners_ignore = enable_codeowners_ignore
+        self.allowed_ignore_users = allowed_ignore_users or []
         # Track issues in modified statements that are on unchanged lines
         self._context_issues: list[ContextIssue] = []
+        # Track ignored finding IDs for the current run
+        self._ignored_finding_ids: frozenset[str] = frozenset()
+        # Cache for PolicyLineMap per file (for field-level line detection)
+        self._policy_line_maps: dict[str, PolicyLineMap] = {}
 
     async def post_findings_to_pr(
         self,
@@ -93,6 +104,7 @@ class PRCommenter:
         create_review: bool = True,
         add_summary_comment: bool = True,
         manage_labels: bool = True,
+        process_ignores: bool = True,
     ) -> bool:
         """Post validation findings to a PR.
 
@@ -101,6 +113,7 @@ class PRCommenter:
             create_review: Whether to create a PR review with line comments
             add_summary_comment: Whether to add a summary comment
             manage_labels: Whether to manage PR labels based on severity findings
+            process_ignores: Whether to process pending ignore commands
 
         Returns:
             True if successful, False otherwise
@@ -117,6 +130,14 @@ class PRCommenter:
             return False
 
         success = True
+
+        # Process pending ignore commands first (if enabled)
+        if process_ignores and self.enable_codeowners_ignore:
+            await self._process_ignore_commands()
+
+        # Load ignored findings for filtering
+        if self.enable_codeowners_ignore:
+            await self._load_ignored_findings()
 
         # Note: Cleanup is now handled smartly by update_or_create_review_comments()
         # It will update existing comments, create new ones, and delete resolved ones
@@ -213,8 +234,11 @@ class PRCommenter:
                 logger.debug(
                     f"{relative_path} not in PR diff or no changes, skipping inline comments"
                 )
-                # Still process issues for summary
+                # Still process issues for summary (excluding ignored)
                 for issue in result.issues:
+                    # Skip ignored issues
+                    if self._is_issue_ignored(issue, relative_path):
+                        continue
                     if issue.statement_index is not None:
                         line_num = self._find_issue_line(
                             issue, result.policy_file, self._get_line_mapping(result.policy_file)
@@ -239,6 +263,11 @@ class PRCommenter:
 
             # Process each issue with strict filtering
             for issue in result.issues:
+                # Skip ignored issues
+                if self._is_issue_ignored(issue, relative_path):
+                    logger.debug(f"Skipped ignored issue in {relative_path}: {issue.issue_type}")
+                    continue
+
                 line_number = self._find_issue_line(issue, result.policy_file, line_mapping)
 
                 if not line_number:
@@ -270,7 +299,7 @@ class PRCommenter:
                             {
                                 "path": relative_path,
                                 "line": comment_line,
-                                "body": issue.to_pr_comment(),
+                                "body": issue.to_pr_comment(file_path=relative_path),
                             }
                         )
                         logger.debug(
@@ -292,7 +321,7 @@ class PRCommenter:
                         {
                             "path": relative_path,
                             "line": line_number,
-                            "body": issue.to_pr_comment(),
+                            "body": issue.to_pr_comment(file_path=relative_path),
                         }
                     )
                     logger.debug(
@@ -325,8 +354,12 @@ class PRCommenter:
             return True
 
         # Determine review event based on fail_on_severities config
+        # Exclude ignored findings from blocking issues
         has_blocking_issues = any(
             issue.severity in self.fail_on_severities
+            and not self._is_issue_ignored(
+                issue, self._make_relative_path(result.policy_file) or ""
+            )
             for result in report.results
             for issue in result.issues
         )
@@ -448,6 +481,10 @@ class PRCommenter:
     ) -> int | None:
         """Find the line number for an issue.
 
+        Uses field-level line detection when available for precise comment placement.
+        For example, an issue about an invalid Action will point to the exact
+        Action line, not just the statement start.
+
         Args:
             issue: Validation issue
             policy_file: Path to policy file
@@ -460,16 +497,50 @@ class PRCommenter:
         if issue.line_number:
             return issue.line_number
 
-        # Otherwise, use statement mapping
+        # Try field-level line detection first (most precise)
+        if issue.field_name and issue.statement_index >= 0:
+            policy_line_map = self._get_policy_line_map(policy_file)
+            if policy_line_map:
+                field_line = policy_line_map.get_line_for_field(
+                    issue.statement_index, issue.field_name
+                )
+                if field_line:
+                    return field_line
+
+        # Fallback: use statement mapping
         if issue.statement_index in line_mapping:
             return line_mapping[issue.statement_index]
 
-        # Fallback: try to find specific field in file
+        # Fallback: try to find specific field in file by searching
         search_term = issue.action or issue.resource or issue.condition_key
         if search_term:
             return self._search_for_field_line(policy_file, issue.statement_index, search_term)
 
         return None
+
+    def _get_policy_line_map(self, policy_file: str) -> PolicyLineMap | None:
+        """Get cached PolicyLineMap for field-level line detection.
+
+        Args:
+            policy_file: Path to policy file
+
+        Returns:
+            PolicyLineMap or None if parsing failed
+        """
+        if policy_file in self._policy_line_maps:
+            return self._policy_line_maps[policy_file]
+
+        try:
+            with open(policy_file, encoding="utf-8") as f:
+                content = f.read()
+
+            policy_map = PolicyLoader.parse_statement_field_lines(content)
+            self._policy_line_maps[policy_file] = policy_map
+            return policy_map
+
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.debug(f"Could not parse field lines for {policy_file}: {e}")
+            return None
 
     def _search_for_field_line(
         self, policy_file: str, statement_idx: int, search_term: str
@@ -521,6 +592,57 @@ class PRCommenter:
             logger.debug(f"Could not search {policy_file}: {e}")
             return None
 
+    async def _process_ignore_commands(self) -> None:
+        """Process pending ignore commands from PR comments."""
+        if not self.github:
+            return
+
+        from iam_validator.core.ignore_processor import (  # pylint: disable=import-outside-toplevel
+            IgnoreCommandProcessor,
+        )
+
+        processor = IgnoreCommandProcessor(
+            github=self.github,
+            allowed_users=self.allowed_ignore_users,
+        )
+        ignored_count = await processor.process_pending_ignores()
+        if ignored_count > 0:
+            logger.info(f"Processed {ignored_count} ignore command(s)")
+
+    async def _load_ignored_findings(self) -> None:
+        """Load ignored findings for the current PR."""
+        if not self.github:
+            return
+
+        from iam_validator.core.ignored_findings import (  # pylint: disable=import-outside-toplevel
+            IgnoredFindingsStore,
+        )
+
+        store = IgnoredFindingsStore(self.github)
+        self._ignored_finding_ids = await store.get_ignored_ids()
+        if self._ignored_finding_ids:
+            logger.debug(f"Loaded {len(self._ignored_finding_ids)} ignored finding(s)")
+
+    def _is_issue_ignored(self, issue: ValidationIssue, file_path: str) -> bool:
+        """Check if an issue should be ignored.
+
+        Args:
+            issue: The validation issue
+            file_path: Relative path to the policy file
+
+        Returns:
+            True if the issue is ignored
+        """
+        if not self._ignored_finding_ids:
+            return False
+
+        from iam_validator.core.finding_fingerprint import (  # pylint: disable=import-outside-toplevel
+            FindingFingerprint,
+        )
+
+        fingerprint = FindingFingerprint.from_issue(issue, file_path)
+        return fingerprint.to_hash() in self._ignored_finding_ids
+
 
 async def post_report_to_pr(
     report_file: str,
@@ -555,12 +677,19 @@ async def post_report_to_pr(
         fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
         severity_labels = config.get_setting("severity_labels", {})
 
+        # Get ignore settings
+        ignore_settings = config.get_setting("ignore_settings", {})
+        enable_codeowners_ignore = ignore_settings.get("enabled", True)
+        allowed_ignore_users = ignore_settings.get("allowed_users", [])
+
         # Post to PR
         async with GitHubIntegration() as github:
             commenter = PRCommenter(
                 github,
                 fail_on_severities=fail_on_severities,
                 severity_labels=severity_labels,
+                enable_codeowners_ignore=enable_codeowners_ignore,
+                allowed_ignore_users=allowed_ignore_users,
             )
             return await commenter.post_findings_to_pr(
                 report,

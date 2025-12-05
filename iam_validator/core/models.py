@@ -168,6 +168,17 @@ class ValidationIssue(BaseModel):
     check_id: str | None = (
         None  # Check that triggered this issue (e.g., "policy_size", "sensitive_action")
     )
+    # Field that caused the issue (for precise line detection in PR comments)
+    # Values: "action", "resource", "condition", "principal", "effect", "sid"
+    field_name: str | None = None
+
+    # Enhanced finding quality fields (Phase 3)
+    # Explains why this issue is a security risk or compliance concern
+    risk_explanation: str | None = None
+    # Link to relevant AWS documentation or org-specific runbook
+    documentation_url: str | None = None
+    # Step-by-step remediation guidance
+    remediation_steps: list[str] | None = None
 
     # Severity level constants (ClassVar to avoid Pydantic treating them as fields)
     VALID_SEVERITIES: ClassVar[frozenset[str]] = frozenset(
@@ -205,11 +216,12 @@ class ValidationIssue(BaseModel):
         """Check if this issue uses IAM validity severity levels (error/warning/info)."""
         return self.severity in {"error", "warning", "info"}
 
-    def to_pr_comment(self, include_identifier: bool = True) -> str:
+    def to_pr_comment(self, include_identifier: bool = True, file_path: str = "") -> str:
         """Format issue as a PR comment.
 
         Args:
             include_identifier: Whether to include bot identifier (for cleanup)
+            file_path: Relative path to the policy file (for finding ID)
 
         Returns:
             Formatted comment string
@@ -235,6 +247,21 @@ class ValidationIssue(BaseModel):
             parts.append(f"{constants.BOT_IDENTIFIER}\n")
             # Add issue type identifier to allow multiple issues at same line
             parts.append(f"<!-- issue-type: {self.issue_type} -->\n")
+            # Add finding ID for ignore tracking
+            if file_path:
+                from iam_validator.core.finding_fingerprint import compute_finding_hash
+
+                finding_hash = compute_finding_hash(
+                    file_path=file_path,
+                    check_id=self.check_id,
+                    issue_type=self.issue_type,
+                    statement_sid=self.statement_sid,
+                    statement_index=self.statement_index,
+                    action=self.action,
+                    resource=self.resource,
+                    condition_key=self.condition_key,
+                )
+                parts.append(f"<!-- finding-id: {finding_hash} -->\n")
 
         # Build statement context for better navigation
         statement_context = f"Statement[{self.statement_index}]"
@@ -248,9 +275,19 @@ class ValidationIssue(BaseModel):
         # Show message immediately (not collapsed)
         parts.append(self.message)
 
+        # Add risk explanation if present (shown prominently)
+        if self.risk_explanation:
+            parts.append("")
+            parts.append(f"> **Why this matters:** {self.risk_explanation}")
+
         # Put additional details in collapsible section if there are any
         has_details = bool(
-            self.action or self.resource or self.condition_key or self.suggestion or self.example
+            self.action
+            or self.resource
+            or self.condition_key
+            or self.suggestion
+            or self.example
+            or self.remediation_steps
         )
 
         if has_details:
@@ -271,6 +308,13 @@ class ValidationIssue(BaseModel):
                     parts.append(f"  - Condition Key: `{self.condition_key}`")
                 parts.append("")
 
+            # Add remediation steps if present
+            if self.remediation_steps:
+                parts.append("**🔧 How to Fix:**")
+                for i, step in enumerate(self.remediation_steps, 1):
+                    parts.append(f"  {i}. {step}")
+                parts.append("")
+
             # Add suggestion if present
             if self.suggestion:
                 parts.append("**💡 Suggested Fix:**")
@@ -288,11 +332,17 @@ class ValidationIssue(BaseModel):
             parts.append("")
             parts.append("</details>")
 
-        # Add check ID at the bottom if available
+        # Add check ID and documentation link at the bottom
+        footer_parts = []
         if self.check_id:
+            footer_parts.append(f"*Check: `{self.check_id}`*")
+        if self.documentation_url:
+            footer_parts.append(f"[📖 Documentation]({self.documentation_url})")
+
+        if footer_parts:
             parts.append("")
             parts.append("---")
-            parts.append(f"*Check: `{self.check_id}`*")
+            parts.append(" | ".join(footer_parts))
 
         return "\n".join(parts)
 

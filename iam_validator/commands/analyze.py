@@ -387,10 +387,28 @@ Examples:
 
         # Post to GitHub if configured
         if args.github_comment:
+            from iam_validator.core.config.config_loader import ConfigLoader
             from iam_validator.core.pr_commenter import PRCommenter
 
+            # Load config to get fail_on_severity, severity_labels, and ignore settings
+            config_path = getattr(args, "config", None)
+            config = ConfigLoader.load_config(config_path)
+            fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+            severity_labels = config.get_setting("severity_labels", {})
+
+            # Get ignore settings from config
+            ignore_settings = config.get_setting("ignore_settings", {})
+            enable_ignore = ignore_settings.get("enabled", True)
+            allowed_users = ignore_settings.get("allowed_users", [])
+
             async with GitHubIntegration() as github:
-                commenter = PRCommenter(github)
+                commenter = PRCommenter(
+                    github,
+                    fail_on_severities=fail_on_severities,
+                    severity_labels=severity_labels,
+                    enable_codeowners_ignore=enable_ignore,
+                    allowed_ignore_users=allowed_users,
+                )
                 success = await commenter.post_findings_to_pr(
                     validation_report,
                     create_review=getattr(args, "github_review", False),

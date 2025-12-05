@@ -14,12 +14,211 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from iam_validator.core.check_registry import CheckConfig, CheckRegistry, PolicyCheck
 from iam_validator.core.config.defaults import get_default_config
 from iam_validator.core.constants import DEFAULT_CONFIG_FILENAMES
 
 logger = logging.getLogger(__name__)
+
+# Valid severity levels for validation
+SEVERITY_LEVELS = frozenset(["error", "warning", "info", "critical", "high", "medium", "low"])
+
+# Known built-in check IDs for validation warnings
+KNOWN_CHECK_IDS = frozenset(
+    [
+        "action_validation",
+        "condition_key_validation",
+        "condition_type_mismatch",
+        "resource_validation",
+        "sid_uniqueness",
+        "policy_size",
+        "policy_structure",
+        "set_operator_validation",
+        "mfa_condition_check",
+        "principal_validation",
+        "policy_type_validation",
+        "action_resource_matching",
+        "trust_policy_validation",
+        "wildcard_action",
+        "wildcard_resource",
+        "full_wildcard",
+        "service_wildcard",
+        "sensitive_action",
+        "action_condition_enforcement",
+    ]
+)
+
+
+# =============================================================================
+# Pydantic Configuration Schemas
+# =============================================================================
+
+
+class IgnorePatternSchema(BaseModel):
+    """Schema for ignore patterns within check configurations."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # At least one of these should be specified
+    file: str | None = None
+    action: str | None = None
+    resource: str | None = None
+    sid: str | None = None
+
+
+class CheckConfigSchema(BaseModel):
+    """Flexible check config - validates core fields, allows extras for custom options.
+
+    This schema validates common check configuration fields while allowing
+    arbitrary additional options that specific checks may require (e.g.,
+    allowed_wildcards, categories, requirements).
+    """
+
+    model_config = ConfigDict(extra="allow")  # Allow arbitrary check-specific options
+
+    enabled: bool = True
+    severity: str | None = None
+    description: str | None = None
+    ignore_patterns: list[dict[str, Any]] = []
+
+    @field_validator("severity")
+    @classmethod
+    def validate_severity(cls, v: str | None) -> str | None:
+        if v is not None and v not in SEVERITY_LEVELS:
+            raise ValueError(f"Invalid severity: {v}. Must be one of: {sorted(SEVERITY_LEVELS)}")
+        return v
+
+
+class IgnoreSettingsSchema(BaseModel):
+    """Schema for ignore settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    allowed_users: list[str] = []
+    post_denial_feedback: bool = False
+
+
+class DocumentationSettingsSchema(BaseModel):
+    """Schema for documentation settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_url: str | None = None
+    include_aws_docs: bool = True
+
+
+class SettingsSchema(BaseModel):
+    """Schema for global settings."""
+
+    model_config = ConfigDict(extra="allow")  # Allow additional settings
+
+    fail_fast: bool = False
+    parallel: bool = True
+    max_workers: int | None = None
+    fail_on_severity: list[str] = ["error", "critical"]
+    severity_labels: dict[str, str | list[str]] = {}
+    ignore_settings: IgnoreSettingsSchema = IgnoreSettingsSchema()
+    documentation: DocumentationSettingsSchema = DocumentationSettingsSchema()
+
+    @field_validator("fail_on_severity")
+    @classmethod
+    def validate_fail_on_severity(cls, v: list[str]) -> list[str]:
+        for severity in v:
+            if severity not in SEVERITY_LEVELS:
+                raise ValueError(
+                    f"Invalid severity in fail_on_severity: {severity}. "
+                    f"Must be one of: {sorted(SEVERITY_LEVELS)}"
+                )
+        return v
+
+
+class CustomCheckSchema(BaseModel):
+    """Schema for custom check definitions."""
+
+    model_config = ConfigDict(extra="allow")
+
+    module: str
+    enabled: bool = True
+    severity: str | None = None
+    description: str | None = None
+    config: dict[str, Any] = {}
+
+    @field_validator("severity")
+    @classmethod
+    def validate_severity(cls, v: str | None) -> str | None:
+        if v is not None and v not in SEVERITY_LEVELS:
+            raise ValueError(f"Invalid severity: {v}. Must be one of: {sorted(SEVERITY_LEVELS)}")
+        return v
+
+
+class ConfigSchema(BaseModel):
+    """Top-level configuration schema.
+
+    Validates the overall structure while allowing flexibility for check configs.
+    """
+
+    model_config = ConfigDict(extra="allow")  # Allow check configs at top level
+
+    settings: SettingsSchema = SettingsSchema()
+    custom_checks: list[CustomCheckSchema] = []
+    custom_checks_dir: str | None = None
+
+    @model_validator(mode="after")
+    def warn_unknown_checks(self) -> "ConfigSchema":
+        """Warn about unknown check IDs (potential typos)."""
+        # Get all extra fields that might be check configs
+        if not self.model_extra:
+            return self
+
+        for key, value in self.model_extra.items():
+            if isinstance(value, dict):
+                # This looks like a check config
+                check_id = key.removesuffix("_check") if key.endswith("_check") else key
+                if check_id not in KNOWN_CHECK_IDS:
+                    logger.warning(
+                        f"Unknown check ID '{check_id}' in configuration. "
+                        f"This may be a custom check or a typo."
+                    )
+        return self
+
+
+class ConfigValidationError(Exception):
+    """Raised when configuration validation fails."""
+
+    def __init__(self, errors: list[str]):
+        self.errors = errors
+        super().__init__(
+            "Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+        )
+
+
+def validate_config(config_dict: dict[str, Any]) -> tuple[bool, list[str]]:
+    """Validate configuration dictionary against schema.
+
+    Args:
+        config_dict: Raw configuration dictionary
+
+    Returns:
+        Tuple of (is_valid, list of error messages)
+    """
+    errors: list[str] = []
+
+    try:
+        ConfigSchema.model_validate(config_dict)
+    except Exception as e:
+        # Parse Pydantic validation errors
+        if hasattr(e, "errors"):
+            for error in e.errors():  # type: ignore
+                loc = ".".join(str(x) for x in error.get("loc", []))
+                msg = error.get("msg", str(e))
+                errors.append(f"{loc}: {msg}")
+        else:
+            errors.append(str(e))
+
+    return len(errors) == 0, errors
 
 
 def deep_merge(base: dict, override: dict) -> dict:
