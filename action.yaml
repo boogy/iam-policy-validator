@@ -158,7 +158,7 @@ runs:
         python-version-file: "${{ github.action_path }}/.python-version"
 
     - name: Install uv
-      uses: astral-sh/setup-uv@1e862dfacbd1d6d858c55d9b792c756523627244 # v7.0.0
+      uses: astral-sh/setup-uv@ed21f2f24f8dd64503750218de024bcf64c7250a # v7.0.0
       with:
         enable-cache: true
         cache-suffix: ci # Prune cache in CI to reduce bloat
