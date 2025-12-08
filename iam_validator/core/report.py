@@ -238,12 +238,14 @@ class ReportGenerator:
         self,
         report: ValidationReport,
         max_length_per_part: int = constants.GITHUB_COMMENT_SPLIT_LIMIT,
+        ignored_count: int = 0,
     ) -> list[str]:
         """Generate GitHub PR comment(s), splitting into multiple parts if needed.
 
         Args:
             report: Validation report
             max_length_per_part: Maximum character length per comment part (default from GITHUB_COMMENT_SPLIT_LIMIT)
+            ignored_count: Number of findings that were ignored (will be shown in summary)
 
         Returns:
             List of comment parts (each under max_length_per_part)
@@ -255,13 +257,13 @@ class ReportGenerator:
         if estimated_size <= max_length_per_part:
             # Try single comment
             single_comment = self.generate_github_comment(
-                report, max_length=max_length_per_part * 2
+                report, max_length=max_length_per_part * 2, ignored_count=ignored_count
             )
             if len(single_comment) <= max_length_per_part:
                 return [single_comment]
 
         # Need to split into multiple parts
-        return self._generate_split_comments(report, max_length_per_part)
+        return self._generate_split_comments(report, max_length_per_part, ignored_count)
 
     def _estimate_report_size(self, report: ValidationReport) -> int:
         """Estimate the size of the report in characters.
@@ -277,12 +279,15 @@ class ReportGenerator:
             report.total_issues * constants.COMMENT_CHARS_PER_ISSUE_ESTIMATE
         )
 
-    def _generate_split_comments(self, report: ValidationReport, max_length: int) -> list[str]:
+    def _generate_split_comments(
+        self, report: ValidationReport, max_length: int, ignored_count: int = 0
+    ) -> list[str]:
         """Split a large report into multiple comment parts.
 
         Args:
             report: Validation report
             max_length: Maximum length per part
+            ignored_count: Number of ignored findings to show in summary
 
         Returns:
             List of comment parts
@@ -290,7 +295,7 @@ class ReportGenerator:
         parts: list[str] = []
 
         # Generate header (will be in first part only)
-        header_lines = self._generate_header(report)
+        header_lines = self._generate_header(report, ignored_count)
         header_content = "\n".join(header_lines)
 
         # Generate footer (will be in all parts)
@@ -383,8 +388,13 @@ class ReportGenerator:
 
         return parts
 
-    def _generate_header(self, report: ValidationReport) -> list[str]:
-        """Generate the comment header with summary."""
+    def _generate_header(self, report: ValidationReport, ignored_count: int = 0) -> list[str]:
+        """Generate the comment header with summary.
+
+        Args:
+            report: Validation report
+            ignored_count: Number of findings that were ignored
+        """
         lines = []
 
         # Title with emoji and status badge
@@ -414,6 +424,8 @@ class ReportGenerator:
         lines.append(
             f"| **Total Issues Found** | {report.total_issues} | {'⚠️' if report.total_issues > 0 else '✨'} |"
         )
+        if ignored_count > 0:
+            lines.append(f"| **Ignored Findings** | {ignored_count} | 🔕 |")
         lines.append("")
 
         # Issue breakdown
@@ -527,12 +539,14 @@ class ReportGenerator:
         self,
         report: ValidationReport,
         max_length: int = constants.GITHUB_MAX_COMMENT_LENGTH,
+        ignored_count: int = 0,
     ) -> str:
         """Generate a GitHub-flavored markdown comment for PR reviews.
 
         Args:
             report: Validation report
             max_length: Maximum character length (default from GITHUB_MAX_COMMENT_LENGTH constant)
+            ignored_count: Number of findings that were ignored (will be shown in summary)
 
         Returns:
             Markdown formatted string
@@ -567,6 +581,8 @@ class ReportGenerator:
         lines.append(
             f"| **Total Issues Found** | {report.total_issues} | {'⚠️' if report.total_issues > 0 else '✨'} |"
         )
+        if ignored_count > 0:
+            lines.append(f"| **Ignored Findings** | {ignored_count} | 🔕 |")
         lines.append("")
 
         # Issue breakdown

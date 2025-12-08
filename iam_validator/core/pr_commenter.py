@@ -145,9 +145,7 @@ class PRCommenter:
 
         # Post line-specific review comments FIRST
         # (This populates self._context_issues)
-        logger.warning(f"[DEBUG] create_review={create_review}, add_summary_comment={add_summary_comment}")
         if create_review:
-            logger.warning("[DEBUG] Calling _post_review_comments...")
             if not await self._post_review_comments(report):
                 logger.error("Failed to post review comments")
                 success = False
@@ -155,7 +153,11 @@ class PRCommenter:
         # Post summary comment (potentially as multiple parts)
         if add_summary_comment:
             generator = ReportGenerator()
-            comment_parts = generator.generate_github_comment_parts(report)
+            # Pass ignored count to show in summary
+            ignored_count = len(self._ignored_finding_ids) if self._ignored_finding_ids else 0
+            comment_parts = generator.generate_github_comment_parts(
+                report, ignored_count=ignored_count
+            )
 
             # Post all parts using the multipart method
             if not await self.github.post_multipart_comments(
@@ -214,7 +216,9 @@ class PRCommenter:
         else:
             parsed_diffs = DiffParser.parse_pr_files(pr_files)
             # Use warning level for diagnostics to ensure visibility
-            logger.warning(f"[DIFF] Parsed diffs for {len(parsed_diffs)} file(s): {list(parsed_diffs.keys())}")
+            logger.warning(
+                f"[DIFF] Parsed diffs for {len(parsed_diffs)} file(s): {list(parsed_diffs.keys())}"
+            )
 
         # Collect ALL validated files (for cleanup of resolved findings)
         # This includes files with no issues - we need to track them so stale comments get deleted
@@ -482,7 +486,9 @@ class PRCommenter:
                     result = str(relative).replace("\\", "/")
                     return result
                 else:
-                    logger.warning(f"[PATH] File not within workspace: {abs_file_path} not in {workspace_path}")
+                    logger.warning(
+                        f"[PATH] File not within workspace: {abs_file_path} not in {workspace_path}"
+                    )
             except (ValueError, OSError) as e:
                 logger.debug(f"Could not compute relative path for {policy_file}: {e}")
 

@@ -158,20 +158,18 @@ class WildcardResourceCheck(PolicyCheck):
                 message = custom_message
             else:
                 # Build default message with action list
-                if actions_requiring_specific_resources:
-                    # Show up to 5 actions, truncate if more
-                    sorted_actions = sorted(actions_requiring_specific_resources)
-                    if len(sorted_actions) <= 5:
-                        action_list = ", ".join(f"`{a}`" for a in sorted_actions)
-                    else:
-                        action_list = ", ".join(f"`{a}`" for a in sorted_actions[:5])
-                        action_list += f" (+{len(sorted_actions) - 5} more)"
-                    message = (
-                        f'Statement applies to all resources `"*"`. '
-                        f"Actions that support resource-level permissions: {action_list}"
-                    )
+                # Note: actions_requiring_specific_resources is guaranteed non-empty here
+                # because we return early above if it's empty
+                sorted_actions = sorted(actions_requiring_specific_resources)
+                if len(sorted_actions) <= 5:
+                    action_list = ", ".join(f"`{a}`" for a in sorted_actions)
                 else:
-                    message = 'Statement applies to all resources `"*"` (wildcard resource).'
+                    action_list = ", ".join(f"`{a}`" for a in sorted_actions[:5])
+                    action_list += f" (+{len(sorted_actions) - 5} more)"
+                message = (
+                    f'Statement applies to all resources `"*"`. '
+                    f"Actions that support resource-level permissions: {action_list}"
+                )
 
             suggestion = config.config.get(
                 "suggestion", "Replace wildcard with specific resource ARNs"

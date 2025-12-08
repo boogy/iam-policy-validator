@@ -1,7 +1,7 @@
 """Tests for PR comment deduplication logic."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from iam_validator.integrations.github_integration import GitHubIntegration, ReviewEvent
 

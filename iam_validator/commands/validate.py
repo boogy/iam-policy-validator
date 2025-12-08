@@ -623,8 +623,8 @@ Examples:
                 if abs_file_path.is_relative_to(workspace_path):
                     relative = abs_file_path.relative_to(workspace_path)
                     return str(relative).replace("\\", "/")
-            except (ValueError, OSError):
-                pass
+            except (ValueError, OSError) as exc:
+                logging.debug(f"Could not make path relative to GitHub workspace: {exc}")
 
         # Fallback: try current working directory
         try:
@@ -633,8 +633,8 @@ Examples:
             if abs_file_path.is_relative_to(cwd):
                 relative = abs_file_path.relative_to(cwd)
                 return str(relative).replace("\\", "/")
-        except (ValueError, OSError):
-            pass
+        except (ValueError, OSError) as exc:
+            logging.debug(f"Could not make path relative to cwd: {exc}")
 
         return None
 
