@@ -85,6 +85,31 @@ DEFAULT_CONFIG = {
         #   Mixed: {"error": "iam-validity-error", "critical": ["security-critical", "needs-review"]}
         # Default: {} (disabled)
         "severity_labels": {},
+        # CODEOWNERS-based finding ignore settings
+        # Allows CODEOWNERS to ignore validation findings by replying "ignore" to PR comments
+        # Ignored findings won't cause the action to fail and won't be posted as comments
+        "ignore_settings": {
+            # Enable/disable the CODEOWNERS ignore feature
+            "enabled": True,
+            # Fallback list of users who can ignore findings when no CODEOWNERS file exists
+            # If empty and no CODEOWNERS, all ignore requests are denied (fail secure)
+            # Example: ["security-team-lead", "platform-admin"]
+            "allowed_users": [],
+            # Whether to post visible replies when ignore requests are denied
+            # When False (default), denials are only logged
+            # When True, a reply is posted explaining why the ignore was denied
+            "post_denial_feedback": False,
+        },
+        # Organization-specific documentation URL configuration
+        # Allows overriding default AWS documentation links with org-specific runbooks
+        "documentation": {
+            # Base URL for org-specific runbooks (null = use AWS docs)
+            # Example: "https://wiki.mycompany.com/security/iam-checks"
+            # When set, check documentation URLs will be: {base_url}/{check_id}
+            "base_url": None,
+            # Include AWS documentation links alongside org docs
+            "include_aws_docs": True,
+        },
     },
     # ========================================================================
     # AWS IAM Validation Checks (17 checks total)

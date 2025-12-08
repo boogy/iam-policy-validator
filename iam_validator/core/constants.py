@@ -87,6 +87,7 @@ BOT_IDENTIFIER = "🤖 IAM Policy Validator"
 # HTML comment markers for identifying bot-generated content (for cleanup/updates)
 SUMMARY_IDENTIFIER = "<!-- iam-policy-validator-summary -->"
 REVIEW_IDENTIFIER = "<!-- iam-policy-validator-review -->"
+IGNORED_FINDINGS_IDENTIFIER = "<!-- iam-policy-validator-ignored-findings -->"
 
 # GitHub comment size limits
 # GitHub's actual limit is 65536 characters, but we use a smaller limit for safety

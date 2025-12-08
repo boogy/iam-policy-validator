@@ -142,7 +142,8 @@ class TestDiffParser:
         diff = result["image.png"]
         assert len(diff.changed_lines) == 0
         assert len(diff.added_lines) == 0
-        assert diff.status == "added"
+        # Files without patch get "_no_patch" suffix to allow special handling
+        assert diff.status == "added_no_patch"
 
     def test_parse_invalid_hunk_header(self):
         """Test graceful handling of malformed diff."""

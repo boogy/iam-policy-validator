@@ -482,3 +482,278 @@ class TestWildcardResourceCheck:
 
         # Should pass: iam:Get* matches literally, triggers fast path
         assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_actions_without_resource_support_not_flagged(self, check, fetcher, config):
+        """Test that actions without resource-level permission support are not flagged.
+
+        Some AWS actions don't support resource-level permissions and legitimately
+        require Resource: "*". These should not be flagged as overly permissive.
+
+        Examples:
+        - sts:GetCallerIdentity - doesn't support resource-level permissions
+        - ec2:DescribeInstances - doesn't support resource-level permissions
+        """
+        # sts:GetCallerIdentity doesn't support resource-level permissions
+        statement = Statement(
+            Sid="AllowGetCallerIdentity",
+            Effect="Allow",
+            Action=["sts:GetCallerIdentity"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should not be flagged - this action requires Resource: "*"
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_ec2_describe_actions_without_resource_support(self, check, fetcher, config):
+        """Test that EC2 Describe actions without resource support are not flagged.
+
+        ec2:DescribeInstances doesn't support resource-level permissions.
+        """
+        statement = Statement(
+            Sid="AllowDescribeInstances",
+            Effect="Allow",
+            Action=["ec2:DescribeInstances"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should not be flagged - ec2:DescribeInstances requires Resource: "*"
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_mixed_actions_some_requiring_resources(self, check, fetcher, config):
+        """Test statement with both resource-supporting and non-supporting actions.
+
+        When a statement has a mix of actions where some support resources and
+        some don't, it should still flag the issue if any action supports resources.
+
+        ec2:DescribeInstances - doesn't support resource-level permissions (OK)
+        s3:GetObject - supports resource-level permissions (should flag)
+        """
+        statement = Statement(
+            Sid="MixedActions",
+            Effect="Allow",
+            Action=["ec2:DescribeInstances", "s3:GetObject"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should be flagged because s3:GetObject supports resource-level permissions
+        assert len(issues) == 1
+
+    @pytest.mark.asyncio
+    async def test_all_actions_without_resource_support(self, check, fetcher, config):
+        """Test statement where all actions don't support resources.
+
+        When ALL actions in a statement don't support resource-level permissions,
+        the wildcard resource is appropriate and should not be flagged.
+        """
+        statement = Statement(
+            Sid="AllReadOnlyNoResourceSupport",
+            Effect="Allow",
+            Action=["sts:GetCallerIdentity", "ec2:DescribeInstances"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should not be flagged - all actions require Resource: "*"
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_iam_list_users_without_resource_support(self, check, fetcher, config):
+        """Test that iam:ListUsers is not flagged (it doesn't support resources).
+
+        iam:ListUsers doesn't support resource-level permissions.
+        """
+        statement = Statement(
+            Sid="AllowListUsers",
+            Effect="Allow",
+            Action=["iam:ListUsers"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should not be flagged - iam:ListUsers requires Resource: "*"
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_action_with_resource_support_still_flagged(self, check, fetcher, config):
+        """Test that actions with resource support are still flagged.
+
+        s3:GetObject supports resource-level permissions (requires bucket/object ARN).
+        """
+        statement = Statement(
+            Sid="GetObjectWildcard",
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should be flagged - s3:GetObject supports specific resource ARNs
+        assert len(issues) == 1
+
+    @pytest.mark.asyncio
+    async def test_wildcard_action_patterns_still_flagged(self, check, fetcher, config):
+        """Test that wildcard action patterns are still flagged.
+
+        Wildcard patterns like "s3:*" should still be flagged because
+        we can't determine resource support for all matched actions.
+        """
+        statement = Statement(
+            Sid="S3WildcardAction",
+            Effect="Allow",
+            Action=["s3:*"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should be flagged - wildcard action patterns can't be filtered
+        assert len(issues) == 1
+
+    @pytest.mark.asyncio
+    async def test_filter_actions_unknown_service(self, check, fetcher, config):
+        """Test that unknown services are conservatively kept.
+
+        If we can't look up an action (unknown service), we should keep it
+        to be conservative about security.
+        """
+        statement = Statement(
+            Sid="UnknownService",
+            Effect="Allow",
+            Action=["unknownservice:SomeAction"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should be flagged - unknown services are kept (conservative approach)
+        assert len(issues) == 1
+
+    @pytest.mark.asyncio
+    async def test_list_level_actions_not_flagged(self, check, fetcher, config):
+        """Test that list-level actions are not flagged with wildcard resources.
+
+        List-level actions (like s3:ListBuckets) only enumerate resources and
+        don't pose security risks with Resource: "*". These should not be flagged.
+        """
+        statement = Statement(
+            Sid="AllowListBuckets",
+            Effect="Allow",
+            Action=["s3:ListAllMyBuckets"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should not be flagged - s3:ListAllMyBuckets is a list-level action
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_iam_list_actions_not_flagged(self, check, fetcher, config):
+        """Test that IAM list actions are not flagged.
+
+        iam:ListUsers and similar list actions are safe with wildcards.
+        """
+        statement = Statement(
+            Sid="AllowIAMListActions",
+            Effect="Allow",
+            Action=["iam:ListUsers", "iam:ListRoles", "iam:ListGroups"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should not be flagged - all are list-level actions
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_ec2_describe_list_actions_not_flagged(self, check, fetcher, config):
+        """Test that EC2 describe/list actions are not flagged.
+
+        EC2 describe actions are list-level and safe with wildcards.
+        """
+        statement = Statement(
+            Sid="AllowEC2Describe",
+            Effect="Allow",
+            Action=["ec2:DescribeInstances", "ec2:DescribeVpcs", "ec2:DescribeSubnets"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should not be flagged - EC2 describe actions are list-level
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_mixed_list_and_write_actions_flagged(self, check, fetcher, config):
+        """Test that mixed list and write actions are flagged for the write action.
+
+        When a statement has both list-level and write-level actions,
+        it should still flag the issue for the write action.
+        """
+        statement = Statement(
+            Sid="MixedListAndWrite",
+            Effect="Allow",
+            Action=["s3:ListAllMyBuckets", "s3:PutObject"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should be flagged because s3:PutObject is a write action
+        assert len(issues) == 1
+        # The message should reference s3:PutObject, not s3:ListAllMyBuckets
+        assert "s3:PutObject" in issues[0].message or "PutObject" in issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_all_list_actions_not_flagged(self, check, fetcher, config):
+        """Test that a statement with only list-level actions is not flagged.
+
+        When ALL actions in a statement are list-level, Resource: "*" is
+        appropriate and should not be flagged.
+        """
+        statement = Statement(
+            Sid="OnlyListActions",
+            Effect="Allow",
+            Action=[
+                "s3:ListAllMyBuckets",
+                "iam:ListUsers",
+                "ec2:DescribeInstances",
+            ],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should not be flagged - all actions are list-level
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_read_actions_still_flagged(self, check, fetcher, config):
+        """Test that read-level actions (not list) are still flagged.
+
+        Read actions like s3:GetObject can access sensitive data and should
+        be flagged for wildcard resource usage. Only list-level actions are safe.
+        """
+        statement = Statement(
+            Sid="ReadAction",
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+        )
+
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should be flagged - s3:GetObject is a read action, not list
+        assert len(issues) == 1

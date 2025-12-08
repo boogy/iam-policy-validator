@@ -98,6 +98,7 @@ async def execute_policy(
                         '  "Resource": "arn:aws:s3:::bucket/*"\n'
                         "}\n"
                         "```",
+                        field_name="principal",
                     )
                 )
 
@@ -127,6 +128,7 @@ async def execute_policy(
                         '  "Resource": "arn:aws:s3:::bucket/*"\n'
                         "}\n"
                         "```",
+                        field_name="principal",
                     )
                 )
 
@@ -160,6 +162,7 @@ async def execute_policy(
                         "  }\n"
                         "}\n"
                         "```",
+                        field_name="principal",
                     )
                 )
 
@@ -182,6 +185,7 @@ async def execute_policy(
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
                         suggestion="Change the `Effect` to `Deny` for this RCP statement.",
+                        field_name="effect",
                     )
                 )
 
@@ -201,6 +205,7 @@ async def execute_policy(
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
                         suggestion='Remove `NotPrincipal` and use `Principal: "*"` with `Condition` elements to restrict access.',
+                        field_name="principal",
                     )
                 )
             elif not has_principal:
@@ -215,6 +220,7 @@ async def execute_policy(
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
                         suggestion='Add `Principal: "*"` to this RCP statement.',
+                        field_name="principal",
                     )
                 )
             elif statement.principal != "*":
@@ -232,6 +238,7 @@ async def execute_policy(
                             statement_sid=statement.sid,
                             line_number=statement.line_number,
                             suggestion='Change `Principal` to `"*"` and use `Condition` elements to restrict access.',
+                            field_name="principal",
                         )
                     )
 
@@ -258,6 +265,7 @@ async def execute_policy(
                                     line_number=statement.line_number,
                                     suggestion="Replace `*` with service-specific actions from supported "
                                     f"services: {', '.join(f'`{a}`' for a in sorted(rcp_supported_services))}",
+                                    field_name="action",
                                 )
                             )
                         else:
@@ -282,6 +290,7 @@ async def execute_policy(
                             line_number=statement.line_number,
                             suggestion=f"Use only actions from supported RCP services: "
                             f"{', '.join(f'`{a}`' for a in sorted(rcp_supported_services))}",
+                            field_name="action",
                         )
                     )
 
@@ -297,6 +306,7 @@ async def execute_policy(
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
                         suggestion="Replace `NotAction` with `Action` element listing the specific actions to deny.",
+                        field_name="action",
                     )
                 )
 
@@ -314,6 +324,7 @@ async def execute_policy(
                         statement_sid=statement.sid,
                         line_number=statement.line_number,
                         suggestion='Add `Resource: "*"` or specify specific resource ARNs.',
+                        field_name="resource",
                     )
                 )
 

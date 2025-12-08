@@ -103,6 +103,7 @@ class SetOperatorValidationCheck(PolicyCheck):
                             issue_type="set_operator_on_single_valued_key",
                             condition_key=condition_key,
                             line_number=line_number,
+                            field_name="condition",
                         )
                     )
 
@@ -123,6 +124,7 @@ class SetOperatorValidationCheck(PolicyCheck):
                                 issue_type="forallvalues_allow_without_null_check",
                                 condition_key=condition_key,
                                 line_number=line_number,
+                                field_name="condition",
                             )
                         )
 
@@ -142,6 +144,7 @@ class SetOperatorValidationCheck(PolicyCheck):
                                 statement_sid=statement_sid,
                                 statement_index=statement_idx,
                                 issue_type="foranyvalue_deny_without_null_check",
+                                field_name="condition",
                                 condition_key=condition_key,
                                 line_number=line_number,
                             )

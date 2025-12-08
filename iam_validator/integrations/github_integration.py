@@ -4,17 +4,51 @@ This module provides functionality to interact with GitHub,
 including posting PR comments, line comments, labels, and retrieving PR information.
 """
 
+import asyncio
+import base64
 import logging
 import os
 import re
+import time
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from iam_validator.core import constants
 
+if TYPE_CHECKING:
+    from iam_validator.core.codeowners import CodeOwnersParser
+
 logger = logging.getLogger(__name__)
+
+
+class GitHubRateLimitError(Exception):
+    """Raised when GitHub API rate limit is exceeded."""
+
+    def __init__(self, reset_time: int, message: str = "GitHub API rate limit exceeded"):
+        self.reset_time = reset_time
+        super().__init__(message)
+
+
+class GitHubRetryableError(Exception):
+    """Raised for transient GitHub API errors that should be retried."""
+
+    pass
+
+
+# Retry configuration
+MAX_RETRIES = 3
+INITIAL_BACKOFF_SECONDS = 1.0
+MAX_BACKOFF_SECONDS = 30.0
+BACKOFF_MULTIPLIER = 2.0
+
+# HTTP status codes that should trigger retry
+RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+
+# Concurrency limit for parallel API operations (deletions, updates)
+# This prevents hitting GitHub's secondary rate limits while still being fast
+MAX_CONCURRENT_API_CALLS = 10
 
 
 class PRState(str, Enum):
@@ -66,6 +100,12 @@ class GitHubIntegration:
             os.environ.get("GITHUB_API_URL", "https://api.github.com")
         )
         self._client: httpx.AsyncClient | None = None
+        # Cache for team memberships: (org, team_slug) -> list[str]
+        # Reduces API calls when checking multiple users against same team
+        self._team_cache: dict[tuple[str, str], list[str]] = {}
+        # Cache for CODEOWNERS content (fetched once per instance)
+        self._codeowners_cache: str | None = None
+        self._codeowners_loaded: bool = False
 
     def _validate_token(self, token: str | None) -> str | None:
         """Validate and sanitize GitHub token.
@@ -262,7 +302,114 @@ class GitHubIntegration:
     async def _make_request(
         self, method: str, endpoint: str, **kwargs: Any
     ) -> dict[str, Any] | None:
-        """Make an HTTP request to GitHub API.
+        """Make an HTTP request to GitHub API with retry and rate limit handling.
+
+        Implements exponential backoff for transient errors (5xx, 429) and
+        respects GitHub's rate limit headers.
+
+        Args:
+            method: HTTP method (GET, POST, PATCH, DELETE)
+            endpoint: API endpoint path
+            **kwargs: Additional arguments to pass to httpx
+
+        Returns:
+            Response JSON or None on error
+        """
+        if not self.is_configured():
+            logger.error("GitHub integration not configured")
+            return None
+
+        url = f"{self.api_url}/repos/{self.repository}/{endpoint}"
+        backoff = INITIAL_BACKOFF_SECONDS
+        last_error: Exception | None = None
+
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                if self._client:
+                    response = await self._client.request(method, url, **kwargs)
+                else:
+                    async with httpx.AsyncClient(headers=self._get_headers()) as client:
+                        response = await client.request(method, url, **kwargs)
+
+                # Handle rate limiting (429)
+                if response.status_code == 429:
+                    # Get reset time from headers
+                    reset_time = response.headers.get("X-RateLimit-Reset")
+                    retry_after = response.headers.get("Retry-After")
+
+                    if retry_after:
+                        wait_time = int(retry_after)
+                    elif reset_time:
+                        wait_time = max(0, int(reset_time) - int(time.time()))
+                    else:
+                        wait_time = min(backoff, MAX_BACKOFF_SECONDS)
+
+                    if attempt < MAX_RETRIES:
+                        logger.warning(
+                            f"Rate limited on {method} {endpoint}, "
+                            f"waiting {wait_time}s (attempt {attempt + 1}/{MAX_RETRIES + 1})"
+                        )
+                        await asyncio.sleep(wait_time)
+                        backoff = min(backoff * BACKOFF_MULTIPLIER, MAX_BACKOFF_SECONDS)
+                        continue
+                    else:
+                        raise GitHubRateLimitError(
+                            int(reset_time or 0),
+                            f"Rate limit exceeded after {MAX_RETRIES + 1} attempts",
+                        )
+
+                # Handle retryable server errors (5xx)
+                if response.status_code in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES:
+                    logger.warning(
+                        f"Retryable error {response.status_code} on {method} {endpoint}, "
+                        f"retrying in {backoff:.1f}s (attempt {attempt + 1}/{MAX_RETRIES + 1})"
+                    )
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * BACKOFF_MULTIPLIER, MAX_BACKOFF_SECONDS)
+                    continue
+
+                response.raise_for_status()
+                return response.json() if response.text else {}
+
+            except httpx.HTTPStatusError as e:
+                last_error = e
+                # Don't retry client errors (4xx) except rate limit
+                if 400 <= e.response.status_code < 500 and e.response.status_code != 429:
+                    logger.error(f"HTTP error: {e.response.status_code} - {e.response.text}")
+                    return None
+                # For server errors, continue to retry logic
+                if attempt < MAX_RETRIES:
+                    logger.warning(
+                        f"HTTP error {e.response.status_code}, retrying in {backoff:.1f}s"
+                    )
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * BACKOFF_MULTIPLIER, MAX_BACKOFF_SECONDS)
+                    continue
+
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                last_error = e
+                if attempt < MAX_RETRIES:
+                    logger.warning(
+                        f"Connection error on {method} {endpoint}: {e}, "
+                        f"retrying in {backoff:.1f}s (attempt {attempt + 1}/{MAX_RETRIES + 1})"
+                    )
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * BACKOFF_MULTIPLIER, MAX_BACKOFF_SECONDS)
+                    continue
+
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logger.error(f"Unexpected error on {method} {endpoint}: {e}")
+                return None
+
+        # All retries exhausted
+        if last_error:
+            logger.error(f"Request failed after {MAX_RETRIES + 1} attempts: {last_error}")
+        return None
+
+    async def _make_request_no_retry(
+        self, method: str, endpoint: str, **kwargs: Any
+    ) -> dict[str, Any] | None:
+        """Make an HTTP request without retry (for non-critical operations).
 
         Args:
             method: HTTP method (GET, POST, PATCH, DELETE)
@@ -294,6 +441,89 @@ class GitHubIntegration:
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error(f"Request failed: {e}")
             return None
+
+    async def _make_paginated_request(
+        self, endpoint: str, max_pages: int = 100
+    ) -> list[dict[str, Any]]:
+        """Make a paginated GET request to GitHub API, fetching all pages.
+
+        GitHub API returns at most 100 items per page for list endpoints.
+        This method follows pagination links to fetch ALL items.
+
+        Args:
+            endpoint: API endpoint path (e.g., "pulls/123/comments")
+            max_pages: Maximum number of pages to fetch (safety limit)
+
+        Returns:
+            Combined list of all items across all pages
+        """
+        if not self.is_configured():
+            logger.error("GitHub integration not configured")
+            return []
+
+        all_items: list[dict[str, Any]] = []
+        url: str | None = f"{self.api_url}/repos/{self.repository}/{endpoint}"
+        page_count = 0
+
+        # Add per_page=100 to maximize items per request
+        if "?" in endpoint:
+            url = f"{url}&per_page=100"
+        else:
+            url = f"{url}?per_page=100"
+
+        while url and page_count < max_pages:
+            page_count += 1
+            try:
+                if self._client:
+                    response = await self._client.request("GET", url)
+                else:
+                    async with httpx.AsyncClient(
+                        timeout=httpx.Timeout(30.0), headers=self._get_headers()
+                    ) as client:
+                        response = await client.request("GET", url)
+
+                response.raise_for_status()
+                items = response.json()
+
+                if isinstance(items, list):
+                    all_items.extend(items)
+                    logger.debug(
+                        f"Fetched page {page_count} with {len(items)} items "
+                        f"(total: {len(all_items)})"
+                    )
+                else:
+                    # Not a list response, shouldn't happen for list endpoints
+                    logger.warning(f"Unexpected response type on page {page_count}")
+                    break
+
+                # Check for next page in Link header
+                # Format: <url>; rel="next", <url>; rel="last"
+                link_header = response.headers.get("Link", "")
+                url = None  # Reset for next iteration
+
+                if link_header:
+                    for link in link_header.split(","):
+                        if 'rel="next"' in link:
+                            # Extract URL from <url>
+                            match = re.search(r"<([^>]+)>", link)
+                            if match:
+                                url = match.group(1)
+                                break
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HTTP error during pagination: {e.response.status_code}")
+                break
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logger.error(f"Error during pagination: {e}")
+                break
+
+        if page_count >= max_pages:
+            logger.warning(f"Reached max pages limit ({max_pages}), results may be incomplete")
+
+        logger.debug(
+            f"Paginated request complete: {len(all_items)} total items from {page_count} page(s)"
+        )
+        return all_items
 
     # ==================== PR Comments ====================
 
@@ -350,7 +580,11 @@ class GitHubIntegration:
     ) -> bool:
         """Post or update multiple related comments (for large reports).
 
-        This method will:
+        For single-part comments (most common case), this will UPDATE the
+        existing comment in place rather than delete and recreate it.
+        This preserves comment history and avoids PR timeline noise.
+
+        For multi-part comments:
         1. Delete all old comments with the identifier
         2. Post new comments in sequence with part indicators
         3. Validate each part stays under GitHub's limit
@@ -365,16 +599,45 @@ class GitHubIntegration:
         # GitHub's actual limit
         github_comment_limit = 65536
 
-        # Delete all existing comments with this identifier
+        total_parts = len(comment_parts)
+
+        # Optimization: For single-part comments, use update-or-create
+        # This preserves the existing comment and avoids PR timeline noise
+        if total_parts == 1:
+            part_body = comment_parts[0]
+            full_body = f"{identifier}\n\n{part_body}"
+
+            # Safety check: ensure we don't exceed GitHub's limit
+            if len(full_body) > github_comment_limit:
+                logger.error(
+                    f"Comment exceeds GitHub's limit ({len(full_body)} > {github_comment_limit} chars). "
+                    f"Comment will be truncated."
+                )
+                available_space = github_comment_limit - 500
+                truncated_body = part_body[:available_space]
+                truncation_warning = (
+                    "\n\n---\n\n"
+                    "> ⚠️ **This comment was truncated to fit GitHub's size limit**\n"
+                    ">\n"
+                    "> Download the full report using `--output report.json` or "
+                    "`--format markdown --output report.md`\n"
+                )
+                full_body = f"{identifier}\n\n{truncated_body}{truncation_warning}"
+
+            success = await self.update_or_create_comment(full_body, identifier)
+            if success:
+                logger.info("Successfully updated summary comment")
+            return success
+
+        # Multi-part: Delete all existing comments with this identifier first
         await self._delete_comments_with_identifier(identifier)
 
         # Post each part
         success = True
-        total_parts = len(comment_parts)
 
         for part_num, part_body in enumerate(comment_parts, 1):
             # Add identifier and part indicator
-            part_indicator = f"**(Part {part_num}/{total_parts})**" if total_parts > 1 else ""
+            part_indicator = f"**(Part {part_num}/{total_parts})**"
             full_body = f"{identifier}\n{part_indicator}\n\n{part_body}"
 
             # Safety check: ensure we don't exceed GitHub's limit
@@ -472,19 +735,15 @@ class GitHubIntegration:
     # ==================== PR Review Comments (Line-specific) ====================
 
     async def get_review_comments(self) -> list[dict[str, Any]]:
-        """Get all review comments on the PR.
+        """Get all review comments on the PR with pagination.
+
+        Fetches ALL review comments across all pages. This is critical for
+        proper comment deduplication and cleanup when there are many findings.
 
         Returns:
-            List of review comment dicts
+            List of all review comment dicts
         """
-        result = await self._make_request(
-            "GET",
-            f"pulls/{self.pr_number}/comments",
-        )
-
-        if result and isinstance(result, list):
-            return result
-        return []
+        return await self._make_paginated_request(f"pulls/{self.pr_number}/comments")
 
     async def get_bot_review_comments_with_location(
         self, identifier: str = constants.BOT_IDENTIFIER
@@ -552,29 +811,52 @@ class GitHubIntegration:
         )
 
         if result is not None:  # DELETE returns empty dict on success
-            logger.info(f"Successfully deleted review comment {comment_id}")
+            logger.debug(f"Successfully deleted review comment {comment_id}")
             return True
         return False
 
-    async def resolve_review_comment(self, comment_id: int) -> bool:
-        """Resolve a specific review comment.
+    async def _delete_comments_parallel(
+        self, comment_ids: list[int], max_concurrent: int = MAX_CONCURRENT_API_CALLS
+    ) -> tuple[int, int]:
+        """Delete multiple review comments in parallel with controlled concurrency.
+
+        Uses a semaphore to limit concurrent API calls, preventing rate limit issues
+        while still being much faster than sequential deletion.
 
         Args:
-            comment_id: ID of the comment to resolve
+            comment_ids: List of comment IDs to delete
+            max_concurrent: Maximum number of concurrent deletions (default: 10)
 
         Returns:
-            True if successful, False otherwise
+            Tuple of (successful_count, failed_count)
         """
-        result = await self._make_request(
-            "PATCH",
-            f"pulls/comments/{comment_id}",
-            json={"state": "resolved"},
+        if not comment_ids:
+            return (0, 0)
+
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def delete_with_limit(comment_id: int) -> bool:
+            async with semaphore:
+                return await self.delete_review_comment(comment_id)
+
+        # Run all deletions in parallel (semaphore controls actual concurrency)
+        results = await asyncio.gather(
+            *[delete_with_limit(cid) for cid in comment_ids],
+            return_exceptions=True,
         )
 
-        if result is not None:
-            logger.info(f"Successfully resolved review comment {comment_id}")
-            return True
-        return False
+        successful = sum(1 for r in results if r is True)
+        failed = len(results) - successful
+
+        if successful > 0:
+            logger.info(f"Parallel deletion: {successful} deleted, {failed} failed")
+
+        return (successful, failed)
+
+    # NOTE: resolve_review_comment was removed because GitHub REST API doesn't support
+    # resolving review comments via {"state": "resolved"}. Resolving review threads
+    # requires the GraphQL API with resolveReviewThread mutation.
+    # See: https://docs.github.com/en/graphql/reference/mutations#resolvereviewthread
 
     async def update_review_comment(self, comment_id: int, new_body: str) -> bool:
         """Update the body text of an existing review comment.
@@ -601,6 +883,7 @@ class GitHubIntegration:
         """Delete all review comments from the bot (from previous runs).
 
         This ensures old/outdated comments are removed before posting new ones.
+        Uses parallel deletion for speed when there are many comments.
 
         Args:
             identifier: String to identify bot comments
@@ -609,8 +892,9 @@ class GitHubIntegration:
             Number of comments deleted
         """
         comments = await self.get_review_comments()
-        deleted_count = 0
 
+        # Collect all bot comment IDs to delete
+        comment_ids_to_delete: list[int] = []
         for comment in comments:
             if not isinstance(comment, dict):
                 continue
@@ -620,47 +904,23 @@ class GitHubIntegration:
 
             # Check if this is a bot comment
             if identifier in str(body) and isinstance(comment_id, int):
-                if await self.delete_review_comment(comment_id):
-                    deleted_count += 1
+                comment_ids_to_delete.append(comment_id)
 
-        if deleted_count > 0:
-            logger.info(f"Cleaned up {deleted_count} old review comments")
+        if not comment_ids_to_delete:
+            return 0
 
-        return deleted_count
+        # Delete all bot comments in parallel
+        successful, _failed = await self._delete_comments_parallel(comment_ids_to_delete)
 
-    async def cleanup_bot_review_comments_by_resolving(
-        self, identifier: str = constants.BOT_IDENTIFIER
-    ) -> int:
-        """Resolve all review comments from the bot (from previous runs).
+        if successful > 0:
+            logger.info(f"Cleaned up {successful} old review comments")
 
-        This marks old/outdated comments as resolved instead of deleting them,
-        preserving them in the PR for audit trail purposes.
+        return successful
 
-        Args:
-            identifier: String to identify bot comments
-
-        Returns:
-            Number of comments resolved
-        """
-        comments = await self.get_review_comments()
-        resolved_count = 0
-
-        for comment in comments:
-            if not isinstance(comment, dict):
-                continue
-
-            body = comment.get("body", "")
-            comment_id = comment.get("id")
-
-            # Check if this is a bot comment
-            if identifier in str(body) and isinstance(comment_id, int):
-                if await self.resolve_review_comment(comment_id):
-                    resolved_count += 1
-
-        if resolved_count > 0:
-            logger.info(f"Resolved {resolved_count} old review comments")
-
-        return resolved_count
+    # NOTE: cleanup_bot_review_comments_by_resolving was removed because it depended on
+    # resolve_review_comment which doesn't work with GitHub REST API.
+    # Use cleanup_bot_review_comments (deletion) instead, or implement GraphQL-based
+    # resolution if audit trail preservation is needed.
 
     async def create_review_comment(
         self,
@@ -778,19 +1038,37 @@ class GitHubIntegration:
         body: str = "",
         event: ReviewEvent = ReviewEvent.COMMENT,
         identifier: str = constants.REVIEW_IDENTIFIER,
+        validated_files: set[str] | None = None,
+        skip_cleanup: bool = False,
     ) -> bool:
-        """Smart comment management: update existing, create new, delete resolved.
+        """Smart comment management using fingerprint-based matching.
 
-        This method implements a three-step process:
-        1. Fetch existing bot comments at each location
-        2. For each new comment: update if exists, create if new
-        3. Delete old comments where issues have been resolved
+        This method uses finding fingerprints (stable IDs) as the PRIMARY key
+        for matching comments, with location as SECONDARY for new comments.
+
+        Strategy:
+        1. Index existing comments by finding_id (from HTML comment)
+        2. For each new comment:
+           - If finding_id exists: UPDATE (even if line changed)
+           - If new: CREATE at specified line
+        3. Delete comments whose finding_id is not in new set (resolved)
+           (unless skip_cleanup=True)
+
+        Note: Comments stay at their original line even if the issue moved,
+        because GitHub doesn't support moving review comments. The comment
+        body is updated to reflect any changes.
 
         Args:
             comments: List of comment dicts with keys: path, line, body, (optional) side
             body: The overall review body text
             event: The review event type (APPROVE, REQUEST_CHANGES, COMMENT)
             identifier: String to identify bot comments (for matching existing)
+            validated_files: Set of all file paths that were validated in this run.
+                           Used to clean up comments for files that no longer have findings.
+                           If None, only files with current findings are considered.
+            skip_cleanup: If True, skip the cleanup phase (deleting resolved comments).
+                         Use this in streaming mode where files are processed one at a time
+                         to avoid deleting comments from files processed earlier.
 
         Returns:
             True if successful, False otherwise
@@ -798,29 +1076,31 @@ class GitHubIntegration:
         Example:
             # First run: Creates 3 comments
             comments = [
-                {"path": "policy.json", "line": 5, "body": "Issue A"},
-                {"path": "policy.json", "line": 10, "body": "Issue B"},
-                {"path": "policy.json", "line": 15, "body": "Issue C"},
+                {"path": "policy.json", "line": 5, "body": "<!-- finding-id: abc123 -->Issue A"},
+                {"path": "policy.json", "line": 10, "body": "<!-- finding-id: def456 -->Issue B"},
             ]
 
-            # Second run: Updates Issue A, keeps B, deletes C (resolved), adds D
+            # Second run: Same findings, even if lines shifted
             comments = [
-                {"path": "policy.json", "line": 5, "body": "Issue A (updated)"},
-                {"path": "policy.json", "line": 10, "body": "Issue B"},  # Same = no update
-                {"path": "policy.json", "line": 20, "body": "Issue D"},  # New
+                {"path": "policy.json", "line": 8, "body": "<!-- finding-id: abc123 -->Issue A (updated)"},
+                {"path": "policy.json", "line": 15, "body": "<!-- finding-id: def456 -->Issue B"},
             ]
-            # Result: line 15 comment deleted (resolved), line 5 updated, line 20 created
+            # Result: Both comments UPDATED in place (not recreated), preserving conversation history
         """
-        # Step 1: Get existing bot comments mapped by location
-        existing_comments = await self.get_bot_review_comments_with_location(identifier)
-        logger.debug(f"Found {len(existing_comments)} existing bot comments")
+        # Step 1: Get existing bot comments indexed by fingerprint
+        existing_by_fingerprint = await self._get_bot_comments_by_fingerprint(identifier)
+        logger.debug(
+            f"Found {len(existing_by_fingerprint)} existing bot comments with fingerprints"
+        )
 
-        # Track which existing comments we've seen (to know what to delete later)
+        # Also get location-based index for fallback (comments without fingerprints)
+        existing_by_location = await self.get_bot_review_comments_with_location(identifier)
+
+        seen_fingerprints: set[str] = set()
         seen_locations: set[tuple[str, int, str]] = set()
+        # Track comment IDs that were updated/matched - these should NOT be deleted
+        matched_comment_ids: set[int] = set()
         updated_count = 0
-        created_count = 0
-
-        # Step 2: Update or create each new comment
         new_comments_for_review: list[dict[str, Any]] = []
 
         for comment in comments:
@@ -828,33 +1108,59 @@ class GitHubIntegration:
             line = comment["line"]
             new_body = comment["body"]
 
-            # Extract issue type from comment body HTML comment
+            # Try fingerprint-based matching first
+            finding_id = self._extract_finding_id(new_body)
+
+            if finding_id:
+                seen_fingerprints.add(finding_id)
+
+                if finding_id in existing_by_fingerprint:
+                    existing = existing_by_fingerprint[finding_id]
+                    matched_comment_ids.add(existing["id"])
+                    # Check if update needed (body changed)
+                    if existing["body"] != new_body:
+                        success = await self.update_review_comment(existing["id"], new_body)
+                        if success:
+                            updated_count += 1
+                            logger.debug(
+                                f"Updated comment for finding {finding_id[:8]}... "
+                                f"(was at {existing['path']}:{existing['line']})"
+                            )
+                    else:
+                        logger.debug(f"Comment for finding {finding_id[:8]}... unchanged")
+                    continue
+
+            # Fallback: location-based matching
+            # This handles both:
+            # 1. Legacy comments without fingerprints
+            # 2. Comments with fingerprints that don't match (e.g., path changed)
             issue_type_match = re.search(r"<!-- issue-type: (\w+) -->", new_body)
             issue_type = issue_type_match.group(1) if issue_type_match else "unknown"
-
             location = (path, line, issue_type)
             seen_locations.add(location)
 
-            existing = existing_comments.get(location)
-
-            if existing:
-                # Comment exists at this location - check if body changed
-                if existing["body"] != new_body:
-                    # Update the existing comment
-                    success = await self.update_review_comment(existing["id"], new_body)
+            existing_loc = existing_by_location.get(location)
+            if existing_loc:
+                # Found existing comment at same location with same issue type
+                # Update it (this handles both legacy comments and fingerprint mismatches)
+                matched_comment_ids.add(existing_loc["id"])
+                if existing_loc["body"] != new_body:
+                    success = await self.update_review_comment(existing_loc["id"], new_body)
                     if success:
                         updated_count += 1
-                        logger.debug(f"Updated comment at {path}:{line}")
-                    else:
-                        logger.warning(f"Failed to update comment at {path}:{line}")
-                else:
-                    # Body unchanged, skip update
-                    logger.debug(f"Comment at {path}:{line} unchanged, skipping update")
-            else:
-                # New comment - collect for batch creation
-                new_comments_for_review.append(comment)
+                        if finding_id:
+                            logger.debug(
+                                f"Updated comment at {path}:{line} (fingerprint mismatch, location match)"
+                            )
+                        else:
+                            logger.debug(f"Updated legacy comment at {path}:{line}")
+                continue
 
-        # Step 3: Create new comments via review API (if any)
+            # New comment - collect for batch creation
+            new_comments_for_review.append(comment)
+
+        # Step 2: Create new comments via review API (if any)
+        created_count = 0
         if new_comments_for_review:
             success = await self.create_review_with_comments(
                 new_comments_for_review,
@@ -868,32 +1174,142 @@ class GitHubIntegration:
                 logger.error("Failed to create new review comments")
                 return False
 
-        # Step 4: Delete comments for resolved issues (not in new comment set)
-        # IMPORTANT: Only delete comments for files that are in the current batch
-        # to avoid deleting comments from other files processed in the same run
+        # Step 3: Delete resolved comments (unless skip_cleanup is True)
+        # In streaming mode, we skip cleanup because we're processing files one at a time
+        # and don't want to delete comments from files processed earlier in the stream
         deleted_count = 0
-        files_in_batch = {comment["path"] for comment in comments}
 
-        for location, existing in existing_comments.items():
-            # Only delete if:
-            # 1. This location is not in the new comment set (resolved issue)
-            # 2. AND this file is in the current batch (don't touch other files' comments)
-            if location not in seen_locations and existing["path"] in files_in_batch:
-                # This comment location is no longer in the new issues - delete it
-                success = await self.delete_review_comment(existing["id"])
-                if success:
-                    deleted_count += 1
-                    logger.debug(
-                        f"Deleted resolved comment at {existing['path']}:{existing['line']}"
-                    )
+        if skip_cleanup:
+            logger.debug("Skipping cleanup phase (streaming mode)")
+        else:
+            # Priority: fingerprint-based deletion, then location-based for legacy
+            # Also clean up comments for files removed from the PR or files that were
+            # validated but no longer have findings
+            files_with_findings = {c["path"] for c in comments}
 
-        # Summary
+            # Use validated_files if provided, otherwise fall back to files_with_findings
+            # This ensures we clean up comments for files that were validated but have no findings
+            files_in_scope = validated_files if validated_files is not None else files_with_findings
+
+            # Get current PR files to detect removed files
+            # Note: get_pr_files() returns [] on error, so we check for non-empty result
+            pr_files = await self.get_pr_files()
+            if pr_files:
+                current_pr_files: set[str] | None = {f["filename"] for f in pr_files}
+            else:
+                # Empty result could be an API error - fall back to batch-only cleanup
+                # to avoid accidentally deleting valid comments
+                logger.debug("Could not fetch PR files for cleanup, using batch-only mode")
+                current_pr_files = None
+
+            def should_delete_comment(existing_path: str) -> bool:
+                """Check if a comment should be deleted based on file status.
+
+                A comment should be deleted if the file is part of this PR.
+                The fingerprint check (done by caller) ensures we only delete
+                comments for findings that are no longer present.
+
+                This aggressive cleanup ensures stale comments are removed even if:
+                - The file was fixed but not re-validated in this specific run
+                - The validation runs on a subset of PR files
+
+                We preserve comments for files NOT in the PR to avoid accidentally
+                deleting comments from other branches/PRs.
+                """
+                # If we successfully fetched PR files, delete comments for any PR file
+                # whose finding is no longer present (fingerprint check done by caller)
+                if current_pr_files is not None:
+                    return existing_path in current_pr_files
+
+                # Fallback: if we couldn't fetch PR files, only clean up validated files
+                # to avoid accidentally deleting valid comments
+                return existing_path in files_in_scope
+
+            # Collect all comment IDs to delete
+            # Delete by fingerprint (primary) - comments that:
+            # 1. Were NOT matched (updated) in this run
+            # 2. Have a fingerprint not in the new findings
+            # 3. Are in files that are part of this PR/validation
+            comment_ids_to_delete: list[int] = []
+
+            for fingerprint, existing in existing_by_fingerprint.items():
+                comment_id = existing["id"]
+                # Skip if this comment was matched/updated via location fallback
+                if comment_id in matched_comment_ids:
+                    continue
+                if fingerprint not in seen_fingerprints and should_delete_comment(existing["path"]):
+                    comment_ids_to_delete.append(comment_id)
+                    logger.debug(f"Marking for deletion: resolved comment {fingerprint[:8]}...")
+
+            # Delete by location (legacy comments without fingerprints)
+            for location, existing in existing_by_location.items():
+                comment_id = existing["id"]
+                # Skip if already matched/updated
+                if comment_id in matched_comment_ids:
+                    continue
+                # Skip if already marked for deletion by fingerprint above
+                existing_fingerprint = self._extract_finding_id(existing.get("body", ""))
+                if existing_fingerprint:
+                    continue  # Already handled above
+
+                if location not in seen_locations and should_delete_comment(existing["path"]):
+                    comment_ids_to_delete.append(comment_id)
+                    logger.debug(f"Marking for deletion: resolved legacy comment at {location}")
+
+            # Delete all collected comments in parallel
+            if comment_ids_to_delete:
+                deleted_count, _failed = await self._delete_comments_parallel(comment_ids_to_delete)
+
         logger.info(
             f"Review comment management: {updated_count} updated, "
             f"{created_count} created, {deleted_count} deleted (resolved)"
         )
 
         return True
+
+    def _extract_finding_id(self, body: str) -> str | None:
+        """Extract finding ID from comment body HTML comment.
+
+        Args:
+            body: Comment body text
+
+        Returns:
+            16-character finding ID hash, or None if not found
+        """
+        match = re.search(r"<!-- finding-id: ([a-f0-9]{16}) -->", body)
+        return match.group(1) if match else None
+
+    async def _get_bot_comments_by_fingerprint(self, identifier: str) -> dict[str, dict[str, Any]]:
+        """Index existing bot comments by their finding fingerprint.
+
+        Args:
+            identifier: String to identify bot comments
+
+        Returns:
+            Dict mapping finding_id to comment metadata dict
+            Comment dict contains: id, body, path, line
+        """
+        comments = await self.get_review_comments()
+        indexed: dict[str, dict[str, Any]] = {}
+
+        for comment in comments:
+            if not isinstance(comment, dict):
+                continue
+
+            body = comment.get("body", "")
+            if identifier not in str(body):
+                continue
+
+            finding_id = self._extract_finding_id(body)
+            if finding_id:
+                indexed[finding_id] = {
+                    "id": comment["id"],
+                    "body": body,
+                    "path": comment.get("path", ""),
+                    "line": comment.get("line") or comment.get("original_line"),
+                }
+
+        return indexed
 
     # ==================== PR Labels ====================
 
@@ -1061,3 +1477,345 @@ class GitHubIntegration:
             logger.info(f"Successfully set commit status: {state}")
             return True
         return False
+
+    # ==================== CODEOWNERS and Ignore Commands ====================
+
+    async def get_codeowners_content(self) -> str | None:
+        """Fetch CODEOWNERS file content from repository.
+
+        Results are cached per instance to avoid redundant API calls.
+
+        Searches in standard CODEOWNERS locations:
+        - CODEOWNERS
+        - .github/CODEOWNERS
+        - docs/CODEOWNERS
+
+        Returns:
+            CODEOWNERS file content as string, or None if not found
+        """
+        # Return cached result if already loaded
+        if self._codeowners_loaded:
+            return self._codeowners_cache
+
+        from iam_validator.core.codeowners import (  # pylint: disable=import-outside-toplevel
+            CodeOwnersParser,
+        )
+
+        for path in CodeOwnersParser.CODEOWNERS_PATHS:
+            result = await self._make_request(
+                "GET",
+                f"contents/{path}",
+            )
+
+            if result and isinstance(result, dict) and "content" in result:
+                try:
+                    content = base64.b64decode(result["content"]).decode("utf-8")
+                    logger.debug(f"Found CODEOWNERS at {path}")
+                    # Cache the result
+                    self._codeowners_cache = content
+                    self._codeowners_loaded = True
+                    return content
+                except (ValueError, UnicodeDecodeError) as e:
+                    logger.warning(f"Failed to decode CODEOWNERS at {path}: {e}")
+                    continue
+
+        logger.debug("No CODEOWNERS file found in repository")
+        # Cache the negative result too
+        self._codeowners_cache = None
+        self._codeowners_loaded = True
+        return None
+
+    async def get_team_members(self, org: str, team_slug: str) -> list[str]:
+        """Get members of a GitHub team.
+
+        Results are cached per instance to avoid redundant API calls
+        when checking multiple users against the same team.
+
+        Note: This requires the token to have `read:org` scope for
+        organization teams.
+
+        Args:
+            org: Organization name
+            team_slug: Team slug (URL-friendly name)
+
+        Returns:
+            List of team member usernames (lowercase)
+        """
+        # Check cache first
+        cache_key = (org.lower(), team_slug.lower())
+        if cache_key in self._team_cache:
+            logger.debug(f"Using cached team members for {org}/{team_slug}")
+            return self._team_cache[cache_key]
+
+        url = f"{self.api_url}/orgs/{org}/teams/{team_slug}/members"
+
+        try:
+            if self._client:
+                response = await self._client.request("GET", url)
+            else:
+                async with httpx.AsyncClient(
+                    headers=self._get_headers(), timeout=httpx.Timeout(30.0)
+                ) as client:
+                    response = await client.request("GET", url)
+
+            response.raise_for_status()
+            result = response.json()
+
+            if isinstance(result, list):
+                members = [
+                    member.get("login", "").lower()
+                    for member in result
+                    if isinstance(member, dict) and member.get("login")
+                ]
+                # Cache the result
+                self._team_cache[cache_key] = members
+                logger.debug(f"Found {len(members)} members in team {org}/{team_slug}")
+                return members
+
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                f"Failed to get team members for {org}/{team_slug}: HTTP {e.response.status_code}"
+            )
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning(f"Failed to get team members for {org}/{team_slug}: {e}")
+
+        # Cache empty result to avoid repeated failed API calls
+        self._team_cache[cache_key] = []
+        return []
+
+    async def is_user_codeowner(
+        self,
+        username: str,
+        file_path: str,
+        codeowners_parser: "CodeOwnersParser | None" = None,
+        allowed_users: list[str] | None = None,
+    ) -> bool:
+        """Check if a user is authorized to ignore findings for a file.
+
+        Authorization is granted if:
+        1. User is listed directly in CODEOWNERS for the file
+        2. User is a member of a team listed in CODEOWNERS for the file
+        3. User is in the allowed_users fallback list (when no CODEOWNERS)
+
+        Performance: Team membership checks are executed in parallel.
+
+        Args:
+            username: GitHub username to check
+            file_path: Path to the file being checked
+            codeowners_parser: Pre-parsed CODEOWNERS (for caching)
+            allowed_users: Fallback list of allowed users (when no CODEOWNERS)
+
+        Returns:
+            True if user is authorized, False otherwise
+        """
+        username_lower = username.lower()
+
+        # Check fallback allowed_users first (always applies if configured)
+        if allowed_users:
+            if username_lower in [u.lower() for u in allowed_users]:
+                logger.debug(f"User {username} authorized via allowed_users config")
+                return True
+
+        # Get or parse CODEOWNERS
+        parser = codeowners_parser
+        if parser is None:
+            content = await self.get_codeowners_content()
+            if content is None:
+                # No CODEOWNERS and no allowed_users match = deny
+                logger.debug(f"No CODEOWNERS file found, user {username} not in allowed_users")
+                return False
+
+            from iam_validator.core.codeowners import (  # pylint: disable=import-outside-toplevel
+                CodeOwnersParser,
+            )
+
+            parser = CodeOwnersParser(content)
+
+        # Check direct user ownership
+        if parser.is_owner(username, file_path):
+            logger.debug(f"User {username} is direct owner of {file_path}")
+            return True
+
+        # Check team membership - fetch all teams in parallel for speed
+        teams = parser.get_teams_for_file(file_path)
+        if not teams:
+            logger.debug(f"User {username} is not authorized for {file_path}")
+            return False
+
+        # Fetch all team memberships concurrently
+
+        async def check_team(org: str, team_slug: str) -> tuple[str, str, bool]:
+            members = await self.get_team_members(org, team_slug)
+            return (org, team_slug, username_lower in members)
+
+        results = await asyncio.gather(*[check_team(org, team_slug) for org, team_slug in teams])
+
+        for org, team_slug, is_member in results:
+            if is_member:
+                logger.debug(f"User {username} authorized via team {org}/{team_slug}")
+                return True
+
+        logger.debug(f"User {username} is not authorized for {file_path}")
+        return False
+
+    async def get_issue_comments(self) -> list[dict[str, Any]]:
+        """Get all issue comments (general PR comments, not review comments) with pagination.
+
+        Fetches ALL issue comments across all pages. This ensures proper
+        comment management when there are many comments on a PR.
+
+        Returns:
+            List of all issue comment dicts
+        """
+        return await self._make_paginated_request(f"issues/{self.pr_number}/comments")
+
+    async def get_comment_by_id(self, comment_id: int) -> dict[str, Any] | None:
+        """Get a specific review comment by ID.
+
+        Used for verifying that ignore command replies still exist
+        (tamper-resistant verification).
+
+        Args:
+            comment_id: The ID of the review comment to fetch
+
+        Returns:
+            Comment dict if found, None if deleted or error
+        """
+        result = await self._make_request(
+            "GET",
+            f"pulls/comments/{comment_id}",
+        )
+
+        if result and isinstance(result, dict):
+            return result
+        return None
+
+    async def post_reply_to_review_comment(
+        self,
+        comment_id: int,
+        body: str,
+    ) -> bool:
+        """Post a reply to a review comment thread.
+
+        Args:
+            comment_id: The ID of the review comment to reply to
+            body: The reply text (markdown supported)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        result = await self._make_request(
+            "POST",
+            f"pulls/{self.pr_number}/comments",
+            json={
+                "body": body,
+                "in_reply_to": comment_id,
+            },
+        )
+
+        if result:
+            logger.debug(f"Successfully posted reply to comment {comment_id}")
+            return True
+        return False
+
+    async def scan_for_ignore_commands(
+        self,
+        identifier: str = constants.BOT_IDENTIFIER,
+    ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+        """Scan for ignore commands in replies to bot review comments.
+
+        Looks for replies to bot comments that contain ignore commands.
+        Supports formats: "ignore", "/ignore", "@iam-validator ignore",
+        "skip", "suppress", and "ignore: reason here".
+
+        Args:
+            identifier: String to identify bot comments
+
+        Returns:
+            List of (bot_comment, reply_comment) tuples where reply
+            contains an ignore command
+        """
+        all_comments = await self.get_review_comments()
+        ignore_commands: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+        # Index bot comments by ID for O(1) lookup
+        bot_comments_by_id: dict[int, dict[str, Any]] = {}
+        for comment in all_comments:
+            if not isinstance(comment, dict):
+                continue
+            body = comment.get("body", "")
+            comment_id = comment.get("id")
+            if identifier in str(body) and isinstance(comment_id, int):
+                bot_comments_by_id[comment_id] = comment
+
+        # Find replies with ignore commands
+        for comment in all_comments:
+            if not isinstance(comment, dict):
+                continue
+
+            reply_to_id = comment.get("in_reply_to_id")
+            if reply_to_id and reply_to_id in bot_comments_by_id:
+                body = comment.get("body", "")
+                if self._is_ignore_command(body):
+                    ignore_commands.append((bot_comments_by_id[reply_to_id], comment))
+
+        logger.debug(f"Found {len(ignore_commands)} ignore command(s) in PR comments")
+        return ignore_commands
+
+    def _is_ignore_command(self, text: str) -> bool:
+        """Check if text is an ignore command.
+
+        Supports:
+        - "ignore" (case insensitive)
+        - "/ignore"
+        - "@iam-validator ignore"
+        - "skip", "suppress"
+        - "ignore: reason here" (with optional reason)
+
+        Args:
+            text: Comment text to check
+
+        Returns:
+            True if text is an ignore command
+        """
+        if not text:
+            return False
+
+        text = text.strip().lower()
+
+        ignore_patterns = [
+            r"^\s*ignore\s*$",
+            r"^\s*/ignore\s*$",
+            r"^\s*@?iam-validator\s+ignore\s*$",
+            r"^\s*ignore\s*:\s*.+$",  # With reason
+            r"^\s*skip\s*$",
+            r"^\s*suppress\s*$",
+        ]
+
+        return any(re.match(pattern, text, re.IGNORECASE) for pattern in ignore_patterns)
+
+    @staticmethod
+    def extract_finding_id(comment_body: str) -> str | None:
+        """Extract finding ID from a bot comment.
+
+        Args:
+            comment_body: The comment body text
+
+        Returns:
+            Finding ID hash, or None if not found
+        """
+        match = re.search(r"<!-- finding-id: ([a-f0-9]+) -->", comment_body)
+        return match.group(1) if match else None
+
+    @staticmethod
+    def extract_ignore_reason(text: str) -> str | None:
+        """Extract reason from ignore command.
+
+        Args:
+            text: The ignore command text
+
+        Returns:
+            Reason string, or None if no reason provided
+        """
+        match = re.search(r"ignore\s*:\s*(.+)$", text.strip(), re.IGNORECASE)
+        return match.group(1).strip() if match else None

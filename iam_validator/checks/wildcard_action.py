@@ -51,6 +51,7 @@ class WildcardActionCheck(PolicyCheck):
                     suggestion=suggestion,
                     example=example if example else None,
                     line_number=statement.line_number,
+                    field_name="action",
                 )
             )
 

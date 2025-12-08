@@ -103,6 +103,7 @@ class PrincipalValidationCheck(PolicyCheck):
                         line_number=statement.line_number,
                         suggestion=f"Remove the `Principal` `{principal}` or add appropriate `Condition`s to restrict access. "
                         "Consider using more specific `Principal`s instead of `*` (wildcard).",
+                        field_name="principal",
                     )
                 )
                 continue
@@ -122,6 +123,7 @@ class PrincipalValidationCheck(PolicyCheck):
                         line_number=statement.line_number,
                         suggestion=f"Add `{principal}` to the `allowed_principals` list in your config, "
                         "or use a `Principal` that matches an allowed pattern.",
+                        field_name="principal",
                     )
                 )
                 continue
@@ -407,6 +409,7 @@ class PrincipalValidationCheck(PolicyCheck):
                             ),
                             suggestion=self._build_any_of_suggestion(any_of),
                             line_number=statement.line_number,
+                            field_name="principal",
                         )
                     )
 
@@ -568,6 +571,7 @@ class PrincipalValidationCheck(PolicyCheck):
             suggestion=suggestion_text,
             example=example_code,
             line_number=statement.line_number,
+            field_name="principal",
         )
 
     def _build_condition_suggestion(
@@ -700,4 +704,5 @@ class PrincipalValidationCheck(PolicyCheck):
             message=message,
             suggestion=suggestion,
             line_number=statement.line_number,
+            field_name="principal",
         )
