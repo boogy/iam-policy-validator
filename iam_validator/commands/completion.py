@@ -247,7 +247,7 @@ _iam_validator_completion() {{
             return 0
             ;;
         validate)
-            opts="--path -p --stdin --format -f --output -o --no-recursive --fail-on-warnings --policy-type -t --github-comment --github-review --github-summary --verbose -v --config -c --custom-checks-dir --aws-services-dir --stream --batch-size --summary --severity-breakdown --allow-owner-ignore --no-owner-ignore"
+            opts="--path -p --stdin --format -f --output -o --no-recursive --fail-on-warnings --policy-type -t --github-comment --github-review --github-summary --verbose -v --config -c --custom-checks-dir --aws-services-dir --stream --batch-size --summary --severity-breakdown --allow-owner-ignore --no-owner-ignore --ci --ci-output"
             COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
             return 0
             ;;
@@ -378,7 +378,9 @@ _iam_validator() {{
                         '--summary[Show Executive Summary section]' \\
                         '--severity-breakdown[Show Issue Severity Breakdown section]' \\
                         '--allow-owner-ignore[Allow CODEOWNERS to ignore findings]' \\
-                        '--no-owner-ignore[Disable CODEOWNERS ignore feature]'
+                        '--no-owner-ignore[Disable CODEOWNERS ignore feature]' \\
+                        '--ci[CI mode - print enhanced output, write JSON to file]' \\
+                        '--ci-output[Output file for JSON report in CI mode]:file:_files'
                     ;;
                 post-to-pr)
                     _arguments \\
