@@ -517,34 +517,32 @@ class TestConditionKeyPatternMatching:
         """Integration test: ssm:resourceTag/owner should be valid for ssm:PutParameter."""
         from iam_validator.core.aws_service import AWSServiceFetcher
 
-        fetcher = AWSServiceFetcher()
+        async with AWSServiceFetcher() as fetcher:
+            # Test that ssm:resourceTag/owner is now valid for ssm:PutParameter
+            result = await fetcher.validate_condition_key(
+                "ssm:PutParameter",
+                "ssm:resourceTag/owner",
+                ["arn:aws:ssm:us-east-1:123456789012:parameter/test"],
+            )
 
-        # Test that ssm:resourceTag/owner is now valid for ssm:PutParameter
-        result = await fetcher.validate_condition_key(
-            "ssm:PutParameter",
-            "ssm:resourceTag/owner",
-            ["arn:aws:ssm:us-east-1:123456789012:parameter/test"],
-        )
-
-        assert result.is_valid is True
-        assert result.error_message is None
+            assert result.is_valid is True
+            assert result.error_message is None
 
     @pytest.mark.asyncio
     async def test_invalid_ssm_condition_key(self):
         """Integration test: invalid condition keys should still be rejected."""
         from iam_validator.core.aws_service import AWSServiceFetcher
 
-        fetcher = AWSServiceFetcher()
+        async with AWSServiceFetcher() as fetcher:
+            # Test that truly invalid keys are still rejected
+            result = await fetcher.validate_condition_key(
+                "ssm:PutParameter",
+                "ssm:completelyInvalidKey",
+                ["arn:aws:ssm:us-east-1:123456789012:parameter/test"],
+            )
 
-        # Test that truly invalid keys are still rejected
-        result = await fetcher.validate_condition_key(
-            "ssm:PutParameter",
-            "ssm:completelyInvalidKey",
-            ["arn:aws:ssm:us-east-1:123456789012:parameter/test"],
-        )
-
-        assert result.is_valid is False
-        assert result.error_message is not None
+            assert result.is_valid is False
+            assert result.error_message is not None
 
 
 class TestTagKeyValidation:
