@@ -5,6 +5,7 @@ including console output, JSON, and GitHub-flavored markdown for PR comments.
 """
 
 import logging
+from dataclasses import dataclass
 
 from rich.console import Console
 from rich.panel import Panel
@@ -28,6 +29,24 @@ from iam_validator.core.models import (
     ValidationIssue,
     ValidationReport,
 )
+
+
+@dataclass
+class IgnoredFindingInfo:
+    """Information about an ignored finding for display in summary.
+
+    Attributes:
+        file_path: Path to the policy file
+        issue_type: Type of issue (e.g., "invalid_action")
+        ignored_by: Username who ignored the finding
+        reason: Optional reason provided by the user
+    """
+
+    file_path: str
+    issue_type: str
+    ignored_by: str
+    reason: str | None = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -239,6 +258,8 @@ class ReportGenerator:
         report: ValidationReport,
         max_length_per_part: int = constants.GITHUB_COMMENT_SPLIT_LIMIT,
         ignored_count: int = 0,
+        ignored_findings: list[IgnoredFindingInfo] | None = None,
+        all_blocking_ignored: bool = False,
     ) -> list[str]:
         """Generate GitHub PR comment(s), splitting into multiple parts if needed.
 
@@ -246,6 +267,8 @@ class ReportGenerator:
             report: Validation report
             max_length_per_part: Maximum character length per comment part (default from GITHUB_COMMENT_SPLIT_LIMIT)
             ignored_count: Number of findings that were ignored (will be shown in summary)
+            ignored_findings: List of ignored finding details for display in summary
+            all_blocking_ignored: True if all blocking issues were ignored (shows "Passed" status)
 
         Returns:
             List of comment parts (each under max_length_per_part)
@@ -257,13 +280,19 @@ class ReportGenerator:
         if estimated_size <= max_length_per_part:
             # Try single comment
             single_comment = self.generate_github_comment(
-                report, max_length=max_length_per_part * 2, ignored_count=ignored_count
+                report,
+                max_length=max_length_per_part * 2,
+                ignored_count=ignored_count,
+                ignored_findings=ignored_findings,
+                all_blocking_ignored=all_blocking_ignored,
             )
             if len(single_comment) <= max_length_per_part:
                 return [single_comment]
 
         # Need to split into multiple parts
-        return self._generate_split_comments(report, max_length_per_part, ignored_count)
+        return self._generate_split_comments(
+            report, max_length_per_part, ignored_count, ignored_findings, all_blocking_ignored
+        )
 
     def _estimate_report_size(self, report: ValidationReport) -> int:
         """Estimate the size of the report in characters.
@@ -280,7 +309,12 @@ class ReportGenerator:
         )
 
     def _generate_split_comments(
-        self, report: ValidationReport, max_length: int, ignored_count: int = 0
+        self,
+        report: ValidationReport,
+        max_length: int,
+        ignored_count: int = 0,
+        ignored_findings: list[IgnoredFindingInfo] | None = None,
+        all_blocking_ignored: bool = False,
     ) -> list[str]:
         """Split a large report into multiple comment parts.
 
@@ -288,6 +322,8 @@ class ReportGenerator:
             report: Validation report
             max_length: Maximum length per part
             ignored_count: Number of ignored findings to show in summary
+            ignored_findings: List of ignored finding details for display
+            all_blocking_ignored: True if all blocking issues were ignored
 
         Returns:
             List of comment parts
@@ -295,7 +331,9 @@ class ReportGenerator:
         parts: list[str] = []
 
         # Generate header (will be in first part only)
-        header_lines = self._generate_header(report, ignored_count)
+        header_lines = self._generate_header(
+            report, ignored_count, ignored_findings, all_blocking_ignored
+        )
         header_content = "\n".join(header_lines)
 
         # Generate footer (will be in all parts)
@@ -388,17 +426,27 @@ class ReportGenerator:
 
         return parts
 
-    def _generate_header(self, report: ValidationReport, ignored_count: int = 0) -> list[str]:
+    def _generate_header(
+        self,
+        report: ValidationReport,
+        ignored_count: int = 0,
+        ignored_findings: list[IgnoredFindingInfo] | None = None,
+        all_blocking_ignored: bool = False,
+    ) -> list[str]:
         """Generate the comment header with summary.
 
         Args:
             report: Validation report
             ignored_count: Number of findings that were ignored
+            ignored_findings: List of ignored finding details for display
+            all_blocking_ignored: True if all blocking issues were ignored (shows "Passed" status)
         """
         lines = []
 
         # Title with emoji and status badge
-        if report.invalid_policies == 0:
+        # Pass if: no invalid policies, OR all blocking issues were ignored
+        is_passing = report.invalid_policies == 0 or all_blocking_ignored
+        if is_passing:
             lines.append("# 🎉 IAM Policy Validation Passed!")
             status_badge = (
                 "![Status](https://img.shields.io/badge/status-passed-success?style=flat-square)"
@@ -455,6 +503,56 @@ class ReportGenerator:
             if infos > 0:
                 lines.append(f"| 🔵 **Info** | {infos} |")
             lines.append("")
+
+        # Ignored findings section
+        if ignored_findings:
+            lines.extend(self._generate_ignored_findings_section(ignored_findings))
+
+        return lines
+
+    def _generate_ignored_findings_section(
+        self, ignored_findings: list[IgnoredFindingInfo]
+    ) -> list[str]:
+        """Generate the ignored findings section for the summary comment.
+
+        Args:
+            ignored_findings: List of ignored finding details
+
+        Returns:
+            List of markdown lines for the section
+        """
+        lines = []
+        lines.append("### 🔕 Ignored Findings")
+        lines.append("")
+        lines.append(
+            "> The following findings were ignored by authorized users and are excluded from validation:"
+        )
+        lines.append("")
+
+        lines.append("<details>")
+        lines.append(f"<summary>View {len(ignored_findings)} ignored finding(s)</summary>")
+        lines.append("")
+
+        lines.append("| File | Issue Type | Ignored By | Reason |")
+        lines.append("|------|------------|------------|--------|")
+
+        for finding in ignored_findings:
+            # Truncate file path if too long
+            file_display = finding.file_path
+            if len(file_display) > 50:
+                file_display = "..." + file_display[-47:]
+
+            reason_display = finding.reason if finding.reason else "-"
+            if len(reason_display) > 30:
+                reason_display = reason_display[:27] + "..."
+
+            lines.append(
+                f"| `{file_display}` | `{finding.issue_type}` | @{finding.ignored_by} | {reason_display} |"
+            )
+
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
 
         return lines
 
@@ -540,6 +638,8 @@ class ReportGenerator:
         report: ValidationReport,
         max_length: int = constants.GITHUB_MAX_COMMENT_LENGTH,
         ignored_count: int = 0,
+        ignored_findings: list[IgnoredFindingInfo] | None = None,
+        all_blocking_ignored: bool = False,
     ) -> str:
         """Generate a GitHub-flavored markdown comment for PR reviews.
 
@@ -547,6 +647,8 @@ class ReportGenerator:
             report: Validation report
             max_length: Maximum character length (default from GITHUB_MAX_COMMENT_LENGTH constant)
             ignored_count: Number of findings that were ignored (will be shown in summary)
+            ignored_findings: List of ignored finding details for display in summary
+            all_blocking_ignored: True if all blocking issues were ignored (shows "Passed" status)
 
         Returns:
             Markdown formatted string
@@ -554,8 +656,12 @@ class ReportGenerator:
         lines = []
 
         # Header with emoji and status badge
+        # Pass if: no invalid policies, OR all blocking issues were ignored
         has_parsing_errors = len(report.parsing_errors) > 0
-        if report.invalid_policies == 0 and not has_parsing_errors:
+        is_passing = (
+            report.invalid_policies == 0 or all_blocking_ignored
+        ) and not has_parsing_errors
+        if is_passing:
             lines.append("# 🎉 IAM Policy Validation Passed!")
             status_badge = (
                 "![Status](https://img.shields.io/badge/status-passed-success?style=flat-square)"
@@ -612,6 +718,10 @@ class ReportGenerator:
             if infos > 0:
                 lines.append(f"| 🔵 **Info** | {infos} |")
             lines.append("")
+
+        # Ignored findings section
+        if ignored_findings:
+            lines.extend(self._generate_ignored_findings_section(ignored_findings))
 
         # Parsing errors section (if any)
         if report.parsing_errors:

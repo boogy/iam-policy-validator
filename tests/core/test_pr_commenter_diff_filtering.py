@@ -368,5 +368,165 @@ class TestPRCommenterDiffFiltering:
         assert any("Diff filtering results" in msg for msg in log_messages)
 
 
+class TestPRCommenterBlockingIssuesIgnored:
+    """Tests for _are_all_blocking_issues_ignored method."""
+
+    @pytest.fixture
+    def mock_github(self):
+        """Create a mock GitHub integration."""
+        github = MagicMock(spec=GitHubIntegration)
+        github.is_configured = MagicMock(return_value=True)
+        return github
+
+    def test_no_blocking_issues_returns_true(self, mock_github):
+        """Test that no blocking issues returns True."""
+        commenter = PRCommenter(
+            github=mock_github,
+            fail_on_severities=["error", "critical"],
+        )
+
+        # Report with only warnings (no blocking issues)
+        report = ValidationReport(
+            total_policies=1,
+            valid_policies=0,
+            invalid_policies=1,
+            total_issues=1,
+            results=[
+                PolicyValidationResult(
+                    policy_file="/test/policy.json",
+                    is_valid=False,
+                    issues=[
+                        ValidationIssue(
+                            severity="warning",
+                            issue_type="test_warning",
+                            message="Test warning",
+                            statement_index=0,
+                        )
+                    ],
+                )
+            ],
+        )
+
+        result = commenter._are_all_blocking_issues_ignored(report)
+        assert result is True
+
+    def test_blocking_issues_not_ignored_returns_false(self, mock_github):
+        """Test that unignored blocking issues return False."""
+        commenter = PRCommenter(
+            github=mock_github,
+            fail_on_severities=["error", "critical"],
+        )
+
+        # Report with an error (blocking issue, not ignored)
+        report = ValidationReport(
+            total_policies=1,
+            valid_policies=0,
+            invalid_policies=1,
+            total_issues=1,
+            results=[
+                PolicyValidationResult(
+                    policy_file="/test/policy.json",
+                    is_valid=False,
+                    issues=[
+                        ValidationIssue(
+                            severity="error",
+                            issue_type="test_error",
+                            message="Test error",
+                            statement_index=0,
+                        )
+                    ],
+                )
+            ],
+        )
+
+        result = commenter._are_all_blocking_issues_ignored(report)
+        assert result is False
+
+    def test_all_blocking_issues_ignored_returns_true(self, mock_github):
+        """Test that all blocking issues being ignored returns True."""
+        from iam_validator.core.finding_fingerprint import FindingFingerprint
+
+        commenter = PRCommenter(
+            github=mock_github,
+            fail_on_severities=["error", "critical"],
+        )
+
+        # Create an issue
+        issue = ValidationIssue(
+            severity="error",
+            issue_type="test_error",
+            message="Test error",
+            statement_index=0,
+        )
+
+        # Calculate the fingerprint for this issue
+        fingerprint = FindingFingerprint.from_issue(issue, "policy.json")
+        fingerprint_hash = fingerprint.to_hash()
+
+        # Set the ignored finding IDs to include this issue
+        commenter._ignored_finding_ids = frozenset([fingerprint_hash])
+
+        report = ValidationReport(
+            total_policies=1,
+            valid_policies=0,
+            invalid_policies=1,
+            total_issues=1,
+            results=[
+                PolicyValidationResult(
+                    policy_file="policy.json",  # Relative path matching the fingerprint
+                    is_valid=False,
+                    issues=[issue],
+                )
+            ],
+        )
+
+        result = commenter._are_all_blocking_issues_ignored(report)
+        assert result is True
+
+    def test_some_blocking_issues_ignored_returns_false(self, mock_github):
+        """Test that partial ignored blocking issues returns False."""
+        from iam_validator.core.finding_fingerprint import FindingFingerprint
+
+        commenter = PRCommenter(
+            github=mock_github,
+            fail_on_severities=["error", "critical"],
+        )
+
+        # Create two issues
+        issue1 = ValidationIssue(
+            severity="error",
+            issue_type="test_error_1",
+            message="Test error 1",
+            statement_index=0,
+        )
+        issue2 = ValidationIssue(
+            severity="error",
+            issue_type="test_error_2",
+            message="Test error 2",
+            statement_index=1,
+        )
+
+        # Only ignore the first issue
+        fingerprint1 = FindingFingerprint.from_issue(issue1, "policy.json")
+        commenter._ignored_finding_ids = frozenset([fingerprint1.to_hash()])
+
+        report = ValidationReport(
+            total_policies=1,
+            valid_policies=0,
+            invalid_policies=1,
+            total_issues=2,
+            results=[
+                PolicyValidationResult(
+                    policy_file="policy.json",
+                    is_valid=False,
+                    issues=[issue1, issue2],
+                )
+            ],
+        )
+
+        result = commenter._are_all_blocking_issues_ignored(report)
+        assert result is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

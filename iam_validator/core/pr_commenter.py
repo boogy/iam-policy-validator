@@ -17,7 +17,7 @@ from iam_validator.core.diff_parser import DiffParser
 from iam_validator.core.label_manager import LabelManager
 from iam_validator.core.models import ValidationIssue, ValidationReport
 from iam_validator.core.policy_loader import PolicyLineMap, PolicyLoader
-from iam_validator.core.report import ReportGenerator
+from iam_validator.core.report import IgnoredFindingInfo, ReportGenerator
 from iam_validator.integrations.github_integration import GitHubIntegration, ReviewEvent
 
 logger = logging.getLogger(__name__)
@@ -96,6 +96,8 @@ class PRCommenter:
         self._context_issues: list[ContextIssue] = []
         # Track ignored finding IDs for the current run
         self._ignored_finding_ids: frozenset[str] = frozenset()
+        # Store full ignored findings for display in summary
+        self._ignored_findings: dict[str, Any] = {}
         # Cache for PolicyLineMap per file (for field-level line detection)
         self._policy_line_maps: dict[str, PolicyLineMap] = {}
 
@@ -155,8 +157,28 @@ class PRCommenter:
             generator = ReportGenerator()
             # Pass ignored count to show in summary
             ignored_count = len(self._ignored_finding_ids) if self._ignored_finding_ids else 0
+
+            # Convert ignored findings to IgnoredFindingInfo for display
+            ignored_findings_info: list[IgnoredFindingInfo] = []
+            if self._ignored_findings:
+                for finding in self._ignored_findings.values():
+                    ignored_findings_info.append(
+                        IgnoredFindingInfo(
+                            file_path=finding.file_path,
+                            issue_type=finding.issue_type,
+                            ignored_by=finding.ignored_by,
+                            reason=finding.reason,
+                        )
+                    )
+
+            # Determine if all blocking issues are ignored
+            all_blocking_ignored = self._are_all_blocking_issues_ignored(report)
+
             comment_parts = generator.generate_github_comment_parts(
-                report, ignored_count=ignored_count
+                report,
+                ignored_count=ignored_count,
+                ignored_findings=ignored_findings_info if ignored_findings_info else None,
+                all_blocking_ignored=all_blocking_ignored,
             )
 
             # Post all parts using the multipart method
@@ -694,7 +716,10 @@ class PRCommenter:
         )
 
         store = IgnoredFindingsStore(self.github)
-        self._ignored_finding_ids = await store.get_ignored_ids()
+        # Load full ignored findings for display in summary
+        self._ignored_findings = await store.load()
+        # Also get just the IDs for fast lookup
+        self._ignored_finding_ids = frozenset(self._ignored_findings.keys())
         if self._ignored_finding_ids:
             logger.debug(f"Loaded {len(self._ignored_finding_ids)} ignored finding(s)")
 
@@ -717,6 +742,36 @@ class PRCommenter:
 
         fingerprint = FindingFingerprint.from_issue(issue, file_path)
         return fingerprint.to_hash() in self._ignored_finding_ids
+
+    def _are_all_blocking_issues_ignored(self, report: ValidationReport) -> bool:
+        """Check if all blocking issues (based on fail_on_severities) are ignored.
+
+        Args:
+            report: The validation report
+
+        Returns:
+            True if there are no unignored blocking issues (i.e., all blocking
+            issues have been ignored, or there were no blocking issues to begin with)
+        """
+        if not self._ignored_finding_ids:
+            # No ignored findings - check if there are any blocking issues at all
+            for result in report.results:
+                for issue in result.issues:
+                    if issue.severity in self.fail_on_severities:
+                        return False
+            return True
+
+        # Check each blocking issue to see if it's ignored
+        for result in report.results:
+            relative_path = self._make_relative_path(result.policy_file)
+            if not relative_path:
+                continue
+            for issue in result.issues:
+                if issue.severity in self.fail_on_severities:
+                    if not self._is_issue_ignored(issue, relative_path):
+                        return False
+
+        return True
 
 
 async def post_report_to_pr(
