@@ -37,7 +37,7 @@ class ConditionKeyValidationCheck(PolicyCheck):
         resources = statement.get_resources()
 
         # Extract all condition keys from all condition operators
-        for operator, conditions in statement.condition.items():
+        for _, conditions in statement.condition.items():
             for condition_key in conditions.keys():
                 # Validate this condition key against each action in the statement
                 for action in actions:

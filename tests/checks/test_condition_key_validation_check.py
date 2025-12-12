@@ -449,3 +449,200 @@ class TestConditionKeyValidationCheck:
                 "arn:aws:s3:us-east-1:123456789012:accesspoint/my-access-point",
             ],
         )
+
+
+class TestConditionKeyPatternMatching:
+    """Test pattern matching for service-specific condition keys like ssm:resourceTag/tag-key."""
+
+    @pytest.mark.asyncio
+    async def test_ssm_resource_tag_pattern_matching(self):
+        """Test that ssm:resourceTag/owner matches ssm:resourceTag/tag-key pattern."""
+        from iam_validator.core.aws_service.validators import _matches_condition_key_pattern
+
+        # These should match the ssm:resourceTag/tag-key pattern
+        assert _matches_condition_key_pattern("ssm:resourceTag/owner", "ssm:resourceTag/tag-key")
+        assert _matches_condition_key_pattern(
+            "ssm:resourceTag/Environment", "ssm:resourceTag/tag-key"
+        )
+        assert _matches_condition_key_pattern(
+            "ssm:resourceTag/CostCenter", "ssm:resourceTag/tag-key"
+        )
+
+        # Exact match should also work
+        assert _matches_condition_key_pattern("ssm:Overwrite", "ssm:Overwrite")
+
+        # Non-matching patterns should fail
+        assert not _matches_condition_key_pattern("ssm:resourceTag/owner", "ssm:Overwrite")
+        assert not _matches_condition_key_pattern("ssm:invalid", "ssm:resourceTag/tag-key")
+
+    @pytest.mark.asyncio
+    async def test_aws_tag_pattern_matching(self):
+        """Test that aws:ResourceTag/owner matches aws:ResourceTag/${TagKey} pattern."""
+        from iam_validator.core.aws_service.validators import _matches_condition_key_pattern
+
+        # These should match the ${TagKey} pattern
+        assert _matches_condition_key_pattern(
+            "aws:ResourceTag/owner", "aws:ResourceTag/${TagKey}"
+        )
+        assert _matches_condition_key_pattern(
+            "aws:RequestTag/Department", "aws:RequestTag/${TagKey}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_condition_key_in_list(self):
+        """Test _condition_key_in_list helper function."""
+        from iam_validator.core.aws_service.validators import _condition_key_in_list
+
+        condition_keys = [
+            "aws:ResourceTag/${TagKey}",
+            "ssm:resourceTag/tag-key",
+            "ssm:Overwrite",
+            "ssm:Policies",
+        ]
+
+        # Should match pattern-based keys
+        assert _condition_key_in_list("ssm:resourceTag/owner", condition_keys)
+        assert _condition_key_in_list("aws:ResourceTag/Environment", condition_keys)
+
+        # Should match exact keys
+        assert _condition_key_in_list("ssm:Overwrite", condition_keys)
+        assert _condition_key_in_list("ssm:Policies", condition_keys)
+
+        # Should not match invalid keys
+        assert not _condition_key_in_list("ssm:InvalidKey", condition_keys)
+        assert not _condition_key_in_list("invalid:key", condition_keys)
+
+    @pytest.mark.asyncio
+    async def test_ssm_put_parameter_with_resource_tag(self):
+        """Integration test: ssm:resourceTag/owner should be valid for ssm:PutParameter."""
+        from iam_validator.core.aws_service import AWSServiceFetcher
+
+        fetcher = AWSServiceFetcher()
+
+        # Test that ssm:resourceTag/owner is now valid for ssm:PutParameter
+        result = await fetcher.validate_condition_key(
+            "ssm:PutParameter",
+            "ssm:resourceTag/owner",
+            ["arn:aws:ssm:us-east-1:123456789012:parameter/test"],
+        )
+
+        assert result.is_valid is True
+        assert result.error_message is None
+
+    @pytest.mark.asyncio
+    async def test_invalid_ssm_condition_key(self):
+        """Integration test: invalid condition keys should still be rejected."""
+        from iam_validator.core.aws_service import AWSServiceFetcher
+
+        fetcher = AWSServiceFetcher()
+
+        # Test that truly invalid keys are still rejected
+        result = await fetcher.validate_condition_key(
+            "ssm:PutParameter",
+            "ssm:completelyInvalidKey",
+            ["arn:aws:ssm:us-east-1:123456789012:parameter/test"],
+        )
+
+        assert result.is_valid is False
+        assert result.error_message is not None
+
+
+class TestTagKeyValidation:
+    """Test AWS tag key format validation."""
+
+    def test_valid_tag_keys(self):
+        """Test that valid AWS tag keys are accepted."""
+        from iam_validator.core.aws_service.validators import _is_valid_tag_key
+
+        # Standard alphanumeric tag keys
+        assert _is_valid_tag_key("owner")
+        assert _is_valid_tag_key("Environment")
+        assert _is_valid_tag_key("CostCenter")
+        assert _is_valid_tag_key("Project123")
+
+        # Tag keys with allowed special characters
+        assert _is_valid_tag_key("cost-center")
+        assert _is_valid_tag_key("project_name")
+        assert _is_valid_tag_key("env.type")
+        assert _is_valid_tag_key("team:backend")
+        assert _is_valid_tag_key("path/to/resource")
+        assert _is_valid_tag_key("email@domain")
+        assert _is_valid_tag_key("key+value")
+        assert _is_valid_tag_key("key=value")
+
+        # Tag keys with spaces (allowed by AWS)
+        assert _is_valid_tag_key("Cost Center")
+        assert _is_valid_tag_key("Project Name")
+
+        # Mixed special characters
+        assert _is_valid_tag_key("my-project_v2.0:prod/main@team+alpha")
+
+    def test_invalid_tag_keys(self):
+        """Test that invalid AWS tag keys are rejected."""
+        from iam_validator.core.aws_service.validators import _is_valid_tag_key
+
+        # Empty tag key
+        assert not _is_valid_tag_key("")
+
+        # Tag keys with invalid characters
+        assert not _is_valid_tag_key("key<value")
+        assert not _is_valid_tag_key("key>value")
+        assert not _is_valid_tag_key("key&value")
+        assert not _is_valid_tag_key("key|value")
+        assert not _is_valid_tag_key("key\\value")
+        assert not _is_valid_tag_key("key*value")
+        assert not _is_valid_tag_key("key?value")
+        assert not _is_valid_tag_key("key#value")
+        assert not _is_valid_tag_key("key$value")
+        assert not _is_valid_tag_key("key%value")
+        assert not _is_valid_tag_key("key^value")
+        assert not _is_valid_tag_key("key!value")
+        assert not _is_valid_tag_key("key`value")
+        assert not _is_valid_tag_key("key~value")
+        assert not _is_valid_tag_key("key(value)")
+        assert not _is_valid_tag_key("key[value]")
+        assert not _is_valid_tag_key("key{value}")
+        assert not _is_valid_tag_key('key"value')
+        assert not _is_valid_tag_key("key'value")
+
+    def test_tag_key_length_limits(self):
+        """Test AWS tag key length constraints (1-128 characters)."""
+        from iam_validator.core.aws_service.validators import _is_valid_tag_key
+
+        # Minimum length (1 character)
+        assert _is_valid_tag_key("a")
+
+        # Maximum length (128 characters)
+        assert _is_valid_tag_key("a" * 128)
+
+        # Over maximum length (129 characters)
+        assert not _is_valid_tag_key("a" * 129)
+
+        # Way over maximum
+        assert not _is_valid_tag_key("a" * 500)
+
+    def test_pattern_matching_rejects_invalid_tag_keys(self):
+        """Test that pattern matching rejects condition keys with invalid tag key formats."""
+        from iam_validator.core.aws_service.validators import _matches_condition_key_pattern
+
+        # Invalid characters in tag key portion should not match
+        assert not _matches_condition_key_pattern(
+            "ssm:resourceTag/invalid<tag", "ssm:resourceTag/tag-key"
+        )
+        assert not _matches_condition_key_pattern(
+            "aws:ResourceTag/bad*key", "aws:ResourceTag/${TagKey}"
+        )
+        assert not _matches_condition_key_pattern(
+            "ssm:resourceTag/has#hash", "ssm:resourceTag/tag-key"
+        )
+
+        # Empty tag key should not match
+        assert not _matches_condition_key_pattern(
+            "ssm:resourceTag/", "ssm:resourceTag/tag-key"
+        )
+
+        # Tag key exceeding 128 characters should not match
+        long_tag_key = "a" * 129
+        assert not _matches_condition_key_pattern(
+            f"ssm:resourceTag/{long_tag_key}", "ssm:resourceTag/tag-key"
+        )

@@ -147,3 +147,32 @@ RCP_SUPPORTED_SERVICES = frozenset(
 
 # AWS Service Authorization Reference (for finding valid actions, resources, and condition keys)
 AWS_SERVICE_AUTH_REF_URL = "https://docs.aws.amazon.com/service-authorization/latest/reference/reference_policies_actions-resources-contextkeys.html"
+
+# ============================================================================
+# AWS Tag Constraints
+# ============================================================================
+# Reference: https://docs.aws.amazon.com/tag-editor/latest/userguide/best-practices-and-strats.html
+
+# --- Tag Key Constraints ---
+# Allowed characters in AWS tag keys: letters, numbers, spaces, and + - = . _ : / @
+# This is the character class for use in regex patterns
+AWS_TAG_KEY_ALLOWED_CHARS = r"a-zA-Z0-9 +\-=._:/@"
+
+# Maximum length for AWS tag keys (per AWS documentation)
+AWS_TAG_KEY_MAX_LENGTH = 128
+
+# Tag-key placeholder patterns used in AWS service definitions
+# These patterns indicate where a tag key should be substituted
+AWS_TAG_KEY_PLACEHOLDERS = ("/tag-key", "/${TagKey}", "/${tag-key}")
+
+# --- Tag Value Constraints ---
+# Allowed characters in AWS tag values: letters, numbers, spaces, and + - = . _ : / @
+# Same character set as tag keys
+AWS_TAG_VALUE_ALLOWED_CHARS = r"a-zA-Z0-9 +\-=._:/@"
+
+# Maximum length for AWS tag values (per AWS documentation)
+# Note: Tag values can be empty (minimum 0), unlike keys which must have at least 1 char
+AWS_TAG_VALUE_MAX_LENGTH = 256
+
+# Minimum length for AWS tag values (can be empty)
+AWS_TAG_VALUE_MIN_LENGTH = 0
