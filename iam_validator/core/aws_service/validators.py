@@ -5,13 +5,103 @@ including actions, condition keys, and ARN formats.
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
 from iam_validator.core.aws_service.parsers import ServiceParser
+from iam_validator.core.constants import (
+    AWS_TAG_KEY_ALLOWED_CHARS,
+    AWS_TAG_KEY_MAX_LENGTH,
+    AWS_TAG_KEY_PLACEHOLDERS,
+)
 from iam_validator.core.models import ServiceDetail
 
 logger = logging.getLogger(__name__)
+
+# Pre-compiled regex for AWS tag key validation
+# Uses centralized constants from iam_validator.core.constants
+_TAG_KEY_PATTERN = re.compile(rf"^[{AWS_TAG_KEY_ALLOWED_CHARS}]{{1,{AWS_TAG_KEY_MAX_LENGTH}}}$")
+
+
+def _is_valid_tag_key(tag_key: str) -> bool:
+    """Validate an AWS tag key format.
+
+    AWS tag keys must:
+    - Be 1-128 characters long
+    - Contain only: letters, numbers, spaces, and + - = . _ : / @
+    - Not be empty
+
+    Note: The 'aws:' prefix check is not done here as it's for the condition key prefix,
+    not the tag key portion (e.g., in 'ssm:resourceTag/owner', 'owner' is the tag key).
+
+    Args:
+        tag_key: The tag key portion to validate
+
+    Returns:
+        True if valid AWS tag key format
+    """
+    if not tag_key or len(tag_key) > AWS_TAG_KEY_MAX_LENGTH:
+        return False
+    return bool(_TAG_KEY_PATTERN.match(tag_key))
+
+
+def _matches_condition_key_pattern(condition_key: str, pattern: str) -> bool:
+    """Check if a condition key matches a pattern with tag-key placeholders.
+
+    AWS service definitions use patterns like:
+    - `ssm:resourceTag/tag-key` or `ssm:resourceTag/${TagKey}` to match `ssm:resourceTag/owner`
+    - `aws:ResourceTag/${TagKey}` to match `aws:ResourceTag/Environment`
+
+    Args:
+        condition_key: The actual condition key from the policy (e.g., "ssm:resourceTag/owner")
+        pattern: The pattern from AWS service definition (e.g., "ssm:resourceTag/tag-key")
+
+    Returns:
+        True if condition_key matches the pattern
+    """
+    # Exact match (fast path)
+    if condition_key == pattern:
+        return True
+
+    # Check for tag-key placeholder patterns
+    for tag_placeholder in AWS_TAG_KEY_PLACEHOLDERS:
+        if tag_placeholder in pattern:
+            # Extract the prefix before the placeholder
+            prefix = pattern.split(tag_placeholder, 1)[0]
+            prefix_with_slash = prefix + "/"
+            # Check if condition_key starts with prefix and has a tag key after it
+            if condition_key.startswith(prefix_with_slash):
+                # Validate tag key format per AWS constraints
+                tag_key = condition_key[len(prefix_with_slash) :]
+                if _is_valid_tag_key(tag_key):
+                    return True
+
+    return False
+
+
+def _condition_key_in_list(condition_key: str, condition_keys: list[str]) -> bool:
+    """Check if a condition key matches any key in the list, supporting patterns.
+
+    Args:
+        condition_key: The condition key to check
+        condition_keys: List of condition keys (may include patterns)
+
+    Returns:
+        True if condition_key matches any entry in the list
+    """
+    # Fast path: check for exact match first (most common case)
+    if condition_key in condition_keys:
+        return True
+
+    # Slower path: check patterns only if no exact match
+    for pattern in condition_keys:
+        # Skip exact matches (already checked above)
+        if pattern == condition_key:
+            continue
+        if _matches_condition_key_pattern(condition_key, pattern):
+            return True
+    return False
 
 
 @dataclass
@@ -134,7 +224,7 @@ class ServiceValidator:
         action: str,
         condition_key: str,
         service_detail: ServiceDetail,
-        resources: list[str] | None = None,
+        resources: list[str] | None = None,  # pylint: disable=unused-argument - kept for API compatibility
     ) -> ConditionKeyValidationResult:
         """Validate condition key against action and optionally resource types.
 
@@ -173,22 +263,23 @@ class ServiceValidator:
                         error_message=f"Invalid AWS global condition key: `{condition_key}`.",
                     )
 
-            # Check service-specific condition keys
-            if condition_key in service_detail.condition_keys:
+            # Check service-specific condition keys (with pattern matching for tag keys)
+            if service_detail.condition_keys and _condition_key_in_list(
+                condition_key, list(service_detail.condition_keys.keys())
+            ):
                 return ConditionKeyValidationResult(is_valid=True)
 
             # Check action-specific condition keys
             if action_name in service_detail.actions:
                 action_detail = service_detail.actions[action_name]
-                if (
-                    action_detail.action_condition_keys
-                    and condition_key in action_detail.action_condition_keys
+                if action_detail.action_condition_keys and _condition_key_in_list(
+                    condition_key, action_detail.action_condition_keys
                 ):
                     return ConditionKeyValidationResult(is_valid=True)
 
                 # Check resource-specific condition keys
                 # Get resource types required by this action
-                if resources and action_detail.resources:
+                if action_detail.resources:
                     for res_req in action_detail.resources:
                         resource_name = res_req.get("Name", "")
                         if not resource_name:
@@ -197,7 +288,7 @@ class ServiceValidator:
                         # Look up resource type definition
                         resource_type = service_detail.resources.get(resource_name)
                         if resource_type and resource_type.condition_keys:
-                            if condition_key in resource_type.condition_keys:
+                            if _condition_key_in_list(condition_key, resource_type.condition_keys):
                                 return ConditionKeyValidationResult(is_valid=True)
 
                 # If it's a global key but the action has specific condition keys defined,

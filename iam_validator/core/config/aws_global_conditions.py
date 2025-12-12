@@ -11,6 +11,8 @@ Last updated: 2025-01-17
 import re
 from typing import Any
 
+from iam_validator.core.constants import AWS_TAG_KEY_ALLOWED_CHARS
+
 # AWS Global Condition Keys with Type Information
 # These condition keys are available for use in IAM policies across all AWS services
 # Format: {key: type} where type is one of: String, ARN, Bool, Date, IPAddress, Numeric
@@ -71,17 +73,18 @@ AWS_GLOBAL_CONDITION_KEYS = {
 
 # Patterns that should be recognized (wildcards and tag-based keys)
 # These allow things like aws:RequestTag/Department or aws:PrincipalTag/Environment
+# Uses centralized tag key character class from constants
 AWS_CONDITION_KEY_PATTERNS = [
     {
-        "pattern": r"^aws:RequestTag/[a-zA-Z0-9+\-=._:/@]+$",
+        "pattern": rf"^aws:RequestTag/[{AWS_TAG_KEY_ALLOWED_CHARS}]+$",
         "description": "Tag keys in the request (for tag-based access control)",
     },
     {
-        "pattern": r"^aws:ResourceTag/[a-zA-Z0-9+\-=._:/@]+$",
+        "pattern": rf"^aws:ResourceTag/[{AWS_TAG_KEY_ALLOWED_CHARS}]+$",
         "description": "Tags on the resource being accessed",
     },
     {
-        "pattern": r"^aws:PrincipalTag/[a-zA-Z0-9+\-=._:/@]+$",
+        "pattern": rf"^aws:PrincipalTag/[{AWS_TAG_KEY_ALLOWED_CHARS}]+$",
         "description": "Tags attached to the principal making the request",
     },
 ]
@@ -154,7 +157,8 @@ _global_conditions_instance = None
 
 def get_global_conditions() -> AWSGlobalConditions:
     """Get singleton instance of AWSGlobalConditions."""
-    global _global_conditions_instance
+    global _global_conditions_instance  # pylint: disable=global-statement
+
     if _global_conditions_instance is None:
         _global_conditions_instance = AWSGlobalConditions()
     return _global_conditions_instance
