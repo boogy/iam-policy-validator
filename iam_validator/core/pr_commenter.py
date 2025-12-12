@@ -398,12 +398,15 @@ class PRCommenter:
             logger.info("No inline comments to post (after diff filtering)")
             # Still run cleanup to delete any stale comments from resolved findings
             # (unless skip_cleanup is set for streaming mode)
+            # Use APPROVE event to dismiss any previous REQUEST_CHANGES review
             if validated_files and self.cleanup_old_comments:
-                logger.debug("Running cleanup for stale comments from resolved findings...")
+                logger.debug(
+                    "Running cleanup for stale comments and approving PR (no blocking issues)..."
+                )
                 await self.github.update_or_create_review_comments(
                     comments=[],
                     body="",
-                    event=ReviewEvent.COMMENT,
+                    event=ReviewEvent.APPROVE,
                     identifier=self.REVIEW_IDENTIFIER,
                     validated_files=validated_files,
                     skip_cleanup=False,  # Explicitly run cleanup
@@ -421,7 +424,7 @@ class PRCommenter:
             for issue in result.issues
         )
 
-        event = ReviewEvent.REQUEST_CHANGES if has_blocking_issues else ReviewEvent.COMMENT
+        event = ReviewEvent.REQUEST_CHANGES if has_blocking_issues else ReviewEvent.APPROVE
         logger.info(
             f"Creating PR review with {len(inline_comments)} comments, event: {event.value}"
         )
