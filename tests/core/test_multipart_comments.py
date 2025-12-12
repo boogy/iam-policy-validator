@@ -3,7 +3,7 @@
 import pytest
 
 from iam_validator.core.models import PolicyValidationResult, ValidationIssue
-from iam_validator.core.report import ReportGenerator
+from iam_validator.core.report import IgnoredFindingInfo, ReportGenerator
 
 
 def create_large_issue(severity: str, index: int) -> ValidationIssue:
@@ -233,6 +233,131 @@ def test_empty_report_single_part():
     assert len(parts) == 1
     assert "All Policies Valid" in parts[0]
     assert "Part 1" not in parts[0]
+
+
+def test_ignored_findings_displayed_in_summary():
+    """Test that ignored findings are displayed in the summary comment."""
+    generator = ReportGenerator()
+
+    results = [create_large_result("policy-1.json", 2)]
+    report = generator.generate_report(results)
+
+    ignored_findings = [
+        IgnoredFindingInfo(
+            file_path="policy-1.json",
+            issue_type="TEST_ISSUE",
+            ignored_by="testuser",
+            reason="Approved by security team",
+        ),
+        IgnoredFindingInfo(
+            file_path="policy-2.json",
+            issue_type="ANOTHER_ISSUE",
+            ignored_by="admin",
+            reason=None,
+        ),
+    ]
+
+    parts = generator.generate_github_comment_parts(
+        report, ignored_count=2, ignored_findings=ignored_findings
+    )
+
+    assert len(parts) == 1
+    # Check ignored findings section exists
+    assert "Ignored Findings" in parts[0]
+    assert "testuser" in parts[0]
+    assert "TEST_ISSUE" in parts[0]
+    assert "policy-1.json" in parts[0]
+    assert "Approved by security team" in parts[0]
+    assert "admin" in parts[0]
+    # Verify collapsible section
+    assert "View 2 ignored finding(s)" in parts[0]
+
+
+def test_all_blocking_ignored_shows_passed():
+    """Test that when all blocking issues are ignored, status shows Passed."""
+    generator = ReportGenerator()
+
+    # Create a report with errors (normally fails)
+    results = [
+        PolicyValidationResult(
+            policy_file="policy-1.json",
+            is_valid=False,
+            issues=[
+                ValidationIssue(
+                    severity="error",
+                    issue_type="CRITICAL_ERROR",
+                    message="Critical error",
+                    statement_index=0,
+                )
+            ],
+        )
+    ]
+    report = generator.generate_report(results)
+
+    # Without all_blocking_ignored=True, it should show Failed
+    parts_failed = generator.generate_github_comment_parts(report)
+    assert "Validation Failed" in parts_failed[0]
+
+    # With all_blocking_ignored=True, it should show Passed
+    parts_passed = generator.generate_github_comment_parts(
+        report, ignored_count=1, all_blocking_ignored=True
+    )
+    assert "Validation Passed" in parts_passed[0]
+
+
+def test_ignored_count_shown_in_summary_table():
+    """Test that ignored count appears in the summary table."""
+    generator = ReportGenerator()
+
+    results = [create_large_result("policy-1.json", 1)]
+    report = generator.generate_report(results)
+
+    parts = generator.generate_github_comment_parts(report, ignored_count=5)
+
+    assert "Ignored Findings" in parts[0]
+    assert "5" in parts[0]  # The count
+    assert "🔕" in parts[0]  # The emoji
+
+
+def test_no_ignored_findings_section_when_empty():
+    """Test that no ignored findings section is shown when list is empty."""
+    generator = ReportGenerator()
+
+    results = [create_large_result("policy-1.json", 1)]
+    report = generator.generate_report(results)
+
+    parts = generator.generate_github_comment_parts(
+        report, ignored_count=0, ignored_findings=None
+    )
+
+    assert "### 🔕 Ignored Findings" not in parts[0]
+
+
+def test_ignored_findings_with_long_paths_truncated():
+    """Test that long file paths in ignored findings are truncated."""
+    generator = ReportGenerator()
+
+    results = [create_large_result("policy-1.json", 1)]
+    report = generator.generate_report(results)
+
+    long_path = "very/long/path/that/exceeds/the/maximum/allowed/length/for/display/purposes/policy.json"
+    ignored_findings = [
+        IgnoredFindingInfo(
+            file_path=long_path,
+            issue_type="TEST_ISSUE",
+            ignored_by="testuser",
+            reason=None,
+        )
+    ]
+
+    parts = generator.generate_github_comment_parts(
+        report, ignored_count=1, ignored_findings=ignored_findings
+    )
+
+    # Path should be truncated with ellipsis
+    assert "..." in parts[0]
+    # But end of path should still be visible
+    assert "policy.json" in parts[0]
 
 
 if __name__ == "__main__":
