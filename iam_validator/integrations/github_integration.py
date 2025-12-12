@@ -34,7 +34,7 @@ class GitHubRateLimitError(Exception):
 class GitHubRetryableError(Exception):
     """Raised for transient GitHub API errors that should be retried."""
 
-    pass
+    pass  # pylint: disable=unnecessary-pass
 
 
 # Retry configuration
