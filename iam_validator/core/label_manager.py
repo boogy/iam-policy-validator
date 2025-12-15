@@ -6,10 +6,11 @@ When those severities are not found, it removes the labels if present.
 """
 
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from iam_validator.core.models import PolicyValidationResult, ValidationReport
+    from iam_validator.core.models import PolicyValidationResult, ValidationIssue, ValidationReport
     from iam_validator.integrations.github_integration import GitHubIntegration
 
 logger = logging.getLogger(__name__)
@@ -48,11 +49,17 @@ class LabelManager:
         """
         return bool(self.severity_labels) and self.github.is_configured()
 
-    def _get_severities_in_results(self, results: list["PolicyValidationResult"]) -> set[str]:
+    def _get_severities_in_results(
+        self,
+        results: list["PolicyValidationResult"],
+        is_issue_ignored: Callable[["ValidationIssue", str], bool] | None = None,
+    ) -> set[str]:
         """Extract all severity levels found in validation results.
 
         Args:
             results: List of PolicyValidationResult objects
+            is_issue_ignored: Optional callback to check if an issue is ignored.
+                            Takes (issue, file_path) and returns True if ignored.
 
         Returns:
             Set of severity levels found (e.g., {"error", "critical", "high"})
@@ -60,6 +67,9 @@ class LabelManager:
         severities = set()
         for result in results:
             for issue in result.issues:
+                # Skip ignored issues if a filter is provided
+                if is_issue_ignored and is_issue_ignored(issue, result.policy_file):
+                    continue
                 severities.add(issue.severity)
         return severities
 
@@ -113,17 +123,22 @@ class LabelManager:
         return labels_to_remove
 
     async def manage_labels_from_results(
-        self, results: list["PolicyValidationResult"]
+        self,
+        results: list["PolicyValidationResult"],
+        is_issue_ignored: Callable[["ValidationIssue", str], bool] | None = None,
     ) -> tuple[bool, int, int]:
         """Manage PR labels based on validation results.
 
         This method will:
-        1. Determine which severity levels are present in the results
+        1. Determine which severity levels are present in the results (excluding ignored issues)
         2. Add labels for severities that are found
         3. Remove labels for severities that are not found
 
         Args:
             results: List of PolicyValidationResult objects
+            is_issue_ignored: Optional callback to check if an issue is ignored.
+                            Takes (issue, file_path) and returns True if ignored.
+                            Ignored issues are excluded from label determination.
 
         Returns:
             Tuple of (success, labels_added, labels_removed)
@@ -132,8 +147,8 @@ class LabelManager:
             logger.debug("Label management not enabled (no severity_labels configured)")
             return (True, 0, 0)
 
-        # Get all severities found in results
-        found_severities = self._get_severities_in_results(results)
+        # Get all severities found in results (excluding ignored issues)
+        found_severities = self._get_severities_in_results(results, is_issue_ignored)
         logger.debug(f"Found severities in results: {found_severities}")
 
         # Determine which labels to apply/remove
@@ -182,7 +197,11 @@ class LabelManager:
 
         return (success, added_count, removed_count)
 
-    async def manage_labels_from_report(self, report: "ValidationReport") -> tuple[bool, int, int]:
+    async def manage_labels_from_report(
+        self,
+        report: "ValidationReport",
+        is_issue_ignored: Callable[["ValidationIssue", str], bool] | None = None,
+    ) -> tuple[bool, int, int]:
         """Manage PR labels based on validation report.
 
         This is a convenience method that extracts results from the report
@@ -190,8 +209,11 @@ class LabelManager:
 
         Args:
             report: ValidationReport object
+            is_issue_ignored: Optional callback to check if an issue is ignored.
+                            Takes (issue, file_path) and returns True if ignored.
+                            Ignored issues are excluded from label determination.
 
         Returns:
             Tuple of (success, labels_added, labels_removed)
         """
-        return await self.manage_labels_from_results(report.results)
+        return await self.manage_labels_from_results(report.results, is_issue_ignored)

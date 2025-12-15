@@ -1265,6 +1265,26 @@ class GitHubIntegration:
             f"{created_count} created, {deleted_count} deleted (resolved)"
         )
 
+        # Step 4: If no new comments were created but we need to submit APPROVE/REQUEST_CHANGES,
+        # submit a review without inline comments to update the PR review state.
+        # This is important when all issues are ignored/resolved - we need to dismiss
+        # the previous REQUEST_CHANGES review by submitting an APPROVE review.
+        if not new_comments_for_review and event in (
+            ReviewEvent.APPROVE,
+            ReviewEvent.REQUEST_CHANGES,
+        ):
+            # Only submit if there's a meaningful state change to make
+            # (submitting APPROVE when all issues are resolved/ignored)
+            logger.info(f"Submitting {event.value} review (no inline comments)")
+            success = await self.create_review_with_comments(
+                comments=[],
+                body=body or f"<!-- {identifier} -->\nValidation complete.",
+                event=event,
+            )
+            if not success:
+                logger.warning(f"Failed to submit {event.value} review")
+                # Don't fail the whole operation - comments were managed successfully
+
         return True
 
     def _extract_finding_id(self, body: str) -> str | None:

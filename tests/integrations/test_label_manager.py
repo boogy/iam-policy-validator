@@ -399,3 +399,188 @@ class TestLabelManager:
         assert added_labels == {"iam-error", "needs-fix"}
         # Check removed label
         mock_github.remove_label.assert_called_once_with("security-critical")
+
+    # ========== Tests for ignored findings filter ==========
+
+    @pytest.mark.asyncio
+    async def test_manage_labels_with_ignored_filter_excludes_issues(
+        self, mock_github, severity_labels
+    ):
+        """Test that ignored issues are excluded from label determination."""
+        manager = LabelManager(mock_github, severity_labels)
+        mock_github.get_labels = AsyncMock(return_value=[])
+
+        results = [
+            PolicyValidationResult(
+                policy_file="policy1.json",
+                policy_name="TestPolicy1",
+                is_valid=False,
+                issues=[
+                    ValidationIssue(
+                        severity="critical",
+                        statement_index=0,
+                        issue_type="full_wildcard",
+                        message="Full wildcard detected",
+                    ),
+                    ValidationIssue(
+                        severity="error",
+                        statement_index=0,
+                        issue_type="invalid_action",
+                        message="Invalid action",
+                    ),
+                ],
+            ),
+        ]
+
+        # Filter that ignores the critical issue
+        def is_ignored(issue, file_path):
+            return issue.issue_type == "full_wildcard"
+
+        success, added, removed = await manager.manage_labels_from_results(
+            results, is_issue_ignored=is_ignored
+        )
+
+        assert success is True
+        # Only error label should be added (critical is ignored)
+        assert added == 1
+        mock_github.add_labels.assert_called_once()
+        added_labels = mock_github.add_labels.call_args[0][0]
+        assert set(added_labels) == {"iam-validity-error"}
+
+    @pytest.mark.asyncio
+    async def test_manage_labels_all_issues_ignored_removes_labels(
+        self, mock_github, severity_labels
+    ):
+        """Test that when all issues are ignored, corresponding labels are removed."""
+        manager = LabelManager(mock_github, severity_labels)
+        # Current PR has labels from previous run
+        mock_github.get_labels = AsyncMock(
+            return_value=["iam-validity-error", "security-critical"]
+        )
+
+        results = [
+            PolicyValidationResult(
+                policy_file="policy1.json",
+                policy_name="TestPolicy1",
+                is_valid=False,
+                issues=[
+                    ValidationIssue(
+                        severity="critical",
+                        statement_index=0,
+                        issue_type="full_wildcard",
+                        message="Full wildcard detected",
+                    ),
+                    ValidationIssue(
+                        severity="error",
+                        statement_index=0,
+                        issue_type="invalid_action",
+                        message="Invalid action",
+                    ),
+                ],
+            ),
+        ]
+
+        # Filter that ignores ALL issues
+        def is_ignored(issue, file_path):
+            return True
+
+        success, added, removed = await manager.manage_labels_from_results(
+            results, is_issue_ignored=is_ignored
+        )
+
+        assert success is True
+        assert added == 0
+        # Both labels should be removed since all issues are ignored
+        assert removed == 2
+        mock_github.add_labels.assert_not_called()
+        assert mock_github.remove_label.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_manage_labels_from_report_with_ignored_filter(
+        self, mock_github, severity_labels, sample_results
+    ):
+        """Test manage_labels_from_report passes the filter to manage_labels_from_results."""
+        manager = LabelManager(mock_github, severity_labels)
+        mock_github.get_labels = AsyncMock(return_value=[])
+
+        report = ValidationReport(
+            results=sample_results,
+            total_policies=2,
+            valid_policies=0,
+            invalid_policies=2,
+            total_issues=3,
+        )
+
+        # Filter that ignores critical and high issues
+        def is_ignored(issue, file_path):
+            return issue.severity in ["critical", "high"]
+
+        success, added, removed = await manager.manage_labels_from_report(
+            report, is_issue_ignored=is_ignored
+        )
+
+        assert success is True
+        # Only error label should be added (critical and high are ignored)
+        assert added == 1
+        mock_github.add_labels.assert_called_once()
+        added_labels = mock_github.add_labels.call_args[0][0]
+        assert set(added_labels) == {"iam-validity-error"}
+
+    def test_get_severities_with_filter_excludes_ignored(
+        self, mock_github, severity_labels, sample_results
+    ):
+        """Test _get_severities_in_results respects the filter."""
+        manager = LabelManager(mock_github, severity_labels)
+
+        # Filter that ignores critical issues
+        def is_ignored(issue, file_path):
+            return issue.severity == "critical"
+
+        severities = manager._get_severities_in_results(
+            sample_results, is_issue_ignored=is_ignored
+        )
+        # critical should be excluded
+        assert severities == {"error", "high"}
+
+    def test_get_severities_with_file_path_filter(self, mock_github, severity_labels):
+        """Test that the filter receives the correct file path."""
+        manager = LabelManager(mock_github, severity_labels)
+
+        results = [
+            PolicyValidationResult(
+                policy_file="policies/admin.json",
+                policy_name="AdminPolicy",
+                is_valid=False,
+                issues=[
+                    ValidationIssue(
+                        severity="critical",
+                        statement_index=0,
+                        issue_type="full_wildcard",
+                        message="Full wildcard",
+                    ),
+                ],
+            ),
+            PolicyValidationResult(
+                policy_file="policies/readonly.json",
+                policy_name="ReadOnlyPolicy",
+                is_valid=False,
+                issues=[
+                    ValidationIssue(
+                        severity="error",
+                        statement_index=0,
+                        issue_type="invalid_action",
+                        message="Invalid action",
+                    ),
+                ],
+            ),
+        ]
+
+        # Filter that ignores issues in admin.json
+        def is_ignored(issue, file_path):
+            return "admin.json" in file_path
+
+        severities = manager._get_severities_in_results(
+            results, is_issue_ignored=is_ignored
+        )
+        # critical from admin.json should be excluded
+        assert severities == {"error"}
