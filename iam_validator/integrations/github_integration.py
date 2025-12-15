@@ -1278,7 +1278,7 @@ class GitHubIntegration:
             logger.info(f"Submitting {event.value} review (no inline comments)")
             success = await self.create_review_with_comments(
                 comments=[],
-                body=body or f"<!-- {identifier} -->\nValidation complete.",
+                body=body,
                 event=event,
             )
             if not success:

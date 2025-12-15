@@ -478,13 +478,14 @@ class ReportGenerator:
 
         # Issue breakdown
         if report.total_issues > 0:
-            # Count issues - support both IAM validity and security severities
-            errors = sum(
-                1
-                for r in report.results
-                for i in r.issues
-                if i.severity in constants.HIGH_SEVERITY_LEVELS
+            # Count issues - separate validity errors from security findings
+            validity_errors = sum(
+                1 for r in report.results for i in r.issues if i.severity == "error"
             )
+            critical_findings = sum(
+                1 for r in report.results for i in r.issues if i.severity == "critical"
+            )
+            high_findings = sum(1 for r in report.results for i in r.issues if i.severity == "high")
             warnings = sum(
                 1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")
             )
@@ -496,8 +497,12 @@ class ReportGenerator:
             lines.append("")
             lines.append("| Severity | Count |")
             lines.append("|----------|------:|")
-            if errors > 0:
-                lines.append(f"| 🔴 **Errors** | {errors} |")
+            if validity_errors > 0:
+                lines.append(f"| 🔴 **Errors** | {validity_errors} |")
+            if critical_findings > 0:
+                lines.append(f"| 🟣 **Critical** | {critical_findings} |")
+            if high_findings > 0:
+                lines.append(f"| 🔶 **High** | {high_findings} |")
             if warnings > 0:
                 lines.append(f"| 🟡 **Warnings** | {warnings} |")
             if infos > 0:
@@ -578,15 +583,31 @@ class ReportGenerator:
         )
         lines.append("")
 
-        # Group issues by severity - support both IAM validity and security severities
-        errors = [i for i in result.issues if i.severity in constants.HIGH_SEVERITY_LEVELS]
+        # Group issues by severity - separate validity errors from security findings
+        validity_errors = [i for i in result.issues if i.severity == "error"]
+        critical_findings = [i for i in result.issues if i.severity == "critical"]
+        high_findings = [i for i in result.issues if i.severity == "high"]
         warnings = [i for i in result.issues if i.severity in constants.MEDIUM_SEVERITY_LEVELS]
         infos = [i for i in result.issues if i.severity in constants.LOW_SEVERITY_LEVELS]
 
-        if errors:
+        if validity_errors:
             lines.append("### 🔴 Errors")
             lines.append("")
-            for issue in errors:
+            for issue in validity_errors:
+                lines.append(self._format_issue_markdown(issue, result.policy_file))
+            lines.append("")
+
+        if critical_findings:
+            lines.append("### 🟣 Critical")
+            lines.append("")
+            for issue in critical_findings:
+                lines.append(self._format_issue_markdown(issue, result.policy_file))
+            lines.append("")
+
+        if high_findings:
+            lines.append("### 🔶 High")
+            lines.append("")
+            for issue in high_findings:
                 lines.append(self._format_issue_markdown(issue, result.policy_file))
             lines.append("")
 
@@ -693,13 +714,14 @@ class ReportGenerator:
 
         # Issue breakdown
         if report.total_issues > 0:
-            # Count issues - support both IAM validity and security severities
-            errors = sum(
-                1
-                for r in report.results
-                for i in r.issues
-                if i.severity in constants.HIGH_SEVERITY_LEVELS
+            # Count issues - separate validity errors from security findings
+            validity_errors = sum(
+                1 for r in report.results for i in r.issues if i.severity == "error"
             )
+            critical_findings = sum(
+                1 for r in report.results for i in r.issues if i.severity == "critical"
+            )
+            high_findings = sum(1 for r in report.results for i in r.issues if i.severity == "high")
             warnings = sum(
                 1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")
             )
@@ -711,8 +733,12 @@ class ReportGenerator:
             lines.append("")
             lines.append("| Severity | Count |")
             lines.append("|----------|------:|")
-            if errors > 0:
-                lines.append(f"| 🔴 **Errors** | {errors} |")
+            if validity_errors > 0:
+                lines.append(f"| 🔴 **Errors** | {validity_errors} |")
+            if critical_findings > 0:
+                lines.append(f"| 🟣 **Critical** | {critical_findings} |")
+            if high_findings > 0:
+                lines.append(f"| 🔶 **High** | {high_findings} |")
             if warnings > 0:
                 lines.append(f"| 🟡 **Warnings** | {warnings} |")
             if infos > 0:
@@ -789,15 +815,21 @@ class ReportGenerator:
 
                 policy_lines = []
 
-                # Group issues by severity - support both IAM validity and security severities
-                errors = [i for i in result.issues if i.severity in constants.HIGH_SEVERITY_LEVELS]
+                # Group issues by severity - separate validity errors from security findings
+                validity_errors = [i for i in result.issues if i.severity == "error"]
+                critical_findings = [i for i in result.issues if i.severity == "critical"]
+                high_findings = [i for i in result.issues if i.severity == "high"]
                 warnings = [i for i in result.issues if i.severity in ("warning", "medium")]
                 infos = [i for i in result.issues if i.severity in ("info", "low")]
 
                 # Build severity summary for header
                 severity_parts = []
-                if errors:
-                    severity_parts.append(f"🔴 {len(errors)}")
+                if validity_errors:
+                    severity_parts.append(f"🔴 {len(validity_errors)}")
+                if critical_findings:
+                    severity_parts.append(f"🟣 {len(critical_findings)}")
+                if high_findings:
+                    severity_parts.append(f"🔶 {len(high_findings)}")
                 if warnings:
                     severity_parts.append(f"🟡 {len(warnings)}")
                 if infos:
@@ -812,11 +844,11 @@ class ReportGenerator:
                 )
                 policy_lines.append("")
 
-                # Add errors (prioritized)
-                if errors:
+                # Add validity errors (prioritized)
+                if validity_errors:
                     policy_lines.append("### 🔴 Errors")
                     policy_lines.append("")
-                    for i, issue in enumerate(errors):
+                    for i, issue in enumerate(validity_errors):
                         issue_content = self._format_issue_markdown(issue, result.policy_file)
                         test_length = len("\n".join(details_lines + policy_lines)) + len(
                             issue_content
@@ -827,7 +859,53 @@ class ReportGenerator:
                         policy_lines.append(issue_content)
                         issues_shown += 1
                         # Add separator between issues within same severity
-                        if i < len(errors) - 1:
+                        if i < len(validity_errors) - 1:
+                            policy_lines.append("---")
+                            policy_lines.append("")
+                    policy_lines.append("")
+
+                if truncated:
+                    break
+
+                # Add critical security findings
+                if critical_findings:
+                    policy_lines.append("### 🟣 Critical")
+                    policy_lines.append("")
+                    for i, issue in enumerate(critical_findings):
+                        issue_content = self._format_issue_markdown(issue, result.policy_file)
+                        test_length = len("\n".join(details_lines + policy_lines)) + len(
+                            issue_content
+                        )
+                        if test_length > available_length:
+                            truncated = True
+                            break
+                        policy_lines.append(issue_content)
+                        issues_shown += 1
+                        # Add separator between issues within same severity
+                        if i < len(critical_findings) - 1:
+                            policy_lines.append("---")
+                            policy_lines.append("")
+                    policy_lines.append("")
+
+                if truncated:
+                    break
+
+                # Add high security findings
+                if high_findings:
+                    policy_lines.append("### 🔶 High")
+                    policy_lines.append("")
+                    for i, issue in enumerate(high_findings):
+                        issue_content = self._format_issue_markdown(issue, result.policy_file)
+                        test_length = len("\n".join(details_lines + policy_lines)) + len(
+                            issue_content
+                        )
+                        if test_length > available_length:
+                            truncated = True
+                            break
+                        policy_lines.append(issue_content)
+                        issues_shown += 1
+                        # Add separator between issues within same severity
+                        if i < len(high_findings) - 1:
                             policy_lines.append("---")
                             policy_lines.append("")
                     policy_lines.append("")
