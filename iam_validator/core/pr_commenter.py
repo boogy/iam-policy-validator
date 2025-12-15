@@ -196,7 +196,17 @@ class PRCommenter:
         # Manage PR labels based on severity findings
         if manage_labels and self.severity_labels:
             label_manager = LabelManager(self.github, self.severity_labels)
-            label_success, added, removed = await label_manager.manage_labels_from_report(report)
+
+            # Create a filter function that uses relative paths for ignored finding lookup
+            def is_issue_ignored_for_labels(issue: ValidationIssue, file_path: str) -> bool:
+                relative_path = self._make_relative_path(file_path)
+                if not relative_path:
+                    return False
+                return self._is_issue_ignored(issue, relative_path)
+
+            label_success, added, removed = await label_manager.manage_labels_from_report(
+                report, is_issue_ignored=is_issue_ignored_for_labels
+            )
 
             if not label_success:
                 logger.error("Failed to manage PR labels")
