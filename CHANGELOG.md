@@ -13,6 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.14.7] - 2025-12-17
+
+### Added
+- MkDocs documentation site deployed to GitHub Pages
+- Comprehensive SDK API reference documentation
+
+### Fixed
+- Correct repository name in all documentation links (iam-policy-auditor → iam-policy-validator)
+- Fix SDK docstring formatting for proper mkdocstrings rendering
+- Update PyPI metadata with correct documentation and changelog URLs
+
+---
+
 ## [1.14.6] - 2025-12-15
 
 ### Fixed
