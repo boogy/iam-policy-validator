@@ -1,46 +1,54 @@
-"""
-IAM Policy Validator SDK - Public API for library usage.
+"""IAM Policy Validator SDK - Public API for library usage.
 
 This module provides the complete public API for using IAM Policy Validator
 as a Python library. It exposes both high-level convenience functions and
 low-level components for custom integrations.
 
-Quick Start:
-    Basic validation:
-    >>> from iam_validator.sdk import validate_file
-    >>> result = await validate_file("policy.json")
-    >>> print(f"Valid: {result.is_valid}")
+Example:
+    Basic validation::
 
-    With context manager:
-    >>> from iam_validator.sdk import validator
-    >>> async with validator() as v:
-    ...     result = await v.validate_file("policy.json")
-    ...     v.generate_report([result])
+        from iam_validator.sdk import validate_file
 
-    Policy manipulation:
-    >>> from iam_validator.sdk import parse_policy, get_policy_summary
-    >>> policy = parse_policy(policy_json)
-    >>> summary = get_policy_summary(policy)
-    >>> print(f"Actions: {summary['action_count']}")
+        result = await validate_file("policy.json")
+        print(f"Valid: {result.is_valid}")
 
-    Query AWS service definitions:
-    >>> from iam_validator.sdk import AWSServiceFetcher, query_actions, query_arn_formats
-    >>> async with AWSServiceFetcher() as fetcher:
-    ...     # Query all S3 write actions
-    ...     write_actions = await query_actions(fetcher, "s3", access_level="write")
-    ...     # Get ARN formats for S3
-    ...     arns = await query_arn_formats(fetcher, "s3")
+    With context manager::
 
-    Custom check development:
-    >>> from iam_validator.sdk import PolicyCheck, CheckHelper
-    >>> class MyCheck(PolicyCheck):
-    ...     @property
-    ...     def check_id(self) -> str:
-    ...         return "my_check"
-    ...     async def execute(self, statement, idx, fetcher, config):
-    ...         helper = CheckHelper(fetcher)
-    ...         # Use helper.arn_matches(), helper.create_issue(), etc.
-    ...         return []
+        from iam_validator.sdk import validator
+
+        async with validator() as v:
+            result = await v.validate_file("policy.json")
+            v.generate_report([result])
+
+    Policy manipulation::
+
+        from iam_validator.sdk import parse_policy, get_policy_summary
+
+        policy = parse_policy(policy_json)
+        summary = get_policy_summary(policy)
+        print(f"Actions: {summary['action_count']}")
+
+    Query AWS service definitions::
+
+        from iam_validator.sdk import AWSServiceFetcher, query_actions
+
+        async with AWSServiceFetcher() as fetcher:
+            # Query all S3 write actions
+            write_actions = await query_actions(fetcher, "s3", access_level="write")
+
+    Custom check development::
+
+        from iam_validator.sdk import PolicyCheck, CheckHelper
+
+        class MyCheck(PolicyCheck):
+            check_id = "my_check"
+            description = "My custom check"
+            default_severity = "medium"
+
+            async def execute(self, statement, idx, fetcher, config):
+                helper = CheckHelper(fetcher)
+                # Use helper.arn_matches(), helper.create_issue(), etc.
+                return []
 """
 
 # ruff: noqa: E402

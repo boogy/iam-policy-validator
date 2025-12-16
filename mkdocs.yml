@@ -2,11 +2,11 @@
 # https://www.mkdocs.org/
 
 site_name: IAM Policy Validator
-site_url: https://boogy.github.io/iam-policy-auditor/
+site_url: https://boogy.github.io/iam-policy-validator/
 site_description: Stop IAM misconfigurations before they become breaches - Catch overprivileged permissions, dangerous wildcards, and policy errors before deployment.
 site_author: boogy
-repo_name: boogy/iam-policy-auditor
-repo_url: https://github.com/boogy/iam-policy-auditor
+repo_name: boogy/iam-policy-validator
+repo_url: https://github.com/boogy/iam-policy-validator
 edit_uri: edit/main/docs/
 
 # Copyright
@@ -97,7 +97,7 @@ markdown_extensions:
   - pymdownx.magiclink:
       repo_url_shorthand: true
       user: boogy
-      repo: iam-policy-auditor
+      repo: iam-policy-validator
   - pymdownx.mark
   - pymdownx.smartsymbols
   - pymdownx.snippets:
@@ -169,7 +169,7 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/boogy/iam-policy-auditor
+      link: https://github.com/boogy/iam-policy-validator
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/iam-policy-validator/
   generator: false
