@@ -158,7 +158,7 @@ runs:
         python-version-file: "${{ github.action_path }}/.python-version"
 
     - name: Install uv
-      uses: astral-sh/setup-uv@ed21f2f24f8dd64503750218de024bcf64c7250a # v7.1.5
+      uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867 # v7.1.6
       with:
         enable-cache: true
         cache-suffix: ci # Prune cache in CI to reduce bloat
@@ -186,7 +186,7 @@ runs:
 
     - name: Restore AWS service definitions cache
       id: cache-aws-services
-      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      uses: actions/cache/restore@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
       with:
         path: ~/.cache/iam-validator/aws_services
         # Cache key refreshes weekly to get latest AWS service updates
@@ -514,14 +514,14 @@ runs:
       # Attempting to save with an existing key will silently do nothing
       # Use always() to ensure cache is saved even if validation fails
       if: always() && steps.cache-aws-services.outputs.cache-hit != 'true'
-      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      uses: actions/cache/save@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
       with:
         path: ~/.cache/iam-validator/aws_services
         key: aws-services-${{ runner.os }}-${{ steps.week.outputs.week }}
 
     - name: Upload validation report
       if: always() && inputs.output-file != ''
-      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         name: iam-policy-validation-report
         path: ${{ github.workspace }}/${{ inputs.output-file }}
