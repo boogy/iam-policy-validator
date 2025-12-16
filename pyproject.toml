@@ -31,10 +31,10 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/boogy/iam-policy-validator"
-Documentation = "https://github.com/boogy/iam-policy-validator/tree/main/docs"
+Documentation = "https://boogy.github.io/iam-policy-auditor/"
 Repository = "https://github.com/boogy/iam-policy-validator"
 Issues = "https://github.com/boogy/iam-policy-validator/issues"
-Changelog = "https://github.com/boogy/iam-policy-validator/blob/main/docs/CHANGELOG.md"
+Changelog = "https://github.com/boogy/iam-policy-validator/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
@@ -46,6 +46,13 @@ dev = [
     "ruff>=0.1.0",
     "types-pyyaml",
     "types-boto3",
+]
+docs = [
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.24.0",
+    "mkdocs-gen-files>=0.5.0",
+    "mkdocs-literate-nav>=0.6.0",
 ]
 
 [project.scripts]

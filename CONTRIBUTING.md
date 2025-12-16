@@ -23,7 +23,7 @@ This project follows a code of conduct to ensure a welcoming environment for all
 
 ### Prerequisites
 
-- Python 3.12 or higher
+- Python 3.10 or higher
 - [uv](https://github.com/astral-sh/uv) package manager
 - Git
 - AWS account (optional, for testing AWS integrations)
@@ -103,7 +103,7 @@ uv run mypy iam_validator
 ```
 iam-policy-auditor/
 ├── iam_validator/              # Main package
-│   ├── checks/                 # Built-in validation checks (18 checks)
+│   ├── checks/                 # Built-in validation checks (19 checks)
 │   ├── commands/               # CLI command implementations
 │   ├── core/                   # Core validation engine
 │   │   ├── cli.py              # CLI entry point
@@ -499,7 +499,7 @@ See the comprehensive [Custom Checks Guide](docs/custom-checks.md) for detailed 
 
 ### Documentation Resources
 - **[Complete Usage Guide](../DOCS.md)** - CLI, GitHub Actions, configuration
-- **[Validation Checks](docs/check-reference.md)** - All 18 checks with examples
+- **[Validation Checks](docs/check-reference.md)** - All 19 checks with examples
 - **[Python SDK](docs/SDK.md)** - Library usage and API reference
 - **[Additional Docs](docs/)** - Guides and advanced topics
 

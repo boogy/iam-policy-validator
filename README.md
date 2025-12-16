@@ -78,7 +78,7 @@ iam-validator validate --path examples/quick-start/ --format enhanced
 ```
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
 │                                                                                                  │
-│                              IAM Policy Validation Report (v1.10.3)                              │
+│                              IAM Policy Validation Report (v1.14.1)                              │
 │                                                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ───────────────────────────────────────── Detailed Results ─────────────────────────────────────────
@@ -674,6 +674,7 @@ iam-validator analyze --path new-policy.json \
 - [Python Library Guide](docs/python-library-usage.md) - Use as Python package
 - [Trust Policy Guide](examples/trust-policies/README.md) - Trust policy validation
 - [Query Command](docs/query-command.md) - Query AWS service definitions
+- [Changelog](CHANGELOG.md) - Version history and migration guides
 
 **Examples:**
 

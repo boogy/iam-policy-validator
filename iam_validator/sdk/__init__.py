@@ -51,7 +51,13 @@ from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckRegistry, PolicyCheck
 
 # === ValidatorConfiguration ===
-from iam_validator.core.config.config_loader import ValidatorConfig, load_validator_config
+from iam_validator.core.config.config_loader import (
+    ValidatorConfig,
+    load_validator_config,
+)
+
+# Alias for convenience (matches documentation)
+Config = ValidatorConfig
 
 # === Reporting ===
 from iam_validator.core.formatters.csv import CSVFormatter
@@ -203,6 +209,7 @@ __all__ = [
     "Statement",
     # === ValidatorConfiguration ===
     "ValidatorConfig",
+    "Config",  # Alias for ValidatorConfig
     "load_validator_config",
     # === AWS utilities ===
     "AWSServiceFetcher",
@@ -216,5 +223,5 @@ __all__ = [
     "UnsupportedPolicyTypeError",
 ]
 
-# SDK version
-__version__ = "0.1.0"
+# SDK version (same as main package)
+from iam_validator.__version__ import __version__
