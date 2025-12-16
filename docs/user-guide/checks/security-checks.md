@@ -1,0 +1,233 @@
+---
+title: Security Checks
+description: Detect security risks and best practice violations
+---
+
+# Security Checks
+
+These checks identify security risks and violations of AWS IAM best practices.
+
+## full_wildcard
+
+Detects the most dangerous pattern: `Action: "*"` with `Resource: "*"`.
+
+**Severity:** `critical`
+
+### Why It's Critical
+
+This grants **full administrator access** to the entire AWS account, equivalent to the `AdministratorAccess` managed policy.
+
+### Fail Example
+
+```json
+{
+  "Effect": "Allow",
+  "Action": "*",
+  "Resource": "*"
+}
+```
+
+### How to Fix
+
+Replace with specific actions and resources:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "s3:GetObject",
+    "s3:PutObject"
+  ],
+  "Resource": "arn:aws:s3:::my-bucket/*"
+}
+```
+
+---
+
+## wildcard_action
+
+Detects `Action: "*"` without specifying which service.
+
+**Severity:** `medium`
+
+### Fail Example
+
+```json
+{
+  "Effect": "Allow",
+  "Action": "*",
+  "Resource": "arn:aws:s3:::bucket/*"
+}
+```
+
+### How to Fix
+
+Specify the actions needed:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["s3:GetObject", "s3:ListBucket"],
+  "Resource": "arn:aws:s3:::bucket/*"
+}
+```
+
+---
+
+## wildcard_resource
+
+Detects `Resource: "*"` (access to all resources).
+
+**Severity:** `medium`
+
+### When It's Acceptable
+
+Some actions require `Resource: "*"`:
+
+- `s3:ListAllMyBuckets`
+- `iam:GetAccountSummary`
+- Many `Describe*` and `List*` actions
+
+### How to Fix
+
+Restrict to specific resources:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": "s3:GetObject",
+  "Resource": "arn:aws:s3:::specific-bucket/*"
+}
+```
+
+---
+
+## service_wildcard
+
+Detects service-level wildcards like `s3:*` or `iam:*`.
+
+**Severity:** `medium`
+
+### Fail Example
+
+```json
+{
+  "Effect": "Allow",
+  "Action": "s3:*",
+  "Resource": "*"
+}
+```
+
+### How to Fix
+
+Use specific actions or action patterns:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "s3:Get*",
+    "s3:List*"
+  ],
+  "Resource": "*"
+}
+```
+
+---
+
+## sensitive_action
+
+Detects 490+ privilege escalation actions that should have conditions.
+
+**Severity:** `high`
+
+### Sensitive Action Categories
+
+- **IAM Management:** `iam:CreateUser`, `iam:AttachRolePolicy`, `iam:PassRole`
+- **Security Controls:** `iam:DeletePolicy`, `kms:DisableKey`
+- **Data Access:** `s3:DeleteBucket`, `rds:DeleteDBInstance`
+
+### Fail Example
+
+```json
+{
+  "Effect": "Allow",
+  "Action": "iam:PassRole",
+  "Resource": "*"
+}
+```
+
+### How to Fix
+
+Add conditions to restrict usage:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": "iam:PassRole",
+  "Resource": "arn:aws:iam::*:role/lambda-*",
+  "Condition": {
+    "StringEquals": {
+      "iam:PassedToService": "lambda.amazonaws.com"
+    }
+  }
+}
+```
+
+---
+
+## principal_validation
+
+Validates Principal elements in resource policies.
+
+**Severity:** `high`
+
+### What It Checks
+
+- Blocks dangerous principals (`*`, anonymous access)
+- Validates AWS account IDs
+- Checks service principal format
+
+### Fail Example
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": "*",
+  "Action": "s3:GetObject",
+  "Resource": "arn:aws:s3:::bucket/*"
+}
+```
+
+### How to Fix
+
+Restrict to specific principals:
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {
+    "AWS": "arn:aws:iam::123456789012:root"
+  },
+  "Action": "s3:GetObject",
+  "Resource": "arn:aws:s3:::bucket/*",
+  "Condition": {
+    "StringEquals": {
+      "aws:SourceAccount": "123456789012"
+    }
+  }
+}
+```
+
+---
+
+## mfa_condition_check
+
+Detects MFA condition anti-patterns that may not work as expected.
+
+**Severity:** `warning`
+
+### Common Anti-Patterns
+
+- `aws:MultiFactorAuthPresent` in Deny with `BoolIfExists`
+- Missing MFA check with `StringEquals` instead of `Bool`

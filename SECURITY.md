@@ -4,18 +4,6 @@
 
 The IAM Policy Validator is a security-focused tool designed to catch IAM policy errors before they reach production. We take the security of this project seriously, as it plays a critical role in helping organizations maintain secure AWS environments.
 
-## Supported Versions
-
-We provide security updates for the following versions:
-
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.7.x   | :white_check_mark: |
-| 1.6.x   | :white_check_mark: |
-| < 1.6.0 | :x:                |
-
-We recommend always using the latest version to benefit from the most recent security updates and features.
-
 ## Reporting a Vulnerability
 
 We appreciate responsible disclosure of security vulnerabilities. If you discover a security issue, please report it privately.

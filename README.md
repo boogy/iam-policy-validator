@@ -1,6 +1,6 @@
 # IAM Policy Validator
 
-**Catch IAM policy errors before they reach AWS** — Validate syntax, security misconfigurations, and dangerous permission combinations in CI/CD pipelines.
+**Stop IAM misconfigurations before they become breaches** — Catch overprivileged permissions, dangerous wildcards, and policy errors before deployment.
 
 [![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-Ready-blue)](https://github.com/marketplace/actions/iam-policy-validator)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -78,7 +78,7 @@ iam-validator validate --path examples/quick-start/ --format enhanced
 ```
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
 │                                                                                                  │
-│                              IAM Policy Validation Report (v1.10.3)                              │
+│                              IAM Policy Validation Report (v1.14.1)                              │
 │                                                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ───────────────────────────────────────── Detailed Results ─────────────────────────────────────────
@@ -252,7 +252,7 @@ sensitive_action:
       message: "CloudFormation + PassRole enables infrastructure privilege escalation"
 ```
 
-See [docs/privilege-escalation.md](docs/privilege-escalation.md) for all built-in patterns and custom configuration.
+See [Security Checks Documentation](docs/user-guide/checks/security-checks.md) for all built-in patterns and custom configuration.
 
 **Comparison:**
 
@@ -593,7 +593,7 @@ sensitive_action:
 
 For more details, see:
 
-- [docs/condition-requirements.md](docs/condition-requirements.md) - How to configure condition requirements
+- [Configuration Guide](docs/user-guide/configuration.md) - How to configure condition requirements
 - [examples/configs/full-reference-config.yaml](examples/configs/full-reference-config.yaml) - Complete configuration reference
 
 ---
@@ -668,12 +668,12 @@ iam-validator analyze --path new-policy.json \
 
 **Guides:**
 
-- [Check Reference](docs/check-reference.md) - All 19 checks with examples
-- [Configuration Guide](docs/configuration.md) - Customize checks and behavior
-- [GitHub Actions Guide](docs/github-actions-workflows.md) - CI/CD integration
-- [Python Library Guide](docs/python-library-usage.md) - Use as Python package
-- [Trust Policy Guide](examples/trust-policies/README.md) - Trust policy validation
-- [Query Command](docs/query-command.md) - Query AWS service definitions
+- [Check Reference](docs/user-guide/checks/) - All checks with examples
+- [Configuration Guide](docs/user-guide/configuration.md) - Customize checks and behavior
+- [GitHub Actions Guide](docs/integrations/github-actions.md) - CI/CD integration
+- [Python Library Guide](docs/developer-guide/sdk/) - Use as Python package
+- [Trust Policy Examples](examples/trust-policies/) - Trust policy validation examples
+- [Changelog](CHANGELOG.md) - Version history and migration guides
 
 **Examples:**
 

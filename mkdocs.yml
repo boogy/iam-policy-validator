@@ -1,0 +1,181 @@
+# MkDocs configuration for IAM Policy Validator documentation
+# https://www.mkdocs.org/
+
+site_name: IAM Policy Validator
+site_url: https://boogy.github.io/iam-policy-auditor/
+site_description: Stop IAM misconfigurations before they become breaches - Catch overprivileged permissions, dangerous wildcards, and policy errors before deployment.
+site_author: boogy
+repo_name: boogy/iam-policy-auditor
+repo_url: https://github.com/boogy/iam-policy-auditor
+edit_uri: edit/main/docs/
+
+# Copyright
+copyright: Copyright &copy; 2025 boogy
+
+# Theme configuration
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+  palette:
+    # Light mode
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+  icon:
+    repo: fontawesome/brands/github
+
+# Plugins
+plugins:
+  - search:
+      separator: '[\s\-,:!=\[\]()"/]+|(?!\b)(?=[A-Z][a-z])|\.(?!\d)|&[lg]t;'
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_toc_entry: true
+            show_signature_annotations: true
+            separate_signature: true
+
+# Markdown extensions
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: boogy
+      repo: iam-policy-auditor
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      auto_append:
+        - includes/abbreviations.md
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+# Navigation structure
+nav:
+  - Home: index.md
+  - Getting Started:
+      - getting-started/index.md
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+      - First Validation: getting-started/first-validation.md
+  - User Guide:
+      - user-guide/index.md
+      - CLI Reference: user-guide/cli-reference.md
+      - Configuration: user-guide/configuration.md
+      - Checks:
+          - user-guide/checks/index.md
+          - AWS Validation: user-guide/checks/aws-validation.md
+          - Security Checks: user-guide/checks/security-checks.md
+          - Advanced Checks: user-guide/checks/advanced-checks.md
+      - Output Formats: user-guide/output-formats.md
+      - Troubleshooting: user-guide/troubleshooting.md
+  - Integrations:
+      - integrations/index.md
+      - GitHub Actions: integrations/github-actions.md
+      - GitLab CI: integrations/gitlab-ci.md
+      - Pre-commit: integrations/pre-commit.md
+  - Developer Guide:
+      - developer-guide/index.md
+      - SDK:
+          - developer-guide/sdk/index.md
+          - Quick Start: developer-guide/sdk/quickstart.md
+          - Validation: developer-guide/sdk/validation.md
+          - Policy Utilities: developer-guide/sdk/policy-utilities.md
+          - Advanced Usage: developer-guide/sdk/advanced.md
+      - Custom Checks:
+          - developer-guide/custom-checks/index.md
+          - Tutorial: developer-guide/custom-checks/tutorial.md
+          - Examples: developer-guide/custom-checks/examples.md
+          - Best Practices: developer-guide/custom-checks/best-practices.md
+      - Architecture: developer-guide/architecture.md
+  - API Reference:
+      - api-reference/index.md
+      - SDK: api-reference/sdk.md
+      - Models: api-reference/models.md
+      - Checks: api-reference/checks.md
+      - Exceptions: api-reference/exceptions.md
+  - Contributing:
+      - contributing/index.md
+      - Development Setup: contributing/development-setup.md
+      - Testing: contributing/testing.md
+      - Releasing: contributing/releasing.md
+  - Changelog: changelog.md
+
+# Extra configuration
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/boogy/iam-policy-auditor
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/iam-policy-validator/
+  generator: false
+  version:
+    provider: mike
+
+# Watch for changes in development
+watch:
+  - iam_validator

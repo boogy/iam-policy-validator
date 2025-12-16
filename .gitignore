@@ -1,6 +1,3 @@
-# AI stuff
-.claude/
-
 # Cache
 .cache/
 *.cache
@@ -69,5 +66,21 @@ dmypy.json
 *.temp
 temp/
 tmp/
+
+# Claude Code
 CLAUDE.md
 plan.md
+.claude/
+
+# uv
+.python-version
+
+# Coverage reports
+coverage.xml
+*.lcov
+
+# Jupyter
+.ipynb_checkpoints/
+
+# AWS service definitions (download with: iam-validator download-services)
+aws_services/

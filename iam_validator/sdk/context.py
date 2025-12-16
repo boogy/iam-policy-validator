@@ -5,6 +5,7 @@ This module provides context managers that handle resource lifecycle
 and make the validation API more convenient to use.
 """
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -169,7 +170,7 @@ class ValidationContext:
 @asynccontextmanager
 async def validator(
     config_path: str | None = None,
-):
+) -> AsyncIterator[ValidationContext]:
     """
     Context manager that handles AWS fetcher lifecycle.
 
@@ -201,7 +202,7 @@ async def validator(
 
 
 @asynccontextmanager
-async def validator_from_config(config_path: str):
+async def validator_from_config(config_path: str) -> AsyncIterator[ValidationContext]:
     """
     Context manager that loads configuration and creates a validator.
 
