@@ -103,7 +103,7 @@ uv run mypy iam_validator
 ```
 iam-policy-auditor/
 ├── iam_validator/              # Main package
-│   ├── checks/                 # Built-in validation checks (19 checks)
+│   ├── checks/                 # Built-in validation checks
 │   ├── commands/               # CLI command implementations
 │   ├── core/                   # Core validation engine
 │   │   ├── cli.py              # CLI entry point
@@ -120,24 +120,25 @@ iam-policy-auditor/
 │   ├── test_*.py               # Test files for each check/module
 │   └── conftest.py             # Pytest configuration and fixtures
 │
-├── docs/                       # Documentation
-│   ├── check-reference.md      # Complete reference for all 19 checks
-│   ├── SDK.md                  # Python SDK documentation
-│   ├── configuration.md        # Configuration guide
-│   ├── condition-requirements.md  # Action condition enforcement
-│   ├── privilege-escalation.md    # Privilege escalation detection
-│   ├── custom-checks.md        # Custom check development guide
-│   └── development/            # Development documentation
+├── docs/                       # Documentation (MkDocs structure)
+│   ├── getting-started/        # Installation and quickstart guides
+│   ├── user-guide/             # CLI reference, configuration, checks
+│   │   └── checks/             # AWS validation and security checks
+│   ├── integrations/           # GitHub Actions, GitLab CI, pre-commit
+│   ├── developer-guide/        # SDK, custom checks, architecture
+│   │   ├── sdk/                # Python SDK documentation
+│   │   └── custom-checks/      # Custom check development guide
+│   ├── api-reference/          # API documentation
+│   └── contributing/           # Development documentation
 │
 ├── examples/                   # Examples and sample files
-│   ├── configs/                # 9+ configuration examples
+│   ├── configs/                # Configuration examples
 │   ├── custom_checks/          # Custom check examples
 │   ├── library-usage/          # Python SDK examples
 │   ├── github-actions/         # GitHub Actions workflow examples
 │   └── iam-test-policies/      # Sample IAM policies for testing
 │
 ├── scripts/                    # Development and utility scripts
-├── aws_services/               # Cached AWS service definitions
 ├── .github/workflows/          # CI/CD workflows
 ├── pyproject.toml              # Project metadata and dependencies (uv)
 ├── Makefile                    # Development commands
@@ -304,22 +305,21 @@ This runs linting, type checking, and tests.
 
 - **README.md**: Project overview, quick start, and feature highlights
 - **DOCS.md**: Complete usage guide, CLI reference, and configuration
-- **docs/check-reference.md**: Complete reference for all 19 checks with pass/fail examples
-- **docs/SDK.md**: Python library documentation and API reference
-- **docs/README.md**: Documentation hub with navigation and quick links
-- **docs/**: Additional guides and advanced topics
-  - **configuration.md**: Configuration guide
-  - **condition-requirements.md**: Action condition enforcement
-  - **privilege-escalation.md**: Privilege escalation detection
-  - **custom-checks.md**: Custom check development
-  - **github-actions-workflows.md**: CI/CD integration guide
-  - **python-library-usage.md**: Python SDK usage
-  - **development/**: Contributor documentation
+- **docs/**: MkDocs documentation site
+  - **getting-started/**: Installation and quickstart guides
+  - **user-guide/**: CLI reference, configuration, output formats
+    - **checks/**: AWS validation and security check documentation
+  - **integrations/**: GitHub Actions, GitLab CI, pre-commit guides
+  - **developer-guide/**: SDK documentation, custom checks, architecture
+    - **sdk/**: Python library API and usage
+    - **custom-checks/**: Custom check development guide
+  - **api-reference/**: Complete API documentation
+  - **contributing/**: Development setup, testing, releasing
 - **examples/**: Practical examples
-  - **configs/**: 9+ configuration templates
-  - **trust-policies/**: Trust policy validation examples
+  - **configs/**: Configuration templates
   - **custom_checks/**: Custom check implementations
   - **github-actions/**: Workflow examples
+  - **iam-test-policies/**: Sample policies for testing
 
 ### Building Documentation
 
@@ -423,7 +423,7 @@ For detailed publishing instructions, see [docs/development/PUBLISHING.md](docs/
 
 ### Creating a New Check
 
-See the comprehensive [Custom Checks Guide](docs/custom-checks.md) for detailed instructions on creating custom validation checks.
+See the comprehensive [Custom Checks Guide](docs/developer-guide/custom-checks/) for detailed instructions on creating custom validation checks.
 
 **Quick Example:**
 
@@ -474,7 +474,7 @@ See the comprehensive [Custom Checks Guide](docs/custom-checks.md) for detailed 
    ```
 
 4. **Document the Check**
-   - Add to `docs/custom-checks.md`
+   - Add to `docs/developer-guide/custom-checks/`
    - Add example to `examples/custom_checks/`
 
 ### Adding a New Formatter
@@ -498,9 +498,9 @@ See the comprehensive [Custom Checks Guide](docs/custom-checks.md) for detailed 
 ## Getting Help
 
 ### Documentation Resources
-- **[Complete Usage Guide](../DOCS.md)** - CLI, GitHub Actions, configuration
-- **[Validation Checks](docs/check-reference.md)** - All 19 checks with examples
-- **[Python SDK](docs/SDK.md)** - Library usage and API reference
+- **[Complete Usage Guide](DOCS.md)** - CLI, GitHub Actions, configuration
+- **[Validation Checks](docs/user-guide/checks/)** - All checks with examples
+- **[Python SDK](docs/developer-guide/sdk/)** - Library usage and API reference
 - **[Additional Docs](docs/)** - Guides and advanced topics
 
 ### Support Channels

@@ -455,9 +455,9 @@ iam-validator validate --path ./policies/ --config my-config.yaml
 
 ### Detailed Documentation
 
-**📚 For complete documentation of all 19 checks with detailed pass/fail examples, see [Check Reference Guide](docs/check-reference.md)**
+**📚 For complete documentation of all checks with detailed pass/fail examples, see [Check Reference Guide](docs/user-guide/checks/)**
 
-The check-reference.md file provides:
+The check reference documentation provides:
 - Detailed explanation of what each check validates
 - Pass examples (valid policies)
 - Fail examples (invalid policies with error messages)
@@ -1095,11 +1095,11 @@ IAM Policy Validator includes **19 comprehensive validation checks** across four
 
 ### Complete Documentation
 
-**📚 For detailed documentation of all 19 checks with comprehensive pass/fail examples:**
+**📚 For detailed documentation of all checks with comprehensive pass/fail examples:**
 
-**[→ View Complete Checks Reference](docs/check-reference.md)**
+**[→ View Complete Checks Reference](docs/user-guide/checks/)**
 
-The check-reference.md file includes:
+The check reference documentation includes:
 - ✅ What each check validates
 - ✅ Pass examples (valid policies)
 - ✅ Fail examples with error messages
@@ -1112,7 +1112,7 @@ The check-reference.md file includes:
 
 ## Creating Custom Checks
 
-The validator supports custom validation checks to enforce organization-specific policies and business rules. For comprehensive documentation, see the [Custom Checks Guide](docs/custom-checks.md).
+The validator supports custom validation checks to enforce organization-specific policies and business rules. For comprehensive documentation, see the [Custom Checks Guide](docs/developer-guide/custom-checks/).
 
 ### Quick Start
 
@@ -1174,7 +1174,7 @@ iam-validator validate --path ./policies/ --config my-config.yaml
 
 ### Complete Documentation
 
-See [docs/custom-checks.md](docs/custom-checks.md) for:
+See [docs/developer-guide/custom-checks/](docs/developer-guide/custom-checks/) for:
 - Detailed API documentation
 - Multiple complete examples
 - Best practices and patterns
@@ -1272,26 +1272,30 @@ iam-policy-auditor/
 ├── action.yaml                    # GitHub Action definition
 ├── pyproject.toml                 # Python project config
 ├── iam_validator/                 # Main package
-│   ├── models.py                 # Pydantic models
-│   ├── aws_fetcher.py            # AWS API client
-│   ├── github_integration.py     # GitHub API client
-│   ├── cli.py                    # CLI interface
-│   ├── checks/                   # Validation checks
-│   │   ├── action_validation.py
-│   │   ├── condition_validation.py
-│   │   ├── resource_validation.py
-│   │   └── security_checks.py
-│   └── core/
-│       ├── policy_loader.py      # Policy loader
-│       ├── policy_checks.py      # Validation logic
-│       └── report.py             # Report generation
-├── docs/                         # Documentation
-│   ├── aws-services-backup.md    # AWS services backup guide
-│   ├── configuration.md          # Configuration reference
-│   └── custom-checks.md          # Custom checks guide
+│   ├── __version__.py            # Version information
+│   ├── checks/                   # Built-in validation checks (19)
+│   ├── commands/                 # CLI commands (7)
+│   ├── core/
+│   │   ├── cli.py               # CLI entry point
+│   │   ├── aws_service/         # AWS service definitions
+│   │   ├── config/              # Configuration system
+│   │   ├── formatters/          # Output formatters
+│   │   ├── models.py            # Pydantic models
+│   │   ├── policy_loader.py     # Policy loader
+│   │   ├── policy_checks.py     # Validation orchestrator
+│   │   └── report.py            # Report generation
+│   ├── integrations/             # GitHub, MS Teams integration
+│   └── sdk/                      # Python SDK
+├── docs/                         # MkDocs documentation
+│   ├── getting-started/         # Installation and quickstart
+│   ├── user-guide/              # CLI reference, configuration
+│   │   └── checks/              # Check documentation
+│   ├── integrations/            # CI/CD integration guides
+│   ├── developer-guide/         # SDK, custom checks
+│   └── api-reference/           # API documentation
 └── examples/
     ├── iam-test-policies/        # Test IAM policies
-    ├── configs/                  # Essential example configs (3 files)
+    ├── configs/                  # Configuration examples
     ├── custom_checks/            # Custom check examples
     └── github-actions/           # GitHub workflow examples
 ```

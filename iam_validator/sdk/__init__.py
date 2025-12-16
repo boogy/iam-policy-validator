@@ -203,6 +203,8 @@ __all__ = [
     "AWSServiceError",
     "InvalidPolicyFormatError",
     "UnsupportedPolicyTypeError",
+    # Version
+    "__version__",
 ]
 
 # SDK version (same as main package)
