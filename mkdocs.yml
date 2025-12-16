@@ -3,7 +3,7 @@
 
 site_name: IAM Policy Validator
 site_url: https://boogy.github.io/iam-policy-auditor/
-site_description: Catch IAM policy errors before they reach AWS - Validate syntax, security misconfigurations, and dangerous permission combinations.
+site_description: Stop IAM misconfigurations before they become breaches - Catch overprivileged permissions, dangerous wildcards, and policy errors before deployment.
 site_author: boogy
 repo_name: boogy/iam-policy-auditor
 repo_url: https://github.com/boogy/iam-policy-auditor

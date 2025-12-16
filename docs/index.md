@@ -1,11 +1,11 @@
 ---
 title: IAM Policy Validator
-description: Catch IAM policy errors before they reach AWS
+description: Stop IAM misconfigurations before they become breaches
 ---
 
 # IAM Policy Validator
 
-**Catch IAM policy errors before they reach AWS** — Validate syntax, security misconfigurations, and dangerous permission combinations in CI/CD pipelines.
+**Stop IAM misconfigurations before they become breaches** — Catch overprivileged permissions, dangerous wildcards, and policy errors before deployment.
 
 <div class="grid cards" markdown>
 
