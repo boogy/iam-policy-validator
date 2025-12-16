@@ -131,4 +131,4 @@ checks:
 
 ## Full Reference
 
-See [examples/configs/full-reference-config.yaml](https://github.com/boogy/iam-policy-auditor/blob/main/examples/configs/full-reference-config.yaml) for all available options.
+See [examples/configs/full-reference-config.yaml](https://github.com/boogy/iam-policy-validator/blob/main/examples/configs/full-reference-config.yaml) for all available options.

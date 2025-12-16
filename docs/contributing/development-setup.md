@@ -16,8 +16,8 @@ Set up your environment to contribute to IAM Policy Validator.
 ## Clone Repository
 
 ```bash
-git clone https://github.com/boogy/iam-policy-auditor.git
-cd iam-policy-auditor
+git clone https://github.com/boogy/iam-policy-validator.git
+cd iam-policy-validator
 ```
 
 ## Install Dependencies
@@ -59,7 +59,7 @@ uv run ruff check .
 ## Project Structure
 
 ```
-iam-policy-auditor/
+iam-policy-validator/
 ├── iam_validator/           # Main package
 │   ├── __version__.py      # Version (sync with pyproject.toml)
 │   ├── core/               # Core validation engine

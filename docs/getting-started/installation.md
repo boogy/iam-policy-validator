@@ -49,8 +49,8 @@ pipx install iam-policy-validator
 For the latest development version:
 
 ```bash
-git clone https://github.com/boogy/iam-policy-auditor.git
-cd iam-policy-auditor
+git clone https://github.com/boogy/iam-policy-validator.git
+cd iam-policy-validator
 pip install -e .
 ```
 

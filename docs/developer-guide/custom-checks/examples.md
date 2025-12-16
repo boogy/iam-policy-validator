@@ -192,7 +192,7 @@ checks:
 
 ## More Examples
 
-See the [examples/custom_checks/](https://github.com/boogy/iam-policy-auditor/tree/main/examples/custom_checks) directory for additional examples:
+See the [examples/custom_checks/](https://github.com/boogy/iam-policy-validator/tree/main/examples/custom_checks) directory for additional examples:
 
 | Check | Description |
 |-------|-------------|
