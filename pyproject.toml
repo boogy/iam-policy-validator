@@ -31,7 +31,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/boogy/iam-policy-validator"
-Documentation = "https://boogy.github.io/iam-policy-auditor/"
+Documentation = "https://boogy.github.io/iam-policy-validator"
 Repository = "https://github.com/boogy/iam-policy-validator"
 Issues = "https://github.com/boogy/iam-policy-validator/issues"
 Changelog = "https://github.com/boogy/iam-policy-validator/blob/main/CHANGELOG.md"
