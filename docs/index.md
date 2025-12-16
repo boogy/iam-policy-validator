@@ -158,6 +158,6 @@ Issues (2)
 
 ## Support
 
-- [:fontawesome-brands-github: GitHub Issues](https://github.com/boogy/iam-policy-auditor/issues) — Bug reports and feature requests
-- [:fontawesome-brands-github: GitHub Discussions](https://github.com/boogy/iam-policy-auditor/discussions) — Questions and community help
+- [:fontawesome-brands-github: GitHub Issues](https://github.com/boogy/iam-policy-validator/issues) — Bug reports and feature requests
+- [:fontawesome-brands-github: GitHub Discussions](https://github.com/boogy/iam-policy-validator/discussions) — Questions and community help
 - [:material-file-document: Contributing Guide](contributing/index.md) — How to contribute

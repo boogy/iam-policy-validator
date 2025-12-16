@@ -9,8 +9,8 @@ Thank you for your interest in contributing to IAM Policy Validator!
 
 ## Ways to Contribute
 
-- **Report bugs** — [Open an issue](https://github.com/boogy/iam-policy-auditor/issues)
-- **Request features** — [Start a discussion](https://github.com/boogy/iam-policy-auditor/discussions)
+- **Report bugs** — [Open an issue](https://github.com/boogy/iam-policy-validator/issues)
+- **Request features** — [Start a discussion](https://github.com/boogy/iam-policy-validator/discussions)
 - **Submit code** — Fork, develop, and submit a pull request
 - **Improve docs** — Fix typos, add examples, clarify explanations
 
@@ -24,8 +24,8 @@ Thank you for your interest in contributing to IAM Policy Validator!
 
 ```bash
 # Clone repository
-git clone https://github.com/boogy/iam-policy-auditor.git
-cd iam-policy-auditor
+git clone https://github.com/boogy/iam-policy-validator.git
+cd iam-policy-validator
 
 # Set up development environment
 uv sync --extra dev
@@ -44,5 +44,5 @@ Be respectful and constructive. We're all here to make IAM policies more secure.
 
 ## Questions?
 
-- [GitHub Discussions](https://github.com/boogy/iam-policy-auditor/discussions)
-- [GitHub Issues](https://github.com/boogy/iam-policy-auditor/issues)
+- [GitHub Discussions](https://github.com/boogy/iam-policy-validator/discussions)
+- [GitHub Issues](https://github.com/boogy/iam-policy-validator/issues)

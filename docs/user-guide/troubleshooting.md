@@ -119,5 +119,5 @@ permissions:
 
 ## Getting Help
 
-- [:fontawesome-brands-github: GitHub Issues](https://github.com/boogy/iam-policy-auditor/issues)
-- [:fontawesome-brands-github: GitHub Discussions](https://github.com/boogy/iam-policy-auditor/discussions)
+- [:fontawesome-brands-github: GitHub Issues](https://github.com/boogy/iam-policy-validator/issues)
+- [:fontawesome-brands-github: GitHub Discussions](https://github.com/boogy/iam-policy-validator/discussions)
