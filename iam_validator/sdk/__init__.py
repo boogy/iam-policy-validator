@@ -43,30 +43,21 @@ Quick Start:
     ...         return []
 """
 
-# === High-level validation functions (shortcuts) ===
-# === AWS utilities ===
+# ruff: noqa: E402
+# Imports are organized by category with comments, which triggers E402.
+# This is intentional for readability in this public API module.
+
 from iam_validator.core.aws_service import AWSServiceFetcher
-
-# === Core validation components (for advanced usage) ===
 from iam_validator.core.check_registry import CheckRegistry, PolicyCheck
-
-# === ValidatorConfiguration ===
 from iam_validator.core.config.config_loader import (
     ValidatorConfig,
     load_validator_config,
 )
-
-# Alias for convenience (matches documentation)
-Config = ValidatorConfig
-
-# === Reporting ===
 from iam_validator.core.formatters.csv import CSVFormatter
 from iam_validator.core.formatters.html import HTMLFormatter
 from iam_validator.core.formatters.json import JSONFormatter
 from iam_validator.core.formatters.markdown import MarkdownFormatter
 from iam_validator.core.formatters.sarif import SARIFFormatter
-
-# === Models (for type hints and inspection) ===
 from iam_validator.core.models import (
     IAMPolicy,
     PolicyValidationResult,
@@ -76,23 +67,17 @@ from iam_validator.core.models import (
 from iam_validator.core.policy_checks import validate_policies
 from iam_validator.core.policy_loader import PolicyLoader
 from iam_validator.core.report import ReportGenerator
-
-# === ARN matching utilities ===
 from iam_validator.sdk.arn_matching import (
     arn_matches,
     arn_strictly_valid,
     convert_aws_pattern_to_wildcard,
     is_glob_match,
 )
-
-# === Context managers ===
 from iam_validator.sdk.context import (
     ValidationContext,
     validator,
     validator_from_config,
 )
-
-# === Public exceptions ===
 from iam_validator.sdk.exceptions import (
     AWSServiceError,
     ConfigurationError,
@@ -102,11 +87,7 @@ from iam_validator.sdk.exceptions import (
     PolicyValidationError,
     UnsupportedPolicyTypeError,
 )
-
-# === Custom check development ===
 from iam_validator.sdk.helpers import CheckHelper, expand_actions
-
-# === Policy manipulation utilities ===
 from iam_validator.sdk.policy_utils import (
     extract_actions,
     extract_condition_keys,
@@ -122,8 +103,6 @@ from iam_validator.sdk.policy_utils import (
     policy_to_dict,
     policy_to_json,
 )
-
-# === Query utilities (AWS service definition queries) ===
 from iam_validator.sdk.query_utils import (
     get_actions_by_access_level,
     get_actions_supporting_condition,
@@ -144,6 +123,9 @@ from iam_validator.sdk.shortcuts import (
     validate_file,
     validate_json,
 )
+
+# Alias for convenience (matches documentation)
+Config = ValidatorConfig
 
 __all__ = [
     # === High-level shortcuts ===
