@@ -24,6 +24,7 @@ from iam_validator.mcp.models import (
     ValidationResult,
 )
 from iam_validator.mcp.session_config import (
+    CustomInstructionsManager,
     SessionConfigManager,
     merge_conditions,
 )
@@ -55,11 +56,17 @@ def run_server() -> None:
     """Run the MCP server.
 
     This is the entry point for the iam-validator-mcp command.
-    Supports --config argument for loading configuration at startup.
+    Supports configuration and custom instructions at startup.
 
     Usage:
         iam-validator-mcp
         iam-validator-mcp --config /path/to/config.yaml
+        iam-validator-mcp --instructions "Always require MFA for sensitive actions"
+        iam-validator-mcp --instructions-file /path/to/instructions.md
+
+    Custom instructions can also be set via:
+        - Environment variable: IAM_VALIDATOR_MCP_INSTRUCTIONS
+        - Config file: custom_instructions key in YAML config
 
     Raises:
         ImportError: If fastmcp is not installed
@@ -78,9 +85,21 @@ def run_server() -> None:
         metavar="FILE",
         help="Path to configuration YAML file to load at startup",
     )
+    parser.add_argument(
+        "--instructions",
+        type=str,
+        metavar="TEXT",
+        help="Custom instructions to append to default LLM instructions",
+    )
+    parser.add_argument(
+        "--instructions-file",
+        type=str,
+        metavar="FILE",
+        help="Path to file containing custom instructions (markdown, txt)",
+    )
     args = parser.parse_args()
 
-    # Load config if provided
+    # Load config if provided (may include custom_instructions)
     if args.config:
         config_path = Path(args.config)
         if not config_path.exists():
@@ -98,6 +117,27 @@ def run_server() -> None:
         except Exception as e:
             print(f"Error loading config: {e}", file=sys.stderr)
             sys.exit(1)
+
+    # Load custom instructions from CLI arguments (overrides config/env)
+    if args.instructions_file:
+        instructions_path = Path(args.instructions_file)
+        if not instructions_path.exists():
+            print(
+                f"Error: Instructions file not found: {args.instructions_file}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        try:
+            CustomInstructionsManager.load_from_file(str(instructions_path))
+            print(f"Loaded instructions from: {args.instructions_file}", file=sys.stderr)
+        except Exception as e:
+            print(f"Error loading instructions: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    elif args.instructions:
+        CustomInstructionsManager.set_instructions(args.instructions, source="cli")
+        print("Custom instructions set from CLI argument", file=sys.stderr)
 
     try:
         from iam_validator.mcp.server import run_server as _run_server
@@ -117,5 +157,6 @@ __all__ = [
     "PolicySummary",
     "ActionDetails",
     "SessionConfigManager",
+    "CustomInstructionsManager",
     "merge_conditions",
 ]

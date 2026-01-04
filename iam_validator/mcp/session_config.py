@@ -128,6 +128,13 @@ class SessionConfigManager:
             config_dict["settings"].update(org_config)
             warnings.append("Migrated 'organization' key to 'settings'")
 
+        # Extract custom_instructions if present (MCP-specific setting)
+        if "custom_instructions" in config_dict:
+            custom_instructions = config_dict.pop("custom_instructions")
+            if isinstance(custom_instructions, str) and custom_instructions.strip():
+                CustomInstructionsManager.set_instructions(custom_instructions, source="config")
+                warnings.append("Loaded custom instructions from config")
+
         config = cls.set_config(config_dict, source="yaml")
         return config, warnings
 
@@ -195,7 +202,118 @@ def merge_conditions(
     return result
 
 
+class CustomInstructionsManager:
+    """Manages custom LLM instructions for the MCP server.
+
+    Custom instructions are appended to the default MCP server instructions,
+    allowing organizations to add their own policy generation guidelines.
+
+    Instructions can be set via:
+    - YAML config file (custom_instructions key)
+    - Environment variable (IAM_VALIDATOR_MCP_INSTRUCTIONS)
+    - CLI argument (--instructions or --instructions-file)
+    - MCP tool (set_custom_instructions)
+
+    Example YAML config:
+        custom_instructions: |
+            ## Organization-Specific Rules
+            - All policies must include aws:PrincipalOrgID condition
+            - Use resource tags for access control where possible
+            - S3 buckets must have encryption conditions
+    """
+
+    _custom_instructions: str | None = None
+    _instructions_source: str = "none"
+
+    @classmethod
+    def set_instructions(cls, instructions: str, source: str = "api") -> None:
+        """Set custom instructions.
+
+        Args:
+            instructions: Custom instructions text (markdown supported)
+            source: Source identifier ("api", "env", "file", "config")
+        """
+        stripped = instructions.strip() if instructions else ""
+        cls._custom_instructions = stripped if stripped else None
+        cls._instructions_source = source if cls._custom_instructions else "none"
+
+    @classmethod
+    def get_instructions(cls) -> str | None:
+        """Get custom instructions.
+
+        Returns:
+            Custom instructions string, or None if not set
+        """
+        return cls._custom_instructions
+
+    @classmethod
+    def get_source(cls) -> str:
+        """Get the source of custom instructions.
+
+        Returns:
+            Source identifier: "api", "env", "file", "config", or "none"
+        """
+        return cls._instructions_source
+
+    @classmethod
+    def clear_instructions(cls) -> bool:
+        """Clear custom instructions.
+
+        Returns:
+            True if instructions were cleared, False if none were set
+        """
+        had_instructions = cls._custom_instructions is not None
+        cls._custom_instructions = None
+        cls._instructions_source = "none"
+        return had_instructions
+
+    @classmethod
+    def has_instructions(cls) -> bool:
+        """Check if custom instructions are set.
+
+        Returns:
+            True if instructions are set, False otherwise
+        """
+        return cls._custom_instructions is not None
+
+    @classmethod
+    def load_from_env(cls) -> bool:
+        """Load custom instructions from environment variable.
+
+        Checks IAM_VALIDATOR_MCP_INSTRUCTIONS environment variable.
+
+        Returns:
+            True if instructions were loaded, False otherwise
+        """
+        import os
+
+        env_instructions = os.environ.get("IAM_VALIDATOR_MCP_INSTRUCTIONS")
+        if env_instructions:
+            cls.set_instructions(env_instructions, source="env")
+            return True
+        return False
+
+    @classmethod
+    def load_from_file(cls, file_path: str) -> None:
+        """Load custom instructions from a file.
+
+        Args:
+            file_path: Path to file containing instructions (markdown, txt)
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+        """
+        from pathlib import Path
+
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Instructions file not found: {file_path}")
+
+        cls.set_instructions(path.read_text(), source="file")
+
+
 __all__ = [
     "SessionConfigManager",
+    "CustomInstructionsManager",
     "merge_conditions",
 ]

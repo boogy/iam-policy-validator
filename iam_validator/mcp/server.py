@@ -104,11 +104,11 @@ def _get_cached_checks() -> tuple[dict[str, Any], ...]:
     )
 
 
-# Create the MCP server instance with lifespan
-mcp = FastMCP(
-    name="IAM Policy Validator",
-    lifespan=server_lifespan,
-    instructions="""
+# =============================================================================
+# Base Instructions (constant)
+# =============================================================================
+
+BASE_INSTRUCTIONS = """
 You are an AWS IAM security expert. Your mission: generate secure, least-privilege IAM policies that protect organizations from privilege escalation, data breaches, and unauthorized access.
 
 ## CORE SECURITY PRINCIPLES
@@ -443,7 +443,28 @@ Or for service principals:
 4. **Single string vs array**: `"Action": "s3:GetObject"` works but `["s3:GetObject"]` preferred
 
 ALWAYS validate actions exist using query_action_details or validate_policy before presenting to users.
-""",
+"""
+
+
+def get_instructions() -> str:
+    """Build full instructions including any custom instructions.
+
+    Returns:
+        Combined base instructions + custom instructions (if set)
+    """
+    from iam_validator.mcp.session_config import CustomInstructionsManager
+
+    custom = CustomInstructionsManager.get_instructions()
+    if custom:
+        return f"{BASE_INSTRUCTIONS}\n\n## ORGANIZATION-SPECIFIC INSTRUCTIONS\n\n{custom}"
+    return BASE_INSTRUCTIONS
+
+
+# Create the MCP server instance with lifespan
+mcp = FastMCP(
+    name="IAM Policy Validator",
+    lifespan=server_lifespan,
+    instructions=BASE_INSTRUCTIONS,  # Will be updated dynamically in run_server()
 )
 
 
@@ -2256,6 +2277,102 @@ async def validate_with_config(
 
 
 # =============================================================================
+# Custom Instructions Tools
+# =============================================================================
+
+
+@mcp.tool()
+async def set_custom_instructions(
+    instructions: str,
+) -> dict[str, Any]:
+    """Set custom instructions for policy generation.
+
+    Custom instructions are appended to the default MCP server instructions,
+    allowing organizations to add their own policy generation guidelines.
+
+    These instructions will influence how the AI assistant generates and
+    validates IAM policies during this session.
+
+    Args:
+        instructions: Custom instructions text (markdown supported). Examples:
+            - "All policies must include aws:PrincipalOrgID condition"
+            - "Use resource tags for access control where possible"
+            - "S3 buckets must have encryption conditions"
+
+    Returns:
+        Dictionary with:
+            - success: True if instructions were set
+            - instructions_preview: First 200 chars of the instructions
+            - previous_source: Source of any replaced instructions
+
+    Example:
+        >>> await set_custom_instructions('''
+        ... ## Organization Security Requirements
+        ... - All policies must restrict to our AWS Organization
+        ... - MFA is required for any IAM modifications
+        ... - S3 access must include secure transport conditions
+        ... ''')
+    """
+    from iam_validator.mcp.session_config import CustomInstructionsManager
+
+    previous_source = CustomInstructionsManager.get_source()
+
+    CustomInstructionsManager.set_instructions(instructions, source="api")
+
+    # Update the server instructions
+    mcp.instructions = get_instructions()
+
+    preview = instructions[:200] + "..." if len(instructions) > 200 else instructions
+
+    return {
+        "success": True,
+        "instructions_preview": preview,
+        "previous_source": previous_source,
+    }
+
+
+@mcp.tool()
+async def get_custom_instructions() -> dict[str, Any]:
+    """Get the current custom instructions.
+
+    Returns:
+        Dictionary with:
+            - has_instructions: Whether custom instructions are set
+            - instructions: The custom instructions (or None)
+            - source: Where the instructions came from (api, env, file, config, none)
+    """
+    from iam_validator.mcp.session_config import CustomInstructionsManager
+
+    instructions = CustomInstructionsManager.get_instructions()
+
+    return {
+        "has_instructions": instructions is not None,
+        "instructions": instructions,
+        "source": CustomInstructionsManager.get_source(),
+    }
+
+
+@mcp.tool()
+async def clear_custom_instructions() -> dict[str, str]:
+    """Clear custom instructions, reverting to default server instructions.
+
+    Returns:
+        Dictionary with:
+            - status: "cleared" if instructions were removed, "no_instructions_set" if none existed
+    """
+    from iam_validator.mcp.session_config import CustomInstructionsManager
+
+    had_instructions = CustomInstructionsManager.clear_instructions()
+
+    # Reset to base instructions
+    mcp.instructions = BASE_INSTRUCTIONS
+
+    return {
+        "status": "cleared" if had_instructions else "no_instructions_set",
+    }
+
+
+# =============================================================================
 # MCP Resources (Static Data - Client Cacheable)
 # =============================================================================
 
@@ -2788,8 +2905,24 @@ def run_server() -> None:
 
     This is the entry point for the iam-validator-mcp command.
     Uses stdio transport by default for Claude Desktop integration.
+
+    Custom instructions are loaded from:
+    1. Environment variable: IAM_VALIDATOR_MCP_INSTRUCTIONS
+    2. Config file: custom_instructions key in YAML config
+    3. CLI: --instructions or --instructions-file arguments
+
+    These are appended to the default instructions.
     """
+    from iam_validator.mcp.session_config import CustomInstructionsManager
+
+    # Try to load custom instructions from environment if not already set
+    if not CustomInstructionsManager.has_instructions():
+        CustomInstructionsManager.load_from_env()
+
+    # Apply custom instructions if any
+    mcp.instructions = get_instructions()
+
     mcp.run()
 
 
-__all__ = ["mcp", "create_server", "run_server"]
+__all__ = ["mcp", "create_server", "run_server", "get_instructions", "BASE_INSTRUCTIONS"]
