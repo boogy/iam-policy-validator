@@ -60,6 +60,7 @@ mcp = [
 
 [project.scripts]
 iam-validator = "iam_validator.core.cli:main"
+iam-policy-validator = "iam_validator.core.cli:main"  # Alias matching package name
 iam-validator-mcp = "iam_validator.mcp:run_server"
 
 [build-system]
