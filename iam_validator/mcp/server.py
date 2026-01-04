@@ -225,6 +225,16 @@ You are an AWS IAM security expert. Your mission: generate secure, least-privile
 5. **Cross-Account Without Controls**
    If Principal includes external accounts, require: source IP, or org restrictions
 
+## TRUST POLICY SPECIFICS
+
+Trust policies control WHO can assume a role. Key differences:
+- Principal is REQUIRED (AWS account, service, or federated user)
+- Resource is NOT used (the role itself is the resource)
+- Action is typically `sts:AssumeRole` only
+
+Use validate_policy with auto-detection - it recognizes trust policies automatically.
+For cross-account: generate_policy_from_template("cross-account-assume-role")
+
 ## HANDLING USER REQUESTS
 
 **"Give me full access to..."**
@@ -242,6 +252,26 @@ You are an AWS IAM security expert. Your mission: generate secure, least-privile
 → Stop and ask user for clarification
 → Present the specific blockers clearly
 → Suggest alternatives
+
+## EXAMPLE INTERACTIONS
+
+### Example 1: Lambda needs S3 access
+User: "Create a policy for my Lambda to read from S3 bucket my-data-bucket"
+
+Your workflow:
+1. list_templates → find "s3-read-only" template
+2. generate_policy_from_template("s3-read-only", {"bucket_name": "my-data-bucket"})
+3. validate_policy(generated_policy)
+4. Present with security_notes
+
+### Example 2: User requests overly broad access
+User: "Give me full S3 access"
+
+Your workflow:
+1. Ask: "What specific S3 operations do you need? (read, write, delete, list)"
+2. After clarification → query_service_actions("s3", access_level="read")
+3. build_minimal_policy with specific actions and resources
+4. validate_policy and present with warnings
 
 ## VALIDATION ISSUE FIELDS
 
@@ -355,12 +385,10 @@ Or for service principals:
 ```
 
 ### Common Formatting Errors to Catch
-1. **Mixed case service**: `S3:GetObject` → `s3:GetObject`
-2. **Missing Version**: Always include `"Version": "2012-10-17"`
-3. **Effect typos**: `"allow"` → `"Allow"`, `"DENY"` → `"Deny"`
-4. **Invalid ARN format**: Missing colons or wrong segment count
-5. **Action as ARN**: Actions are service:action, not ARNs
-6. **Single string vs array**: `"Action": "s3:GetObject"` works but `["s3:GetObject"]` preferred
+1. **Missing Version**: Always include `"Version": "2012-10-17"`
+2. **Effect typos**: `"allow"` → `"Allow"`, `"DENY"` → `"Deny"`
+3. **Invalid ARN format**: Missing colons or wrong segment count
+4. **Single string vs array**: `"Action": "s3:GetObject"` works but `["s3:GetObject"]` preferred
 
 ALWAYS validate actions exist using query_action_details or validate_policy before presenting to users.
 """,
@@ -1815,30 +1843,35 @@ async def query_actions_batch(actions: list[str], ctx: Context) -> dict[str, dic
         Dictionary mapping action names to their details (or None if not found).
         Each action detail contains: service, access_level, resource_types, condition_keys
     """
+    import asyncio
+
     from iam_validator.mcp.tools.query import query_action_details as _query
 
     # Use shared fetcher from context
     shared_fetcher = get_shared_fetcher(ctx)
 
-    results: dict[str, dict[str, Any] | None] = {}
-
-    for action in actions:
+    async def query_one(action: str) -> tuple[str, dict[str, Any] | None]:
+        """Query a single action and return (action, details) tuple."""
         try:
             details = await _query(action=action, fetcher=shared_fetcher)
             if details:
-                results[action] = {
-                    "service": details.service,
-                    "access_level": details.access_level,
-                    "resource_types": details.resource_types,
-                    "condition_keys": details.condition_keys,
-                    "description": details.description,
-                }
-            else:
-                results[action] = None
+                return (
+                    action,
+                    {
+                        "service": details.service,
+                        "access_level": details.access_level,
+                        "resource_types": details.resource_types,
+                        "condition_keys": details.condition_keys,
+                        "description": details.description,
+                    },
+                )
+            return (action, None)
         except Exception:
-            results[action] = None
+            return (action, None)
 
-    return results
+    # Run all queries in parallel
+    query_results = await asyncio.gather(*[query_one(action) for action in actions])
+    return dict(query_results)
 
 
 @mcp.tool()
@@ -1858,90 +1891,83 @@ async def check_actions_batch(actions: list[str], ctx: Context) -> dict[str, Any
             - invalid_actions: List of actions that don't exist (with error messages)
             - sensitive_actions: List of sensitive actions with their categories
     """
+    import asyncio
+
     from iam_validator.core.aws_service import AWSServiceFetcher
     from iam_validator.core.config.sensitive_actions import (
         SENSITIVE_ACTION_CATEGORIES,
         get_category_for_action,
     )
 
-    valid_actions: list[str] = []
-    invalid_actions: list[dict[str, str]] = []
-    sensitive_actions: list[dict[str, Any]] = []
+    async def check_one_action(
+        action: str, fetcher: AWSServiceFetcher
+    ) -> dict[str, Any]:
+        """Check a single action for validity and sensitivity."""
+        result: dict[str, Any] = {
+            "action": action,
+            "is_valid": False,
+            "error": None,
+            "sensitive": None,
+        }
+
+        # Check if action is valid
+        try:
+            if "*" in action:
+                # Wildcard - try to expand
+                expanded = await fetcher.expand_wildcard_action(action)
+                if expanded:
+                    result["is_valid"] = True
+                else:
+                    result["error"] = "No matching actions"
+            else:
+                is_valid, error, _ = await fetcher.validate_action(action)
+                if is_valid:
+                    result["is_valid"] = True
+                else:
+                    result["error"] = error or "Unknown error"
+        except Exception as e:
+            result["error"] = str(e)
+
+        # Check sensitivity (even for invalid actions - they might be typos of sensitive ones)
+        category = get_category_for_action(action)
+        if category:
+            category_data = SENSITIVE_ACTION_CATEGORIES[category]
+            result["sensitive"] = {
+                "category": category,
+                "severity": category_data["severity"],
+                "name": category_data["name"],
+            }
+
+        return result
 
     # Try to get shared fetcher from context, fall back to creating new one
     shared_fetcher = get_shared_fetcher(ctx)
     if shared_fetcher:
-        # Use shared fetcher
-        fetcher = shared_fetcher
-        for action in actions:
-            # Check if action is valid
-            if "*" in action:
-                # Wildcard - try to expand
-                try:
-                    expanded = await fetcher.expand_wildcard_action(action)
-                    if expanded:
-                        valid_actions.append(action)
-                    else:
-                        invalid_actions.append({"action": action, "error": "No matching actions"})
-                except Exception as e:
-                    invalid_actions.append({"action": action, "error": str(e)})
-            else:
-                is_valid, error, _ = await fetcher.validate_action(action)
-                if is_valid:
-                    valid_actions.append(action)
-                else:
-                    invalid_actions.append({"action": action, "error": error or "Unknown error"})
-
-            # Check sensitivity (even for invalid actions - they might be typos of sensitive ones)
-            category = get_category_for_action(action)
-            if category:
-                category_data = SENSITIVE_ACTION_CATEGORIES[category]
-                sensitive_actions.append(
-                    {
-                        "action": action,
-                        "category": category,
-                        "severity": category_data["severity"],
-                        "name": category_data["name"],
-                    }
-                )
+        # Use shared fetcher - run all checks in parallel
+        check_results = await asyncio.gather(
+            *[check_one_action(action, shared_fetcher) for action in actions]
+        )
     else:
         # Fall back to creating new fetcher
         async with AWSServiceFetcher() as fetcher:
-            for action in actions:
-                # Check if action is valid
-                if "*" in action:
-                    # Wildcard - try to expand
-                    try:
-                        expanded = await fetcher.expand_wildcard_action(action)
-                        if expanded:
-                            valid_actions.append(action)
-                        else:
-                            invalid_actions.append(
-                                {"action": action, "error": "No matching actions"}
-                            )
-                    except Exception as e:
-                        invalid_actions.append({"action": action, "error": str(e)})
-                else:
-                    is_valid, error, _ = await fetcher.validate_action(action)
-                    if is_valid:
-                        valid_actions.append(action)
-                    else:
-                        invalid_actions.append(
-                            {"action": action, "error": error or "Unknown error"}
-                        )
+            check_results = await asyncio.gather(
+                *[check_one_action(action, fetcher) for action in actions]
+            )
 
-                # Check sensitivity (even for invalid actions - they might be typos of sensitive ones)
-                category = get_category_for_action(action)
-                if category:
-                    category_data = SENSITIVE_ACTION_CATEGORIES[category]
-                    sensitive_actions.append(
-                        {
-                            "action": action,
-                            "category": category,
-                            "severity": category_data["severity"],
-                            "name": category_data["name"],
-                        }
-                    )
+    # Aggregate results
+    valid_actions: list[str] = []
+    invalid_actions: list[dict[str, str]] = []
+    sensitive_actions: list[dict[str, Any]] = []
+
+    for result in check_results:
+        action = result["action"]
+        if result["is_valid"]:
+            valid_actions.append(action)
+        elif result["error"]:
+            invalid_actions.append({"action": action, "error": result["error"]})
+
+        if result["sensitive"]:
+            sensitive_actions.append({"action": action, **result["sensitive"]})
 
     return {
         "valid_actions": valid_actions,

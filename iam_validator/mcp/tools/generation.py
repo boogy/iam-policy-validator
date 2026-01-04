@@ -5,6 +5,8 @@ explicit actions, and natural language descriptions. All generated policies
 are validated and optionally enriched with security conditions.
 """
 
+import asyncio
+import functools
 import re
 from typing import Any
 
@@ -495,6 +497,31 @@ async def build_minimal_policy(
             await _fetcher.__aexit__(None, None, None)
 
 
+@functools.lru_cache(maxsize=1)
+def _get_cached_templates() -> tuple[dict[str, Any], ...]:
+    """Build template list once, return tuple for immutability.
+
+    This helper is cached with lru_cache to avoid rebuilding
+    the template list on every call to list_templates().
+
+    Returns:
+        Tuple of template dictionaries (immutable for caching)
+    """
+    from iam_validator.mcp.templates.builtin import (
+        list_templates as get_templates_metadata,
+    )
+
+    templates_metadata = get_templates_metadata()
+    return tuple(
+        {
+            "name": tmpl["name"],
+            "description": tmpl["description"],
+            "variables": [var["name"] for var in tmpl["variables"]],
+        }
+        for tmpl in templates_metadata
+    )
+
+
 async def list_templates() -> list[dict[str, Any]]:
     """List all available policy templates with their metadata.
 
@@ -510,27 +537,7 @@ async def list_templates() -> list[dict[str, Any]]:
         ...     print(f"{tmpl['name']}: {tmpl['description']}")
         ...     print(f"  Required variables: {', '.join(tmpl['variables'])}")
     """
-    from iam_validator.mcp.templates.builtin import (
-        list_templates as get_templates_metadata,
-    )
-
-    # get_templates_metadata returns full metadata with variable dicts
-    # We simplify to just variable names for the MCP tool response
-    templates_metadata = get_templates_metadata()
-
-    result = []
-    for tmpl in templates_metadata:
-        # Extract just the variable names from the full variable definitions
-        variable_names = [var["name"] for var in tmpl["variables"]]
-        result.append(
-            {
-                "name": tmpl["name"],
-                "description": tmpl["description"],
-                "variables": variable_names,
-            }
-        )
-
-    return result
+    return list(_get_cached_templates())
 
 
 async def suggest_actions(
@@ -618,9 +625,6 @@ async def suggest_actions(
         # No service detected, return empty list
         return []
 
-    # Query actions for the service
-    suggested_actions: list[str] = []
-
     # Use provided fetcher or create a new one
     if fetcher is not None:
         # Use shared fetcher directly
@@ -633,24 +637,33 @@ async def suggest_actions(
         should_close = True
 
     try:
-        for access_level in matched_access_levels:
+        # Query all access levels in parallel for better performance
+        async def query_level(level: str) -> list[str]:
             try:
                 actions = await query_actions(
                     _fetcher,
                     service,
-                    access_level=access_level,  # type: ignore
+                    access_level=level,  # type: ignore
                 )
-                suggested_actions.extend([a["action"] for a in actions])
+                return [a["action"] for a in actions]
             except Exception:
                 # Service might not exist or other error
-                pass
+                return []
+
+        results = await asyncio.gather(
+            *[query_level(level) for level in matched_access_levels]
+        )
+        # Flatten results and deduplicate using a set
+        suggested_actions: set[str] = set()
+        for result in results:
+            suggested_actions.update(result)
     finally:
         # Clean up fetcher if we created it
         if should_close:
             await _fetcher.__aexit__(None, None, None)
 
-    # Remove duplicates and sort
-    return sorted(set(suggested_actions))
+    # Return sorted list
+    return sorted(suggested_actions)
 
 
 async def get_required_conditions(actions: list[str]) -> dict[str, Any]:
