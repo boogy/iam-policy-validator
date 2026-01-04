@@ -9,9 +9,7 @@ import re
 from typing import Any
 
 from iam_validator.core.aws_service import AWSServiceFetcher
-from iam_validator.core.config.sensitive_actions import (
-    SENSITIVE_ACTION_CATEGORIES,
-)
+from iam_validator.core.config.sensitive_actions import SENSITIVE_ACTION_CATEGORIES
 from iam_validator.mcp.models import GenerationResult, ValidationResult
 from iam_validator.sdk import query_actions
 
@@ -674,8 +672,6 @@ async def get_required_conditions(actions: list[str]) -> dict[str, Any]:
         >>> conditions = await get_required_conditions(["iam:PassRole", "s3:GetObject"])
         >>> print(conditions["summary"])
     """
-    import re
-
     from iam_validator.core.config.condition_requirements import CONDITION_REQUIREMENTS
 
     matched_requirements: list[dict[str, Any]] = []
