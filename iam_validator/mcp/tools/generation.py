@@ -516,7 +516,14 @@ def _get_cached_templates() -> tuple[dict[str, Any], ...]:
         {
             "name": tmpl["name"],
             "description": tmpl["description"],
-            "variables": [var["name"] for var in tmpl["variables"]],
+            "variables": [
+                {
+                    "name": var["name"],
+                    "description": var["description"],
+                    "required": var.get("required", True),
+                }
+                for var in tmpl["variables"]
+            ],
         }
         for tmpl in templates_metadata
     )
@@ -527,15 +534,19 @@ async def list_templates() -> list[dict[str, Any]]:
 
     Returns:
         List of template dictionaries, each containing:
-            - name: Template identifier
+            - name: Template identifier (use with generate_policy_from_template)
             - description: Human-readable description
-            - variables: List of variable names (strings)
+            - variables: List of variable objects with:
+                - name: Variable name to use in the variables dict
+                - description: What value to provide
+                - required: Whether the variable is required
 
     Example:
         >>> templates = await list_templates()
         >>> for tmpl in templates:
         ...     print(f"{tmpl['name']}: {tmpl['description']}")
-        ...     print(f"  Required variables: {', '.join(tmpl['variables'])}")
+        ...     for var in tmpl['variables']:
+        ...         print(f"  - {var['name']}: {var['description']}")
     """
     return list(_get_cached_templates())
 

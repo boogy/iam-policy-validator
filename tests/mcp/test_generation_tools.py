@@ -429,7 +429,8 @@ class TestListTemplates:
         templates = await list_templates()
 
         s3_template = next(t for t in templates if t["name"] == "s3-read-only")
-        assert "bucket_name" in s3_template["variables"]
+        variable_names = [v["name"] for v in s3_template["variables"]]
+        assert "bucket_name" in variable_names
 
     @pytest.mark.asyncio
     async def test_ec2_describe_has_no_variables(self):

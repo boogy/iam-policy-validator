@@ -132,15 +132,15 @@ You are an AWS IAM security expert. Your mission: generate secure, least-privile
 
 ⛔ **HARD LIMIT: Maximum 2 validate_policy calls per policy request**
 
-After 2 validations, you MUST present the policy to the user regardless of remaining issues.
+After 2 validations, you MUST present the policy to the user regardless of remaining issues but listing them to the user and asking for futher instructions.
 Warnings (high/medium/low) are INFORMATIONAL - present them, don't try to fix them.
 
 ### What to Fix vs Present
 
-| Severity | What to do |
-|----------|------------|
-| error | Fix it - policy won't work in AWS |
-| critical | Fix it - severe security risk |
+| Severity                | What to do                                       |
+| ----------------------- | ------------------------------------------------ |
+| error                   | Fix it - policy won't work in AWS                |
+| critical                | Fix it - severe security risk                    |
 | high/medium/low/warning | **STOP** - Present policy with these as warnings |
 
 ### Workflow (STRICT)
@@ -566,35 +566,46 @@ async def generate_policy_from_template(
 ) -> dict[str, Any]:
     """Generate an IAM policy from a built-in template.
 
-    Loads a pre-defined policy template and substitutes variables to create
-    a customized policy. The generated policy is validated automatically using
-    the IAM validator's built-in checks.
+    IMPORTANT: Call list_templates first to see available templates and their
+    required variables with descriptions.
 
     Args:
-        template_name: Name of the template. Available templates:
-            - s3-read-only: S3 bucket read-only access
-            - s3-read-write: S3 bucket read-write access
-            - lambda-basic-execution: Basic Lambda execution role
-            - lambda-s3-trigger: Lambda with S3 event trigger permissions
-            - dynamodb-crud: DynamoDB table CRUD operations
-            - cloudwatch-logs: CloudWatch Logs write permissions
-            - secrets-manager-read: Secrets Manager read access
-            - kms-encrypt-decrypt: KMS key encryption/decryption
-            - ec2-describe: EC2 describe-only permissions
-            - ecs-task-execution: ECS task execution role
-            - sqs-consumer: SQS queue consumer permissions
-            - sns-publisher: SNS topic publisher permissions
-            - step-functions-execution: Step Functions state machine execution
-            - api-gateway-invoke: API Gateway invoke permissions
-            - cross-account-assume-role: Cross-account role assumption trust policy
-        variables: Dictionary of variable values to substitute (use list_templates to see required vars)
+        template_name: Template name from list_templates. Common templates:
+            - s3-read-only: Read from S3 bucket
+            - s3-read-write: Read/write to S3 bucket
+            - lambda-basic-execution: Basic Lambda with CloudWatch logs
+            - lambda-s3-trigger: Lambda triggered by S3 events
+            - dynamodb-crud: DynamoDB table operations
+            - cloudwatch-logs: Write to CloudWatch Logs
+        variables: Dictionary of variable values. Get required variables from
+            list_templates. Common variables:
+            - bucket_name: S3 bucket name (without arn: prefix)
+            - function_name: Lambda function name
+            - table_name: DynamoDB table name
+            - account_id: 12-digit AWS account ID
+            - region: AWS region (e.g., us-east-1)
 
     Returns:
         Dictionary with:
-            - policy: The generated IAM policy
-            - validation: Validation results from built-in checks
-            - security_notes: Security warnings from validation
-            - template_used: Name of the template used
+            - policy: The generated IAM policy (ready to use)
+            - validation: Validation results with any issues found
+            - security_notes: Security warnings to review
+            - template_used: Template name for reference
+
+    Example:
+        # First check what variables lambda-s3-trigger needs:
+        templates = await list_templates()
+
+        # Then generate with all required variables:
+        result = await generate_policy_from_template(
+            template_name="lambda-s3-trigger",
+            variables={
+                "bucket_name": "my-bucket",
+                "function_name": "my-function",
+                "account_id": "123456789012",
+                "region": "us-east-1"
+            }
+        )
     """
     from iam_validator.mcp.tools.generation import (
         generate_policy_from_template as _generate,
@@ -672,13 +683,19 @@ async def build_minimal_policy(
 
 @mcp.tool()
 async def list_templates() -> list[dict[str, Any]]:
-    """List all available policy templates with their metadata.
+    """List all available policy templates with their required variables.
+
+    IMPORTANT: Always call this BEFORE generate_policy_from_template to see
+    what variables each template requires.
 
     Returns:
         List of template dictionaries, each containing:
-            - name: Template identifier
-            - description: Human-readable description
-            - variables: List of required variable names
+            - name: Template identifier (pass to generate_policy_from_template)
+            - description: What the template does
+            - variables: List of required variables with:
+                - name: Variable name (key for the variables dict)
+                - description: What value to provide (e.g., "AWS account ID (12-digit number)")
+                - required: Whether the variable must be provided
     """
     from iam_validator.mcp.tools.generation import list_templates as _list_templates
 
