@@ -135,7 +135,7 @@ _iam_validator_completion() {{
     prev="${{COMP_WORDS[COMP_CWORD-1]}}"
 
     # Main commands
-    local commands="validate post-to-pr analyze cache sync-services query completion"
+    local commands="validate post-to-pr analyze cache sync-services query completion mcp"
 
     # Get the command (first non-option argument)
     local cmd=""
@@ -186,7 +186,7 @@ _iam_validator_completion() {{
             COMPREPLY=( $(compgen -f -- "$cur") )
             return 0
             ;;
-        --resource-type|--condition|--name|--batch-size)
+        --resource-type|--condition|--name|--batch-size|--host|--port)
             # Allow any input
             return 0
             ;;
@@ -194,7 +194,22 @@ _iam_validator_completion() {{
             COMPREPLY=( $(compgen -W "bash zsh" -- "$cur") )
             return 0
             ;;
+        --transport)
+            COMPREPLY=( $(compgen -W "stdio sse" -- "$cur") )
+            return 0
+            ;;
+        --config)
+            # File completion for config
+            COMPREPLY=( $(compgen -f -- "$cur") )
+            return 0
+            ;;
     esac
+
+    # Handle cache list --format specifically
+    if [[ "$cmd" == "cache" && "$prev" == "--format" ]]; then
+        COMPREPLY=( $(compgen -W "table columns simple" -- "$cur") )
+        return 0
+    fi
 
     # Command-specific completions
     case "$cmd" in
@@ -276,11 +291,25 @@ _iam_validator_completion() {{
                 COMPREPLY=( $(compgen -W "info list clear refresh prefetch location" -- "$cur") )
                 return 0
             fi
-            # Cache subcommands have no additional options
+
+            # Cache subcommand-specific options
+            case "$cache_subcmd" in
+                list)
+                    COMPREPLY=( $(compgen -W "--config --format" -- "$cur") )
+                    ;;
+                info|clear|refresh|prefetch|location)
+                    COMPREPLY=( $(compgen -W "--config" -- "$cur") )
+                    ;;
+            esac
             return 0
             ;;
         sync-services)
             opts="--output-dir --max-concurrent"
+            COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+            return 0
+            ;;
+        mcp)
+            opts="--transport --host --port --verbose -v --config"
             COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
             return 0
             ;;
@@ -414,8 +443,26 @@ _iam_validator() {{
                         '(--verbose -v)'{{--verbose,-v}}'[Enable verbose logging]'
                     ;;
                 cache)
-                    _arguments \\
-                        '1: :(info list clear refresh prefetch location)'
+                    local cache_state
+                    _arguments -C \\
+                        '1: :_iam_validator_cache_subcommands' \\
+                        '*::arg:->cache_args' && return 0
+
+                    case $state in
+                        cache_args)
+                            case $words[1] in
+                                info|clear|refresh|prefetch|location)
+                                    _arguments \\
+                                        '--config[Configuration file]:file:_files'
+                                    ;;
+                                list)
+                                    _arguments \\
+                                        '--config[Configuration file]:file:_files' \\
+                                        '--format[Output format]:format:(table columns simple)'
+                                    ;;
+                            esac
+                            ;;
+                    esac
                     ;;
                 sync-services)
                     _arguments \\
@@ -425,6 +472,14 @@ _iam_validator() {{
                 completion)
                     _arguments \\
                         '1: :(bash zsh)'
+                    ;;
+                mcp)
+                    _arguments \\
+                        '--transport[Transport protocol]:transport:(stdio sse)' \\
+                        '--host[Host for SSE transport]:host:' \\
+                        '--port[Port for SSE transport]:port:' \\
+                        '(--verbose -v)'{{--verbose,-v}}'[Enable verbose logging]' \\
+                        '--config[Path to configuration YAML file]:file:_files'
                     ;;
             esac
             ;;
@@ -441,6 +496,7 @@ _iam_validator_commands() {{
         'sync-services:Sync/download all AWS service definitions for offline use'
         'query:Query AWS service definitions (actions, ARNs, condition keys)'
         'completion:Generate shell completion scripts (bash or zsh)'
+        'mcp:Start MCP server for AI assistant integration'
     )
     _describe 'command' commands
 }}
@@ -453,6 +509,19 @@ _iam_validator_query_subcommands() {{
         'condition:Query condition keys'
     )
     _describe 'query subcommand' subcommands
+}}
+
+_iam_validator_cache_subcommands() {{
+    local -a subcommands
+    subcommands=(
+        'info:Show cache information and statistics'
+        'list:List all cached AWS services'
+        'clear:Clear all cached AWS service definitions'
+        'refresh:Clear cache and pre-fetch common services'
+        'prefetch:Pre-fetch common AWS services (without clearing)'
+        'location:Show cache directory location'
+    )
+    _describe 'cache subcommand' subcommands
 }}
 
 _iam_validator "$@"

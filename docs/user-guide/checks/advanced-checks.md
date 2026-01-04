@@ -11,7 +11,7 @@ These 3 checks provide advanced validation for condition enforcement and trust p
 
 Enforces required conditions for specific actions.
 
-**Severity:** `high`
+**Severity:** `error`
 
 ### Why It Matters
 
@@ -66,7 +66,7 @@ action_condition_enforcement:
 
 Validates actions are compatible with resource types.
 
-**Severity:** `warning`
+**Severity:** `medium`
 
 ### What It Checks
 
@@ -102,7 +102,7 @@ Validates actions are compatible with resource types.
 
 Validates IAM role trust policies.
 
-**Severity:** `error`
+**Severity:** `high`
 
 ### What It Checks
 

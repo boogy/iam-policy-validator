@@ -15,11 +15,34 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from iam_validator.core.aws_service import AWSServiceFetcher
+from iam_validator.core.config.check_documentation import CheckDocumentationRegistry
 from iam_validator.core.ignore_patterns import IgnorePatternMatcher
 from iam_validator.core.models import Statement, ValidationIssue
 
 if TYPE_CHECKING:
     from iam_validator.core.models import IAMPolicy
+
+
+def _inject_documentation(issue: ValidationIssue, check_id: str) -> None:
+    """Inject documentation fields from CheckDocumentationRegistry into an issue.
+
+    This populates risk_explanation, documentation_url, remediation_steps, and
+    risk_category from the centralized documentation registry if not already set.
+
+    Args:
+        issue: The validation issue to enhance
+        check_id: The check ID to look up documentation for
+    """
+    doc = CheckDocumentationRegistry.get(check_id)
+    if doc:
+        if issue.risk_explanation is None:
+            issue.risk_explanation = doc.risk_explanation
+        if issue.documentation_url is None:
+            issue.documentation_url = doc.documentation_url
+        if issue.remediation_steps is None:
+            issue.remediation_steps = doc.remediation_steps
+        if issue.risk_category is None:
+            issue.risk_category = doc.risk_category
 
 
 @dataclass
@@ -425,10 +448,11 @@ class CheckRegistry:
                 config = self.get_config(check.check_id)
                 if config:
                     issues = await check.execute(statement, statement_idx, fetcher, config)
-                    # Inject check_id into each issue
+                    # Inject check_id and documentation into each issue
                     for issue in issues:
                         if issue.check_id is None:
                             issue.check_id = check.check_id
+                        _inject_documentation(issue, check.check_id)
                     # Filter issues based on ignore_patterns
                     filtered_issues = [
                         issue for issue in issues if not config.should_ignore(issue, filepath)
@@ -459,10 +483,11 @@ class CheckRegistry:
             elif isinstance(result, list):
                 check = enabled_checks[idx]
                 config = configs[idx]
-                # Inject check_id into each issue
+                # Inject check_id and documentation into each issue
                 for issue in result:
                     if issue.check_id is None:
                         issue.check_id = check.check_id
+                    _inject_documentation(issue, check.check_id)
                 # Filter issues based on ignore_patterns
                 filtered_issues = [
                     issue for issue in result if not config.should_ignore(issue, filepath)
@@ -551,10 +576,11 @@ class CheckRegistry:
                             policy_type=policy_type,
                             **kwargs,
                         )
-                        # Inject check_id into each issue
+                        # Inject check_id and documentation into each issue
                         for issue in issues:
                             if issue.check_id is None:
                                 issue.check_id = check.check_id
+                            _inject_documentation(issue, check.check_id)
                         # Filter issues based on ignore_patterns
                         filtered_issues = [
                             issue
@@ -590,10 +616,11 @@ class CheckRegistry:
             elif isinstance(result, list):
                 check = policy_level_checks[idx]
                 config = configs[idx]
-                # Inject check_id into each issue
+                # Inject check_id and documentation into each issue
                 for issue in result:
                     if issue.check_id is None:
                         issue.check_id = check.check_id
+                    _inject_documentation(issue, check.check_id)
                 # Filter issues based on ignore_patterns
                 filtered_issues = [
                     issue for issue in result if not config.should_ignore(issue, policy_file)
@@ -655,6 +682,9 @@ def create_default_registry(
         registry.register(checks.WildcardResourceCheck())  # Wildcard resource detection
         registry.register(checks.FullWildcardCheck())  # Full wildcard (*) detection
         registry.register(checks.ServiceWildcardCheck())  # Service-level wildcard detection
+        registry.register(
+            checks.NotActionNotResourceCheck()
+        )  # NotAction/NotResource pattern detection
 
         # 6. SECURITY - ADVANCED (Sensitive actions and condition enforcement)
         registry.register(

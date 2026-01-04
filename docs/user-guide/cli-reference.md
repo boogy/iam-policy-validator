@@ -9,15 +9,16 @@ Complete documentation for the `iam-validator` command-line interface.
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `validate` | Validate IAM policies |
-| `analyze` | AWS Access Analyzer integration |
-| `post-to-pr` | Post results to GitHub PR |
-| `query` | Query AWS service definitions |
-| `cache` | Manage AWS service cache |
-| `download-services` | Download AWS definitions for offline use |
-| `completion` | Generate shell completion scripts |
+| Command             | Description                                   |
+| ------------------- | --------------------------------------------- |
+| `validate`          | Validate IAM policies                         |
+| `analyze`           | AWS Access Analyzer integration               |
+| `post-to-pr`        | Post results to GitHub PR                     |
+| `query`             | Query AWS service definitions                 |
+| `cache`             | Manage AWS service cache                      |
+| `download-services` | Download AWS definitions for offline use      |
+| `completion`        | Generate shell completion scripts             |
+| `mcp`               | Start MCP server for AI assistant integration |
 
 ## validate
 
@@ -31,14 +32,14 @@ iam-validator validate [OPTIONS]
 
 ### Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--path`, `-p` | Path to policy file or directory | Required |
-| `--config`, `-c` | Path to configuration file | Auto-detect |
-| `--format`, `-f` | Output format | `console` |
-| `--policy-type` | Policy type | `IDENTITY_POLICY` |
-| `--fail-on-warnings` | Fail on warnings | `false` |
-| `--verbose`, `-v` | Verbose output | `false` |
+| Option               | Description                      | Default           |
+| -------------------- | -------------------------------- | ----------------- |
+| `--path`, `-p`       | Path to policy file or directory | Required          |
+| `--config`, `-c`     | Path to configuration file       | Auto-detect       |
+| `--format`, `-f`     | Output format                    | `console`         |
+| `--policy-type`      | Policy type                      | `IDENTITY_POLICY` |
+| `--fail-on-warnings` | Fail on warnings                 | `false`           |
+| `--verbose`, `-v`    | Verbose output                   | `false`           |
 
 ### Examples
 
@@ -61,15 +62,15 @@ iam-validator validate --path trust-policy.json --policy-type TRUST_POLICY
 
 ### Output Formats
 
-| Format | Description |
-|--------|-------------|
-| `console` | Rich terminal output (default) |
-| `enhanced` | Colorful detailed output |
-| `json` | Machine-readable JSON |
-| `sarif` | SARIF for security tools |
-| `markdown` | Markdown report |
-| `html` | HTML report |
-| `csv` | CSV export |
+| Format     | Description                    |
+| ---------- | ------------------------------ |
+| `console`  | Rich terminal output (default) |
+| `enhanced` | Colorful detailed output       |
+| `json`     | Machine-readable JSON          |
+| `sarif`    | SARIF for security tools       |
+| `markdown` | Markdown report                |
+| `html`     | HTML report                    |
+| `csv`      | CSV export                     |
 
 ## query
 
@@ -158,18 +159,53 @@ eval "$(iam-validator completion zsh)"
 iam-validator completion fish | source
 ```
 
+## mcp
+
+Start an MCP (Model Context Protocol) server for AI assistant integration.
+
+### Usage
+
+```bash
+iam-validator mcp [OPTIONS]
+```
+
+### Options
+
+| Option            | Description                           | Default     |
+| ----------------- | ------------------------------------- | ----------- |
+| `--transport`     | Transport protocol (`stdio` or `sse`) | `stdio`     |
+| `--host`          | Host for SSE transport                | `127.0.0.1` |
+| `--port`          | Port for SSE transport                | `8000`      |
+| `--config`        | Path to configuration YAML file       | None        |
+| `--verbose`, `-v` | Enable verbose logging                | `false`     |
+
+### Examples
+
+```bash
+# Start with stdio transport (for Claude Desktop)
+iam-validator mcp
+
+# Start with SSE transport
+iam-validator mcp --transport sse --host 127.0.0.1 --port 8000
+
+# Start with config preloaded
+iam-validator mcp --config ./config.yaml
+```
+
+See the [MCP Server Integration](../integrations/mcp-server.md) guide for detailed setup instructions.
+
 ## Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success - all policies valid |
-| 1 | Validation errors found |
-| 2 | Configuration or input error |
+| Code | Meaning                      |
+| ---- | ---------------------------- |
+| 0    | Success - all policies valid |
+| 1    | Validation errors found      |
+| 2    | Configuration or input error |
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `IAM_VALIDATOR_CONFIG` | Default config file path |
+| Variable                  | Description              |
+| ------------------------- | ------------------------ |
+| `IAM_VALIDATOR_CONFIG`    | Default config file path |
 | `IAM_VALIDATOR_CACHE_DIR` | Cache directory location |
-| `NO_COLOR` | Disable colored output |
+| `NO_COLOR`                | Disable colored output   |

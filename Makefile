@@ -1,4 +1,4 @@
-.PHONY: help install dev clean test lint format ruff type-check build publish publish-test version sync-defaults
+.PHONY: help install dev clean test lint format ruff type-check build publish publish-test version sync-defaults docs docs-serve mcp-inspector
 
 # Default target
 help:
@@ -26,6 +26,13 @@ help:
 	@echo ""
 	@echo "Examples:"
 	@echo "  make validate-example Run validator on example policies"
+	@echo ""
+	@echo "Documentation:"
+	@echo "  make docs             Build documentation"
+	@echo "  make docs-serve       Serve documentation locally (http://localhost:8000)"
+	@echo ""
+	@echo "MCP Server:"
+	@echo "  make mcp-inspector    Start MCP Inspector for debugging"
 	@echo ""
 	@echo "AWS Services Backup:"
 	@echo "  make download-aws-services Download all AWS service definitions"
@@ -121,3 +128,14 @@ download-aws-services:
 # CI/CD simulation
 ci: check build
 	@echo "✓ CI checks complete!"
+
+# Documentation
+docs:
+	@uv run --extra docs mkdocs build
+
+docs-serve:
+	@uv run --extra docs mkdocs serve
+
+# MCP Server debugging
+mcp-inspector:
+	@npx @modelcontextprotocol/inspector uv run --directory $(CURDIR) --extra mcp iam-validator-mcp

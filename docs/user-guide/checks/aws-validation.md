@@ -172,7 +172,7 @@ Validates required policy elements are present and valid.
 
 Checks policy doesn't exceed AWS size limits.
 
-**Severity:** `warning`
+**Severity:** `error`
 
 ### Size Limits
 
@@ -219,7 +219,7 @@ Validates Statement IDs (SIDs) are unique within a policy.
 
 Validates condition operators match value types.
 
-**Severity:** `warning`
+**Severity:** `error`
 
 ### What It Checks
 
@@ -234,7 +234,7 @@ Validates condition operators match value types.
 
 Validates ForAllValues and ForAnyValue operators are used correctly.
 
-**Severity:** `warning`
+**Severity:** `error`
 
 ### What It Checks
 

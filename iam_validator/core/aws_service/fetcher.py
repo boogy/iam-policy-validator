@@ -421,6 +421,73 @@ class AWSServiceFetcher:
         service_detail = await self.fetch_service_by_name(service_prefix)
         return await self._validator.validate_action(action, service_detail, allow_wildcards)
 
+    async def validate_actions_batch(
+        self,
+        actions: list[str],
+        allow_wildcards: bool = True,
+    ) -> dict[str, tuple[bool, str | None, bool]]:
+        """Validate multiple IAM actions efficiently in batch.
+
+        Groups actions by service prefix and fetches each service definition once,
+        reducing network overhead when validating multiple actions.
+
+        Args:
+            actions: List of full action strings (e.g., ["s3:GetObject", "iam:CreateUser"])
+            allow_wildcards: Whether to allow wildcard actions
+
+        Returns:
+            Dictionary mapping action -> (is_valid, error_message, is_wildcard)
+
+        Example:
+            >>> async with AWSServiceFetcher() as fetcher:
+            ...     results = await fetcher.validate_actions_batch([
+            ...         "s3:GetObject",
+            ...         "s3:PutObject",
+            ...         "iam:CreateUser"
+            ...     ])
+            ...     for action, (is_valid, error, is_wildcard) in results.items():
+            ...         if not is_valid:
+            ...             print(f"Invalid: {action} - {error}")
+        """
+        if not actions:
+            return {}
+
+        # Group actions by service prefix
+        service_actions: dict[str, list[str]] = {}
+        for action in actions:
+            service_prefix, _ = self._parser.parse_action(action)
+            if service_prefix not in service_actions:
+                service_actions[service_prefix] = []
+            service_actions[service_prefix].append(action)
+
+        # Fetch all service definitions in parallel
+        service_details: dict[str, ServiceDetail] = {}
+        fetch_tasks = [self.fetch_service_by_name(service) for service in service_actions.keys()]
+        fetched = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+
+        for service, result in zip(service_actions.keys(), fetched):
+            if isinstance(result, BaseException):
+                # Store None to indicate fetch failure
+                service_details[service] = None  # type: ignore
+            else:
+                service_details[service] = result
+
+        # Validate all actions using cached service details
+        results: dict[str, tuple[bool, str | None, bool]] = {}
+        for action in actions:
+            service_prefix, _ = self._parser.parse_action(action)
+            service_detail = service_details.get(service_prefix)
+
+            if service_detail is None:
+                # Service fetch failed
+                results[action] = (False, f"Failed to fetch service '{service_prefix}'", False)
+            else:
+                results[action] = await self._validator.validate_action(
+                    action, service_detail, allow_wildcards
+                )
+
+        return results
+
     def validate_arn(self, arn: str) -> tuple[bool, str | None]:
         """Validate ARN format.
 

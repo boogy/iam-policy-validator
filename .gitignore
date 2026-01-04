@@ -84,3 +84,6 @@ coverage.xml
 
 # AWS service definitions (download with: iam-validator download-services)
 aws_services/
+
+.mcp.json
+.serena
