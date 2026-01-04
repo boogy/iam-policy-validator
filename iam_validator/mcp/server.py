@@ -1899,9 +1899,7 @@ async def check_actions_batch(actions: list[str], ctx: Context) -> dict[str, Any
         get_category_for_action,
     )
 
-    async def check_one_action(
-        action: str, fetcher: AWSServiceFetcher
-    ) -> dict[str, Any]:
+    async def check_one_action(action: str, fetcher: AWSServiceFetcher) -> dict[str, Any]:
         """Check a single action for validity and sensitivity."""
         result: dict[str, Any] = {
             "action": action,

@@ -650,9 +650,7 @@ async def suggest_actions(
                 # Service might not exist or other error
                 return []
 
-        results = await asyncio.gather(
-            *[query_level(level) for level in matched_access_levels]
-        )
+        results = await asyncio.gather(*[query_level(level) for level in matched_access_levels])
         # Flatten results and deduplicate using a set
         suggested_actions: set[str] = set()
         for result in results:
