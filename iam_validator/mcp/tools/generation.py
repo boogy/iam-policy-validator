@@ -746,7 +746,11 @@ def _get_remediation_for_action(action: str, category: str) -> dict[str, Any]:
             "why_dangerous": "Can expose credentials that allow access to AWS resources",
             "recommended_conditions": [
                 {"condition": "aws:MultiFactorAuthPresent", "operator": "Bool", "value": "true"},
-                {"condition": "aws:SourceIp", "operator": "IpAddress", "value": "<your-corporate-ip-range>"},
+                {
+                    "condition": "aws:SourceIp",
+                    "operator": "IpAddress",
+                    "value": "<your-corporate-ip-range>",
+                },
             ],
             "mitigation_steps": [
                 "Require MFA for all credential operations",
@@ -760,7 +764,11 @@ def _get_remediation_for_action(action: str, category: str) -> dict[str, Any]:
             "why_dangerous": "Can grant additional permissions beyond what the user currently has",
             "recommended_conditions": [
                 {"condition": "aws:MultiFactorAuthPresent", "operator": "Bool", "value": "true"},
-                {"condition": "aws:PrincipalTag/<role>", "operator": "StringEquals", "value": "admin"},
+                {
+                    "condition": "aws:PrincipalTag/<role>",
+                    "operator": "StringEquals",
+                    "value": "admin",
+                },
             ],
             "mitigation_steps": [
                 "Require MFA for all IAM modifications",
@@ -786,7 +794,11 @@ def _get_remediation_for_action(action: str, category: str) -> dict[str, Any]:
             "risk_level": "HIGH",
             "why_dangerous": "Can modify resource policies to grant unintended access",
             "recommended_conditions": [
-                {"condition": "aws:CalledVia", "operator": "StringEquals", "value": "<expected-service>"},
+                {
+                    "condition": "aws:CalledVia",
+                    "operator": "StringEquals",
+                    "value": "<expected-service>",
+                },
             ],
             "mitigation_steps": [
                 "Restrict to specific resources (no wildcards)",
@@ -815,7 +827,11 @@ def _get_remediation_for_action(action: str, category: str) -> dict[str, Any]:
     elif "sts:assumerole" in action_lower:
         remediation["recommended_conditions"] = [
             {"condition": "aws:SourceArn", "operator": "ArnLike", "value": "arn:aws:*:<account>:*"},
-            {"condition": "sts:ExternalId", "operator": "StringEquals", "value": "<unique-external-id>"},
+            {
+                "condition": "sts:ExternalId",
+                "operator": "StringEquals",
+                "value": "<unique-external-id>",
+            },
         ]
         remediation["specific_guidance"] = (
             "For cross-account access, require ExternalId. For service principals, use aws:SourceArn"
@@ -829,7 +845,11 @@ def _get_remediation_for_action(action: str, category: str) -> dict[str, Any]:
         )
     elif "kms:" in action_lower:
         remediation["recommended_conditions"].append(
-            {"condition": "kms:ViaService", "operator": "StringEquals", "value": "<service>.<region>.amazonaws.com"}
+            {
+                "condition": "kms:ViaService",
+                "operator": "StringEquals",
+                "value": "<service>.<region>.amazonaws.com",
+            }
         )
         remediation["specific_guidance"] = (
             "Restrict KMS operations to specific AWS services using kms:ViaService"
@@ -839,9 +859,7 @@ def _get_remediation_for_action(action: str, category: str) -> dict[str, Any]:
     if remediation.get("recommended_conditions"):
         first_cond = remediation["recommended_conditions"][0]
         remediation["condition_example"] = {
-            "Condition": {
-                first_cond["operator"]: {first_cond["condition"]: first_cond["value"]}
-            }
+            "Condition": {first_cond["operator"]: {first_cond["condition"]: first_cond["value"]}}
         }
 
     return remediation
