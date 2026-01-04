@@ -8,7 +8,7 @@ authors = [{ name = "boogy", email = "0xboogy@gmail.com" }]
 license = { text = "MIT" }
 keywords = ["aws", "iam", "policy", "security", "validation", "github-action"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
     "License :: OSI Approved :: MIT License",
