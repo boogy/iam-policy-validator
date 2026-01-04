@@ -2051,32 +2051,35 @@ async def check_actions_batch(actions: list[str], ctx: Context) -> dict[str, Any
 async def set_organization_config(
     config: dict[str, Any],
 ) -> dict[str, Any]:
-    """Set organization-wide configuration for this MCP session.
+    """Set validator configuration for this MCP session.
 
-    The configuration will apply to all subsequent validation and generation
-    operations until cleared or updated. This allows enforcing organization
-    policies across multiple tool calls.
+    The configuration uses the same format as the iam-validator YAML config files.
+    It applies to all subsequent validation operations until cleared or updated.
 
     Args:
-        config: Organization configuration with optional keys:
-            - allowed_services: List of allowed AWS services (null = all allowed)
-            - blocked_services: List of blocked AWS services (e.g., ["iam", "sts"])
-            - blocked_actions: List of blocked IAM actions (supports wildcards like "iam:*")
-            - required_conditions: Conditions to enforce on all policies
-            - check_overrides: Override settings for specific validation checks
-            - ignore_patterns: Patterns to ignore during validation
-            - fail_on_severity: Severity levels that cause validation to fail
+        config: Validator configuration dictionary with:
+            - settings: Global settings
+                - fail_on_severity: List of severities that cause failure
+                  (e.g., ["error", "critical", "high"])
+                - parallel_execution: Enable parallel check execution (default: true)
+                - fail_fast: Stop on first error (default: false)
+            - Check IDs as keys with configuration:
+                - enabled: Enable/disable the check (default: true)
+                - severity: Override check severity (error|critical|high|medium|low|warning)
+                - ignore_patterns: Patterns to skip (see docs for pattern syntax)
 
     Returns:
         Dictionary with:
             - success: Whether config was set successfully
-            - applied_config: The effective configuration that was applied
-            - warnings: Any configuration warnings (e.g., unknown keys)
+            - applied_config: The effective configuration (settings + checks)
+            - warnings: Any configuration warnings
 
     Example:
         >>> result = await set_organization_config({
-        ...     "blocked_services": ["iam", "sts"],
-        ...     "required_conditions": {"Bool": {"aws:SecureTransport": "true"}}
+        ...     "settings": {"fail_on_severity": ["error", "critical"]},
+        ...     "wildcard_action": {"enabled": True, "severity": "critical"},
+        ...     "sensitive_action": {"enabled": True, "severity": "high"},
+        ...     "policy_size": {"enabled": False}  # Disable a check
         ... })
     """
     from iam_validator.mcp.tools.org_config_tools import set_organization_config_impl
@@ -2119,27 +2122,37 @@ async def clear_organization_config() -> dict[str, str]:
 async def load_organization_config_from_yaml(
     yaml_content: str,
 ) -> dict[str, Any]:
-    """Load organization configuration from YAML content.
+    """Load validator configuration from YAML content.
 
-    Parses YAML configuration and sets it as the session organization config.
-    Supports the same format as iam-validator.yaml configuration files.
+    Parses YAML configuration and sets it as the session config.
+    Uses the same format as iam-validator.yaml configuration files.
 
     Args:
         yaml_content: YAML configuration string. Example:
-            allowed_services:
-              - s3
-              - lambda
-              - dynamodb
-            blocked_services:
-              - iam
-            required_conditions:
-              Bool:
-                aws:SecureTransport: "true"
+            settings:
+              fail_on_severity:
+                - error
+                - critical
+                - high
+
+            # Enable/disable/configure specific checks
+            wildcard_action:
+              enabled: true
+              severity: critical
+
+            sensitive_action:
+              enabled: true
+              severity: high
+              ignore_patterns:
+                - action: "^s3:Get.*"  # Ignore S3 read actions
+
+            policy_size:
+              enabled: false  # Disable this check
 
     Returns:
         Dictionary with:
             - success: Whether config was loaded successfully
-            - applied_config: The effective configuration that was applied
+            - applied_config: The effective configuration (settings + checks)
             - warnings: Any warnings (unknown keys, etc.)
             - error: Error message if loading failed
     """
@@ -2154,26 +2167,24 @@ async def load_organization_config_from_yaml(
 async def check_org_compliance(
     policy: dict[str, Any],
 ) -> dict[str, Any]:
-    """Check if a policy complies with the current organization configuration.
+    """Validate a policy using the current session configuration.
 
-    Performs compliance checks against the session organization config:
-    - Service allowlist/blocklist verification
-    - Action restriction checks
-    - Required condition presence validation
+    Runs the full IAM validator with the session configuration applied.
+    This includes all enabled checks with their configured severity levels
+    and ignore patterns.
 
-    This tool only checks organization rules, not AWS IAM validity.
-    Use validate_policy for full validation including AWS checks.
+    If no session config is set, uses default validator settings.
 
     Args:
         policy: IAM policy as a dictionary
 
     Returns:
         Dictionary with:
-            - compliant: Overall compliance status (True if no violations)
-            - has_org_config: Whether an org config is set
-            - violations: List of specific violations found
+            - compliant: True if no issues exceed fail_on_severity threshold
+            - has_org_config: Whether a session config is set
+            - violations: List of validation issues found (type, message, severity)
             - warnings: List of warnings
-            - suggestions: How to fix violations
+            - suggestions: How to fix issues
     """
     from iam_validator.mcp.tools.org_config_tools import check_org_compliance_impl
 
@@ -2188,33 +2199,34 @@ async def validate_with_config(
 ) -> dict[str, Any]:
     """Validate a policy with explicit inline configuration.
 
-    Useful for one-off validation with specific rules without setting
-    session-wide organization config. The provided config is used only
-    for this validation call.
+    Useful for one-off validation with specific settings without modifying
+    the session config. The provided config is used only for this call.
 
     Policy Type Auto-Detection:
     If policy_type is None (default), the policy type is automatically detected
     from the policy structure (see validate_policy for detection rules).
 
-    The configuration is passed to the iam-validator library which applies
-    it during validation. This includes check overrides, ignore patterns,
-    and severity settings.
-
     Args:
         policy: IAM policy to validate
-        config: Inline configuration (same format as organization config):
-            - allowed_services, blocked_services, blocked_actions
-            - required_conditions, check_overrides, ignore_patterns
-            - fail_on_severity
+        config: Inline configuration (same format as set_organization_config):
+            - settings: Global settings (fail_on_severity, parallel_execution, etc.)
+            - Check IDs as keys: {enabled, severity, ignore_patterns}
         policy_type: Type of policy ("identity", "resource", "trust")
 
     Returns:
         Dictionary with:
             - is_valid: Whether the policy passed all checks
-            - org_compliant: Whether the policy complies with the inline config
-            - issues: Standard validation issues
-            - org_violations: Organization config violations
-            - config_applied: The configuration that was applied
+            - issues: List of validation issues (severity, message, suggestion, check_id)
+            - config_applied: The configuration that was used
+
+    Example:
+        >>> result = await validate_with_config(
+        ...     policy=my_policy,
+        ...     config={
+        ...         "settings": {"fail_on_severity": ["error"]},
+        ...         "wildcard_action": {"severity": "warning"}  # Downgrade to warning
+        ...     }
+        ... )
     """
     from iam_validator.mcp.tools.org_config_tools import validate_with_config_impl
 
