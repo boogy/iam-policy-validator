@@ -719,12 +719,130 @@ async def get_required_conditions(actions: list[str]) -> dict[str, Any]:
     }
 
 
+def _get_remediation_for_action(action: str, category: str) -> dict[str, Any]:
+    """Get remediation guidance for a sensitive action.
+
+    Returns recommended conditions and mitigation strategies based on the
+    action and its risk category.
+    """
+    action_lower = action.lower()
+    service = action.split(":")[0] if ":" in action else ""
+
+    # Default remediation by category
+    category_remediations = {
+        "credential_exposure": {
+            "risk_level": "CRITICAL",
+            "why_dangerous": "Can expose credentials that allow access to AWS resources",
+            "recommended_conditions": [
+                {"condition": "aws:MultiFactorAuthPresent", "operator": "Bool", "value": "true"},
+                {"condition": "aws:SourceIp", "operator": "IpAddress", "value": "<your-corporate-ip-range>"},
+            ],
+            "mitigation_steps": [
+                "Require MFA for all credential operations",
+                "Restrict to specific source IP ranges",
+                "Use time-limited sessions",
+                "Monitor with CloudTrail",
+            ],
+        },
+        "priv_esc": {
+            "risk_level": "CRITICAL",
+            "why_dangerous": "Can grant additional permissions beyond what the user currently has",
+            "recommended_conditions": [
+                {"condition": "aws:MultiFactorAuthPresent", "operator": "Bool", "value": "true"},
+                {"condition": "aws:PrincipalTag/<role>", "operator": "StringEquals", "value": "admin"},
+            ],
+            "mitigation_steps": [
+                "Require MFA for all IAM modifications",
+                "Use permission boundaries to limit escalation",
+                "Restrict who can modify IAM policies",
+                "Implement approval workflows for sensitive changes",
+            ],
+        },
+        "data_access": {
+            "risk_level": "HIGH",
+            "why_dangerous": "Can expose sensitive business or customer data",
+            "recommended_conditions": [
+                {"condition": "aws:SecureTransport", "operator": "Bool", "value": "true"},
+            ],
+            "mitigation_steps": [
+                "Encrypt data at rest and in transit",
+                "Use resource-level permissions (specific ARNs)",
+                "Enable access logging",
+                "Consider VPC endpoints for private access",
+            ],
+        },
+        "resource_exposure": {
+            "risk_level": "HIGH",
+            "why_dangerous": "Can modify resource policies to grant unintended access",
+            "recommended_conditions": [
+                {"condition": "aws:CalledVia", "operator": "StringEquals", "value": "<expected-service>"},
+            ],
+            "mitigation_steps": [
+                "Restrict to specific resources (no wildcards)",
+                "Use SCPs to prevent public access",
+                "Monitor for resource policy changes",
+                "Implement change management processes",
+            ],
+        },
+    }
+
+    remediation = category_remediations.get(category, {}).copy()
+
+    # Add action-specific conditions
+    if "iam:passrole" in action_lower:
+        remediation["recommended_conditions"] = [
+            {
+                "condition": "iam:PassedToService",
+                "operator": "StringEquals",
+                "value": "<target-service>.amazonaws.com",
+                "example": '"iam:PassedToService": "lambda.amazonaws.com"',
+            }
+        ]
+        remediation["specific_guidance"] = (
+            "Always restrict iam:PassRole to specific services using iam:PassedToService condition"
+        )
+    elif "sts:assumerole" in action_lower:
+        remediation["recommended_conditions"] = [
+            {"condition": "aws:SourceArn", "operator": "ArnLike", "value": "arn:aws:*:<account>:*"},
+            {"condition": "sts:ExternalId", "operator": "StringEquals", "value": "<unique-external-id>"},
+        ]
+        remediation["specific_guidance"] = (
+            "For cross-account access, require ExternalId. For service principals, use aws:SourceArn"
+        )
+    elif service == "s3" and ("put" in action_lower or "delete" in action_lower):
+        remediation["recommended_conditions"].append(
+            {"condition": "s3:x-amz-acl", "operator": "StringNotEquals", "value": "public-read"}
+        )
+        remediation["specific_guidance"] = (
+            "Prevent public ACLs on S3 objects. Consider using S3 Block Public Access."
+        )
+    elif "kms:" in action_lower:
+        remediation["recommended_conditions"].append(
+            {"condition": "kms:ViaService", "operator": "StringEquals", "value": "<service>.<region>.amazonaws.com"}
+        )
+        remediation["specific_guidance"] = (
+            "Restrict KMS operations to specific AWS services using kms:ViaService"
+        )
+
+    # Add condition example JSON
+    if remediation.get("recommended_conditions"):
+        first_cond = remediation["recommended_conditions"][0]
+        remediation["condition_example"] = {
+            "Condition": {
+                first_cond["operator"]: {first_cond["condition"]: first_cond["value"]}
+            }
+        }
+
+    return remediation
+
+
 async def check_sensitive_actions(actions: list[str]) -> dict[str, Any]:
-    """Check if any actions in the list are sensitive.
+    """Check if any actions in the list are sensitive and get remediation guidance.
 
     This tool analyzes actions against the IAM Policy Validator's sensitive
     actions catalog and returns information about any sensitive actions found,
-    along with summary statistics.
+    along with REMEDIATION GUIDANCE including recommended conditions and
+    mitigation strategies.
 
     The sensitive actions catalog contains 490+ actions across 4 categories,
     sourced from https://github.com/primeharbor/sensitive_iam_actions
@@ -739,16 +857,23 @@ async def check_sensitive_actions(actions: list[str]) -> dict[str, Any]:
                 - category: Risk category (credential_exposure, data_access, priv_esc, resource_exposure)
                 - severity: Severity level (critical or high)
                 - description: Category description
+                - remediation: Mitigation guidance including:
+                    - risk_level: CRITICAL or HIGH
+                    - why_dangerous: Explanation of the risk
+                    - recommended_conditions: List of IAM conditions to add
+                    - mitigation_steps: Steps to reduce risk
+                    - condition_example: JSON example of the condition block
+                    - specific_guidance: Action-specific advice (if applicable)
             - total_checked: Number of actions checked
             - sensitive_count: Number of sensitive actions found
             - categories_found: List of unique risk categories found
             - has_critical: Whether any critical severity actions were found
+            - summary: Quick summary of findings and top recommendations
 
     Example:
-        >>> result = await check_sensitive_actions(["iam:CreateAccessKey", "s3:GetObject"])
-        >>> print(f"Found {result['sensitive_count']} sensitive actions out of {result['total_checked']}")
+        >>> result = await check_sensitive_actions(["iam:PassRole", "s3:GetObject"])
         >>> for item in result["sensitive_actions"]:
-        ...     print(f"  {item['action']}: {item['category']} ({item['severity']})")
+        ...     print(f"{item['action']}: Add condition {item['remediation']['recommended_conditions']}")
     """
     sensitive_actions_found: list[dict[str, Any]] = []
     categories_found: set[str] = set()
@@ -763,14 +888,30 @@ async def check_sensitive_actions(actions: list[str]) -> dict[str, Any]:
             if category_data["severity"] == "critical":
                 has_critical = True
 
+            remediation = _get_remediation_for_action(action, category)
+
             sensitive_actions_found.append(
                 {
                     "action": action,
                     "category": category,
                     "severity": category_data["severity"],
                     "description": category_data["description"],
+                    "remediation": remediation,
                 }
             )
+
+    # Generate summary
+    summary = ""
+    if sensitive_actions_found:
+        summary = f"Found {len(sensitive_actions_found)} sensitive action(s). "
+        if has_critical:
+            summary += "⚠️ CRITICAL actions detected - require MFA and strict conditions. "
+        if "credential_exposure" in categories_found:
+            summary += "Credential exposure risk - add MFA and IP restrictions. "
+        if "priv_esc" in categories_found:
+            summary += "Privilege escalation risk - use permission boundaries. "
+    else:
+        summary = "No sensitive actions detected."
 
     return {
         "sensitive_actions": sensitive_actions_found,
@@ -778,4 +919,5 @@ async def check_sensitive_actions(actions: list[str]) -> dict[str, Any]:
         "sensitive_count": len(sensitive_actions_found),
         "categories_found": sorted(categories_found),
         "has_critical": has_critical,
+        "summary": summary,
     }

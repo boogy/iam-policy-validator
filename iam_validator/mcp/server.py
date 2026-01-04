@@ -130,23 +130,33 @@ You are an AWS IAM security expert. Your mission: generate secure, least-privile
 
 ## CRITICAL: AVOID VALIDATION LOOPS
 
-⚠️ **VALIDATE ONCE, THEN PRESENT** - Do not repeatedly validate and fix in a loop!
+⚠️ **Maximum 2 validation calls per policy** - Do not loop!
 
-1. Generate policy using templates or build_minimal_policy
-2. Call validate_policy ONCE
-3. If severity="error" or "critical": fix and present
-4. If severity="warning/medium/low/high": present policy WITH the warnings
-5. STOP - let the user review and request changes if needed
+### Severity Classification
+| Severity | Action Required | Auto-Fix? |
+|----------|-----------------|-----------|
+| error | MUST fix - policy won't work in AWS | Yes |
+| critical | MUST fix - severe security risk | Yes |
+| high | RECOMMEND fix - present as warning | No, ask user |
+| medium | SUGGEST fix - present as warning | No, ask user |
+| low/warning | INFORM only - present as note | No |
 
-**Signs you're in a loop (STOP IMMEDIATELY):**
-- You've called validate_policy more than 2 times for the same policy
-- You're trying to fix the same issue repeatedly
-- Warnings keep appearing that you can't eliminate
+### Workflow
+1. Generate policy → validate_policy (call #1)
+2. If error/critical issues: fix using `example` field → validate_policy (call #2)
+3. STOP and present policy with any remaining warnings
 
-**When to STOP and present:**
-- Policy has no errors (warnings are OK)
-- You've made one fix attempt for critical/error issues
-- User hasn't asked for further refinement
+### STOP Conditions (present policy immediately when ANY is true)
+✅ No "error" or "critical" issues remain
+✅ You've called validate_policy twice already
+✅ Only "high/medium/low/warning" issues remain
+✅ Issue requires user decision (e.g., "which resources?")
+
+### Available Prompts for Guided Workflows
+Use these prompts for structured policy generation:
+- `generate_secure_policy` - Step-by-step secure policy creation
+- `fix_policy_issues_workflow` - Systematic issue fixing (max 2 iterations)
+- `review_policy_security` - Security analysis without modification
 
 ## SENSITIVE ACTION CATEGORIES (490+ actions tracked)
 
@@ -315,8 +325,14 @@ Each issue contains actionable guidance:
 - `risk_explanation`: Why this matters
 - `remediation_steps`: Step-by-step fix
 
-## RESOURCES AVAILABLE
+## RESOURCES AND PROMPTS AVAILABLE
 
+### Prompts (use for guided workflows)
+- `generate_secure_policy` - Step-by-step policy creation with validation
+- `fix_policy_issues_workflow` - Systematic issue fixing (max 2 iterations)
+- `review_policy_security` - Security analysis without modification
+
+### Resources (reference data)
 - `iam://templates` - Pre-built secure templates
 - `iam://checks` - All 19 validation checks
 - `iam://sensitive-categories` - Sensitive action categories
@@ -708,25 +724,46 @@ async def get_required_conditions(actions: list[str]) -> dict[str, Any]:
 
 @mcp.tool()
 async def check_sensitive_actions(actions: list[str]) -> dict[str, Any]:
-    """Check if any actions in the list are sensitive.
+    """Check if any actions are sensitive and get remediation guidance.
 
     Analyzes actions against the sensitive actions catalog (490+ actions)
-    and returns risk category, recommended security controls, and summary statistics.
+    and returns risk category, severity, and **REMEDIATION GUIDANCE** including
+    recommended IAM conditions and mitigation steps.
 
     Args:
-        actions: List of AWS actions to check
+        actions: List of AWS actions to check (e.g., ["iam:PassRole", "s3:GetObject"])
 
     Returns:
         Dictionary with:
             - sensitive_actions: List of dictionaries for each sensitive action found
                 - action: The action name
-                - category: Risk category (credential_exposure, data_access, etc.)
+                - category: Risk category (credential_exposure, data_access, priv_esc, resource_exposure)
                 - severity: Severity level (critical or high)
                 - description: Category description
-            - total_checked: Number of actions that were checked
+                - remediation: Mitigation guidance including:
+                    - risk_level: CRITICAL or HIGH
+                    - why_dangerous: Explanation of the risk
+                    - recommended_conditions: List of IAM conditions to add
+                    - mitigation_steps: Steps to reduce risk
+                    - condition_example: JSON example of the condition block to add
+                    - specific_guidance: Action-specific advice (for iam:PassRole, sts:AssumeRole, etc.)
+            - total_checked: Number of actions checked
             - sensitive_count: Number of sensitive actions found
             - categories_found: List of unique risk categories found
             - has_critical: Whether any critical severity actions were found
+            - summary: Quick summary with top recommendations
+
+    Example response for iam:PassRole:
+        {
+            "action": "iam:PassRole",
+            "category": "priv_esc",
+            "severity": "critical",
+            "remediation": {
+                "recommended_conditions": [{"condition": "iam:PassedToService", ...}],
+                "condition_example": {"Condition": {"StringEquals": {"iam:PassedToService": "lambda.amazonaws.com"}}},
+                "specific_guidance": "Always restrict iam:PassRole to specific services..."
+            }
+        }
     """
     from iam_validator.mcp.tools.generation import (
         check_sensitive_actions as _check_sensitive,
@@ -2528,6 +2565,173 @@ STEPS:
 1. validate_policies_batch(policies=[...], verbose=False)
 2. For each result, show policy_index and is_valid
 3. Detail issues only for invalid policies
+"""
+
+
+# =============================================================================
+# Prompts - Guided Workflows for LLM Clients
+# =============================================================================
+
+
+@mcp.prompt
+def generate_secure_policy(
+    service: str,
+    operations: str,
+    resources: str,
+    principal_type: str = "Lambda function",
+) -> str:
+    """Generate a secure IAM policy with proper validation.
+
+    This prompt guides you through creating a least-privilege IAM policy
+    that passes all critical validation checks.
+
+    Args:
+        service: AWS service (e.g., "s3", "dynamodb", "lambda")
+        operations: What operations are needed (e.g., "read objects", "write items")
+        resources: Specific resources (e.g., "bucket my-app-data", "table users")
+        principal_type: Who needs access (e.g., "Lambda function", "EC2 instance")
+    """
+    return f"""Generate a secure IAM policy for the following requirement:
+
+**Service**: {service}
+**Operations needed**: {operations}
+**Resources**: {resources}
+**Principal**: {principal_type}
+
+## WORKFLOW (Follow these steps in order):
+
+### Step 1: Find a Template
+Call `list_templates` to check if a pre-built secure template exists for {service}.
+If found, use `generate_policy_from_template` with the resource values.
+
+### Step 2: If No Template, Build Manually
+1. Call `query_service_actions("{service}")` to find exact action names
+2. Call `query_arn_formats("{service}")` to get correct ARN patterns
+3. Call `build_minimal_policy` with the specific actions and resources
+
+### Step 3: Validate ONCE
+Call `validate_policy` on the generated policy.
+
+### Step 4: Fix Only BLOCKING Issues
+BLOCKING issues (MUST fix): severity = "error" or "critical"
+- Use the `example` field from the issue - it shows the exact fix
+- Apply the fix directly
+
+NON-BLOCKING issues (present with warnings): severity = "high", "medium", "low", "warning"
+- Do NOT try to fix these automatically
+- Present them to the user as security recommendations
+
+### Step 5: Present the Policy
+Show the final policy with:
+1. The complete JSON policy
+2. Any non-blocking warnings as "Security Considerations"
+3. Explanation of what permissions are granted
+
+⚠️ IMPORTANT: Do NOT validate more than once. Do NOT loop trying to fix warnings.
+"""
+
+
+@mcp.prompt
+def fix_policy_issues_workflow(policy_json: str, issues_description: str) -> str:
+    """Systematic workflow to fix IAM policy validation issues.
+
+    Use this prompt when you have a policy with validation issues and need
+    to fix them systematically without getting into a loop.
+
+    Args:
+        policy_json: The IAM policy JSON that has issues
+        issues_description: Description of the issues found (from validate_policy)
+    """
+    return f"""Fix the following IAM policy issues systematically:
+
+**Current Policy**:
+```json
+{policy_json}
+```
+
+**Issues Found**:
+{issues_description}
+
+## FIX WORKFLOW (Maximum 2 iterations):
+
+### Iteration 1: Fix All BLOCKING Issues
+For each issue with severity "error" or "critical":
+1. Read the `example` field - it shows exactly how to fix it
+2. Apply the fix to the policy
+3. For structural issues (Version, Effect case), use `fix_policy_issues` tool
+
+### After Fixing:
+Call `validate_policy` ONE more time to verify blocking issues are resolved.
+
+### Iteration 2 (only if needed):
+If new "error" or "critical" issues appeared, fix those.
+If only "high/medium/low/warning" issues remain, STOP fixing.
+
+## STOP CONDITIONS (Present policy when ANY is true):
+✅ No "error" or "critical" issues remain
+✅ You've done 2 fix iterations
+✅ Remaining issues are "high", "medium", "low", or "warning" severity
+✅ Issues require user input (e.g., "specify resource ARN")
+
+## Final Output:
+Present the policy with:
+1. The fixed JSON
+2. List of remaining warnings (if any) as "Security Recommendations"
+3. Note: "These recommendations are informational. The policy is valid for AWS."
+
+⚠️ DO NOT keep iterating to eliminate warnings - they are advisory only.
+"""
+
+
+@mcp.prompt
+def review_policy_security(policy_json: str) -> str:
+    """Review an existing IAM policy for security issues.
+
+    Use this prompt to analyze a policy the user provides and give
+    security recommendations without modifying it.
+
+    Args:
+        policy_json: The IAM policy JSON to review
+    """
+    return f"""Review this IAM policy for security issues:
+
+```json
+{policy_json}
+```
+
+## REVIEW WORKFLOW:
+
+### Step 1: Validate
+Call `validate_policy` with the policy above.
+
+### Step 2: Check Sensitive Actions
+Call `check_sensitive_actions` to identify high-risk permissions.
+
+### Step 3: Analyze Results
+Categorize issues by severity:
+- 🔴 CRITICAL/ERROR: Must be fixed before deployment
+- 🟠 HIGH: Strong recommendation to address
+- 🟡 MEDIUM/WARNING: Best practice suggestions
+- 🟢 LOW: Minor improvements
+
+### Step 4: Present Findings
+Format your response as:
+
+**Policy Status**: [VALID / HAS BLOCKING ISSUES]
+
+**Critical Issues** (must fix):
+- [List any error/critical issues with the fix from the `example` field]
+
+**Security Recommendations** (should consider):
+- [List high/medium issues with explanations]
+
+**Sensitive Actions Detected**:
+- [List any sensitive actions and their risk category]
+
+**Overall Assessment**:
+[Brief summary of the policy's security posture]
+
+⚠️ Do NOT attempt to fix the policy unless the user asks. Just report findings.
 """
 
 
