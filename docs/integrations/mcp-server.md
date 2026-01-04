@@ -357,6 +357,14 @@ principal_validation:
 | `check_org_compliance`               | Check if a policy complies with org config |
 | `validate_with_config`               | Validate with inline configuration         |
 
+### Custom Instructions Tools
+
+| Tool                        | Description                                                         |
+| --------------------------- | ------------------------------------------------------------------- |
+| `set_custom_instructions`   | Set custom organization-specific instructions for policy generation |
+| `get_custom_instructions`   | Get the current custom instructions                                 |
+| `clear_custom_instructions` | Clear custom instructions, reverting to defaults                    |
+
 ## Usage Examples
 
 This section provides comprehensive prompt examples for all MCP tools, organized by category.
@@ -823,6 +831,84 @@ Or:
 
 > "What does the 'resource_exposure' warning mean and how do I fix it?"
 
+---
+
+### Best Prompts for Generating Secure IAM Policies
+
+These prompts demonstrate how to get the best results when generating IAM policies with the MCP server.
+
+#### Be Specific About Resources
+
+**Good** (includes specific ARNs):
+
+> "Create a policy for a Lambda function to read from S3 bucket `data-lake-prod` prefix `raw/`, write to DynamoDB table `processed-items` in us-east-1 account 123456789012, and log to CloudWatch"
+
+**Less Effective** (vague):
+
+> "Create a policy for Lambda to access S3 and DynamoDB"
+
+#### Specify Access Patterns
+
+**Good** (clear access level):
+
+> "Create a read-only policy for S3 bucket `reports`. The service only needs to list and download objects, never upload or delete."
+
+**Less Effective**:
+
+> "Create an S3 policy"
+
+#### Include Security Requirements
+
+**Good** (explicit security):
+
+> "Create a policy for cross-account access from account 987654321098 to assume role `DataAnalyst`. Requirements:
+> - Require MFA
+> - Limit to our organization (o-abc123)
+> - Only allow from specific IP range 10.0.0.0/8"
+
+#### Request Validation
+
+**Good** (asks for validation):
+
+> "Create and validate a policy for ECS tasks to:
+> - Pull images from ECR repository `my-app`
+> - Access Secrets Manager secrets with prefix `my-app/`
+> - Write to CloudWatch Logs"
+
+#### Use Templates for Common Patterns
+
+**Good** (leverages templates):
+
+> "List available policy templates and use the `lambda-s3-trigger` template for function `process-uploads` with bucket `incoming-data`"
+
+#### Iterative Refinement
+
+**Good** (asks for improvements):
+
+> "Here's my current policy. Can you:
+> 1. Validate it for security issues
+> 2. Suggest more restrictive resource scopes
+> 3. Add any missing security conditions
+>
+> ```json
+> {\"Version\": \"2012-10-17\", \"Statement\": [...]}
+> ```"
+
+#### Multi-Service Workflows
+
+**Good** (complete context):
+
+> "I'm building a data pipeline that:
+> 1. Triggers on S3 uploads to `raw-data` bucket
+> 2. Processes with Lambda
+> 3. Stores results in DynamoDB table `processed`
+> 4. Sends notifications to SNS topic `alerts`
+> 5. Logs everything to CloudWatch
+>
+> Create both the trust policy and permissions policy for the Lambda execution role."
+
+---
+
 ## Built-in Templates
 
 The MCP server includes 15 secure policy templates:
@@ -897,6 +983,175 @@ not_action_not_resource:
 Ask Claude to set this configuration:
 
 > "Set organization config that makes wildcard usage critical severity and enables strict sensitive action checking"
+
+## Custom Instructions
+
+Custom instructions allow organizations to add their own policy generation guidelines that the AI follows when creating or reviewing IAM policies. This is useful for enforcing organization-specific rules, compliance requirements, or naming conventions.
+
+### How Custom Instructions Work
+
+Custom instructions are appended to the default MCP server instructions. When the AI generates or reviews policies, it considers both the built-in security rules and your custom guidelines.
+
+### Setting Custom Instructions
+
+There are five ways to provide custom instructions:
+
+#### 1. CLI Argument (Inline Text)
+
+```bash
+iam-validator-mcp --instructions "Always require aws:PrincipalOrgID condition for cross-account access"
+```
+
+#### 2. CLI Argument (File)
+
+```bash
+iam-validator-mcp --instructions-file /path/to/instructions.md
+```
+
+#### 3. Environment Variable
+
+```bash
+export IAM_VALIDATOR_MCP_INSTRUCTIONS="All policies must include encryption requirements for S3"
+iam-validator-mcp
+```
+
+#### 4. YAML Configuration File
+
+Add the `custom_instructions` key to your configuration:
+
+```yaml
+# config.yaml
+settings:
+  fail_on_severity:
+    - error
+    - critical
+
+custom_instructions: |
+  ## Organization-Specific Policy Rules
+
+  - All S3 policies must require aws:SecureTransport
+  - Cross-account access must include aws:PrincipalOrgID condition
+  - Lambda execution roles must be scoped to specific functions
+  - Use resource tags for access control where possible
+  - All KMS operations require aws:ViaService condition
+
+wildcard_resource:
+  severity: critical
+```
+
+Then start the server with:
+
+```bash
+iam-validator-mcp --config /path/to/config.yaml
+```
+
+#### 5. MCP Tool (Runtime)
+
+Set instructions dynamically during a session:
+
+> "Set custom instructions: All policies for the data-lake project must include the tag condition aws:ResourceTag/Project = data-lake"
+
+### Claude Desktop Configuration with Custom Instructions
+
+=== "macOS"
+
+    ```json
+    {
+      "mcpServers": {
+        "iam-policy-validator": {
+          "command": "iam-validator-mcp",
+          "args": [
+            "--config", "/Users/you/config.yaml",
+            "--instructions", "Use our org ID o-abc123 in all PrincipalOrgID conditions"
+          ]
+        }
+      }
+    }
+    ```
+
+=== "Using Instructions File"
+
+    ```json
+    {
+      "mcpServers": {
+        "iam-policy-validator": {
+          "command": "iam-validator-mcp",
+          "args": [
+            "--instructions-file", "/Users/you/.iam-policy-instructions.md"
+          ]
+        }
+      }
+    }
+    ```
+
+### Example Custom Instructions
+
+#### Enterprise Security Requirements
+
+```markdown
+## Enterprise IAM Policy Requirements
+
+### Required Conditions
+- All S3 bucket policies must include `aws:SecureTransport: true`
+- Cross-account access requires `aws:PrincipalOrgID: o-xxxxxxxxxx`
+- iam:PassRole must include `iam:PassedToService` condition
+- KMS operations must include `aws:ViaService` condition
+
+### Naming Conventions
+- Policy SIDs should follow: `<Action><Resource><Purpose>`
+- Example: `S3BucketReadDataLake`, `LambdaInvokeProcessor`
+
+### Restrictions
+- Never allow `*` as Principal in resource policies
+- Wildcard actions are only allowed for CloudWatch Logs
+- Data exfiltration actions (s3:GetObject, dynamodb:Scan) require MFA
+```
+
+#### Development Environment
+
+```markdown
+## Dev Environment Policy Rules
+
+- Allow broader wildcards for rapid iteration
+- S3 buckets can use `dev-*` prefix without strict conditions
+- Enable all read actions without MFA requirement
+- Tag requirement: aws:ResourceTag/Environment = dev
+```
+
+#### Compliance-Focused
+
+```markdown
+## SOC 2 Compliance Requirements
+
+- All data access must be logged (enable CloudTrail integration)
+- PII data access requires MFA: aws:MultiFactorAuthPresent = true
+- S3 buckets with customer data must require encryption
+- Cross-region access must be explicitly justified with comments
+- Policies must not exceed 90-day access without review
+```
+
+### Managing Custom Instructions via MCP
+
+#### Set Instructions During Session
+
+> "Set custom instructions to require that all S3 policies include secure transport conditions"
+
+#### View Current Instructions
+
+> "Show me the current custom instructions"
+
+#### Clear Instructions
+
+> "Clear all custom instructions and use the defaults"
+
+### Priority Order
+
+When multiple instruction sources are provided, they are applied in this priority order (highest to lowest):
+
+1. CLI argument (`--instructions` or `--instructions-file`)
+2. YAML configuration file (`custom_instructions` key)
+3. Environment variable (`IAM_VALIDATOR_MCP_INSTRUCTIONS`)
+4. MCP tool (`set_custom_instructions`) - can override during session
 
 ## AI Formatting Instructions
 
@@ -1178,12 +1433,33 @@ iam-validator-mcp
 # Run with config pre-loaded
 iam-validator-mcp --config ./config.yaml
 
+# Run with custom instructions inline
+iam-validator-mcp --instructions "Require MFA for all sensitive actions"
+
+# Run with custom instructions from file
+iam-validator-mcp --instructions-file ./org-instructions.md
+
+# Run with both config and instructions
+iam-validator-mcp --config ./config.yaml --instructions-file ./org-instructions.md
+
 # Run via CLI with more options
 iam-validator mcp --config ./config.yaml --verbose
 
 # Run with SSE transport (for HTTP clients)
 iam-validator mcp --transport sse --host 127.0.0.1 --port 8000
 ```
+
+### CLI Options
+
+| Option                     | Description                                                 |
+| -------------------------- | ----------------------------------------------------------- |
+| `--config FILE`            | Path to YAML configuration file                             |
+| `--instructions TEXT`      | Custom instructions (inline text)                           |
+| `--instructions-file FILE` | Path to file containing custom instructions (markdown, txt) |
+| `--transport TYPE`         | Transport protocol: `stdio` (default) or `sse`              |
+| `--host HOST`              | Host for SSE transport (default: 127.0.0.1)                 |
+| `--port PORT`              | Port for SSE transport (default: 8000)                      |
+| `--verbose, -v`            | Enable verbose logging                                      |
 
 ## Programmatic Usage
 

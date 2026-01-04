@@ -311,7 +311,7 @@ _iam_validator_completion() {{
             return 0
             ;;
         mcp)
-            opts="--transport --host --port --verbose -v --config"
+            opts="--transport --host --port --verbose -v --config --instructions --instructions-file"
             COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
             return 0
             ;;
@@ -482,7 +482,9 @@ _iam_validator() {{
                         '--host[Host for SSE transport]:host:' \\
                         '--port[Port for SSE transport]:port:' \\
                         '(--verbose -v)'{{--verbose,-v}}'[Enable verbose logging]' \\
-                        '--config[Path to configuration YAML file]:file:_files'
+                        '--config[Path to configuration YAML file]:file:_files' \\
+                        '--instructions[Custom instructions for policy generation]:text:' \\
+                        '--instructions-file[Path to file containing custom instructions]:file:_files'
                     ;;
             esac
             ;;
