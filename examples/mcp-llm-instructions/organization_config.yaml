@@ -1,0 +1,165 @@
+# Organization-Wide IAM Validator Configuration
+# ==============================================
+# Use this configuration to enforce check settings across all IAM policy
+# validation operations in your organization.
+#
+# Load this config via MCP:
+#   Tool: set_organization_config
+#   Input: {"config": <contents of this file as JSON>}
+#
+# Or use load_organization_config_from_yaml:
+#   Tool: load_organization_config_from_yaml
+#   Input: {"yaml_content": "<contents of this file>"}
+
+# =============================================================================
+# GLOBAL SETTINGS
+# =============================================================================
+# Configure which severity levels should fail validation
+
+settings:
+  # Fail validation if any of these severities are found
+  fail_on_severity:
+    - critical
+    - high
+    - error
+
+# =============================================================================
+# CHECK CONFIGURATIONS
+# =============================================================================
+# Configure individual validation checks
+# Each check can be enabled/disabled and have its severity overridden
+
+# -----------------------------------------------------------------------------
+# WILDCARD CHECKS - Make these critical for strict security
+# -----------------------------------------------------------------------------
+
+# Detects Action: "*"
+wildcard_action:
+  enabled: true
+  severity: critical # Default: medium
+
+# Detects Resource: "*"
+wildcard_resource:
+  enabled: true
+  severity: critical # Default: medium
+
+# Detects Action: "*" AND Resource: "*" together
+full_wildcard:
+  enabled: true
+  severity: critical # Default: critical (already strict)
+
+# Detects service-level wildcards like "s3:*"
+service_wildcard:
+  enabled: true
+  severity: critical # Default: high
+
+# -----------------------------------------------------------------------------
+# SENSITIVE ACTION CHECKS
+# -----------------------------------------------------------------------------
+
+# Detects 490+ privilege escalation actions
+sensitive_action:
+  enabled: true
+  severity: high # Default: medium
+
+# Requires conditions on sensitive actions
+action_condition_enforcement:
+  enabled: true
+  severity: critical # Default: error
+
+# Detects dangerous NotAction/NotResource patterns
+not_action_not_resource:
+  enabled: true
+  severity: critical # Default: high
+
+# -----------------------------------------------------------------------------
+# AWS VALIDATION CHECKS
+# -----------------------------------------------------------------------------
+
+# Validates actions exist in AWS
+action_validation:
+  enabled: true
+  severity: error
+
+# Validates condition keys are valid
+condition_key_validation:
+  enabled: true
+  severity: error
+
+# Validates condition operator-value type matches
+condition_type_mismatch:
+  enabled: true
+  severity: error
+
+# Validates resource ARN format
+resource_validation:
+  enabled: true
+  severity: error
+
+# Validates principal format (for resource policies)
+principal_validation:
+  enabled: true
+  severity: high
+
+# Validates policy structure
+policy_structure:
+  enabled: true
+  severity: error
+
+# Validates policy size limits
+policy_size:
+  enabled: true
+  severity: error
+
+# Validates SIDs are unique
+sid_uniqueness:
+  enabled: true
+  severity: warning
+
+# Validates trust policies
+trust_policy_validation:
+  enabled: true
+  severity: high
+
+# Detects MFA anti-patterns
+mfa_condition_antipattern:
+  enabled: true
+  severity: warning
+
+# Validates action-resource matching
+action_resource_matching:
+  enabled: true
+  severity: medium
+
+# Validates set operators (ForAllValues/ForAnyValue)
+set_operator_validation:
+  enabled: true
+  severity: error
+# =============================================================================
+# EXAMPLE: RELAXED CONFIGURATION (for development/testing)
+# =============================================================================
+# Uncomment below to use a more permissive configuration
+#
+# settings:
+#   fail_on_severity:
+#     - critical
+#     - error
+#
+# wildcard_action:
+#   enabled: true
+#   severity: medium
+#
+# wildcard_resource:
+#   enabled: true
+#   severity: medium
+#
+# sensitive_action:
+#   enabled: false  # Disabled for dev environments
+
+# =============================================================================
+# EXAMPLE: AUDIT-ONLY CONFIGURATION (no failures, just report)
+# =============================================================================
+# Uncomment below for audit/reporting mode
+#
+# settings:
+#   fail_on_severity: []  # Empty = never fail, just report

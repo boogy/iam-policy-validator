@@ -134,7 +134,7 @@ docs:
 	@uv run --extra docs mkdocs build
 
 docs-serve:
-	@uv run --extra docs mkdocs serve
+	@uv run --extra docs mkdocs serve -w docs/
 
 # MCP Server debugging
 mcp-inspector:

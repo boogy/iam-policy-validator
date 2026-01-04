@@ -89,9 +89,10 @@ markdown_extensions:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.highlight:
-      anchor_linenums: true
-      line_spans: __span
+      anchor_linenums: false
       pygments_lang_class: true
+      use_pygments: true
+      auto_title: false
   - pymdownx.inlinehilite
   - pymdownx.keys
   - pymdownx.magiclink:
@@ -165,6 +166,10 @@ nav:
       - Testing: contributing/testing.md
       - Releasing: contributing/releasing.md
   - Changelog: changelog.md
+
+# Extra CSS (temporarily disabled for testing)
+# extra_css:
+#   - stylesheets/extra.css
 
 # Extra configuration
 extra:
