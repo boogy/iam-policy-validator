@@ -82,6 +82,16 @@ Query AWS service definitions for actions, ARNs, and condition keys.
 iam-validator query <subcommand> [OPTIONS]
 ```
 
+### Options
+
+The `--service` option is **optional** when `--name` includes the service prefix (e.g., `s3:GetObject`).
+
+| Option      | Description                                               |
+| ----------- | --------------------------------------------------------- |
+| `--service` | AWS service prefix (optional if `--name` has prefix)      |
+| `--name`    | Name to query (can include service prefix like `s3:GetObject`) |
+| `--output`  | Output format: `json`, `yaml`, or `text`                  |
+
 ### Subcommands
 
 #### query action
@@ -93,8 +103,16 @@ iam-validator query action --service s3
 # Filter by access level
 iam-validator query action --service iam --access-level permissions-management
 
-# Get specific action
+# Get specific action (two equivalent forms)
 iam-validator query action --service s3 --name GetObject
+iam-validator query action --name s3:GetObject
+
+# Query with service prefix in --name (--service not required)
+iam-validator query action --name iam:CreateRole
+iam-validator query action --name ec2:DescribeInstances --output yaml
+
+# Filter write-level actions
+iam-validator query action --service s3 --access-level write --output text
 ```
 
 #### query arn
@@ -103,8 +121,12 @@ iam-validator query action --service s3 --name GetObject
 # List ARN formats
 iam-validator query arn --service s3
 
-# Specific resource type
+# Specific resource type (two equivalent forms)
 iam-validator query arn --service s3 --name bucket
+iam-validator query arn --name s3:bucket
+
+# Get ARN format for IAM role
+iam-validator query arn --name iam:role
 ```
 
 #### query condition
@@ -112,6 +134,10 @@ iam-validator query arn --service s3 --name bucket
 ```bash
 # List condition keys
 iam-validator query condition --service s3
+
+# Query specific condition key (two equivalent forms)
+iam-validator query condition --service s3 --name prefix
+iam-validator query condition --name s3:prefix
 ```
 
 ## cache

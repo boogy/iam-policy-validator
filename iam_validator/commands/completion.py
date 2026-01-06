@@ -232,6 +232,7 @@ _iam_validator_completion() {{
             fi
 
             # Complete options for query subcommands
+            # Note: --service is optional if --name includes service prefix (e.g., s3:GetObject)
             local opts=""
             case "$query_subcmd" in
                 action)
@@ -364,8 +365,8 @@ _iam_validator() {{
                             case $words[1] in
                                 action)
                                     _arguments \\
-                                        '--service[AWS service name]:service:($aws_services)' \\
-                                        '--name[Action name]:action name:' \\
+                                        '--service[AWS service (optional if --name has prefix)]:service:($aws_services)' \\
+                                        '--name[Action (e.g., GetObject or s3:GetObject)]:action name:' \\
                                         '--access-level[Filter by access level]:access level:(read write list tagging permissions-management)' \\
                                         '--resource-type[Filter by resource type]:resource type:' \\
                                         '--condition[Filter by condition key]:condition key:' \\
@@ -373,15 +374,15 @@ _iam_validator() {{
                                     ;;
                                 arn)
                                     _arguments \\
-                                        '--service[AWS service name]:service:($aws_services)' \\
-                                        '--name[ARN resource type]:arn type:' \\
+                                        '--service[AWS service (optional if --name has prefix)]:service:($aws_services)' \\
+                                        '--name[ARN type (e.g., bucket or s3:bucket)]:arn type:' \\
                                         '--list-arn-types[List all ARN types]' \\
                                         '--output[Output format]:format:(json yaml text)'
                                     ;;
                                 condition)
                                     _arguments \\
-                                        '--service[AWS service name]:service:($aws_services)' \\
-                                        '--name[Condition key name]:condition key:' \\
+                                        '--service[AWS service (optional if --name has prefix)]:service:($aws_services)' \\
+                                        '--name[Condition key (e.g., prefix or s3:prefix)]:condition key:' \\
                                         '--output[Output format]:format:(json yaml text)'
                                     ;;
                             esac

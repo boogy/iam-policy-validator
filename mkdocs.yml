@@ -167,9 +167,9 @@ nav:
       - Releasing: contributing/releasing.md
   - Changelog: changelog.md
 
-# Extra CSS (temporarily disabled for testing)
-# extra_css:
-#   - stylesheets/extra.css
+# Extra CSS
+extra_css:
+  - stylesheets/extra.css
 
 # Extra configuration
 extra:

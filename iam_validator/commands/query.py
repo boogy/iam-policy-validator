@@ -13,8 +13,14 @@ Examples:
     # Query actions that support wildcard resource
     iam-validator query action --service s3 --resource-type "*"
 
-    # Query action details
+    # Query action details (two equivalent forms)
     iam-validator query action --service s3 --name GetObject
+    iam-validator query action --name s3:GetObject
+
+    # Query with service prefix in --name (--service not required)
+    iam-validator query action --name iam:CreateRole
+    iam-validator query arn --name s3:bucket
+    iam-validator query condition --name s3:prefix
 
     # Query ARN formats for a service
     iam-validator query arn --service s3
@@ -74,8 +80,14 @@ examples:
   # Query actions that support wildcard resource
   iam-validator query action --service s3 --resource-type "*"
 
-  # Query action details
+  # Query action details (two equivalent forms)
   iam-validator query action --service s3 --name GetObject
+  iam-validator query action --name s3:GetObject
+
+  # Query with service prefix in --name (--service not required)
+  iam-validator query action --name iam:CreateRole
+  iam-validator query arn --name s3:bucket
+  iam-validator query condition --name s3:prefix
 
   # Query ARN formats for a service
   iam-validator query arn --service s3
@@ -115,12 +127,11 @@ note:
         )
         action_parser.add_argument(
             "--service",
-            required=True,
-            help="AWS service prefix (e.g., s3, iam, ec2)",
+            help="AWS service prefix (e.g., s3, iam, ec2). Optional if --name includes service prefix.",
         )
         action_parser.add_argument(
             "--name",
-            help="Specific action name (e.g., GetObject, CreateUser)",
+            help="Action name (e.g., GetObject or s3:GetObject). If service prefix included, --service is optional.",
         )
         action_parser.add_argument(
             "--access-level",
@@ -150,12 +161,11 @@ note:
         )
         arn_parser.add_argument(
             "--service",
-            required=True,
-            help="AWS service prefix (e.g., s3, iam, ec2)",
+            help="AWS service prefix (e.g., s3, iam, ec2). Optional if --name includes service prefix.",
         )
         arn_parser.add_argument(
             "--name",
-            help="Specific ARN resource type name (e.g., bucket, role)",
+            help="ARN resource type (e.g., bucket or s3:bucket). If service prefix included, --service is optional.",
         )
         arn_parser.add_argument(
             "--list-arn-types",
@@ -177,12 +187,11 @@ note:
         )
         condition_parser.add_argument(
             "--service",
-            required=True,
-            help="AWS service prefix (e.g., s3, iam, ec2)",
+            help="AWS service prefix (e.g., s3, iam, ec2). Optional if --name includes service prefix.",
         )
         condition_parser.add_argument(
             "--name",
-            help="Specific condition key name (e.g., s3:prefix, iam:PolicyArn)",
+            help="Condition key (e.g., prefix or s3:prefix). If service prefix included, --service is optional.",
         )
         condition_parser.add_argument(
             "--output",
@@ -191,9 +200,65 @@ note:
             help="Output format (default: json)",
         )
 
+    def _parse_service_and_name(
+        self, args: argparse.Namespace, query_type: str
+    ) -> tuple[str, str | None]:
+        """Parse service and name from arguments.
+
+        Extracts service from --name if it contains a colon (e.g., 's3:GetObject').
+        If --name has a service prefix, it overrides --service.
+
+        Args:
+            args: Parsed arguments with optional service and name attributes.
+            query_type: Type of query ('action', 'arn', 'condition') for error messages.
+
+        Returns:
+            Tuple of (service, name) where name may be None.
+
+        Raises:
+            ValueError: If neither --service nor service prefix in --name is provided.
+        """
+        service = getattr(args, "service", None)
+        name = getattr(args, "name", None)
+
+        # If name contains a colon, extract service from it
+        if name and ":" in name:
+            parts = name.split(":", 1)
+            extracted_service = parts[0]
+            extracted_name = parts[1] if len(parts) > 1 else None
+
+            # Use extracted service if --service wasn't provided
+            if not service:
+                service = extracted_service
+            # If both provided, prefer the one in --name for consistency
+            elif service != extracted_service:
+                logger.warning(
+                    f"Service from --name '{extracted_service}' differs from --service '{service}'. "
+                    f"Using '{extracted_service}' from --name."
+                )
+                service = extracted_service
+
+            name = extracted_name
+
+        # Validate that we have a service
+        if not service:
+            raise ValueError(
+                f"--service is required when --name doesn't include service prefix. "
+                f"Use '--service <service>' or '--name <service>:<{query_type}>'"
+            )
+
+        return service, name
+
     async def execute(self, args: argparse.Namespace) -> int:
         """Execute query command."""
         try:
+            # Parse service and name from arguments
+            service, name = self._parse_service_and_name(args, args.query_type)
+
+            # Update args with parsed values
+            args.service = service
+            args.name = name
+
             async with AWSServiceFetcher(prefetch_common=False) as fetcher:
                 if args.query_type == "action":
                     result = await self._query_action_table(fetcher, args)
@@ -376,10 +441,22 @@ note:
         # If specific condition key requested
         if args.name:
             condition_key = None
+            search_name = args.name
+
+            # First try exact match
             for key, ck in service_detail.condition_keys.items():
-                if key.lower() == args.name.lower():
+                if key.lower() == search_name.lower():
                     condition_key = ck
                     break
+
+            # If not found, try with service prefix (condition keys often include it)
+            # e.g., searching for "prefix" in s3 should find "s3:prefix"
+            if not condition_key and ":" not in search_name:
+                full_name = f"{args.service}:{search_name}"
+                for key, ck in service_detail.condition_keys.items():
+                    if key.lower() == full_name.lower():
+                        condition_key = ck
+                        break
 
             if not condition_key:
                 raise ValueError(
