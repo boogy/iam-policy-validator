@@ -9,15 +9,16 @@ Complete documentation for the `iam-validator` command-line interface.
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `validate` | Validate IAM policies |
-| `analyze` | AWS Access Analyzer integration |
-| `post-to-pr` | Post results to GitHub PR |
-| `query` | Query AWS service definitions |
-| `cache` | Manage AWS service cache |
-| `download-services` | Download AWS definitions for offline use |
-| `completion` | Generate shell completion scripts |
+| Command             | Description                                   |
+| ------------------- | --------------------------------------------- |
+| `validate`          | Validate IAM policies                         |
+| `analyze`           | AWS Access Analyzer integration               |
+| `post-to-pr`        | Post results to GitHub PR                     |
+| `query`             | Query AWS service definitions                 |
+| `cache`             | Manage AWS service cache                      |
+| `download-services` | Download AWS definitions for offline use      |
+| `completion`        | Generate shell completion scripts             |
+| `mcp`               | Start MCP server for AI assistant integration |
 
 ## validate
 
@@ -31,14 +32,14 @@ iam-validator validate [OPTIONS]
 
 ### Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--path`, `-p` | Path to policy file or directory | Required |
-| `--config`, `-c` | Path to configuration file | Auto-detect |
-| `--format`, `-f` | Output format | `console` |
-| `--policy-type` | Policy type | `IDENTITY_POLICY` |
-| `--fail-on-warnings` | Fail on warnings | `false` |
-| `--verbose`, `-v` | Verbose output | `false` |
+| Option               | Description                      | Default           |
+| -------------------- | -------------------------------- | ----------------- |
+| `--path`, `-p`       | Path to policy file or directory | Required          |
+| `--config`, `-c`     | Path to configuration file       | Auto-detect       |
+| `--format`, `-f`     | Output format                    | `console`         |
+| `--policy-type`      | Policy type                      | `IDENTITY_POLICY` |
+| `--fail-on-warnings` | Fail on warnings                 | `false`           |
+| `--verbose`, `-v`    | Verbose output                   | `false`           |
 
 ### Examples
 
@@ -61,15 +62,15 @@ iam-validator validate --path trust-policy.json --policy-type TRUST_POLICY
 
 ### Output Formats
 
-| Format | Description |
-|--------|-------------|
-| `console` | Rich terminal output (default) |
-| `enhanced` | Colorful detailed output |
-| `json` | Machine-readable JSON |
-| `sarif` | SARIF for security tools |
-| `markdown` | Markdown report |
-| `html` | HTML report |
-| `csv` | CSV export |
+| Format     | Description                    |
+| ---------- | ------------------------------ |
+| `console`  | Rich terminal output (default) |
+| `enhanced` | Colorful detailed output       |
+| `json`     | Machine-readable JSON          |
+| `sarif`    | SARIF for security tools       |
+| `markdown` | Markdown report                |
+| `html`     | HTML report                    |
+| `csv`      | CSV export                     |
 
 ## query
 
@@ -80,6 +81,16 @@ Query AWS service definitions for actions, ARNs, and condition keys.
 ```bash
 iam-validator query <subcommand> [OPTIONS]
 ```
+
+### Options
+
+The `--service` option is **optional** when `--name` includes the service prefix (e.g., `s3:GetObject`).
+
+| Option      | Description                                               |
+| ----------- | --------------------------------------------------------- |
+| `--service` | AWS service prefix (optional if `--name` has prefix)      |
+| `--name`    | Name to query (can include service prefix like `s3:GetObject`) |
+| `--output`  | Output format: `json`, `yaml`, or `text`                  |
 
 ### Subcommands
 
@@ -92,8 +103,16 @@ iam-validator query action --service s3
 # Filter by access level
 iam-validator query action --service iam --access-level permissions-management
 
-# Get specific action
+# Get specific action (two equivalent forms)
 iam-validator query action --service s3 --name GetObject
+iam-validator query action --name s3:GetObject
+
+# Query with service prefix in --name (--service not required)
+iam-validator query action --name iam:CreateRole
+iam-validator query action --name ec2:DescribeInstances --output yaml
+
+# Filter write-level actions
+iam-validator query action --service s3 --access-level write --output text
 ```
 
 #### query arn
@@ -102,8 +121,12 @@ iam-validator query action --service s3 --name GetObject
 # List ARN formats
 iam-validator query arn --service s3
 
-# Specific resource type
+# Specific resource type (two equivalent forms)
 iam-validator query arn --service s3 --name bucket
+iam-validator query arn --name s3:bucket
+
+# Get ARN format for IAM role
+iam-validator query arn --name iam:role
 ```
 
 #### query condition
@@ -111,6 +134,10 @@ iam-validator query arn --service s3 --name bucket
 ```bash
 # List condition keys
 iam-validator query condition --service s3
+
+# Query specific condition key (two equivalent forms)
+iam-validator query condition --service s3 --name prefix
+iam-validator query condition --name s3:prefix
 ```
 
 ## cache
@@ -158,18 +185,53 @@ eval "$(iam-validator completion zsh)"
 iam-validator completion fish | source
 ```
 
+## mcp
+
+Start an MCP (Model Context Protocol) server for AI assistant integration.
+
+### Usage
+
+```bash
+iam-validator mcp [OPTIONS]
+```
+
+### Options
+
+| Option            | Description                           | Default     |
+| ----------------- | ------------------------------------- | ----------- |
+| `--transport`     | Transport protocol (`stdio` or `sse`) | `stdio`     |
+| `--host`          | Host for SSE transport                | `127.0.0.1` |
+| `--port`          | Port for SSE transport                | `8000`      |
+| `--config`        | Path to configuration YAML file       | None        |
+| `--verbose`, `-v` | Enable verbose logging                | `false`     |
+
+### Examples
+
+```bash
+# Start with stdio transport (for Claude Desktop)
+iam-validator mcp
+
+# Start with SSE transport
+iam-validator mcp --transport sse --host 127.0.0.1 --port 8000
+
+# Start with config preloaded
+iam-validator mcp --config ./config.yaml
+```
+
+See the [MCP Server Integration](../integrations/mcp-server.md) guide for detailed setup instructions.
+
 ## Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success - all policies valid |
-| 1 | Validation errors found |
-| 2 | Configuration or input error |
+| Code | Meaning                      |
+| ---- | ---------------------------- |
+| 0    | Success - all policies valid |
+| 1    | Validation errors found      |
+| 2    | Configuration or input error |
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `IAM_VALIDATOR_CONFIG` | Default config file path |
+| Variable                  | Description              |
+| ------------------------- | ------------------------ |
+| `IAM_VALIDATOR_CONFIG`    | Default config file path |
 | `IAM_VALIDATOR_CACHE_DIR` | Cache directory location |
-| `NO_COLOR` | Disable colored output |
+| `NO_COLOR`                | Disable colored output   |

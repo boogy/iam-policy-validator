@@ -1,0 +1,283 @@
+/* Custom styles for IAM Policy Validator documentation */
+/* GitHub-inspired code theme for MkDocs Material */
+
+/* ==========================================================================
+   Word-wrap fixes for code blocks
+   ========================================================================== */
+
+.highlight span,
+.highlight code span,
+pre code span {
+  display: inline !important;
+}
+
+.highlight .w {
+  display: inline !important;
+  white-space: pre !important;
+}
+
+.highlight code,
+.highlight pre,
+.md-typeset code,
+.md-typeset pre {
+  word-break: normal !important;
+  word-wrap: normal !important;
+  white-space: pre !important;
+  overflow-x: auto !important;
+}
+
+.md-typeset pre > code {
+  white-space: pre !important;
+  display: block !important;
+}
+
+/* ==========================================================================
+   Code Block Container Styling
+   ========================================================================== */
+
+.md-typeset pre {
+  border-radius: 6px;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  margin: 1em 0;
+}
+
+.md-typeset code:not(pre code) {
+  background: var(--md-code-bg-color);
+  border-radius: 6px;
+  padding: 0.2em 0.4em;
+  font-size: 85%;
+}
+
+.md-clipboard {
+  color: var(--md-default-fg-color--light);
+}
+
+.md-clipboard:hover {
+  color: var(--md-accent-fg-color);
+}
+
+/* ==========================================================================
+   GitHub Light Theme - Direct color values (not variables!)
+   These override Material's default theme
+   ========================================================================== */
+
+[data-md-color-scheme="default"] .highlight .k,
+[data-md-color-scheme="default"] .highlight .kc,
+[data-md-color-scheme="default"] .highlight .kd,
+[data-md-color-scheme="default"] .highlight .kn,
+[data-md-color-scheme="default"] .highlight .kp,
+[data-md-color-scheme="default"] .highlight .kr,
+[data-md-color-scheme="default"] .highlight .kt,
+[data-md-color-scheme="default"] .highlight .ow {
+  color: #cf222e !important;
+}
+
+[data-md-color-scheme="default"] .highlight .s,
+[data-md-color-scheme="default"] .highlight .s1,
+[data-md-color-scheme="default"] .highlight .s2,
+[data-md-color-scheme="default"] .highlight .sa,
+[data-md-color-scheme="default"] .highlight .sb,
+[data-md-color-scheme="default"] .highlight .sc,
+[data-md-color-scheme="default"] .highlight .dl,
+[data-md-color-scheme="default"] .highlight .sd,
+[data-md-color-scheme="default"] .highlight .se,
+[data-md-color-scheme="default"] .highlight .sh,
+[data-md-color-scheme="default"] .highlight .si,
+[data-md-color-scheme="default"] .highlight .sx,
+[data-md-color-scheme="default"] .highlight .sr,
+[data-md-color-scheme="default"] .highlight .ss,
+[data-md-color-scheme="default"] .highlight .cpf,
+[data-md-color-scheme="default"] .highlight .l {
+  color: #0a3069 !important;
+}
+
+[data-md-color-scheme="default"] .highlight .c,
+[data-md-color-scheme="default"] .highlight .c1,
+[data-md-color-scheme="default"] .highlight .ch,
+[data-md-color-scheme="default"] .highlight .cm,
+[data-md-color-scheme="default"] .highlight .cs {
+  color: #6e7781 !important;
+  font-style: italic;
+}
+
+[data-md-color-scheme="default"] .highlight .nf,
+[data-md-color-scheme="default"] .highlight .fm,
+[data-md-color-scheme="default"] .highlight .nc,
+[data-md-color-scheme="default"] .highlight .ne,
+[data-md-color-scheme="default"] .highlight .nn {
+  color: #8250df !important;
+}
+
+[data-md-color-scheme="default"] .highlight .m,
+[data-md-color-scheme="default"] .highlight .mb,
+[data-md-color-scheme="default"] .highlight .mf,
+[data-md-color-scheme="default"] .highlight .mh,
+[data-md-color-scheme="default"] .highlight .mi,
+[data-md-color-scheme="default"] .highlight .mo,
+[data-md-color-scheme="default"] .highlight .il {
+  color: #0550ae !important;
+}
+
+[data-md-color-scheme="default"] .highlight .o {
+  color: #cf222e !important;
+}
+
+[data-md-color-scheme="default"] .highlight .cp,
+[data-md-color-scheme="default"] .highlight .se,
+[data-md-color-scheme="default"] .highlight .sx {
+  color: #0550ae !important;
+}
+
+[data-md-color-scheme="default"] .highlight .n,
+[data-md-color-scheme="default"] .highlight .kc {
+  color: #24292f !important;
+}
+
+[data-md-color-scheme="default"] .highlight .bp,
+[data-md-color-scheme="default"] .highlight .nb,
+[data-md-color-scheme="default"] .highlight .no {
+  color: #0550ae !important;
+}
+
+[data-md-color-scheme="default"] .highlight .nd,
+[data-md-color-scheme="default"] .highlight .ni,
+[data-md-color-scheme="default"] .highlight .nl,
+[data-md-color-scheme="default"] .highlight .nt {
+  color: #116329 !important;
+}
+
+[data-md-color-scheme="default"] .highlight .na,
+[data-md-color-scheme="default"] .highlight .nv,
+[data-md-color-scheme="default"] .highlight .vc,
+[data-md-color-scheme="default"] .highlight .vg,
+[data-md-color-scheme="default"] .highlight .vi {
+  color: #953800 !important;
+}
+
+[data-md-color-scheme="default"] .highlight .p {
+  color: #24292f !important;
+}
+
+[data-md-color-scheme="default"] .highlight .ge,
+[data-md-color-scheme="default"] .highlight .gh,
+[data-md-color-scheme="default"] .highlight .go,
+[data-md-color-scheme="default"] .highlight .gp,
+[data-md-color-scheme="default"] .highlight .gr,
+[data-md-color-scheme="default"] .highlight .gs,
+[data-md-color-scheme="default"] .highlight .gt,
+[data-md-color-scheme="default"] .highlight .gu {
+  color: #57606a !important;
+}
+
+/* ==========================================================================
+   GitHub Dark Theme - Direct color values (not variables!)
+   These override Material's slate theme
+   ========================================================================== */
+
+[data-md-color-scheme="slate"] .highlight .k,
+[data-md-color-scheme="slate"] .highlight .kc,
+[data-md-color-scheme="slate"] .highlight .kd,
+[data-md-color-scheme="slate"] .highlight .kn,
+[data-md-color-scheme="slate"] .highlight .kp,
+[data-md-color-scheme="slate"] .highlight .kr,
+[data-md-color-scheme="slate"] .highlight .kt,
+[data-md-color-scheme="slate"] .highlight .ow {
+  color: #ff7b72 !important;
+}
+
+[data-md-color-scheme="slate"] .highlight .s,
+[data-md-color-scheme="slate"] .highlight .s1,
+[data-md-color-scheme="slate"] .highlight .s2,
+[data-md-color-scheme="slate"] .highlight .sa,
+[data-md-color-scheme="slate"] .highlight .sb,
+[data-md-color-scheme="slate"] .highlight .sc,
+[data-md-color-scheme="slate"] .highlight .dl,
+[data-md-color-scheme="slate"] .highlight .sd,
+[data-md-color-scheme="slate"] .highlight .se,
+[data-md-color-scheme="slate"] .highlight .sh,
+[data-md-color-scheme="slate"] .highlight .si,
+[data-md-color-scheme="slate"] .highlight .sx,
+[data-md-color-scheme="slate"] .highlight .sr,
+[data-md-color-scheme="slate"] .highlight .ss,
+[data-md-color-scheme="slate"] .highlight .cpf,
+[data-md-color-scheme="slate"] .highlight .l {
+  color: #a5d6ff !important;
+}
+
+[data-md-color-scheme="slate"] .highlight .c,
+[data-md-color-scheme="slate"] .highlight .c1,
+[data-md-color-scheme="slate"] .highlight .ch,
+[data-md-color-scheme="slate"] .highlight .cm,
+[data-md-color-scheme="slate"] .highlight .cs {
+  color: #8b949e !important;
+  font-style: italic;
+}
+
+[data-md-color-scheme="slate"] .highlight .nf,
+[data-md-color-scheme="slate"] .highlight .fm,
+[data-md-color-scheme="slate"] .highlight .nc,
+[data-md-color-scheme="slate"] .highlight .ne,
+[data-md-color-scheme="slate"] .highlight .nn {
+  color: #d2a8ff !important;
+}
+
+[data-md-color-scheme="slate"] .highlight .m,
+[data-md-color-scheme="slate"] .highlight .mb,
+[data-md-color-scheme="slate"] .highlight .mf,
+[data-md-color-scheme="slate"] .highlight .mh,
+[data-md-color-scheme="slate"] .highlight .mi,
+[data-md-color-scheme="slate"] .highlight .mo,
+[data-md-color-scheme="slate"] .highlight .il {
+  color: #79c0ff !important;
+}
+
+[data-md-color-scheme="slate"] .highlight .o {
+  color: #ff7b72 !important;
+}
+
+[data-md-color-scheme="slate"] .highlight .cp,
+[data-md-color-scheme="slate"] .highlight .se,
+[data-md-color-scheme="slate"] .highlight .sx {
+  color: #79c0ff !important;
+}
+
+[data-md-color-scheme="slate"] .highlight .n,
+[data-md-color-scheme="slate"] .highlight .kc {
+  color: #c9d1d9 !important;
+}
+
+[data-md-color-scheme="slate"] .highlight .bp,
+[data-md-color-scheme="slate"] .highlight .nb,
+[data-md-color-scheme="slate"] .highlight .no {
+  color: #79c0ff !important;
+}
+
+[data-md-color-scheme="slate"] .highlight .nd,
+[data-md-color-scheme="slate"] .highlight .ni,
+[data-md-color-scheme="slate"] .highlight .nl,
+[data-md-color-scheme="slate"] .highlight .nt {
+  color: #7ee787 !important;
+}
+
+[data-md-color-scheme="slate"] .highlight .na,
+[data-md-color-scheme="slate"] .highlight .nv,
+[data-md-color-scheme="slate"] .highlight .vc,
+[data-md-color-scheme="slate"] .highlight .vg,
+[data-md-color-scheme="slate"] .highlight .vi {
+  color: #ffa657 !important;
+}
+
+[data-md-color-scheme="slate"] .highlight .p {
+  color: #c9d1d9 !important;
+}
+
+[data-md-color-scheme="slate"] .highlight .ge,
+[data-md-color-scheme="slate"] .highlight .gh,
+[data-md-color-scheme="slate"] .highlight .go,
+[data-md-color-scheme="slate"] .highlight .gp,
+[data-md-color-scheme="slate"] .highlight .gr,
+[data-md-color-scheme="slate"] .highlight .gs,
+[data-md-color-scheme="slate"] .highlight .gt,
+[data-md-color-scheme="slate"] .highlight .gu {
+  color: #8b949e !important;
+}

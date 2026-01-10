@@ -25,7 +25,7 @@ description: Stop IAM misconfigurations before they become breaches
 
     [:octicons-arrow-right-24: GitHub Actions](integrations/github-actions.md)
 
--   :material-shield-check:{ .lg .middle } **18 Built-in Checks**
+-   :material-shield-check:{ .lg .middle } **19 Built-in Checks**
 
     ---
 
@@ -148,7 +148,7 @@ Issues (2)
 
 ## Features
 
-- **18 Built-in Checks** — AWS validation, security best practices, privilege escalation detection
+- **19 Built-in Checks** — AWS validation, security best practices, privilege escalation detection
 - **GitHub Action** — Native PR comments, review status, inline annotations
 - **Python SDK** — Programmatic validation with async support
 - **Custom Checks** — Write organization-specific validation rules

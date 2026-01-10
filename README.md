@@ -386,15 +386,14 @@ Validates against official AWS IAM requirements:
 
 Identifies overly permissive configurations:
 
-| Check                                 | What It Catches                                        |
-| ------------------------------------- | ------------------------------------------------------ |
-| **Wildcard Action**                   | `Action: "*"` grants all AWS permissions               |
-| **Wildcard Resource**                 | `Resource: "*"` applies to all resources               |
-| **Full Wildcard**                     | Both `Action: "*"` AND `Resource: "*"` (admin access)  |
-| **Service Wildcards**                 | `s3:*`, `iam:*`, `ec2:*` (overly broad)                |
-| **Sensitive Actions (Policy-Wide)**   | **Cross-statement** privilege escalation patterns      |
-| **Sensitive Actions (Per-Statement)** | Dangerous actions in single statement                  |
-| **Condition Enforcement**             | Organization-specific requirements (your custom rules) |
+| Check                     | What It Catches                                        |
+| ------------------------- | ------------------------------------------------------ |
+| **Wildcard Action**       | `Action: "*"` grants all AWS permissions               |
+| **Wildcard Resource**     | `Resource: "*"` applies to all resources               |
+| **Full Wildcard**         | Both `Action: "*"` AND `Resource: "*"` (admin access)  |
+| **Service Wildcards**     | `s3:*`, `iam:*`, `ec2:*` (overly broad)                |
+| **Sensitive Actions**     | 490+ privilege escalation patterns and dangerous actions |
+| **Condition Enforcement** | Organization-specific condition requirements           |
 
 **Note on Sensitive Actions:** This check has two modes:
 

@@ -9,6 +9,18 @@ Used to enhance ValidationIssue objects with actionable guidance.
 from dataclasses import dataclass, field
 from typing import ClassVar
 
+# Risk category icons for display in PR comments
+RISK_CATEGORY_ICONS = {
+    "privilege_escalation": "🔐",
+    "data_exfiltration": "📤",
+    "denial_of_service": "🚫",
+    "resource_exposure": "🌐",
+    "credential_exposure": "🔑",
+    "compliance": "📋",
+    "configuration": "⚙️",
+    "validation": "✅",
+}
+
 
 @dataclass
 class CheckDocumentation:
@@ -19,12 +31,14 @@ class CheckDocumentation:
         risk_explanation: Why this issue is a security risk
         documentation_url: Link to relevant AWS docs or runbook
         remediation_steps: Step-by-step fix guidance
+        risk_category: Category of risk (e.g., "privilege_escalation", "data_exfiltration")
     """
 
     check_id: str
     risk_explanation: str
     documentation_url: str
     remediation_steps: list[str] = field(default_factory=list)
+    risk_category: str | None = None
 
 
 class CheckDocumentationRegistry:
@@ -89,6 +103,7 @@ CheckDocumentationRegistry.register(
             "Use the IAM policy simulator to test your intended permissions",
             "Check for common typos (e.g., 'S3' vs 's3', 'GetObjects' vs 'GetObject')",
         ],
+        risk_category="validation",
     )
 )
 
@@ -105,6 +120,7 @@ CheckDocumentationRegistry.register(
             "Check AWS documentation for the correct key name and format",
             "Use global condition keys (aws:*) for cross-service restrictions",
         ],
+        risk_category="validation",
     )
 )
 
@@ -121,6 +137,7 @@ CheckDocumentationRegistry.register(
             "Use String operators for string keys, Numeric for numbers, Date for timestamps",
             "Consider using IfExists variants for optional conditions",
         ],
+        risk_category="validation",
     )
 )
 
@@ -137,6 +154,7 @@ CheckDocumentationRegistry.register(
             "Ensure region and account ID are correct or use wildcards intentionally",
             "Test the policy with IAM policy simulator before deployment",
         ],
+        risk_category="validation",
     )
 )
 
@@ -153,6 +171,7 @@ CheckDocumentationRegistry.register(
             "Use descriptive SIDs that indicate the statement's purpose",
             "Consider a naming convention like 'AllowS3ReadAccess' or 'DenyPublicAccess'",
         ],
+        risk_category="compliance",
     )
 )
 
@@ -170,6 +189,7 @@ CheckDocumentationRegistry.register(
             "Remove redundant statements or consolidate similar actions",
             "Consider using permission boundaries or SCPs for broad restrictions",
         ],
+        risk_category="validation",
     )
 )
 
@@ -186,6 +206,7 @@ CheckDocumentationRegistry.register(
             "Ensure all required elements (Version, Statement) are present",
             "Check that Effect, Action, and Resource are properly formatted",
         ],
+        risk_category="validation",
     )
 )
 
@@ -202,6 +223,7 @@ CheckDocumentationRegistry.register(
             "Use ForAnyValue when ANY value matching is sufficient",
             "Consider the empty set behavior: ForAllValues returns true for empty sets",
         ],
+        risk_category="validation",
     )
 )
 
@@ -218,6 +240,7 @@ CheckDocumentationRegistry.register(
             "Consider using 'aws:MultiFactorAuthAge' to require recent MFA",
             "Ensure MFA is enforced at the identity level as well as policy level",
         ],
+        risk_category="credential_exposure",
     )
 )
 
@@ -234,6 +257,7 @@ CheckDocumentationRegistry.register(
             "Use specific principals instead of wildcards where possible",
             "For service principals, use the canonical format (e.g., 's3.amazonaws.com')",
         ],
+        risk_category="resource_exposure",
     )
 )
 
@@ -250,6 +274,7 @@ CheckDocumentationRegistry.register(
             "Resource policies: Include Principal element",
             "SCPs: Use only Allow statements with specific conditions",
         ],
+        risk_category="configuration",
     )
 )
 
@@ -266,6 +291,7 @@ CheckDocumentationRegistry.register(
             "Use '*' for actions that don't support resource-level permissions",
             "Split statements when actions require different resource types",
         ],
+        risk_category="validation",
     )
 )
 
@@ -283,6 +309,7 @@ CheckDocumentationRegistry.register(
             "Avoid wildcards in Principal unless absolutely necessary",
             "Use ExternalId for cross-account role assumption",
         ],
+        risk_category="privilege_escalation",
     )
 )
 
@@ -303,6 +330,7 @@ CheckDocumentationRegistry.register(
             "Document why each action is required",
             "Review and reduce permissions periodically",
         ],
+        risk_category="privilege_escalation",
     )
 )
 
@@ -319,6 +347,7 @@ CheckDocumentationRegistry.register(
             "Use resource tags and conditions for dynamic access control",
             "Limit scope to specific accounts, regions, or resource prefixes",
         ],
+        risk_category="resource_exposure",
     )
 )
 
@@ -336,6 +365,7 @@ CheckDocumentationRegistry.register(
             "Implement permission boundaries to limit maximum possible permissions",
             "Consider using service control policies (SCPs) as guardrails",
         ],
+        risk_category="privilege_escalation",
     )
 )
 
@@ -352,6 +382,7 @@ CheckDocumentationRegistry.register(
             "Use AWS managed policies for common patterns",
             "Consider permission boundaries to limit sensitive actions",
         ],
+        risk_category="privilege_escalation",
     )
 )
 
@@ -369,6 +400,7 @@ CheckDocumentationRegistry.register(
             "Limit to specific resources where possible",
             "Implement monitoring and alerting for sensitive action usage",
         ],
+        risk_category="privilege_escalation",
     )
 )
 
@@ -386,5 +418,25 @@ CheckDocumentationRegistry.register(
             "Use aws:MultiFactorAuthPresent for authentication-sensitive actions",
             "Use aws:RequestedRegion to limit geographic scope",
         ],
+        risk_category="compliance",
+    )
+)
+
+CheckDocumentationRegistry.register(
+    CheckDocumentation(
+        check_id="not_action_not_resource",
+        risk_explanation=(
+            "NotAction and NotResource grant permissions by exclusion rather than "
+            "inclusion. This can accidentally grant far more access than intended, "
+            "including access to actions and resources created in the future."
+        ),
+        documentation_url=f"{CheckDocumentationRegistry.AWS_IAM_DOCS}/reference_policies_elements_notaction.html",
+        remediation_steps=[
+            "Replace NotAction with explicit Action lists when possible",
+            "Replace NotResource with specific Resource ARNs",
+            "If NotAction is required, add strict conditions (MFA, IP, etc.)",
+            "Document why exclusion-based permissions are necessary",
+        ],
+        risk_category="privilege_escalation",
     )
 )
