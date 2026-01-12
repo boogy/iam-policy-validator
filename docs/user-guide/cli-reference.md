@@ -113,6 +113,40 @@ iam-validator query action --name ec2:DescribeInstances --output yaml
 
 # Filter write-level actions
 iam-validator query action --service s3 --access-level write --output text
+
+# Expand wildcard patterns to matching actions
+iam-validator query action --name "iam:Get*" --output text
+iam-validator query action --name "s3:*Object*" --output json
+iam-validator query action --service ec2 --name "Describe*" --output text
+
+# Count matching actions
+iam-validator query action --name "ec2:Describe*" --output text | wc -l
+```
+
+##### Wildcard Pattern Expansion
+
+The `--name` option supports wildcard patterns (`*` and `?`) to find all matching actions:
+
+- `*` matches zero or more characters
+- `?` matches exactly one character
+
+This is useful for:
+
+- Exploring available actions for a permission prefix
+- Finding all actions related to a specific operation
+- Generating action lists for least-privilege policies
+
+```bash
+# Find all IAM Get actions
+iam-validator query action --name "iam:Get*" --output text
+# Output: iam:GetAccessKeyLastUsed, iam:GetAccountAuthorizationDetails, ...
+
+# Find all S3 Object-related actions
+iam-validator query action --name "s3:*Object*" --output text
+# Output: s3:DeleteObject, s3:GetObject, s3:PutObject, ...
+
+# Get detailed JSON output for wildcard results
+iam-validator query action --name "iam:Create*" --output json
 ```
 
 #### query arn
