@@ -86,11 +86,11 @@ iam-validator query <subcommand> [OPTIONS]
 
 The `--service` option is **optional** when `--name` includes the service prefix (e.g., `s3:GetObject`).
 
-| Option      | Description                                               |
-| ----------- | --------------------------------------------------------- |
-| `--service` | AWS service prefix (optional if `--name` has prefix)      |
+| Option      | Description                                                    |
+| ----------- | -------------------------------------------------------------- |
+| `--service` | AWS service prefix (optional if `--name` has prefix)           |
 | `--name`    | Name to query (can include service prefix like `s3:GetObject`) |
-| `--output`  | Output format: `json`, `yaml`, or `text`                  |
+| `--output`  | Output format: `json`, `yaml`, or `text`                       |
 
 ### Subcommands
 
