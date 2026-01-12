@@ -22,6 +22,10 @@ Examples:
     iam-validator query arn --name s3:bucket
     iam-validator query condition --name s3:prefix
 
+    # Expand wildcard patterns to matching actions
+    iam-validator query action --name "iam:Get*" --output text
+    iam-validator query action --name "s3:*Object*" --output json
+
     # Query ARN formats for a service
     iam-validator query arn --service s3
 
@@ -34,9 +38,9 @@ Examples:
     # Query specific condition key
     iam-validator query condition --service s3 --name s3:prefix
 
-  # Text format for simple output (great for piping)
-  iam-validator query action --service s3 --output text | grep Delete
-  iam-validator query action --service iam --access-level write --output text
+    # Text format for simple output (great for piping)
+    iam-validator query action --service s3 --output text | grep Delete
+    iam-validator query action --service iam --access-level write --output text
 """
 
 import argparse
@@ -88,6 +92,11 @@ examples:
   iam-validator query action --name iam:CreateRole
   iam-validator query arn --name s3:bucket
   iam-validator query condition --name s3:prefix
+
+  # Expand wildcard patterns to matching actions
+  iam-validator query action --name "iam:Get*" --output text
+  iam-validator query action --name "s3:*Object*" --output json
+  iam-validator query action --service ec2 --name "Describe*" --output text
 
   # Query ARN formats for a service
   iam-validator query arn --service s3
@@ -311,6 +320,13 @@ note:
         self, fetcher: AWSServiceFetcher, args: argparse.Namespace
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Query action table."""
+        # Check if name contains wildcards
+        has_wildcard = args.name and ("*" in args.name or "?" in args.name)
+
+        if has_wildcard:
+            # Expand wildcard pattern to matching actions
+            return await self._expand_wildcard_actions(fetcher, args)
+
         service_detail = await fetcher.fetch_service_by_name(args.service)
 
         # If specific action requested, return its details
@@ -387,6 +403,71 @@ note:
             )
 
         return filtered_actions
+
+    async def _expand_wildcard_actions(
+        self, fetcher: AWSServiceFetcher, args: argparse.Namespace
+    ) -> list[dict[str, Any]]:
+        """Expand wildcard action pattern to matching actions.
+
+        Args:
+            fetcher: AWS service fetcher
+            args: Command arguments with name containing wildcard pattern
+
+        Returns:
+            List of matching actions with their details
+        """
+        # Build full pattern with service prefix if needed
+        pattern = args.name
+        if args.service and ":" not in pattern:
+            pattern = f"{args.service}:{pattern}"
+
+        # Expand the wildcard pattern
+        matching_actions = await fetcher.expand_wildcard_action(pattern)
+
+        if not matching_actions:
+            raise ValueError(f"No actions match pattern '{pattern}'")
+
+        # For text output, return simple list of action names
+        if args.output == "text":
+            return [{"action": action} for action in sorted(matching_actions)]
+
+        # For json/yaml output, include full details for each action
+        # Parse service from pattern
+        service_prefix = pattern.split(":")[0]
+        service_detail = await fetcher.fetch_service_by_name(service_prefix)
+
+        result = []
+        for full_action in sorted(matching_actions):
+            # Extract action name without service prefix
+            action_name = full_action.split(":")[1] if ":" in full_action else full_action
+
+            # Get action details
+            action_detail = service_detail.actions.get(action_name)
+            if action_detail:
+                access_level = self._get_access_level(action_detail)
+                description = (
+                    action_detail.annotations.get("Description", "N/A")
+                    if action_detail.annotations
+                    else "N/A"
+                )
+                result.append(
+                    {
+                        "action": full_action,
+                        "access_level": access_level,
+                        "description": description,
+                    }
+                )
+            else:
+                # Fallback if action details not found (shouldn't happen)
+                result.append(
+                    {
+                        "action": full_action,
+                        "access_level": "Unknown",
+                        "description": "N/A",
+                    }
+                )
+
+        return result
 
     async def _query_arn_table(
         self, fetcher: AWSServiceFetcher, args: argparse.Namespace
