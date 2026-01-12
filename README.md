@@ -7,6 +7,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/boogy/iam-policy-validator/badge)](https://scorecard.dev/viewer/?uri=github.com/boogy/iam-policy-validator)
 
+**[📖 Full Documentation](https://boogy.github.io/iam-policy-validator/)**
+
 ---
 
 ## Why This Tool Exists
