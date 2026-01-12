@@ -85,20 +85,39 @@ class TestActionValidationCheck:
         fetcher.validate_action.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_wildcard_pattern_action(self, check, fetcher, config):
-        """Test wildcard pattern actions are skipped (handled by security_best_practices_check)."""
+    async def test_wildcard_pattern_action_valid(self, check, fetcher, config):
+        """Test valid wildcard pattern actions are validated and pass."""
         fetcher.validate_action.return_value = (True, None, True)
 
-        # Wildcard actions are skipped by action_validation_check
         statement = Statement(
             Effect="Allow", Action=["s3:Put*"], Resource=["arn:aws:s3:::bucket/*"]
         )
         issues = await check.execute(statement, 0, fetcher, config)
 
-        # No issues - wildcards are handled by security_best_practices_check
+        # No issues - wildcard matches at least one action
         assert len(issues) == 0
-        # validate_action should not be called for wildcard actions
-        fetcher.validate_action.assert_not_called()
+        # validate_action IS called for wildcard patterns (to ensure they match real actions)
+        fetcher.validate_action.assert_called_once_with("s3:Put*")
+
+    @pytest.mark.asyncio
+    async def test_wildcard_pattern_action_invalid(self, check, fetcher, config):
+        """Test invalid wildcard pattern (typo) is flagged."""
+        fetcher.validate_action.return_value = (
+            False,
+            "Action pattern `Putt*` does not match any actions in service `s3`",
+            True,
+        )
+
+        # Typo in wildcard pattern - "Putt*" instead of "Put*"
+        statement = Statement(
+            Effect="Allow", Action=["s3:Putt*"], Resource=["arn:aws:s3:::bucket/*"]
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Invalid wildcard pattern should be flagged
+        assert len(issues) == 1
+        assert issues[0].action == "s3:Putt*"
+        assert "does not match any actions" in issues[0].message
 
     @pytest.mark.asyncio
     async def test_multiple_actions(self, check, fetcher, config):
@@ -211,3 +230,81 @@ class TestActionValidationCheck:
 
         assert len(issues) == 1
         assert "Invalid action: `s3:InvalidAction`" in issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_not_action_valid(self, check, fetcher, config):
+        """Test valid NotAction passes."""
+        fetcher.validate_action.return_value = (True, None, False)
+
+        statement = Statement(
+            Effect="Deny", NotAction=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"]
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        assert len(issues) == 0
+        fetcher.validate_action.assert_called_once_with("s3:GetObject")
+
+    @pytest.mark.asyncio
+    async def test_not_action_invalid(self, check, fetcher, config):
+        """Test invalid NotAction is flagged."""
+        fetcher.validate_action.return_value = (
+            False,
+            "Action 's3:InvalidAction' does not exist",
+            False,
+        )
+
+        statement = Statement(
+            Effect="Deny", NotAction=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"]
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        assert len(issues) == 1
+        assert issues[0].severity == "error"
+        assert issues[0].issue_type == "invalid_action"
+        assert issues[0].action == "s3:InvalidAction"
+        assert issues[0].field_name == "not_action"
+
+    @pytest.mark.asyncio
+    async def test_not_action_wildcard_pattern_invalid(self, check, fetcher, config):
+        """Test invalid NotAction wildcard pattern is flagged."""
+        fetcher.validate_action.return_value = (
+            False,
+            "Action pattern `Gett*` does not match any actions in service `s3`",
+            True,
+        )
+
+        # Typo in NotAction wildcard - "Gett*" instead of "Get*"
+        statement = Statement(
+            Effect="Deny", NotAction=["s3:Gett*"], Resource=["arn:aws:s3:::bucket/*"]
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        assert len(issues) == 1
+        assert issues[0].action == "s3:Gett*"
+        assert issues[0].field_name == "not_action"
+
+    @pytest.mark.asyncio
+    async def test_both_action_and_not_action(self, check, fetcher, config):
+        """Test statement with both Action and NotAction (unusual but valid IAM)."""
+
+        async def validate_side_effect(action):
+            if action == "s3:GetObject":
+                return (True, None, False)
+            else:
+                return (False, f"Action '{action}' does not exist", False)
+
+        fetcher.validate_action.side_effect = validate_side_effect
+
+        # Both Action and NotAction in same statement (IAM allows this, though unusual)
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            NotAction=["s3:InvalidAction"],
+            Resource=["arn:aws:s3:::bucket/*"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should flag the invalid NotAction
+        assert len(issues) == 1
+        assert issues[0].action == "s3:InvalidAction"
+        assert issues[0].field_name == "not_action"

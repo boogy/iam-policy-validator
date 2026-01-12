@@ -98,3 +98,54 @@ class TestResourceValidationCheck:
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_not_resource_valid(self, check, fetcher, config):
+        """Test valid NotResource ARN passes."""
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:GetObject"],
+            NotResource=["arn:aws:s3:::my-bucket/*"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_not_resource_invalid(self, check, fetcher, config):
+        """Test invalid NotResource ARN is flagged."""
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:GetObject"],
+            NotResource=["not-an-arn"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "invalid_resource"
+        assert issues[0].field_name == "not_resource"
+        assert issues[0].resource == "not-an-arn"
+
+    @pytest.mark.asyncio
+    async def test_not_resource_wildcard_skipped(self, check, fetcher, config):
+        """Test NotResource wildcard is skipped."""
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:GetObject"],
+            NotResource=["*"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_both_resource_and_not_resource(self, check, fetcher, config):
+        """Test statement with both Resource and NotResource."""
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:::valid-bucket/*"],
+            NotResource=["invalid-arn"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        # Should flag the invalid NotResource
+        assert len(issues) == 1
+        assert issues[0].field_name == "not_resource"
+        assert issues[0].resource == "invalid-arn"
