@@ -106,7 +106,7 @@ Restrict to specific resources:
 
 Detects service-level wildcards like `s3:*` or `iam:*`.
 
-**Severity:** `medium`
+**Severity:** `high`
 
 ### Fail Example
 
@@ -139,7 +139,7 @@ Use specific actions or action patterns:
 
 Detects 490+ privilege escalation actions that should have conditions.
 
-**Severity:** `high`
+**Severity:** `medium`
 
 ### Sensitive Action Categories
 
@@ -231,3 +231,70 @@ Detects MFA condition anti-patterns that may not work as expected.
 
 - `aws:MultiFactorAuthPresent` in Deny with `BoolIfExists`
 - Missing MFA check with `StringEquals` instead of `Bool`
+
+---
+
+## not_action_not_resource
+
+Detects dangerous NotAction/NotResource patterns that can grant overly broad permissions.
+
+**Severity:** `high`
+
+### Why It's Dangerous
+
+NotAction and NotResource grant permissions by **exclusion** rather than explicit inclusion. This means:
+
+- `NotAction` with `Allow` grants **ALL actions except** the listed ones
+- `NotResource` with `Allow` grants access to **ALL resources except** the listed ones
+
+This makes it easy to accidentally grant more access than intended, especially as AWS adds new services and actions.
+
+### Patterns Detected
+
+1. **NotAction with Allow (no conditions)** - Critical: Near-administrator access
+2. **NotAction with Allow (with conditions)** - Medium: Still risky
+3. **NotResource with broad Resource** - High: Access to all resources except listed
+
+### Fail Example
+
+```json
+{
+  "Effect": "Allow",
+  "NotAction": ["iam:*", "sts:*"],
+  "Resource": "*"
+}
+```
+
+This grants ALL AWS actions **except** IAM and STS - equivalent to near-administrator access.
+
+### How to Fix
+
+Replace NotAction with explicit Action lists:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "s3:GetObject",
+    "s3:PutObject",
+    "dynamodb:Query"
+  ],
+  "Resource": [
+    "arn:aws:s3:::my-bucket/*",
+    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table"
+  ]
+}
+```
+
+If NotAction is truly required, add strict conditions:
+
+```json
+{
+  "Effect": "Allow",
+  "NotAction": ["iam:*", "sts:*"],
+  "Resource": "*",
+  "Condition": {
+    "Bool": {"aws:MultiFactorAuthPresent": "true"},
+    "IpAddress": {"aws:SourceIp": "10.0.0.0/8"}
+  }
+}

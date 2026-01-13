@@ -5,7 +5,7 @@ description: Integrate IAM Policy Validator into your workflow
 
 # Integrations
 
-Integrate IAM Policy Validator into your CI/CD pipelines and development workflow.
+Integrate IAM Policy Validator into your CI/CD pipelines, AI assistants, and development workflow.
 
 <div class="grid cards" markdown>
 
@@ -32,5 +32,13 @@ Integrate IAM Policy Validator into your CI/CD pipelines and development workflo
     Validate before committing
 
     [:octicons-arrow-right-24: Pre-commit](pre-commit.md)
+
+-   :material-robot:{ .lg .middle } **MCP Server**
+
+    ---
+
+    AI assistant integration via Model Context Protocol
+
+    [:octicons-arrow-right-24: MCP Server](mcp-server.md)
 
 </div>

@@ -47,6 +47,7 @@ KNOWN_CHECK_IDS = frozenset(
         "service_wildcard",
         "sensitive_action",
         "action_condition_enforcement",
+        "not_action_not_resource",
     ]
 )
 

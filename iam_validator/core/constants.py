@@ -77,6 +77,17 @@ MEDIUM_SEVERITY_LEVELS = ("warning", "medium")
 # Low severity issues (informational)
 LOW_SEVERITY_LEVELS = ("info", "low")
 
+# Severity configuration with emoji and action guidance for PR comments
+SEVERITY_CONFIG = {
+    "critical": {"emoji": "🔴", "action": "Block deployment"},
+    "high": {"emoji": "🟠", "action": "Fix before merge"},
+    "medium": {"emoji": "🟡", "action": "Address soon"},
+    "low": {"emoji": "🔵", "action": "Consider fixing"},
+    "error": {"emoji": "❌", "action": "Must fix - AWS will reject"},
+    "warning": {"emoji": "⚠️", "action": "Review"},
+    "info": {"emoji": "ℹ️", "action": "Optional"},
+}
+
 # ============================================================================
 # GitHub Integration
 # ============================================================================

@@ -257,14 +257,14 @@ iam-validator validate --path user-policy.json --format json
 
 ## Understanding Severity Levels
 
-| Severity | Meaning | Action |
-|----------|---------|--------|
-| **Critical** | Severe security risk | Block deployment |
-| **High** | Security concern | Fix before merge |
-| **Medium** | Best practice violation | Address soon |
-| **Low** | Minor improvement | Optional fix |
-| **Error** | AWS will reject | Must fix |
-| **Warning** | Potential issue | Review |
+| Severity     | Meaning                 | Action           |
+| ------------ | ----------------------- | ---------------- |
+| **Critical** | Severe security risk    | Block deployment |
+| **High**     | Security concern        | Fix before merge |
+| **Medium**   | Best practice violation | Address soon     |
+| **Low**      | Minor improvement       | Optional fix     |
+| **Error**    | AWS will reject         | Must fix         |
+| **Warning**  | Potential issue         | Review           |
 
 ## What's Next?
 
