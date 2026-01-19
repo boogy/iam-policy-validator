@@ -70,6 +70,26 @@ class ServiceCacheManager:
 
         return None
 
+    async def get_stale(self, url: str | None = None, base_url: str = "") -> Any | None:
+        """Get from disk cache even if expired (stale data fallback).
+
+        Use this method to retrieve stale cache data when a fresh fetch fails.
+        The stale data can serve as a fallback to avoid complete failure.
+
+        Args:
+            url: URL for disk cache lookup
+            base_url: Base URL for service reference API (used for disk cache path)
+
+        Returns:
+            Cached data if found (regardless of TTL), None otherwise
+        """
+        if url and self._storage:
+            cached = self._storage.read_from_cache(url, base_url, allow_stale=True)
+            if cached is not None:
+                logger.info(f"Using stale cache fallback for URL: {url}")
+                return cached
+        return None
+
     async def set(
         self, cache_key: str, value: Any, url: str | None = None, base_url: str = ""
     ) -> None:

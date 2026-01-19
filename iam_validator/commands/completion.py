@@ -233,10 +233,11 @@ _iam_validator_completion() {{
 
             # Complete options for query subcommands
             # Note: --service is optional if --name includes service prefix (e.g., s3:GetObject)
+            # Note: --name accepts multiple values and supports wildcards
             local opts=""
             case "$query_subcmd" in
                 action)
-                    opts="--service --name --access-level --resource-type --condition --output"
+                    opts="--service --name --access-level --resource-type --condition --output --show-condition-keys --show-resource-types --show-access-level"
                     ;;
                 arn)
                     opts="--service --name --list-arn-types --output"
@@ -366,11 +367,14 @@ _iam_validator() {{
                                 action)
                                     _arguments \\
                                         '--service[AWS service (optional if --name has prefix)]:service:($aws_services)' \\
-                                        '--name[Action (e.g., GetObject or s3:GetObject)]:action name:' \\
+                                        '*--name[Action name(s) - supports multiple values and wildcards]:action name:' \\
                                         '--access-level[Filter by access level]:access level:(read write list tagging permissions-management)' \\
                                         '--resource-type[Filter by resource type]:resource type:' \\
                                         '--condition[Filter by condition key]:condition key:' \\
-                                        '--output[Output format]:format:(json yaml text)'
+                                        '--output[Output format]:format:(json yaml text)' \\
+                                        '--show-condition-keys[Show only condition keys for each action]' \\
+                                        '--show-resource-types[Show only resource types for each action]' \\
+                                        '--show-access-level[Show only access level for each action]'
                                     ;;
                                 arn)
                                     _arguments \\
@@ -523,7 +527,7 @@ _iam_validator_cache_subcommands() {{
         'info:Show cache information and statistics'
         'list:List all cached AWS services'
         'clear:Clear all cached AWS service definitions'
-        'refresh:Clear cache and pre-fetch common services'
+        'refresh:Refresh all cached services with fresh data'
         'prefetch:Pre-fetch common AWS services (without clearing)'
         'location:Show cache directory location'
     )

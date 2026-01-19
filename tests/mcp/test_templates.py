@@ -359,6 +359,10 @@ class TestTemplateSecurityFeatures:
             policy = template["policy"]
 
             for stmt in policy["Statement"]:
+                # Skip Deny statements - they're security controls, not permissions
+                if stmt.get("Effect") == "Deny":
+                    continue
+
                 resources = stmt.get("Resource", [])
                 if isinstance(resources, str):
                     resources = [resources]

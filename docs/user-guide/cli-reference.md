@@ -86,11 +86,14 @@ iam-validator query <subcommand> [OPTIONS]
 
 The `--service` option is **optional** when `--name` includes the service prefix (e.g., `s3:GetObject`).
 
-| Option      | Description                                                    |
-| ----------- | -------------------------------------------------------------- |
-| `--service` | AWS service prefix (optional if `--name` has prefix)           |
-| `--name`    | Name to query (can include service prefix like `s3:GetObject`) |
-| `--output`  | Output format: `json`, `yaml`, or `text`                       |
+| Option                  | Description                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| `--service`             | AWS service prefix (optional if `--name` has prefix)                                       |
+| `--name`                | Name(s) to query; supports multiple values, wildcards, and service prefix (`s3:GetObject`) |
+| `--output`              | Output format: `json`, `yaml`, or `text`                                                   |
+| `--show-condition-keys` | Show only condition keys for each action                                                   |
+| `--show-resource-types` | Show only resource types for each action                                                   |
+| `--show-access-level`   | Show only access level for each action                                                     |
 
 ### Subcommands
 
@@ -121,7 +124,37 @@ iam-validator query action --service ec2 --name "Describe*" --output text
 
 # Count matching actions
 iam-validator query action --name "ec2:Describe*" --output text | wc -l
+
+# Query MULTIPLE actions at once (space-separated)
+iam-validator query action --name dynamodb:Query dynamodb:Scan --output yaml
+iam-validator query action --name s3:GetObject s3:PutObject ec2:DescribeInstances
+
+# Mix exact names and wildcards
+iam-validator query action --name dynamodb:Query dynamodb:BatchGet* --output json
+iam-validator query action --name iam:CreateRole iam:Delete* --output text
 ```
+
+##### Multiple Action Queries
+
+The `--name` option accepts multiple space-separated action names, allowing you to query several actions in a single command:
+
+```bash
+# Query multiple specific actions
+iam-validator query action --name dynamodb:Query dynamodb:Scan --output yaml
+
+# Query actions across different services
+iam-validator query action --name s3:GetObject ec2:DescribeInstances iam:GetRole
+
+# Mix exact names with wildcards for powerful queries
+iam-validator query action --name dynamodb:Query dynamodb:BatchGet* --output json
+iam-validator query action --name iam:CreateRole iam:Delete* --output text
+```
+
+This feature is optimized for performance:
+
+- Actions are grouped by service to minimize API calls
+- Service definitions are fetched in parallel when querying multiple services
+- Wildcards and exact matches are processed efficiently in a single pass
 
 ##### Wildcard Pattern Expansion
 
@@ -148,6 +181,26 @@ iam-validator query action --name "s3:*Object*" --output text
 # Get detailed JSON output for wildcard results
 iam-validator query action --name "iam:Create*" --output json
 ```
+
+##### Output Field Filters
+
+Use `--show-condition-keys`, `--show-resource-types`, or `--show-access-level` to filter output to only specific fields:
+
+```bash
+# Show only condition keys for DynamoDB actions
+iam-validator query action --name dynamodb:Query dynamodb:Scan --show-condition-keys --output yaml
+
+# Show only resource types for S3 wildcard actions
+iam-validator query action --name "s3:Get*" --show-resource-types --output text
+
+# Show only access level for multiple actions
+iam-validator query action --name iam:CreateRole iam:DeleteRole --show-access-level
+
+# Combine multiple filters
+iam-validator query action --name s3:GetObject --show-condition-keys --show-resource-types --output yaml
+```
+
+These filters work with all query modes (single action, multiple actions, wildcards) and all output formats.
 
 #### query arn
 

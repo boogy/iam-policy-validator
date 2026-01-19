@@ -245,11 +245,23 @@ class AWSServiceFetcher:
             f"raw:{self.BASE_URL}", url=self.BASE_URL, base_url=self.BASE_URL
         )
         if data is None:
-            data = await self._client.fetch(self.BASE_URL)
-            # Cache the raw data
-            await self._cache.set(
-                f"raw:{self.BASE_URL}", data, url=self.BASE_URL, base_url=self.BASE_URL
-            )
+            try:
+                data = await self._client.fetch(self.BASE_URL)
+                # Cache the raw data (this refreshes the disk cache file)
+                await self._cache.set(
+                    f"raw:{self.BASE_URL}", data, url=self.BASE_URL, base_url=self.BASE_URL
+                )
+            except Exception as e:
+                # API fetch failed - try stale cache as fallback
+                logger.warning(f"API fetch failed for services list: {e}")
+                stale_data = await self._cache.get_stale(
+                    url=self.BASE_URL, base_url=self.BASE_URL
+                )
+                if stale_data is not None:
+                    logger.info("Using stale cache data for services list due to API failure")
+                    data = stale_data
+                else:
+                    raise
 
         if not isinstance(data, list):
             raise ValueError("Expected list of services from root endpoint")
@@ -332,12 +344,26 @@ class AWSServiceFetcher:
                     f"raw:{service.url}", url=service.url, base_url=self.BASE_URL
                 )
                 if data is None:
-                    # Fetch service detail from API
-                    data = await self._client.fetch(service.url)
-                    # Cache the raw data
-                    await self._cache.set(
-                        f"raw:{service.url}", data, url=service.url, base_url=self.BASE_URL
-                    )
+                    try:
+                        # Fetch service detail from API
+                        data = await self._client.fetch(service.url)
+                        # Cache the raw data (this refreshes the disk cache file)
+                        await self._cache.set(
+                            f"raw:{service.url}", data, url=service.url, base_url=self.BASE_URL
+                        )
+                    except Exception as e:
+                        # API fetch failed - try stale cache as fallback
+                        logger.warning(f"API fetch failed for {service_name}: {e}")
+                        stale_data = await self._cache.get_stale(
+                            url=service.url, base_url=self.BASE_URL
+                        )
+                        if stale_data is not None:
+                            logger.info(
+                                f"Using stale cache data for {service_name} due to API failure"
+                            )
+                            data = stale_data
+                        else:
+                            raise
 
                 # Validate and parse
                 service_detail = ServiceDetail.model_validate(data)

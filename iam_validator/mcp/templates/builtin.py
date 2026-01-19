@@ -51,9 +51,6 @@ TEMPLATES: Final[dict[str, dict[str, Any]]] = {
                         "s3:GetBucketVersioning",
                     ],
                     "Resource": "arn:aws:s3:::${bucket_name}",
-                    "Condition": {
-                        "StringEquals": {"aws:ResourceAccount": "$${aws:PrincipalAccount}"},
-                    },
                 },
                 {
                     "Sid": "S3GetObjects",
@@ -99,9 +96,6 @@ TEMPLATES: Final[dict[str, dict[str, Any]]] = {
                         "s3:GetBucketVersioning",
                     ],
                     "Resource": "arn:aws:s3:::${bucket_name}",
-                    "Condition": {
-                        "StringEquals": {"aws:ResourceAccount": "$${aws:PrincipalAccount}"},
-                    },
                 },
                 {
                     "Sid": "S3ReadWriteObjects",
@@ -213,9 +207,6 @@ TEMPLATES: Final[dict[str, dict[str, Any]]] = {
                     "Effect": "Allow",
                     "Action": "s3:ListBucket",
                     "Resource": "arn:aws:s3:::${bucket_name}",
-                    "Condition": {
-                        "StringEquals": {"aws:ResourceAccount": "$${aws:PrincipalAccount}"},
-                    },
                 },
                 {
                     "Sid": "LambdaLogging",
@@ -270,6 +261,9 @@ TEMPLATES: Final[dict[str, dict[str, Any]]] = {
                         "arn:aws:dynamodb:${region}:${account_id}:table/${table_name}",
                         "arn:aws:dynamodb:${region}:${account_id}:table/${table_name}/index/*",
                     ],
+                    "Condition": {
+                        "StringEquals": {"aws:ResourceTag/owner": "$${aws:PrincipalTag/owner}"},
+                    },
                 },
                 {
                     "Sid": "DynamoDBDescribe",
@@ -348,6 +342,17 @@ TEMPLATES: Final[dict[str, dict[str, Any]]] = {
             "Version": "2012-10-17",
             "Statement": [
                 {
+                    "Sid": "AllowSecretsManagerSameOwner",
+                    "Effect": "Allow",
+                    "Action": ["secretsmanager:*"],
+                    "Resource": "arn:aws:secretsmanager:${region}:${account_id}:secret:${secret_prefix}*",
+                    "Condition": {
+                        "StringEquals": {
+                            "aws:ResourceTag/owner": "$${aws:PrincipalTag/owner}",
+                        },
+                    },
+                },
+                {
                     "Sid": "SecretsManagerRead",
                     "Effect": "Allow",
                     "Action": [
@@ -366,6 +371,12 @@ TEMPLATES: Final[dict[str, dict[str, Any]]] = {
                     "Sid": "SecretsManagerList",
                     "Effect": "Allow",
                     "Action": "secretsmanager:ListSecrets",
+                    "Resource": "*",
+                },
+                {
+                    "Sid": "DenyPolicyChanges",
+                    "Effect": "Deny",
+                    "Action": "secretsmanager:*Policy",
                     "Resource": "*",
                 },
             ],
