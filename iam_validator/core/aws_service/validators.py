@@ -13,7 +13,6 @@ from iam_validator.core.aws_service.parsers import ServiceParser
 from iam_validator.core.constants import (
     AWS_TAG_KEY_ALLOWED_CHARS,
     AWS_TAG_KEY_MAX_LENGTH,
-    AWS_TAG_KEY_PLACEHOLDERS,
 )
 from iam_validator.core.models import ServiceDetail
 
@@ -46,42 +45,17 @@ def _is_valid_tag_key(tag_key: str) -> bool:
     return bool(_TAG_KEY_PATTERN.match(tag_key))
 
 
-def _matches_condition_key_pattern(condition_key: str, pattern: str) -> bool:
-    """Check if a condition key matches a pattern with tag-key placeholders.
-
-    AWS service definitions use patterns like:
-    - `ssm:resourceTag/tag-key` or `ssm:resourceTag/${TagKey}` to match `ssm:resourceTag/owner`
-    - `aws:ResourceTag/${TagKey}` to match `aws:ResourceTag/Environment`
-
-    Args:
-        condition_key: The actual condition key from the policy (e.g., "ssm:resourceTag/owner")
-        pattern: The pattern from AWS service definition (e.g., "ssm:resourceTag/tag-key")
-
-    Returns:
-        True if condition_key matches the pattern
-    """
-    # Exact match (fast path)
-    if condition_key == pattern:
-        return True
-
-    # Check for tag-key placeholder patterns
-    for tag_placeholder in AWS_TAG_KEY_PLACEHOLDERS:
-        if tag_placeholder in pattern:
-            # Extract the prefix before the placeholder
-            prefix = pattern.split(tag_placeholder, 1)[0]
-            prefix_with_slash = prefix + "/"
-            # Check if condition_key starts with prefix and has a tag key after it
-            if condition_key.startswith(prefix_with_slash):
-                # Validate tag key format per AWS constraints
-                tag_key = condition_key[len(prefix_with_slash) :]
-                if _is_valid_tag_key(tag_key):
-                    return True
-
-    return False
-
-
 def _condition_key_in_list(condition_key: str, condition_keys: list[str]) -> bool:
     """Check if a condition key matches any key in the list, supporting patterns.
+
+    AWS service definitions use patterns with tag-key placeholders like:
+    - `ssm:resourceTag/tag-key` to match `ssm:resourceTag/owner`
+    - `aws:ResourceTag/${TagKey}` to match `aws:ResourceTag/Environment`
+    - `s3:RequestObjectTag/<key>` to match `s3:RequestObjectTag/Environment`
+
+    Any pattern containing "/" is treated as a potential tag-key pattern where
+    the prefix before "/" must match exactly and the suffix after "/" in the
+    condition_key must be a valid AWS tag key.
 
     Args:
         condition_key: The condition key to check
@@ -94,13 +68,30 @@ def _condition_key_in_list(condition_key: str, condition_keys: list[str]) -> boo
     if condition_key in condition_keys:
         return True
 
-    # Slower path: check patterns only if no exact match
+    # Check if condition_key could match a pattern (must contain "/")
+    if "/" not in condition_key:
+        return False
+
+    # Extract prefix and tag key from condition_key
+    cond_slash_idx = condition_key.rfind("/")
+    if cond_slash_idx <= 0:
+        return False
+
+    cond_prefix = condition_key[:cond_slash_idx]
+    tag_key = condition_key[cond_slash_idx + 1 :]
+
+    # Validate tag key format
+    if not _is_valid_tag_key(tag_key):
+        return False
+
+    # Check if any pattern has a matching prefix
     for pattern in condition_keys:
-        # Skip exact matches (already checked above)
-        if pattern == condition_key:
+        if "/" not in pattern:
             continue
-        if _matches_condition_key_pattern(condition_key, pattern):
+        pattern_prefix = pattern[: pattern.rfind("/")]
+        if pattern_prefix == cond_prefix:
             return True
+
     return False
 
 

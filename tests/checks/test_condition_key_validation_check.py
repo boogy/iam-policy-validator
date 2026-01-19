@@ -5,7 +5,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from iam_validator.checks.condition_key_validation import ConditionKeyValidationCheck
-from iam_validator.core.aws_service import AWSServiceFetcher, ConditionKeyValidationResult
+from iam_validator.core.aws_service import (
+    AWSServiceFetcher,
+    ConditionKeyValidationResult,
+)
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.models import Statement
 
@@ -119,23 +122,28 @@ class TestConditionKeyValidationCheck:
 class TestConditionKeyPatternMatching:
     """Test pattern matching for service-specific condition keys."""
 
-    @pytest.mark.asyncio
-    async def test_ssm_resource_tag_pattern_matching(self):
+    def test_ssm_resource_tag_pattern_matching(self):
         """Test that ssm:resourceTag/owner matches ssm:resourceTag/tag-key pattern."""
-        from iam_validator.core.aws_service.validators import _matches_condition_key_pattern
+        from iam_validator.core.aws_service.validators import _condition_key_in_list
 
-        assert _matches_condition_key_pattern("ssm:resourceTag/owner", "ssm:resourceTag/tag-key")
-        assert _matches_condition_key_pattern("ssm:Overwrite", "ssm:Overwrite")
-        assert not _matches_condition_key_pattern("ssm:resourceTag/owner", "ssm:Overwrite")
+        # Pattern matching: condition key with valid tag should match pattern
+        assert _condition_key_in_list(
+            "ssm:resourceTag/owner", ["ssm:resourceTag/tag-key"]
+        )
+        # Exact match should work
+        assert _condition_key_in_list("ssm:Overwrite", ["ssm:Overwrite"])
+        # No match when patterns differ
+        assert not _condition_key_in_list("ssm:resourceTag/owner", ["ssm:Overwrite"])
 
-    @pytest.mark.asyncio
-    async def test_aws_tag_pattern_matching(self):
+    def test_aws_tag_pattern_matching(self):
         """Test that aws:ResourceTag/owner matches aws:ResourceTag/${TagKey} pattern."""
-        from iam_validator.core.aws_service.validators import _matches_condition_key_pattern
+        from iam_validator.core.aws_service.validators import _condition_key_in_list
 
-        assert _matches_condition_key_pattern("aws:ResourceTag/owner", "aws:ResourceTag/${TagKey}")
-        assert _matches_condition_key_pattern(
-            "aws:RequestTag/Department", "aws:RequestTag/${TagKey}"
+        assert _condition_key_in_list(
+            "aws:ResourceTag/owner", ["aws:ResourceTag/${TagKey}"]
+        )
+        assert _condition_key_in_list(
+            "aws:RequestTag/Department", ["aws:RequestTag/${TagKey}"]
         )
 
     @pytest.mark.asyncio
@@ -148,6 +156,56 @@ class TestConditionKeyPatternMatching:
                 ["arn:aws:ssm:us-east-1:123456789012:parameter/test"],
             )
             assert result.is_valid is True
+
+    def test_s3_request_object_tag_pattern_matching(self):
+        """Test that s3:RequestObjectTag/Environment matches s3:RequestObjectTag/<key> pattern."""
+        from iam_validator.core.aws_service.validators import _condition_key_in_list
+
+        # S3 uses /<key> placeholder - any pattern with "/" should work
+        assert _condition_key_in_list(
+            "s3:RequestObjectTag/Environment", ["s3:RequestObjectTag/<key>"]
+        )
+        assert _condition_key_in_list(
+            "s3:ExistingObjectTag/Team", ["s3:ExistingObjectTag/<key>"]
+        )
+
+    def test_generic_pattern_matching(self):
+        """Test that any pattern with / matches condition keys with valid tag suffix."""
+        from iam_validator.core.aws_service.validators import _condition_key_in_list
+
+        # Any pattern with "/" should match if prefix matches and suffix is valid tag
+        assert _condition_key_in_list(
+            "svc:SomeCondition/MyValue", ["svc:SomeCondition/anything"]
+        )
+        assert _condition_key_in_list(
+            "svc:Tag/Environment", ["svc:Tag/placeholder"]
+        )
+        # Different prefixes should NOT match
+        assert not _condition_key_in_list(
+            "svc:Condition/Value", ["svc:OtherCondition/placeholder"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_s3_put_object_with_request_object_tag(self):
+        """Integration test: s3:RequestObjectTag/Environment should be valid for s3:PutObject."""
+        async with AWSServiceFetcher() as fetcher:
+            result = await fetcher.validate_condition_key(
+                "s3:PutObject",
+                "s3:RequestObjectTag/Environment",
+                ["arn:aws:s3:::my-bucket/*"],
+            )
+            assert result.is_valid is True, f"Expected valid but got: {result.error_message}"
+
+    @pytest.mark.asyncio
+    async def test_s3_get_object_with_existing_object_tag(self):
+        """Integration test: s3:ExistingObjectTag/Team should be valid for s3:GetObject."""
+        async with AWSServiceFetcher() as fetcher:
+            result = await fetcher.validate_condition_key(
+                "s3:GetObject",
+                "s3:ExistingObjectTag/Team",
+                ["arn:aws:s3:::my-bucket/*"],
+            )
+            assert result.is_valid is True, f"Expected valid but got: {result.error_message}"
 
 
 class TestTagKeyValidation:

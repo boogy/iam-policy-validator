@@ -172,10 +172,6 @@ AWS_TAG_KEY_ALLOWED_CHARS = r"a-zA-Z0-9 +\-=._:/@"
 # Maximum length for AWS tag keys (per AWS documentation)
 AWS_TAG_KEY_MAX_LENGTH = 128
 
-# Tag-key placeholder patterns used in AWS service definitions
-# These patterns indicate where a tag key should be substituted
-AWS_TAG_KEY_PLACEHOLDERS = ("/tag-key", "/${TagKey}", "/${tag-key}")
-
 # --- Tag Value Constraints ---
 # Allowed characters in AWS tag values: letters, numbers, spaces, and + - = . _ : / @
 # Same character set as tag keys
