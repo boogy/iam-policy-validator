@@ -234,12 +234,49 @@ Manage the AWS service definition cache.
 ### Usage
 
 ```bash
+iam-validator cache <subcommand> [OPTIONS]
+```
+
+### Subcommands
+
+| Subcommand | Description                                      |
+| ---------- | ------------------------------------------------ |
+| `info`     | Show cache information and statistics            |
+| `list`     | List all cached AWS services                     |
+| `clear`    | Clear all cached AWS service definitions         |
+| `refresh`  | Refresh all cached services with fresh data      |
+| `prefetch` | Pre-fetch common AWS services (without clearing) |
+| `location` | Show cache directory location                    |
+
+### Examples
+
+```bash
 # Show cache info
 iam-validator cache info
 
-# Clear cache
+# List all cached services
+iam-validator cache list
+iam-validator cache list --format table
+
+# Clear cache completely
 iam-validator cache clear
+
+# Refresh all cached services with fresh data from AWS
+iam-validator cache refresh
+
+# Pre-fetch common AWS services
+iam-validator cache prefetch
+
+# Show cache directory location
+iam-validator cache location
 ```
+
+### Options
+
+| Option     | Subcommand | Description                                 |
+| ---------- | ---------- | ------------------------------------------- |
+| `--config` | all        | Path to configuration file                  |
+| `--format` | `list`     | Output format: `table`, `columns`, `simple` |
 
 ## download-services
 
