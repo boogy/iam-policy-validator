@@ -558,11 +558,13 @@ note:
                         )
                     )
                 else:
-                    results.append({
-                        "action": full_action,
-                        "access_level": "Unknown",
-                        "description": "N/A",
-                    })
+                    results.append(
+                        {
+                            "action": full_action,
+                            "access_level": "Unknown",
+                            "description": "N/A",
+                        }
+                    )
 
         # Process exact actions with O(1) case-insensitive lookup
         for service, action_name in exact_actions:

@@ -254,9 +254,7 @@ class AWSServiceFetcher:
             except Exception as e:
                 # API fetch failed - try stale cache as fallback
                 logger.warning(f"API fetch failed for services list: {e}")
-                stale_data = await self._cache.get_stale(
-                    url=self.BASE_URL, base_url=self.BASE_URL
-                )
+                stale_data = await self._cache.get_stale(url=self.BASE_URL, base_url=self.BASE_URL)
                 if stale_data is not None:
                     logger.info("Using stale cache data for services list due to API failure")
                     data = stale_data

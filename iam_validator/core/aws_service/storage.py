@@ -150,9 +150,7 @@ class ServiceFileStorage:
 
         return self._cache_dir / filename
 
-    def read_from_cache(
-        self, url: str, base_url: str, allow_stale: bool = False
-    ) -> Any | None:
+    def read_from_cache(self, url: str, base_url: str, allow_stale: bool = False) -> Any | None:
         """Read from disk cache with TTL checking.
 
         Args:

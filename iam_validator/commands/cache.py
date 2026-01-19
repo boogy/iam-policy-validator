@@ -322,9 +322,7 @@ Examples:
 
         # Get cache directory
         cache_dir = (
-            Path(cache_directory)
-            if cache_directory
-            else ServiceFileStorage.get_cache_directory()
+            Path(cache_directory) if cache_directory else ServiceFileStorage.get_cache_directory()
         )
 
         if not cache_dir.exists():
