@@ -555,7 +555,7 @@ class CheckRegistry:
                 try:
                     issues = await check.execute(statement, statement_idx, fetcher, config)
                     all_issues.extend(issues)
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-exception-caught
                     print(f"Warning: Check '{check.check_id}' failed: {e}")
 
         return all_issues
@@ -620,7 +620,7 @@ class CheckRegistry:
                             and config.should_show_severity(issue.severity)
                         ]
                         all_issues.extend(filtered_issues)
-                    except Exception as e:
+                    except Exception as e:  # pylint: disable=broad-exception-caught
                         print(f"Warning: Check '{check.check_id}' failed: {e}")
             return all_issues
 
@@ -685,7 +685,7 @@ def create_default_registry(
 
     if include_builtin_checks:
         # Import and register built-in checks
-        from iam_validator import checks
+        from iam_validator import checks  # pylint: disable=import-outside-toplevel
 
         # 0. FUNDAMENTAL STRUCTURE (Must run FIRST - validates basic policy structure)
         registry.register(
