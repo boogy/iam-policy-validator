@@ -251,7 +251,7 @@ class AWSServiceFetcher:
                 await self._cache.set(
                     f"raw:{self.BASE_URL}", data, url=self.BASE_URL, base_url=self.BASE_URL
                 )
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 # API fetch failed - try stale cache as fallback
                 logger.warning(f"API fetch failed for services list: {e}")
                 stale_data = await self._cache.get_stale(url=self.BASE_URL, base_url=self.BASE_URL)
@@ -349,7 +349,7 @@ class AWSServiceFetcher:
                         await self._cache.set(
                             f"raw:{service.url}", data, url=service.url, base_url=self.BASE_URL
                         )
-                    except Exception as e:
+                    except Exception as e:  # pylint: disable=broad-exception-caught
                         # API fetch failed - try stale cache as fallback
                         logger.warning(f"API fetch failed for {service_name}: {e}")
                         stale_data = await self._cache.get_stale(

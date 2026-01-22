@@ -159,6 +159,13 @@ settings:
     # - medium  # Uncomment to fail on medium severity
     # - warning  # Uncomment to fail on IAM validity warnings
 
+  # Severity filtering - hide specific severity levels from output
+  # When set, issues with these severities will be filtered out globally
+  # Can be overridden per-check using check-level hide_severities
+  # Valid values: "error", "warning", "info", "critical", "high", "medium", "low"
+  # Example: ["low", "info"] - hide low and info severity findings
+  hide_severities: None
+
   # GitHub PR label mapping based on severity findings
   # When issues with these severities are found, apply the corresponding labels to the PR
   # If no issues with these severities exist, remove the labels if present
