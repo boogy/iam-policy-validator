@@ -557,6 +557,84 @@ class AWSServiceFetcher:
             action, condition_key, service_detail, resources
         )
 
+    async def is_condition_key_supported(
+        self,
+        action: str,
+        condition_key: str,
+    ) -> bool:
+        """Check if a condition key is supported for a specific action.
+
+        This checks two locations for the condition key:
+        1. Action-level condition keys (ActionConditionKeys)
+        2. Resource-level condition keys (for each resource the action operates on)
+
+        Returns True if the condition key is found in either location.
+
+        This is useful for determining if a condition provides meaningful
+        restrictions for an action, particularly for resource-scoping conditions
+        like aws:ResourceTag/*.
+
+        Args:
+            action: IAM action (e.g., "s3:GetObject", "ssm:StartSession")
+            condition_key: Condition key to check (e.g., "aws:ResourceTag/Env")
+
+        Returns:
+            True if the condition key is supported for this action
+
+        Example:
+            >>> async with AWSServiceFetcher() as fetcher:
+            ...     # SSM StartSession has aws:ResourceTag in ActionConditionKeys
+            ...     supported = await fetcher.is_condition_key_supported(
+            ...         "ssm:StartSession", "aws:ResourceTag/Component"
+            ...     )
+            ...     print(f"Tag support: {supported}")  # True
+        """
+        from iam_validator.core.aws_service.validators import (  # pylint: disable=import-outside-toplevel
+            condition_key_in_list,
+        )
+
+        try:
+            service_prefix, action_name = self._parser.parse_action(action)
+        except ValueError:
+            return False  # Invalid action format
+
+        # Can't verify wildcard actions
+        if "*" in action_name or "?" in action_name:
+            return False
+
+        service_detail = await self.fetch_service_by_name(service_prefix)
+        if not service_detail:
+            return False
+
+        # Case-insensitive action lookup
+        action_detail = None
+        action_name_lower = action_name.lower()
+        for name, detail in service_detail.actions.items():
+            if name.lower() == action_name_lower:
+                action_detail = detail
+                break
+
+        if not action_detail:
+            return False
+
+        # Check 1: Action-level condition keys
+        if action_detail.action_condition_keys:
+            if condition_key_in_list(condition_key, action_detail.action_condition_keys):
+                return True
+
+        # Check 2: Resource-level condition keys
+        if action_detail.resources:
+            for res_ref in action_detail.resources:
+                resource_name = res_ref.get("Name")
+                if not resource_name:
+                    continue
+                resource_type = service_detail.resources.get(resource_name)
+                if resource_type and resource_type.condition_keys:
+                    if condition_key_in_list(condition_key, resource_type.condition_keys):
+                        return True
+
+        return False
+
     # --- Parsing Methods (delegate to parser) ---
 
     def parse_action(self, action: str) -> tuple[str, str]:

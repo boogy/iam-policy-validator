@@ -334,6 +334,46 @@ print(f"Resources: {resources}")
 
 ---
 
+### extract_condition_keys_from_statement
+
+Extract all condition keys from a single statement.
+
+```python
+def extract_condition_keys_from_statement(statement: Statement) -> set[str]
+```
+
+**Parameters:**
+
+| Name        | Type        | Description                                    |
+|-------------|-------------|------------------------------------------------|
+| `statement` | `Statement` | The statement to extract condition keys from   |
+
+**Returns:** `set[str]` — Set of condition key names
+
+**Example:**
+
+```python
+from iam_validator.sdk import extract_condition_keys_from_statement
+from iam_validator.core.models import Statement
+
+statement = Statement(
+    Effect="Allow",
+    Action=["s3:GetObject"],
+    Resource=["*"],
+    Condition={
+        "StringEquals": {
+            "aws:ResourceAccount": "123456789012",
+            "aws:ResourceTag/Environment": "production"
+        }
+    }
+)
+
+keys = extract_condition_keys_from_statement(statement)
+# {'aws:ResourceAccount', 'aws:ResourceTag/Environment'}
+```
+
+---
+
 ### get_policy_summary
 
 Get a summary of policy contents.

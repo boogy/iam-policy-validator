@@ -78,7 +78,7 @@ Specify the actions needed:
 
 Detects `Resource: "*"` (access to all resources).
 
-**Severity:** `medium`
+**Severity:** `medium` (may be lowered to `low` with resource-scoping conditions)
 
 ### When It's Acceptable
 
@@ -87,6 +87,71 @@ Some actions require `Resource: "*"`:
 - `s3:ListAllMyBuckets`
 - `iam:GetAccountSummary`
 - Many `Describe*` and `List*` actions
+
+### Condition-Aware Severity
+
+This check intelligently adjusts severity based on conditions that restrict resource scope:
+
+#### Global Resource-Scoping Conditions (Always Lower Severity)
+
+These conditions are always valid for all services and directly constrain which resources can be accessed:
+
+| Condition Key           | Effect                              | Severity |
+| ----------------------- | ----------------------------------- | -------- |
+| `aws:ResourceAccount`   | Limits to specific AWS account(s)   | `low`    |
+| `aws:ResourceOrgID`     | Limits to specific AWS Organization | `low`    |
+| `aws:ResourceOrgPaths`  | Limits to specific OU paths         | `low`    |
+
+**Example (severity = low):**
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["s3:GetObject", "s3:PutObject"],
+  "Resource": "*",
+  "Condition": {
+    "StringEquals": {
+      "aws:ResourceAccount": "${aws:PrincipalAccount}"
+    }
+  }
+}
+```
+
+#### Resource Tag Conditions (Conditional)
+
+`aws:ResourceTag/*` conditions lower severity **only if ALL actions** in the statement support the condition. Support is validated against AWS service definitions.
+
+**Example - SSM with tag support (severity = low):**
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["ssm:StartSession", "ssm:GetConnectionStatus"],
+  "Resource": "*",
+  "Condition": {
+    "StringEquals": {
+      "aws:ResourceTag/Component": "bastion"
+    }
+  }
+}
+```
+
+**Example - Mixed actions, partial support (severity = medium):**
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["s3:GetObject", "route53:ChangeResourceRecordSets"],
+  "Resource": "*",
+  "Condition": {
+    "StringEquals": {
+      "aws:ResourceTag/Env": "prod"
+    }
+  }
+}
+```
+
+In this case, `s3:GetObject` supports `aws:ResourceTag` but `route53:ChangeResourceRecordSets` does not, so the severity remains `medium`.
 
 ### How to Fix
 
@@ -97,6 +162,21 @@ Restrict to specific resources:
   "Effect": "Allow",
   "Action": "s3:GetObject",
   "Resource": "arn:aws:s3:::specific-bucket/*"
+}
+```
+
+Or use resource-scoping conditions:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": "s3:GetObject",
+  "Resource": "*",
+  "Condition": {
+    "StringEquals": {
+      "aws:ResourceAccount": "123456789012"
+    }
+  }
 }
 ```
 

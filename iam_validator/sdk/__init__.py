@@ -99,6 +99,7 @@ from iam_validator.sdk.helpers import CheckHelper, expand_actions
 from iam_validator.sdk.policy_utils import (
     extract_actions,
     extract_condition_keys,
+    extract_condition_keys_from_statement,
     extract_resources,
     find_statements_with_action,
     find_statements_with_resource,
@@ -153,6 +154,7 @@ __all__ = [
     "extract_actions",
     "extract_resources",
     "extract_condition_keys",
+    "extract_condition_keys_from_statement",
     "find_statements_with_action",
     "find_statements_with_resource",
     "merge_policies",

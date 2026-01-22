@@ -12,10 +12,14 @@ Example usage:
 # Re-export main classes for public API
 from iam_validator.core.aws_service.fetcher import AWSServiceFetcher
 from iam_validator.core.aws_service.patterns import CompiledPatterns
-from iam_validator.core.aws_service.validators import ConditionKeyValidationResult
+from iam_validator.core.aws_service.validators import (
+    ConditionKeyValidationResult,
+    condition_key_in_list,
+)
 
 __all__ = [
     "AWSServiceFetcher",
     "ConditionKeyValidationResult",
     "CompiledPatterns",
+    "condition_key_in_list",
 ]

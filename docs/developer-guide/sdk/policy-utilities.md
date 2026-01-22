@@ -60,6 +60,20 @@ keys = extract_condition_keys(policy)
 # ['aws:SourceAccount', 's3:prefix']
 ```
 
+### extract_condition_keys_from_statement
+
+Get all condition keys from a single statement.
+
+```python
+from iam_validator.sdk import extract_condition_keys_from_statement
+
+# Extract keys from a specific statement
+keys = extract_condition_keys_from_statement(statement)
+# {'aws:ResourceAccount', 'aws:ResourceTag/Environment'}
+```
+
+This is useful when you need to analyze conditions at the statement level rather than the entire policy.
+
 ## Analysis
 
 ### get_policy_summary

@@ -45,7 +45,7 @@ def _is_valid_tag_key(tag_key: str) -> bool:
     return bool(_TAG_KEY_PATTERN.match(tag_key))
 
 
-def _condition_key_in_list(condition_key: str, condition_keys: list[str]) -> bool:
+def condition_key_in_list(condition_key: str, condition_keys: list[str]) -> bool:
     """Check if a condition key matches any key in the list, supporting patterns.
 
     AWS service definitions use patterns with tag-key placeholders like:
@@ -255,7 +255,7 @@ class ServiceValidator:
                     )
 
             # Check service-specific condition keys (with pattern matching for tag keys)
-            if service_detail.condition_keys and _condition_key_in_list(
+            if service_detail.condition_keys and condition_key_in_list(
                 condition_key, list(service_detail.condition_keys.keys())
             ):
                 return ConditionKeyValidationResult(is_valid=True)
@@ -263,7 +263,7 @@ class ServiceValidator:
             # Check action-specific condition keys
             if action_name in service_detail.actions:
                 action_detail = service_detail.actions[action_name]
-                if action_detail.action_condition_keys and _condition_key_in_list(
+                if action_detail.action_condition_keys and condition_key_in_list(
                     condition_key, action_detail.action_condition_keys
                 ):
                     return ConditionKeyValidationResult(is_valid=True)
@@ -279,7 +279,7 @@ class ServiceValidator:
                         # Look up resource type definition
                         resource_type = service_detail.resources.get(resource_name)
                         if resource_type and resource_type.condition_keys:
-                            if _condition_key_in_list(condition_key, resource_type.condition_keys):
+                            if condition_key_in_list(condition_key, resource_type.condition_keys):
                                 return ConditionKeyValidationResult(is_valid=True)
 
                 # If it's a global key but the action has specific condition keys defined,

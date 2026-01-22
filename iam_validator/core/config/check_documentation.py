@@ -343,8 +343,9 @@ CheckDocumentationRegistry.register(
         documentation_url=f"{CheckDocumentationRegistry.AWS_IAM_DOCS}/best-practices.html#grant-least-privilege",
         remediation_steps=[
             "Specify exact `Resource` ARNs when possible",
-            "Use `Resource` tags and conditions for dynamic access control (ABAC)",
+            "Use resource tags and conditions for dynamic access control (ABAC)",
             "Limit scope to specific accounts, regions, or resource prefixes",
+            "Use `aws:ResourceAccount`, `aws:ResourceOrgID`, or `aws:ResourceOrgPaths` conditions to restrict scope",
         ],
         risk_category="resource_exposure",
     )

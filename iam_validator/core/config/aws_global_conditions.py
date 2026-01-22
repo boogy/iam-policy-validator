@@ -71,6 +71,19 @@ AWS_GLOBAL_CONDITION_KEYS = {
     "aws:ViaAWSService": "Bool",  # Whether AWS service made the request
 }
 
+# Global condition keys that restrict resource scope.
+# These conditions are always valid for all services and directly constrain
+# which resources can be accessed, making them suitable for lowering severity
+# when used with wildcard resources.
+# Reference: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-keys.html#condition-keys-resourceaccount
+GLOBAL_RESOURCE_SCOPING_CONDITION_KEYS = frozenset(
+    {
+        "aws:ResourceAccount",  # Limits to specific AWS account(s)
+        "aws:ResourceOrgID",  # Limits to specific AWS Organization
+        "aws:ResourceOrgPaths",  # Limits to specific OU paths
+    }
+)
+
 # Patterns that should be recognized (wildcards and tag-based keys)
 # These allow things like aws:RequestTag/Department or aws:PrincipalTag/Environment
 # Uses centralized tag key character class from constants

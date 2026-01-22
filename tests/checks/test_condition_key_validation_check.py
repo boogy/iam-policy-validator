@@ -124,25 +124,25 @@ class TestConditionKeyPatternMatching:
 
     def test_ssm_resource_tag_pattern_matching(self):
         """Test that ssm:resourceTag/owner matches ssm:resourceTag/tag-key pattern."""
-        from iam_validator.core.aws_service.validators import _condition_key_in_list
+        from iam_validator.core.aws_service.validators import condition_key_in_list
 
         # Pattern matching: condition key with valid tag should match pattern
-        assert _condition_key_in_list(
+        assert condition_key_in_list(
             "ssm:resourceTag/owner", ["ssm:resourceTag/tag-key"]
         )
         # Exact match should work
-        assert _condition_key_in_list("ssm:Overwrite", ["ssm:Overwrite"])
+        assert condition_key_in_list("ssm:Overwrite", ["ssm:Overwrite"])
         # No match when patterns differ
-        assert not _condition_key_in_list("ssm:resourceTag/owner", ["ssm:Overwrite"])
+        assert not condition_key_in_list("ssm:resourceTag/owner", ["ssm:Overwrite"])
 
     def test_aws_tag_pattern_matching(self):
         """Test that aws:ResourceTag/owner matches aws:ResourceTag/${TagKey} pattern."""
-        from iam_validator.core.aws_service.validators import _condition_key_in_list
+        from iam_validator.core.aws_service.validators import condition_key_in_list
 
-        assert _condition_key_in_list(
+        assert condition_key_in_list(
             "aws:ResourceTag/owner", ["aws:ResourceTag/${TagKey}"]
         )
-        assert _condition_key_in_list(
+        assert condition_key_in_list(
             "aws:RequestTag/Department", ["aws:RequestTag/${TagKey}"]
         )
 
@@ -159,29 +159,29 @@ class TestConditionKeyPatternMatching:
 
     def test_s3_request_object_tag_pattern_matching(self):
         """Test that s3:RequestObjectTag/Environment matches s3:RequestObjectTag/<key> pattern."""
-        from iam_validator.core.aws_service.validators import _condition_key_in_list
+        from iam_validator.core.aws_service.validators import condition_key_in_list
 
         # S3 uses /<key> placeholder - any pattern with "/" should work
-        assert _condition_key_in_list(
+        assert condition_key_in_list(
             "s3:RequestObjectTag/Environment", ["s3:RequestObjectTag/<key>"]
         )
-        assert _condition_key_in_list(
+        assert condition_key_in_list(
             "s3:ExistingObjectTag/Team", ["s3:ExistingObjectTag/<key>"]
         )
 
     def test_generic_pattern_matching(self):
         """Test that any pattern with / matches condition keys with valid tag suffix."""
-        from iam_validator.core.aws_service.validators import _condition_key_in_list
+        from iam_validator.core.aws_service.validators import condition_key_in_list
 
         # Any pattern with "/" should match if prefix matches and suffix is valid tag
-        assert _condition_key_in_list(
+        assert condition_key_in_list(
             "svc:SomeCondition/MyValue", ["svc:SomeCondition/anything"]
         )
-        assert _condition_key_in_list(
+        assert condition_key_in_list(
             "svc:Tag/Environment", ["svc:Tag/placeholder"]
         )
         # Different prefixes should NOT match
-        assert not _condition_key_in_list(
+        assert not condition_key_in_list(
             "svc:Condition/Value", ["svc:OtherCondition/placeholder"]
         )
 
