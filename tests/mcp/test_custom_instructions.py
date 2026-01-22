@@ -8,6 +8,13 @@ import pytest
 
 from iam_validator.mcp.session_config import CustomInstructionsManager
 
+# Check if fastmcp is available for tests that need it
+try:
+    import fastmcp
+    HAS_FASTMCP = True
+except ImportError:
+    HAS_FASTMCP = False
+
 
 class TestCustomInstructionsManager:
     """Test suite for CustomInstructionsManager."""
@@ -115,6 +122,7 @@ class TestCustomInstructionsManager:
         assert CustomInstructionsManager.get_source() == "cli"
 
 
+@pytest.mark.skipif(not HAS_FASTMCP, reason="MCP tests require 'pip install iam-policy-validator[mcp]'")
 class TestGetInstructions:
     """Test suite for get_instructions function."""
 

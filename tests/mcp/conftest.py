@@ -2,6 +2,9 @@
 
 This module provides common fixtures for testing the MCP server implementation,
 including mock AWS service fetchers, sample policies, and test configurations.
+
+Note: These tests require the optional 'mcp' extra (fastmcp package).
+      Tests will be skipped if fastmcp is not installed.
 """
 
 import pytest
