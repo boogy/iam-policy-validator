@@ -61,6 +61,34 @@ fail_on_severity: [error, critical]
 fail_on_severity: [error]
 ```
 
+### hide_severities
+
+Hide specific severity levels from all output to reduce noise:
+
+```yaml
+settings:
+  # Hide low and info severity findings globally
+  hide_severities: [low, info]
+```
+
+Hidden issues won't appear in:
+- Console output
+- JSON/SARIF reports
+- GitHub PR comments
+- Any other output format
+
+**Per-check override:** You can also set `hide_severities` on individual checks to override the global setting:
+
+```yaml
+settings:
+  hide_severities: [info]  # Global: hide info
+
+wildcard_resource:
+  # Override: hide low severity for this check only
+  # (useful when conditions reduce risk to LOW)
+  hide_severities: [low]
+```
+
 ## Check Configuration
 
 ### Disable a Check

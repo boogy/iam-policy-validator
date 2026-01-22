@@ -55,27 +55,52 @@ class CheckConfig:
     config: dict[str, Any] = field(default_factory=dict)  # Check-specific config
     description: str = ""
     root_config: dict[str, Any] = field(default_factory=dict)  # Full config for cross-check access
-    ignore_patterns: list[dict[str, Any]] = field(default_factory=list)  # NEW: Ignore patterns
+    ignore_patterns: list[dict[str, Any]] = field(default_factory=list)  # Ignore patterns
+    hide_severities: frozenset[str] | None = None  # Severities to hide from output
     """
-    List of patterns to ignore findings.
+    Configuration fields:
 
-    Each pattern is a dict with optional fields:
-    - filepath: Regex to match file path
-    - action: Regex to match action name
-    - resource: Regex to match resource
-    - sid: Exact SID to match (or regex if ends with .*)
-    - condition_key: Regex to match condition key
+    ignore_patterns: List of patterns to ignore findings.
+        Each pattern is a dict with optional fields:
+        - filepath: Regex to match file path
+        - action: Regex to match action name
+        - resource: Regex to match resource
+        - sid: Exact SID to match (or regex if ends with .*)
+        - condition_key: Regex to match condition key
 
-    Multiple fields in one pattern = AND logic
-    Multiple patterns = OR logic (any pattern matches → ignore)
+        Multiple fields in one pattern = AND logic
+        Multiple patterns = OR logic (any pattern matches → ignore)
 
-    Example:
-        ignore_patterns:
-          - filepath: "test/.*|examples/.*"
-          - filepath: "policies/readonly-.*"
-            action: ".*:(Get|List|Describe).*"
-          - sid: "AllowReadOnlyAccess"
+        Example:
+            ignore_patterns:
+              - filepath: "test/.*|examples/.*"
+              - filepath: "policies/readonly-.*"
+                action: ".*:(Get|List|Describe).*"
+              - sid: "AllowReadOnlyAccess"
+
+    hide_severities: Set of severity levels to hide from output.
+        Issues with these severities will be filtered out and not shown
+        in any output (console, JSON, SARIF, GitHub PR comments, etc.).
+
+        Example:
+            hide_severities: frozenset(["low", "info"])
     """
+
+    def should_show_severity(self, severity: str) -> bool:
+        """Check if a severity level should be shown in output.
+
+        Returns False if severity is in hide_severities, True otherwise.
+        This is used to filter out low-priority findings to reduce noise.
+
+        Args:
+            severity: The severity level to check
+
+        Returns:
+            True if the severity should be shown, False if it should be hidden
+        """
+        if self.hide_severities and severity in self.hide_severities:
+            return False
+        return True
 
     def should_ignore(self, issue: ValidationIssue, filepath: str = "") -> bool:
         """
@@ -453,9 +478,12 @@ class CheckRegistry:
                         if issue.check_id is None:
                             issue.check_id = check.check_id
                         _inject_documentation(issue, check.check_id)
-                    # Filter issues based on ignore_patterns
+                    # Filter issues based on ignore_patterns and hide_severities
                     filtered_issues = [
-                        issue for issue in issues if not config.should_ignore(issue, filepath)
+                        issue
+                        for issue in issues
+                        if not config.should_ignore(issue, filepath)
+                        and config.should_show_severity(issue.severity)
                     ]
                     all_issues.extend(filtered_issues)
             return all_issues
@@ -473,7 +501,7 @@ class CheckRegistry:
         # Wait for all checks to complete
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Collect all issues, handling any exceptions and applying ignore_patterns
+        # Collect all issues, handling any exceptions and applying filters
         all_issues = []
         for idx, result in enumerate(results):
             if isinstance(result, Exception):
@@ -488,9 +516,12 @@ class CheckRegistry:
                     if issue.check_id is None:
                         issue.check_id = check.check_id
                     _inject_documentation(issue, check.check_id)
-                # Filter issues based on ignore_patterns
+                # Filter issues based on ignore_patterns and hide_severities
                 filtered_issues = [
-                    issue for issue in result if not config.should_ignore(issue, filepath)
+                    issue
+                    for issue in result
+                    if not config.should_ignore(issue, filepath)
+                    and config.should_show_severity(issue.severity)
                 ]
                 all_issues.extend(filtered_issues)
 
@@ -581,11 +612,12 @@ class CheckRegistry:
                             if issue.check_id is None:
                                 issue.check_id = check.check_id
                             _inject_documentation(issue, check.check_id)
-                        # Filter issues based on ignore_patterns
+                        # Filter issues based on ignore_patterns and hide_severities
                         filtered_issues = [
                             issue
                             for issue in issues
                             if not config.should_ignore(issue, policy_file)
+                            and config.should_show_severity(issue.severity)
                         ]
                         all_issues.extend(filtered_issues)
                     except Exception as e:
@@ -607,7 +639,7 @@ class CheckRegistry:
         # Wait for all checks to complete
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Collect all issues, handling any exceptions and applying ignore_patterns
+        # Collect all issues, handling any exceptions and applying filters
         for idx, result in enumerate(results):
             if isinstance(result, Exception):
                 # Log error but continue with other checks
@@ -621,9 +653,12 @@ class CheckRegistry:
                     if issue.check_id is None:
                         issue.check_id = check.check_id
                     _inject_documentation(issue, check.check_id)
-                # Filter issues based on ignore_patterns
+                # Filter issues based on ignore_patterns and hide_severities
                 filtered_issues = [
-                    issue for issue in result if not config.should_ignore(issue, policy_file)
+                    issue
+                    for issue in result
+                    if not config.should_ignore(issue, policy_file)
+                    and config.should_show_severity(issue.severity)
                 ]
                 all_issues.extend(filtered_issues)
 
