@@ -9,15 +9,15 @@ IAM Policy Validator supports multiple output formats for different use cases.
 
 ## Available Formats
 
-| Format | Flag | Use Case |
-|--------|------|----------|
-| Console | `--format console` | Interactive terminal (default) |
-| Enhanced | `--format enhanced` | Colorful detailed output |
-| JSON | `--format json` | Automation and parsing |
-| SARIF | `--format sarif` | Security tools integration |
-| Markdown | `--format markdown` | Documentation |
-| HTML | `--format html` | Reports and sharing |
-| CSV | `--format csv` | Spreadsheet analysis |
+| Format   | Flag                | Use Case                       |
+| -------- | ------------------- | ------------------------------ |
+| Console  | `--format console`  | Interactive terminal (default) |
+| Enhanced | `--format enhanced` | Colorful detailed output       |
+| JSON     | `--format json`     | Automation and parsing         |
+| SARIF    | `--format sarif`    | Security tools integration     |
+| Markdown | `--format markdown` | Documentation                  |
+| HTML     | `--format html`     | Reports and sharing            |
+| CSV      | `--format csv`      | Spreadsheet analysis           |
 
 ## Console (Default)
 

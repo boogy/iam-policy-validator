@@ -43,10 +43,10 @@ settings:
 
 **Severity Levels:**
 
-| Category | Levels |
-|----------|--------|
-| IAM Validity | `error`, `warning`, `info` |
-| Security | `critical`, `high`, `medium`, `low` |
+| Category     | Levels                              |
+| ------------ | ----------------------------------- |
+| IAM Validity | `error`, `warning`, `info`          |
+| Security     | `critical`, `high`, `medium`, `low` |
 
 ### Presets
 

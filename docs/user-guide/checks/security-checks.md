@@ -96,11 +96,11 @@ This check intelligently adjusts severity based on conditions that restrict reso
 
 These conditions are always valid for all services and directly constrain which resources can be accessed:
 
-| Condition Key           | Effect                              | Severity |
-| ----------------------- | ----------------------------------- | -------- |
-| `aws:ResourceAccount`   | Limits to specific AWS account(s)   | `low`    |
-| `aws:ResourceOrgID`     | Limits to specific AWS Organization | `low`    |
-| `aws:ResourceOrgPaths`  | Limits to specific OU paths         | `low`    |
+| Condition Key          | Effect                              | Severity |
+| ---------------------- | ----------------------------------- | -------- |
+| `aws:ResourceAccount`  | Limits to specific AWS account(s)   | `low`    |
+| `aws:ResourceOrgID`    | Limits to specific AWS Organization | `low`    |
+| `aws:ResourceOrgPaths` | Limits to specific OU paths         | `low`    |
 
 **Example (severity = low):**
 

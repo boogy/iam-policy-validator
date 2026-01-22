@@ -23,11 +23,11 @@ async def validate_file(
 
 **Parameters:**
 
-| Name | Type | Description |
-|------|------|-------------|
-| `file_path` | `str \| Path` | Path to the policy file (JSON or YAML) |
-| `config_path` | `str \| None` | Optional path to configuration file |
-| `config` | `ValidatorConfig \| None` | Optional config object (overrides config_path) |
+| Name          | Type                      | Description                                    |
+| ------------- | ------------------------- | ---------------------------------------------- |
+| `file_path`   | `str \| Path`             | Path to the policy file (JSON or YAML)         |
+| `config_path` | `str \| None`             | Optional path to configuration file            |
+| `config`      | `ValidatorConfig \| None` | Optional config object (overrides config_path) |
 
 **Returns:** `PolicyValidationResult`
 
@@ -61,12 +61,12 @@ async def validate_directory(
 
 **Parameters:**
 
-| Name | Type | Description |
-|------|------|-------------|
-| `dir_path` | `str \| Path` | Path to directory containing policy files |
-| `config_path` | `str \| None` | Optional path to configuration file |
-| `config` | `ValidatorConfig \| None` | Optional config object |
-| `recursive` | `bool` | Search subdirectories (default: `True`) |
+| Name          | Type                      | Description                               |
+| ------------- | ------------------------- | ----------------------------------------- |
+| `dir_path`    | `str \| Path`             | Path to directory containing policy files |
+| `config_path` | `str \| None`             | Optional path to configuration file       |
+| `config`      | `ValidatorConfig \| None` | Optional config object                    |
+| `recursive`   | `bool`                    | Search subdirectories (default: `True`)   |
 
 **Returns:** `list[PolicyValidationResult]`
 
@@ -97,12 +97,12 @@ async def validate_json(
 
 **Parameters:**
 
-| Name | Type | Description |
-|------|------|-------------|
-| `policy_json` | `dict` | IAM policy as a Python dict |
-| `policy_name` | `str` | Name to identify this policy in results |
-| `config_path` | `str \| None` | Optional path to configuration file |
-| `config` | `ValidatorConfig \| None` | Optional config object |
+| Name          | Type                      | Description                             |
+| ------------- | ------------------------- | --------------------------------------- |
+| `policy_json` | `dict`                    | IAM policy as a Python dict             |
+| `policy_name` | `str`                     | Name to identify this policy in results |
+| `config_path` | `str \| None`             | Optional path to configuration file     |
+| `config`      | `ValidatorConfig \| None` | Optional config object                  |
 
 **Returns:** `PolicyValidationResult`
 
@@ -139,11 +139,11 @@ async def quick_validate(
 
 **Parameters:**
 
-| Name | Type | Description |
-|------|------|-------------|
-| `policy` | `str \| Path \| dict` | File path, directory path, or policy dict |
-| `config_path` | `str \| None` | Optional path to configuration file |
-| `config` | `ValidatorConfig \| None` | Optional config object |
+| Name          | Type                      | Description                               |
+| ------------- | ------------------------- | ----------------------------------------- |
+| `policy`      | `str \| Path \| dict`     | File path, directory path, or policy dict |
+| `config_path` | `str \| None`             | Optional path to configuration file       |
+| `config`      | `ValidatorConfig \| None` | Optional config object                    |
 
 **Returns:** `bool` — `True` if all policies are valid
 
@@ -183,12 +183,12 @@ async def get_issues(
 
 **Parameters:**
 
-| Name | Type | Description |
-|------|------|-------------|
-| `policy` | `str \| Path \| dict` | File path, directory path, or policy dict |
-| `min_severity` | `str` | Minimum severity: `critical`, `high`, `medium`, `low`, `info` |
-| `config_path` | `str \| None` | Optional path to configuration file |
-| `config` | `ValidatorConfig \| None` | Optional config object |
+| Name           | Type                      | Description                                                   |
+| -------------- | ------------------------- | ------------------------------------------------------------- |
+| `policy`       | `str \| Path \| dict`     | File path, directory path, or policy dict                     |
+| `min_severity` | `str`                     | Minimum severity: `critical`, `high`, `medium`, `low`, `info` |
+| `config_path`  | `str \| None`             | Optional path to configuration file                           |
+| `config`       | `ValidatorConfig \| None` | Optional config object                                        |
 
 **Returns:** `list[ValidationIssue]`
 
@@ -263,11 +263,11 @@ async with validator() as v:
 
 The context object provides these methods:
 
-| Method | Description |
-|--------|-------------|
-| `validate_file(path)` | Validate a single policy file |
+| Method                     | Description                          |
+| -------------------------- | ------------------------------------ |
+| `validate_file(path)`      | Validate a single policy file        |
 | `validate_directory(path)` | Validate all policies in a directory |
-| `generate_report(results)` | Print a formatted report |
+| `generate_report(results)` | Print a formatted report             |
 
 ---
 
@@ -344,9 +344,9 @@ def extract_condition_keys_from_statement(statement: Statement) -> set[str]
 
 **Parameters:**
 
-| Name        | Type        | Description                                    |
-|-------------|-------------|------------------------------------------------|
-| `statement` | `Statement` | The statement to extract condition keys from   |
+| Name        | Type        | Description                                  |
+| ----------- | ----------- | -------------------------------------------- |
+| `statement` | `Statement` | The statement to extract condition keys from |
 
 **Returns:** `set[str]` — Set of condition key names
 
@@ -444,11 +444,11 @@ async def query_actions(
 
 **Parameters:**
 
-| Name | Type | Description |
-|------|------|-------------|
-| `fetcher` | `AWSServiceFetcher` | AWS service fetcher instance |
-| `service` | `str` | Service name (e.g., `s3`, `ec2`) |
-| `access_level` | `str \| None` | Filter: `read`, `write`, `list`, `tagging`, `permissions-management` |
+| Name           | Type                | Description                                                          |
+| -------------- | ------------------- | -------------------------------------------------------------------- |
+| `fetcher`      | `AWSServiceFetcher` | AWS service fetcher instance                                         |
+| `service`      | `str`               | Service name (e.g., `s3`, `ec2`)                                     |
+| `access_level` | `str \| None`       | Filter: `read`, `write`, `list`, `tagging`, `permissions-management` |
 
 **Example:**
 

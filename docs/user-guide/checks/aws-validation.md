@@ -176,12 +176,12 @@ Checks policy doesn't exceed AWS size limits.
 
 ### Size Limits
 
-| Policy Type | Limit |
-|-------------|-------|
-| Managed policy | 6,144 characters |
-| Inline user policy | 2,048 characters |
+| Policy Type        | Limit             |
+| ------------------ | ----------------- |
+| Managed policy     | 6,144 characters  |
+| Inline user policy | 2,048 characters  |
 | Inline role policy | 10,240 characters |
-| Trust policy | 2,048 characters |
+| Trust policy       | 2,048 characters  |
 
 ---
 

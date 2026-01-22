@@ -180,13 +180,13 @@ The validator supports different policy types and validates policies match their
 
 ### Policy Types
 
-| Type | Principal | Use Case |
-|------|-----------|----------|
-| `IDENTITY_POLICY` | Not allowed | User/role policies |
-| `RESOURCE_POLICY` | Required | S3, SQS, etc. |
-| `TRUST_POLICY` | Required | Role trust |
-| `SERVICE_CONTROL_POLICY` | Not allowed | AWS Organizations |
-| `RESOURCE_CONTROL_POLICY` | Required | AWS Organizations |
+| Type                      | Principal   | Use Case           |
+| ------------------------- | ----------- | ------------------ |
+| `IDENTITY_POLICY`         | Not allowed | User/role policies |
+| `RESOURCE_POLICY`         | Required    | S3, SQS, etc.      |
+| `TRUST_POLICY`            | Required    | Role trust         |
+| `SERVICE_CONTROL_POLICY`  | Not allowed | AWS Organizations  |
+| `RESOURCE_CONTROL_POLICY` | Required    | AWS Organizations  |
 
 ### Configuration
 

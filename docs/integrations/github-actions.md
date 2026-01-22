@@ -34,15 +34,15 @@ jobs:
 
 ## Action Inputs
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `path` | Path to validate | `.` |
-| `config` | Config file path | Auto-detect |
-| `policy-type` | Policy type | `IDENTITY_POLICY` |
-| `fail-on-severity` | Severities that fail | `error,critical` |
-| `github-token` | Token for PR comments | `${{ github.token }}` |
-| `post-to-pr` | Post comments to PR | `true` |
-| `github-summary` | Add job summary | `true` |
+| Input              | Description           | Default               |
+| ------------------ | --------------------- | --------------------- |
+| `path`             | Path to validate      | `.`                   |
+| `config`           | Config file path      | Auto-detect           |
+| `policy-type`      | Policy type           | `IDENTITY_POLICY`     |
+| `fail-on-severity` | Severities that fail  | `error,critical`      |
+| `github-token`     | Token for PR comments | `${{ github.token }}` |
+| `post-to-pr`       | Post comments to PR   | `true`                |
+| `github-summary`   | Add job summary       | `true`                |
 
 ## Complete Example
 

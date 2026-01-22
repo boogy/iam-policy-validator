@@ -115,11 +115,11 @@ iam-validator validate --path policy.json --format markdown
 
 ## Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | All policies valid |
-| 1 | Validation errors found |
-| 2 | Configuration or input error |
+| Code | Meaning                      |
+| ---- | ---------------------------- |
+| 0    | All policies valid           |
+| 1    | Validation errors found      |
+| 2    | Configuration or input error |
 
 Use exit codes in scripts:
 

@@ -146,11 +146,11 @@ async def test_with_real_policy():
 
 ## Test Markers
 
-| Marker | Usage |
-|--------|-------|
-| `@pytest.mark.asyncio` | Async tests |
-| `@pytest.mark.slow` | Long-running tests |
-| `@pytest.mark.benchmark` | Performance tests |
+| Marker                     | Usage                   |
+| -------------------------- | ----------------------- |
+| `@pytest.mark.asyncio`     | Async tests             |
+| `@pytest.mark.slow`        | Long-running tests      |
+| `@pytest.mark.benchmark`   | Performance tests       |
 | `@pytest.mark.integration` | External resource tests |
 
 ```python

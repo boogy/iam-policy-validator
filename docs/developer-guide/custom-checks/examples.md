@@ -194,9 +194,9 @@ checks:
 
 See the [examples/custom_checks/](https://github.com/boogy/iam-policy-validator/tree/main/examples/custom_checks) directory for additional examples:
 
-| Check | Description |
-|-------|-------------|
-| `domain_restriction_check.py` | Restrict S3 access to domains |
-| `tag_enforcement_check.py` | Enforce resource tagging |
-| `time_based_access_check.py` | Business hours restrictions |
-| `cross_account_external_id_check.py` | Confused deputy prevention |
+| Check                                | Description                   |
+| ------------------------------------ | ----------------------------- |
+| `domain_restriction_check.py`        | Restrict S3 access to domains |
+| `tag_enforcement_check.py`           | Enforce resource tagging      |
+| `time_based_access_check.py`         | Business hours restrictions   |
+| `cross_account_external_id_check.py` | Confused deputy prevention    |
