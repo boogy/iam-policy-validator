@@ -1,17 +1,17 @@
 ---
 title: Validation Checks
-description: All 18 built-in validation checks
+description: All 19 built-in validation checks
 ---
 
 # Validation Checks
 
-IAM Policy Validator includes 18 built-in checks across three categories.
+IAM Policy Validator includes 19 built-in checks across three categories.
 
 ## Check Categories
 
 <div class="grid cards" markdown>
 
--   :material-aws:{ .lg .middle } **AWS Validation (8)**
+-   :material-aws:{ .lg .middle } **AWS Validation (10)**
 
     ---
 
@@ -19,7 +19,7 @@ IAM Policy Validator includes 18 built-in checks across three categories.
 
     [:octicons-arrow-right-24: AWS Checks](aws-validation.md)
 
--   :material-shield-lock:{ .lg .middle } **Security Checks (7)**
+-   :material-shield-lock:{ .lg .middle } **Security Checks (6)**
 
     ---
 
@@ -41,48 +41,49 @@ IAM Policy Validator includes 18 built-in checks across three categories.
 
 ### AWS Validation Checks
 
-| Check ID | Severity | Description |
-|----------|----------|-------------|
-| `action_validation` | error | Actions exist in AWS |
-| `condition_key_validation` | error | Condition keys are valid |
-| `condition_type_mismatch` | warning | Operator-value type match |
-| `resource_validation` | error | Resource ARN format |
-| `policy_structure` | error | Required fields present |
-| `policy_size` | warning | Character size limits |
-| `sid_uniqueness` | warning | Unique SIDs |
-| `set_operator_validation` | warning | ForAllValues/ForAnyValue usage |
+| Check ID                    | Severity | Description                          |
+| --------------------------- | -------- | ------------------------------------ |
+| `action_validation`         | error    | Actions exist in AWS                 |
+| `condition_key_validation`  | error    | Condition keys are valid             |
+| `condition_type_mismatch`   | error    | Operator-value type match            |
+| `resource_validation`       | error    | Resource ARN format                  |
+| `policy_structure`          | error    | Required fields present              |
+| `policy_size`               | error    | Character size limits                |
+| `sid_uniqueness`            | warning  | Unique SIDs                          |
+| `set_operator_validation`   | error    | ForAllValues/ForAnyValue usage       |
+| `principal_validation`      | high     | Principal format (resource policies) |
+| `mfa_condition_antipattern` | warning  | MFA anti-patterns                    |
 
 ### Security Checks
 
-| Check ID | Severity | Description |
-|----------|----------|-------------|
-| `wildcard_action` | medium | `Action: "*"` detection |
-| `wildcard_resource` | medium | `Resource: "*"` detection |
-| `full_wildcard` | critical | Both Action and Resource wildcards |
-| `service_wildcard` | medium | `s3:*` style wildcards |
-| `sensitive_action` | high | Privilege escalation actions |
-| `principal_validation` | high | Principal validation |
-| `mfa_condition_antipattern` | warning | MFA anti-patterns |
+| Check ID                  | Severity | Description                              |
+| ------------------------- | -------- | ---------------------------------------- |
+| `wildcard_action`         | medium   | `Action: "*"` detection                  |
+| `wildcard_resource`       | medium   | `Resource: "*"` detection                |
+| `full_wildcard`           | critical | Both Action and Resource wildcards       |
+| `service_wildcard`        | high     | `s3:*` style wildcards                   |
+| `sensitive_action`        | medium   | Privilege escalation actions             |
+| `not_action_not_resource` | high     | Dangerous NotAction/NotResource patterns |
 
 ### Advanced Checks
 
-| Check ID | Severity | Description |
-|----------|----------|-------------|
-| `action_condition_enforcement` | high | Required conditions |
-| `action_resource_matching` | warning | Action-resource compatibility |
-| `trust_policy_validation` | error | Trust policy structure |
+| Check ID                       | Severity | Description                   |
+| ------------------------------ | -------- | ----------------------------- |
+| `action_condition_enforcement` | error    | Required conditions           |
+| `action_resource_matching`     | medium   | Action-resource compatibility |
+| `trust_policy_validation`      | high     | Trust policy structure        |
 
 ## Severity Levels
 
-| Level | Meaning | Default Action |
-|-------|---------|----------------|
-| **critical** | Severe security risk | Block deployment |
-| **high** | Security concern | Fix before merge |
-| **medium** | Best practice violation | Address soon |
-| **low** | Minor improvement | Optional |
-| **error** | AWS will reject policy | Must fix |
-| **warning** | Potential issue | Review |
-| **info** | Informational | Optional |
+| Level        | Meaning                 | Default Action   |
+| ------------ | ----------------------- | ---------------- |
+| **critical** | Severe security risk    | Block deployment |
+| **high**     | Security concern        | Fix before merge |
+| **medium**   | Best practice violation | Address soon     |
+| **low**      | Minor improvement       | Optional         |
+| **error**    | AWS will reject policy  | Must fix         |
+| **warning**  | Potential issue         | Review           |
+| **info**     | Informational           | Optional         |
 
 ## Configuring Checks
 

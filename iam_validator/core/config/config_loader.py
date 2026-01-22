@@ -47,6 +47,7 @@ KNOWN_CHECK_IDS = frozenset(
         "service_wildcard",
         "sensitive_action",
         "action_condition_enforcement",
+        "not_action_not_resource",
     ]
 )
 
@@ -82,12 +83,25 @@ class CheckConfigSchema(BaseModel):
     severity: str | None = None
     description: str | None = None
     ignore_patterns: list[dict[str, Any]] = []
+    hide_severities: list[str] | None = None  # Per-check severity filtering
 
     @field_validator("severity")
     @classmethod
     def validate_severity(cls, v: str | None) -> str | None:
         if v is not None and v not in SEVERITY_LEVELS:
             raise ValueError(f"Invalid severity: {v}. Must be one of: {sorted(SEVERITY_LEVELS)}")
+        return v
+
+    @field_validator("hide_severities")
+    @classmethod
+    def validate_hide_severities(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None:
+            for severity in v:
+                if severity not in SEVERITY_LEVELS:
+                    raise ValueError(
+                        f"Invalid severity in hide_severities: {severity}. "
+                        f"Must be one of: {sorted(SEVERITY_LEVELS)}"
+                    )
         return v
 
 
@@ -122,6 +136,7 @@ class SettingsSchema(BaseModel):
     severity_labels: dict[str, str | list[str]] = {}
     ignore_settings: IgnoreSettingsSchema = IgnoreSettingsSchema()
     documentation: DocumentationSettingsSchema = DocumentationSettingsSchema()
+    hide_severities: list[str] | None = None  # Global severity filtering
 
     @field_validator("fail_on_severity")
     @classmethod
@@ -132,6 +147,18 @@ class SettingsSchema(BaseModel):
                     f"Invalid severity in fail_on_severity: {severity}. "
                     f"Must be one of: {sorted(SEVERITY_LEVELS)}"
                 )
+        return v
+
+    @field_validator("hide_severities")
+    @classmethod
+    def validate_hide_severities(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None:
+            for severity in v:
+                if severity not in SEVERITY_LEVELS:
+                    raise ValueError(
+                        f"Invalid severity in hide_severities: {severity}. "
+                        f"Must be one of: {sorted(SEVERITY_LEVELS)}"
+                    )
         return v
 
 
@@ -446,6 +473,9 @@ class ConfigLoader:
             config: Loaded configuration
             registry: Check registry to configure
         """
+        # Get global hide_severities from settings (for fallback)
+        global_hide_severities = config.settings.get("hide_severities")
+
         # Configure built-in checks
         for check in registry.get_all_checks():
             check_id = check.check_id
@@ -454,6 +484,13 @@ class ConfigLoader:
             # Get existing config to preserve defaults set during registration
             existing_config = registry.get_config(check_id)
             existing_enabled = existing_config.enabled if existing_config else True
+
+            # Parse hide_severities: per-check overrides global
+            hide_severities = check_config_dict.get("hide_severities")
+            if hide_severities is None:
+                hide_severities = global_hide_severities
+            if hide_severities is not None:
+                hide_severities = frozenset(hide_severities)
 
             # Create CheckConfig object
             # If there's explicit config, use it; otherwise preserve existing enabled state
@@ -464,9 +501,8 @@ class ConfigLoader:
                 config=check_config_dict,
                 description=check_config_dict.get("description", check.description),
                 root_config=config.config_dict,  # Pass full config for cross-check access
-                ignore_patterns=check_config_dict.get(
-                    "ignore_patterns", []
-                ),  # NEW: Ignore patterns
+                ignore_patterns=check_config_dict.get("ignore_patterns", []),
+                hide_severities=hide_severities,
             )
 
             registry.configure_check(check_id, check_config)

@@ -159,6 +159,13 @@ settings:
     # - medium  # Uncomment to fail on medium severity
     # - warning  # Uncomment to fail on IAM validity warnings
 
+  # Severity filtering - hide specific severity levels from output
+  # When set, issues with these severities will be filtered out globally
+  # Can be overridden per-check using check-level hide_severities
+  # Valid values: "error", "warning", "info", "critical", "high", "medium", "low"
+  # Example: ["low", "info"] - hide low and info severity findings
+  hide_severities: None
+
   # GitHub PR label mapping based on severity findings
   # When issues with these severities are found, apply the corresponding labels to the PR
   # If no issues with these severities exist, remove the labels if present
@@ -234,7 +241,7 @@ settings:
   allow_template_variables: true
 
 # ============================================================================
-# BUILT-IN CHECKS - AWS Validation (17 checks total)
+# BUILT-IN CHECKS - AWS Validation (19 checks total)
 # ============================================================================
 # These validate that policies conform to AWS requirements
 # Disable all with: settings.enable_builtin_checks: false (useful with Access Analyzer)
@@ -919,6 +926,39 @@ action_condition_enforcement:
   #   # Add more requirements as needed...
 #
 #
+# ============================================================================
+# 19. NOT_ACTION_NOT_RESOURCE
+# ============================================================================
+# Check for dangerous NotAction/NotResource patterns in IAM policies
+#
+# NotAction and NotResource are powerful IAM features that can be misused to
+# grant overly broad permissions. This check detects patterns that violate
+# the principle of least privilege.
+#
+# Patterns detected:
+#   1. NotAction with Effect: Allow - grants everything EXCEPT listed actions
+#   2. NotResource with wildcards - grants access to all resources except listed
+#   3. NotAction in Allow without strict conditions - missing safeguards
+#
+# These patterns are particularly dangerous because they grant permissions
+# by exclusion rather than explicit inclusion, making it easy to accidentally
+# grant more access than intended.
+not_action_not_resource:
+  enabled: true
+  severity: high  # Security issue: high severity for unconditioned NotAction
+  description: "Checks for dangerous NotAction/NotResource patterns"
+
+  # Customize messages (optional)
+  # message: "Statement uses NotAction/NotResource pattern"
+  # suggestion: "Consider using explicit Action/Resource lists instead"
+
+  # ignore_patterns available - see top of file for usage examples
+  # Example:
+  # ignore_patterns:
+  #   # Ignore NotAction Deny patterns in permission boundary policies
+  #   - filepath: ".*permission-boundary.*"
+  #     action: ".*"
+
 # ============================================================================
 # CUSTOM CHECKS - Business Rules
 # ============================================================================

@@ -11,7 +11,7 @@ These 3 checks provide advanced validation for condition enforcement and trust p
 
 Enforces required conditions for specific actions.
 
-**Severity:** `high`
+**Severity:** `error`
 
 ### Why It Matters
 
@@ -66,7 +66,7 @@ action_condition_enforcement:
 
 Validates actions are compatible with resource types.
 
-**Severity:** `warning`
+**Severity:** `medium`
 
 ### What It Checks
 
@@ -102,7 +102,7 @@ Validates actions are compatible with resource types.
 
 Validates IAM role trust policies.
 
-**Severity:** `error`
+**Severity:** `high`
 
 ### What It Checks
 
@@ -180,13 +180,13 @@ The validator supports different policy types and validates policies match their
 
 ### Policy Types
 
-| Type | Principal | Use Case |
-|------|-----------|----------|
-| `IDENTITY_POLICY` | Not allowed | User/role policies |
-| `RESOURCE_POLICY` | Required | S3, SQS, etc. |
-| `TRUST_POLICY` | Required | Role trust |
-| `SERVICE_CONTROL_POLICY` | Not allowed | AWS Organizations |
-| `RESOURCE_CONTROL_POLICY` | Required | AWS Organizations |
+| Type                      | Principal   | Use Case           |
+| ------------------------- | ----------- | ------------------ |
+| `IDENTITY_POLICY`         | Not allowed | User/role policies |
+| `RESOURCE_POLICY`         | Required    | S3, SQS, etc.      |
+| `TRUST_POLICY`            | Required    | Role trust         |
+| `SERVICE_CONTROL_POLICY`  | Not allowed | AWS Organizations  |
+| `RESOURCE_CONTROL_POLICY` | Required    | AWS Organizations  |
 
 ### Configuration
 

@@ -245,11 +245,21 @@ class AWSServiceFetcher:
             f"raw:{self.BASE_URL}", url=self.BASE_URL, base_url=self.BASE_URL
         )
         if data is None:
-            data = await self._client.fetch(self.BASE_URL)
-            # Cache the raw data
-            await self._cache.set(
-                f"raw:{self.BASE_URL}", data, url=self.BASE_URL, base_url=self.BASE_URL
-            )
+            try:
+                data = await self._client.fetch(self.BASE_URL)
+                # Cache the raw data (this refreshes the disk cache file)
+                await self._cache.set(
+                    f"raw:{self.BASE_URL}", data, url=self.BASE_URL, base_url=self.BASE_URL
+                )
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # API fetch failed - try stale cache as fallback
+                logger.warning(f"API fetch failed for services list: {e}")
+                stale_data = await self._cache.get_stale(url=self.BASE_URL, base_url=self.BASE_URL)
+                if stale_data is not None:
+                    logger.info("Using stale cache data for services list due to API failure")
+                    data = stale_data
+                else:
+                    raise
 
         if not isinstance(data, list):
             raise ValueError("Expected list of services from root endpoint")
@@ -332,12 +342,26 @@ class AWSServiceFetcher:
                     f"raw:{service.url}", url=service.url, base_url=self.BASE_URL
                 )
                 if data is None:
-                    # Fetch service detail from API
-                    data = await self._client.fetch(service.url)
-                    # Cache the raw data
-                    await self._cache.set(
-                        f"raw:{service.url}", data, url=service.url, base_url=self.BASE_URL
-                    )
+                    try:
+                        # Fetch service detail from API
+                        data = await self._client.fetch(service.url)
+                        # Cache the raw data (this refreshes the disk cache file)
+                        await self._cache.set(
+                            f"raw:{service.url}", data, url=service.url, base_url=self.BASE_URL
+                        )
+                    except Exception as e:  # pylint: disable=broad-exception-caught
+                        # API fetch failed - try stale cache as fallback
+                        logger.warning(f"API fetch failed for {service_name}: {e}")
+                        stale_data = await self._cache.get_stale(
+                            url=service.url, base_url=self.BASE_URL
+                        )
+                        if stale_data is not None:
+                            logger.info(
+                                f"Using stale cache data for {service_name} due to API failure"
+                            )
+                            data = stale_data
+                        else:
+                            raise
 
                 # Validate and parse
                 service_detail = ServiceDetail.model_validate(data)
@@ -421,6 +445,73 @@ class AWSServiceFetcher:
         service_detail = await self.fetch_service_by_name(service_prefix)
         return await self._validator.validate_action(action, service_detail, allow_wildcards)
 
+    async def validate_actions_batch(
+        self,
+        actions: list[str],
+        allow_wildcards: bool = True,
+    ) -> dict[str, tuple[bool, str | None, bool]]:
+        """Validate multiple IAM actions efficiently in batch.
+
+        Groups actions by service prefix and fetches each service definition once,
+        reducing network overhead when validating multiple actions.
+
+        Args:
+            actions: List of full action strings (e.g., ["s3:GetObject", "iam:CreateUser"])
+            allow_wildcards: Whether to allow wildcard actions
+
+        Returns:
+            Dictionary mapping action -> (is_valid, error_message, is_wildcard)
+
+        Example:
+            >>> async with AWSServiceFetcher() as fetcher:
+            ...     results = await fetcher.validate_actions_batch([
+            ...         "s3:GetObject",
+            ...         "s3:PutObject",
+            ...         "iam:CreateUser"
+            ...     ])
+            ...     for action, (is_valid, error, is_wildcard) in results.items():
+            ...         if not is_valid:
+            ...             print(f"Invalid: {action} - {error}")
+        """
+        if not actions:
+            return {}
+
+        # Group actions by service prefix
+        service_actions: dict[str, list[str]] = {}
+        for action in actions:
+            service_prefix, _ = self._parser.parse_action(action)
+            if service_prefix not in service_actions:
+                service_actions[service_prefix] = []
+            service_actions[service_prefix].append(action)
+
+        # Fetch all service definitions in parallel
+        service_details: dict[str, ServiceDetail] = {}
+        fetch_tasks = [self.fetch_service_by_name(service) for service in service_actions.keys()]
+        fetched = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+
+        for service, result in zip(service_actions.keys(), fetched):
+            if isinstance(result, BaseException):
+                # Store None to indicate fetch failure
+                service_details[service] = None  # type: ignore
+            else:
+                service_details[service] = result
+
+        # Validate all actions using cached service details
+        results: dict[str, tuple[bool, str | None, bool]] = {}
+        for action in actions:
+            service_prefix, _ = self._parser.parse_action(action)
+            service_detail = service_details.get(service_prefix)
+
+            if service_detail is None:
+                # Service fetch failed
+                results[action] = (False, f"Failed to fetch service '{service_prefix}'", False)
+            else:
+                results[action] = await self._validator.validate_action(
+                    action, service_detail, allow_wildcards
+                )
+
+        return results
+
     def validate_arn(self, arn: str) -> tuple[bool, str | None]:
         """Validate ARN format.
 
@@ -465,6 +556,84 @@ class AWSServiceFetcher:
         return await self._validator.validate_condition_key(
             action, condition_key, service_detail, resources
         )
+
+    async def is_condition_key_supported(
+        self,
+        action: str,
+        condition_key: str,
+    ) -> bool:
+        """Check if a condition key is supported for a specific action.
+
+        This checks two locations for the condition key:
+        1. Action-level condition keys (ActionConditionKeys)
+        2. Resource-level condition keys (for each resource the action operates on)
+
+        Returns True if the condition key is found in either location.
+
+        This is useful for determining if a condition provides meaningful
+        restrictions for an action, particularly for resource-scoping conditions
+        like aws:ResourceTag/*.
+
+        Args:
+            action: IAM action (e.g., "s3:GetObject", "ssm:StartSession")
+            condition_key: Condition key to check (e.g., "aws:ResourceTag/Env")
+
+        Returns:
+            True if the condition key is supported for this action
+
+        Example:
+            >>> async with AWSServiceFetcher() as fetcher:
+            ...     # SSM StartSession has aws:ResourceTag in ActionConditionKeys
+            ...     supported = await fetcher.is_condition_key_supported(
+            ...         "ssm:StartSession", "aws:ResourceTag/Component"
+            ...     )
+            ...     print(f"Tag support: {supported}")  # True
+        """
+        from iam_validator.core.aws_service.validators import (  # pylint: disable=import-outside-toplevel
+            condition_key_in_list,
+        )
+
+        try:
+            service_prefix, action_name = self._parser.parse_action(action)
+        except ValueError:
+            return False  # Invalid action format
+
+        # Can't verify wildcard actions
+        if "*" in action_name or "?" in action_name:
+            return False
+
+        service_detail = await self.fetch_service_by_name(service_prefix)
+        if not service_detail:
+            return False
+
+        # Case-insensitive action lookup
+        action_detail = None
+        action_name_lower = action_name.lower()
+        for name, detail in service_detail.actions.items():
+            if name.lower() == action_name_lower:
+                action_detail = detail
+                break
+
+        if not action_detail:
+            return False
+
+        # Check 1: Action-level condition keys
+        if action_detail.action_condition_keys:
+            if condition_key_in_list(condition_key, action_detail.action_condition_keys):
+                return True
+
+        # Check 2: Resource-level condition keys
+        if action_detail.resources:
+            for res_ref in action_detail.resources:
+                resource_name = res_ref.get("Name")
+                if not resource_name:
+                    continue
+                resource_type = service_detail.resources.get(resource_name)
+                if resource_type and resource_type.condition_keys:
+                    if condition_key_in_list(condition_key, resource_type.condition_keys):
+                        return True
+
+        return False
 
     # --- Parsing Methods (delegate to parser) ---
 

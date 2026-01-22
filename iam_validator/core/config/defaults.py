@@ -110,6 +110,12 @@ DEFAULT_CONFIG = {
             # Include AWS documentation links alongside org docs
             "include_aws_docs": True,
         },
+        # Severity filtering - hide specific severity levels from output
+        # When set, issues with these severities will be filtered out globally
+        # Can be overridden per-check using check-level hide_severities
+        # Valid values: "error", "warning", "info", "critical", "high", "medium", "low"
+        # Example: ["low", "info"] - hide low and info severity findings
+        "hide_severities": None,
     },
     # ========================================================================
     # AWS IAM Validation Checks (17 checks total)

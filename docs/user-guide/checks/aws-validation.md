@@ -172,16 +172,16 @@ Validates required policy elements are present and valid.
 
 Checks policy doesn't exceed AWS size limits.
 
-**Severity:** `warning`
+**Severity:** `error`
 
 ### Size Limits
 
-| Policy Type | Limit |
-|-------------|-------|
-| Managed policy | 6,144 characters |
-| Inline user policy | 2,048 characters |
+| Policy Type        | Limit             |
+| ------------------ | ----------------- |
+| Managed policy     | 6,144 characters  |
+| Inline user policy | 2,048 characters  |
 | Inline role policy | 10,240 characters |
-| Trust policy | 2,048 characters |
+| Trust policy       | 2,048 characters  |
 
 ---
 
@@ -219,7 +219,7 @@ Validates Statement IDs (SIDs) are unique within a policy.
 
 Validates condition operators match value types.
 
-**Severity:** `warning`
+**Severity:** `error`
 
 ### What It Checks
 
@@ -234,7 +234,7 @@ Validates condition operators match value types.
 
 Validates ForAllValues and ForAnyValue operators are used correctly.
 
-**Severity:** `warning`
+**Severity:** `error`
 
 ### What It Checks
 

@@ -1,4 +1,13 @@
-"""Wildcard resource check - detects Resource: '*' in IAM policies."""
+"""Wildcard resource check - detects Resource: '*' in IAM policies.
+
+This check detects statements with Resource: '*' that could grant overly broad access.
+It intelligently adjusts severity based on conditions that restrict resource scope:
+
+- Global resource-scoping conditions (aws:ResourceAccount, aws:ResourceOrgID, aws:ResourceOrgPaths)
+  always lower severity since they apply to all services.
+- Resource tag conditions (aws:ResourceTag/*) lower severity only if ALL actions in the
+  statement support the condition (validated against AWS service definitions).
+"""
 
 import asyncio
 import logging
@@ -8,7 +17,9 @@ from iam_validator.checks.utils.action_parser import get_action_case_insensitive
 from iam_validator.checks.utils.wildcard_expansion import expand_wildcard_actions
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
+from iam_validator.core.config.aws_global_conditions import GLOBAL_RESOURCE_SCOPING_CONDITION_KEYS
 from iam_validator.core.models import ActionDetail, ServiceDetail, Statement, ValidationIssue
+from iam_validator.sdk.policy_utils import extract_condition_keys_from_statement
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +79,54 @@ def clear_resource_support_cache() -> None:
     """
     _action_resource_support_cache.clear()
     _action_access_level_cache.clear()
+
+
+def _has_global_resource_scoping(condition_keys: set[str]) -> bool:
+    """Check if any global resource-scoping conditions are present.
+
+    Args:
+        condition_keys: Set of condition keys from the statement
+
+    Returns:
+        True if any global resource-scoping condition is present
+    """
+    return bool(condition_keys & GLOBAL_RESOURCE_SCOPING_CONDITION_KEYS)
+
+
+async def _validate_condition_key_support(
+    actions: list[str],
+    condition_key: str,
+    fetcher: AWSServiceFetcher,
+) -> tuple[bool, list[str]]:
+    """Validate if all actions support a specific condition key.
+
+    This is a generic function that works for any condition key,
+    including aws:ResourceTag/*, service-specific tags, etc.
+
+    Uses parallel execution for performance when validating multiple actions.
+
+    Args:
+        actions: List of actions to validate
+        condition_key: The condition key to check support for
+        fetcher: AWS service fetcher for looking up service definitions
+
+    Returns:
+        Tuple of (all_support, unsupported_actions) where all_support is True
+        if all actions support the condition key
+    """
+    # Validate all actions in parallel for performance using centralized fetcher method
+    results = await asyncio.gather(
+        *[fetcher.is_condition_key_supported(action, condition_key) for action in actions],
+        return_exceptions=True,
+    )
+
+    unsupported = []
+    for action, result in zip(actions, results):
+        # Treat exceptions as unsupported (conservative)
+        if isinstance(result, BaseException) or not result:
+            unsupported.append(action)
+
+    return (len(unsupported) == 0, unsupported)
 
 
 class WildcardResourceCheck(PolicyCheck):
@@ -152,6 +211,15 @@ class WildcardResourceCheck(PolicyCheck):
                         return issues
 
             # Flag the issue if actions are not all allowed or no allowed_wildcards configured
+            # First, determine if severity should be adjusted based on conditions
+            base_severity = self.get_severity(config)
+            adjusted_severity, adjustment_reason = await self._determine_severity_adjustment(
+                statement,
+                actions_requiring_specific_resources,
+                fetcher,
+                base_severity,
+            )
+
             # Build a helpful message showing which actions require specific resources
             custom_message = config.config.get("message")
             if custom_message:
@@ -166,10 +234,11 @@ class WildcardResourceCheck(PolicyCheck):
                 else:
                     action_list = ", ".join(f"`{a}`" for a in sorted_actions[:5])
                     action_list += f" (+{len(sorted_actions) - 5} more)"
-                message = (
-                    f'Statement applies to all resources `"*"`. '
-                    f"Actions that support resource-level permissions: {action_list}"
-                )
+                message = 'Statement applies to all resources (`"*"`)'
+
+                # Add adjustment reason if present
+                if adjustment_reason:
+                    message += f". {adjustment_reason}"
 
             suggestion = config.config.get(
                 "suggestion", "Replace wildcard with specific resource ARNs"
@@ -178,7 +247,7 @@ class WildcardResourceCheck(PolicyCheck):
 
             issues.append(
                 ValidationIssue(
-                    severity=self.get_severity(config),
+                    severity=adjusted_severity,
                     statement_sid=statement.sid,
                     statement_index=statement_idx,
                     issue_type="overly_permissive",
@@ -236,6 +305,67 @@ class WildcardResourceCheck(PolicyCheck):
         expanded_actions = await expand_wildcard_actions(patterns_to_expand, fetcher)
 
         return frozenset(expanded_actions)
+
+    async def _determine_severity_adjustment(
+        self,
+        statement: Statement,
+        actions: list[str],
+        fetcher: AWSServiceFetcher,
+        base_severity: str,
+    ) -> tuple[str, str | None]:
+        """Determine if severity should be adjusted based on resource-scoping conditions.
+
+        This method checks if the statement has conditions that meaningfully restrict
+        resource scope:
+        1. Global resource-scoping conditions (aws:ResourceAccount, etc.) always lower severity
+        2. Resource tag conditions (aws:ResourceTag/*) lower severity only if ALL actions support them
+
+        Args:
+            statement: The policy statement being checked
+            actions: List of actions that require specific resources
+            fetcher: AWS service fetcher for validating condition key support
+            base_severity: The default severity level
+
+        Returns:
+            Tuple of (adjusted_severity, reason) where reason explains the adjustment
+        """
+        condition_keys = extract_condition_keys_from_statement(statement)
+        if not condition_keys:
+            return (base_severity, None)
+
+        # Check for global resource-scoping conditions (always valid for all services)
+        if _has_global_resource_scoping(condition_keys):
+            global_keys = condition_keys & GLOBAL_RESOURCE_SCOPING_CONDITION_KEYS
+            return (
+                "low",
+                f"Severity lowered: resource scope restricted by `{', '.join(sorted(global_keys))}`",
+            )
+
+        # Check for aws:ResourceTag conditions (must validate per-action support)
+        resource_tag_keys = {k for k in condition_keys if k.startswith("aws:ResourceTag/")}
+        if resource_tag_keys:
+            # Use the first tag key for validation (all should have same support pattern)
+            tag_key = next(iter(resource_tag_keys))
+            all_support, unsupported = await _validate_condition_key_support(
+                actions, tag_key, fetcher
+            )
+            if all_support:
+                return (
+                    "low",
+                    f"Severity lowered: resource scope restricted by `{', '.join(sorted(resource_tag_keys))}`",
+                )
+            else:
+                # Tag condition present but not all actions support it
+                unsupported_display = unsupported[:3]
+                more = f" (+{len(unsupported) - 3} more)" if len(unsupported) > 3 else ""
+                return (
+                    base_severity,
+                    f"Note: `aws:ResourceTag` condition found but these actions don't support "
+                    f"resource tags: `{', '.join(unsupported_display)}`{more}",
+                )
+
+        # Has conditions but none that scope resources
+        return (base_severity, None)
 
     async def _filter_actions_requiring_resources(
         self, actions: list[str], fetcher: AWSServiceFetcher

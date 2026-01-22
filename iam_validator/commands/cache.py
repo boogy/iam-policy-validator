@@ -40,7 +40,7 @@ Examples:
   # Clear all cached AWS service definitions
   iam-validator cache clear
 
-  # Refresh cache (clear and pre-fetch common services)
+  # Refresh all cached services with fresh data
   iam-validator cache refresh
 
   # Pre-fetch common AWS services
@@ -88,7 +88,7 @@ Examples:
 
         # Refresh subcommand
         refresh_parser = subparsers.add_parser(
-            "refresh", help="Clear cache and pre-fetch common AWS services"
+            "refresh", help="Refresh all cached AWS services with fresh data"
         )
         refresh_parser.add_argument(
             "--config",
@@ -314,44 +314,86 @@ Examples:
     async def _refresh_cache(
         self, cache_enabled: bool, cache_ttl_seconds: int, cache_directory: str | None
     ) -> int:
-        """Clear cache and pre-fetch common services."""
+        """Refresh all cached services with fresh data from AWS."""
         if not cache_enabled:
             console.print("[red]Error:[/red] Cache is disabled in config")
             console.print("Enable cache by setting 'cache_enabled: true' in your config")
             return 1
 
-        console.print("[cyan]Refreshing cache...[/cyan]")
+        # Get cache directory
+        cache_dir = (
+            Path(cache_directory) if cache_directory else ServiceFileStorage.get_cache_directory()
+        )
 
-        # Create fetcher and clear cache
+        if not cache_dir.exists():
+            console.print("[yellow]Cache directory does not exist, nothing to refresh[/yellow]")
+            console.print("Run 'iam-validator cache prefetch' to populate the cache first")
+            return 0
+
+        # Get list of cached services from cache files
+        cache_files = list(cache_dir.glob("*.json"))
+        if not cache_files:
+            console.print("[yellow]No services cached yet, nothing to refresh[/yellow]")
+            console.print("Run 'iam-validator cache prefetch' to populate the cache first")
+            return 0
+
+        # Extract service names from cache files
+        cached_services: list[str] = []
+        for f in cache_files:
+            if f.stem == "services_list":
+                continue  # Skip the services list file, we'll refresh it separately
+            # Extract service name (before underscore or full name)
+            name = f.stem.split("_")[0] if "_" in f.stem else f.stem
+            cached_services.append(name)
+
+        cached_services.sort()
+        console.print(f"[cyan]Refreshing {len(cached_services)} cached services...[/cyan]")
+
         async with AWSServiceFetcher(
             enable_cache=cache_enabled,
             cache_ttl=cache_ttl_seconds,
             cache_dir=cache_directory,
-            prefetch_common=False,  # Don't prefetch yet, we'll do it after clearing
+            prefetch_common=False,  # We'll refresh manually
         ) as fetcher:
-            # Clear existing cache
-            console.print("Clearing old cache...")
-            await fetcher.clear_caches()
-
-            # Prefetch common services
-            console.print("Fetching fresh AWS service definitions...")
+            # First refresh the services list
+            console.print("Refreshing AWS services list...")
             services = await fetcher.fetch_services()
-            console.print(f"[green]✓[/green] Fetched list of {len(services)} AWS services")
+            console.print(f"[green]✓[/green] Refreshed services list ({len(services)} services)")
 
-            # Prefetch common services
-            console.print("Pre-fetching common services...")
-            prefetched = 0
-            for service_name in fetcher.COMMON_SERVICES:
+            # Build a set of valid service names for validation
+            valid_services = {svc.service for svc in services}
+
+            # Refresh each cached service
+            console.print(f"Refreshing {len(cached_services)} cached service definitions...")
+            refreshed = 0
+            failed = 0
+            skipped = 0
+
+            for service_name in cached_services:
+                # Skip services that no longer exist in AWS
+                if service_name not in valid_services:
+                    logger.warning(f"Service '{service_name}' no longer exists, skipping")
+                    skipped += 1
+                    continue
+
                 try:
                     await fetcher.fetch_service_by_name(service_name)
-                    prefetched += 1
+                    refreshed += 1
                 except Exception as e:
-                    logger.warning(f"Failed to prefetch {service_name}: {e}")
+                    logger.warning(f"Failed to refresh {service_name}: {e}")
+                    failed += 1
 
-            console.print(f"[green]✓[/green] Pre-fetched {prefetched} common services")
+            # Print summary
+            if failed == 0 and skipped == 0:
+                console.print(f"[green]✓[/green] Refreshed {refreshed} services successfully")
+            else:
+                console.print(
+                    f"[yellow]![/yellow] Refreshed {refreshed} services, "
+                    f"{failed} failed, {skipped} skipped (no longer exist)"
+                )
 
-        console.print("[green]✓[/green] Cache refreshed successfully")
-        return 0
+        console.print("[green]✓[/green] Cache refresh complete")
+        return 0 if failed == 0 else 1
 
     async def _prefetch_services(
         self, cache_enabled: bool, cache_ttl_seconds: int, cache_directory: str | None

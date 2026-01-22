@@ -20,7 +20,7 @@ Overview of IAM Policy Validator's architecture and design.
 │         (CheckRegistry → Parallel Execution)            │
 ├───────────────────────┬─────────────────────────────────┤
 │   Built-in Checks     │     Custom Checks               │
-│   (18 checks)         │     (User-defined)              │
+│   (19 checks)         │     (User-defined)              │
 ├───────────────────────┴─────────────────────────────────┤
 │              AWS Service Fetcher                        │
 │         (Service definitions, caching)                  │
@@ -182,8 +182,8 @@ config = ConfigLoader.load("./iam-validator.yaml")
 
 ### Cache Locations
 
-| Platform | Location |
-|----------|----------|
-| Linux | `~/.cache/iam-validator/` |
-| macOS | `~/Library/Caches/iam-validator/` |
-| Windows | `%LOCALAPPDATA%\iam-validator\Cache\` |
+| Platform | Location                              |
+| -------- | ------------------------------------- |
+| Linux    | `~/.cache/iam-validator/`             |
+| macOS    | `~/Library/Caches/iam-validator/`     |
+| Windows  | `%LOCALAPPDATA%\iam-validator\Cache\` |

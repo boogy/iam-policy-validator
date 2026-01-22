@@ -126,11 +126,23 @@ class Statement(BaseModel):
             return []
         return [self.action] if isinstance(self.action, str) else self.action
 
+    def get_not_actions(self) -> list[str]:
+        """Get list of NotAction values, handling both string and list formats."""
+        if self.not_action is None:
+            return []
+        return [self.not_action] if isinstance(self.not_action, str) else self.not_action
+
     def get_resources(self) -> list[str]:
         """Get list of resources, handling both string and list formats."""
         if self.resource is None:
             return []
         return [self.resource] if isinstance(self.resource, str) else self.resource
+
+    def get_not_resources(self) -> list[str]:
+        """Get list of NotResource values, handling both string and list formats."""
+        if self.not_resource is None:
+            return []
+        return [self.not_resource] if isinstance(self.not_resource, str) else self.not_resource
 
 
 class IAMPolicy(BaseModel):
@@ -179,6 +191,8 @@ class ValidationIssue(BaseModel):
     documentation_url: str | None = None
     # Step-by-step remediation guidance
     remediation_steps: list[str] | None = None
+    # Risk category for classification (e.g., "privilege_escalation", "data_exfiltration")
+    risk_category: str | None = None
 
     # Severity level constants (ClassVar to avoid Pydantic treating them as fields)
     VALID_SEVERITIES: ClassVar[frozenset[str]] = frozenset(
@@ -226,18 +240,23 @@ class ValidationIssue(BaseModel):
         Returns:
             Formatted comment string
         """
-        severity_emoji = {
-            # IAM validity severities
-            "error": "❌",
-            "warning": "⚠️",
-            "info": "ℹ️",
-            # Security severities
-            "critical": "🔴",
-            "high": "🟠",
-            "medium": "🟡",
-            "low": "🔵",
-        }
-        emoji = severity_emoji.get(self.severity, "•")
+        # Get severity config with emoji and action guidance
+        severity_config = constants.SEVERITY_CONFIG.get(
+            self.severity, {"emoji": "•", "action": "Review"}
+        )
+        emoji = severity_config["emoji"]
+        action = severity_config["action"]
+
+        # Get risk category icon if available
+        from iam_validator.core.config.check_documentation import RISK_CATEGORY_ICONS
+
+        risk_icon = ""
+        if self.risk_category:
+            icon = RISK_CATEGORY_ICONS.get(self.risk_category, "")
+            if icon:
+                # Format risk category for display (e.g., "privilege_escalation" -> "Privilege Escalation")
+                category_display = self.risk_category.replace("_", " ").title()
+                risk_icon = f" | {icon} {category_display}"
 
         parts = []
 
@@ -263,13 +282,19 @@ class ValidationIssue(BaseModel):
                 )
                 parts.append(f"<!-- finding-id: {finding_hash} -->\n")
 
+        # Main issue header with severity, action guidance, and risk category
+        parts.append(f"{emoji} **{self.severity.upper()}** - {action}{risk_icon}")
+        parts.append("")
+
         # Build statement context for better navigation
         statement_context = f"Statement[{self.statement_index}]"
         if self.statement_sid:
             statement_context = f"`{self.statement_sid}` ({statement_context})"
+        if self.line_number:
+            statement_context = f"{statement_context} (line {self.line_number})"
 
-        # Main issue header with statement context
-        parts.append(f"{emoji} **{self.severity.upper()}** in **{statement_context}**")
+        # Statement context on its own line
+        parts.append(f"**Statement:** {statement_context}")
         parts.append("")
 
         # Show message immediately (not collapsed)

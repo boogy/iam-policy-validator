@@ -473,3 +473,162 @@ class TestQueryCommand:
                 calls = [call[0][0] for call in mock_print.call_args_list]
                 assert "GetItem" in calls[0]
                 assert any("Resource types" in call for call in calls)
+
+    @pytest.mark.asyncio
+    async def test_query_action_with_show_condition_keys(
+        self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
+    ) -> None:
+        """Test --show-condition-keys filter."""
+        with patch(
+            "iam_validator.commands.query.AWSServiceFetcher"
+        ) as mock_fetcher_class:
+            mock_fetcher = AsyncMock()
+            mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
+            mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
+            mock_fetcher_class.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            args = argparse.Namespace(
+                query_type="action",
+                service="test",
+                name=None,
+                access_level=None,
+                resource_type=None,
+                condition=None,
+                output="json",
+                show_condition_keys=True,
+                show_resource_types=False,
+                show_access_level=False,
+            )
+
+            result = await query_cmd.execute(args)
+            assert result == 0
+
+    @pytest.mark.asyncio
+    async def test_query_action_with_show_resource_types(
+        self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
+    ) -> None:
+        """Test --show-resource-types filter."""
+        with patch(
+            "iam_validator.commands.query.AWSServiceFetcher"
+        ) as mock_fetcher_class:
+            mock_fetcher = AsyncMock()
+            mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
+            mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
+            mock_fetcher_class.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            args = argparse.Namespace(
+                query_type="action",
+                service="test",
+                name=None,
+                access_level=None,
+                resource_type=None,
+                condition=None,
+                output="json",
+                show_condition_keys=False,
+                show_resource_types=True,
+                show_access_level=False,
+            )
+
+            result = await query_cmd.execute(args)
+            assert result == 0
+
+    @pytest.mark.asyncio
+    async def test_query_action_filter_text_output(
+        self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
+    ) -> None:
+        """Test field filters with text output format."""
+        with patch(
+            "iam_validator.commands.query.AWSServiceFetcher"
+        ) as mock_fetcher_class:
+            mock_fetcher = AsyncMock()
+            mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
+            mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
+            mock_fetcher_class.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            args = argparse.Namespace(
+                query_type="action",
+                service="test",
+                name=None,
+                access_level=None,
+                resource_type=None,
+                condition=None,
+                output="text",
+                show_condition_keys=True,
+                show_resource_types=False,
+                show_access_level=False,
+            )
+
+            with patch("builtins.print") as mock_print:
+                result = await query_cmd.execute(args)
+                assert result == 0
+
+                # Verify output includes condition keys
+                calls = [str(call) for call in mock_print.call_args_list]
+                assert any("Condition keys" in call for call in calls)
+
+    @pytest.mark.asyncio
+    async def test_query_action_deduplication(
+        self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
+    ) -> None:
+        """Test that duplicate actions are deduplicated in results."""
+        with patch(
+            "iam_validator.commands.query.AWSServiceFetcher"
+        ) as mock_fetcher_class:
+            mock_fetcher = AsyncMock()
+            mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
+            # expand_wildcard_action returns the same action as the exact query
+            mock_fetcher.expand_wildcard_action = AsyncMock(
+                return_value=["test:GetItem", "test:GetBucketInfo"]
+            )
+            mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
+            mock_fetcher_class.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            # Query both "GetItem" exactly and "Get*" wildcard, which should overlap
+            args = argparse.Namespace(
+                query_type="action",
+                service=None,
+                name=["test:GetItem", "test:Get*"],  # GetItem will be in both
+                access_level=None,
+                resource_type=None,
+                condition=None,
+                output="json",
+                show_condition_keys=False,
+                show_resource_types=False,
+                show_access_level=False,
+            )
+
+            result = await query_cmd.execute(args)
+            assert result == 0
+
+    @pytest.mark.asyncio
+    async def test_query_action_deduplication_identical_wildcards(
+        self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
+    ) -> None:
+        """Test that identical wildcard patterns don't produce duplicates."""
+        with patch(
+            "iam_validator.commands.query.AWSServiceFetcher"
+        ) as mock_fetcher_class:
+            mock_fetcher = AsyncMock()
+            mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
+            mock_fetcher.expand_wildcard_action = AsyncMock(
+                return_value=["test:GetItem", "test:GetBucketInfo"]
+            )
+            mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
+            mock_fetcher_class.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            # Query same wildcard pattern twice
+            args = argparse.Namespace(
+                query_type="action",
+                service=None,
+                name=["test:Get*", "test:Get*"],  # Identical patterns
+                access_level=None,
+                resource_type=None,
+                condition=None,
+                output="json",
+                show_condition_keys=False,
+                show_resource_types=False,
+                show_access_level=False,
+            )
+
+            result = await query_cmd.execute(args)
+            assert result == 0
