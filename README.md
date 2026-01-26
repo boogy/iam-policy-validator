@@ -47,8 +47,16 @@ iam-validator validate --path examples/quick-start/ --format enhanced
 {
   "Version": "2012-10-17",
   "Statement": [
-    {"Effect": "Allow", "Action": "s3:GetObjekt", "Resource": "arn:aws:s3:::my-bucket/*"},
-    {"Effect": "Allow", "Action": "iam:PassRole", "Resource": "arn:aws:iam::123456789012:role/lambda-role"}
+    {
+      "Effect": "Allow",
+      "Action": "s3:GetObjekt",
+      "Resource": "arn:aws:s3:::my-bucket/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::123456789012:role/lambda-role"
+    }
   ]
 }
 ```
@@ -59,7 +67,11 @@ iam-validator validate --path examples/quick-start/ --format enhanced
 {
   "Version": "2012-10-17",
   "Statement": [
-    {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::my-bucket/*"}
+    {
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::my-bucket/*"
+    }
   ]
 }
 ```
@@ -70,7 +82,11 @@ iam-validator validate --path examples/quick-start/ --format enhanced
 {
   "Version": "2012-10-17",
   "Statement": [
-    {"Effect": "Allow", "Action": "lambda:InvokeFunction", "Resource": "arn:aws:lambda:us-east-1:123456789012:function:my-function"}
+    {
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:my-function"
+    }
   ]
 }
 ```
@@ -176,7 +192,8 @@ action_condition_enforcement:
           description: "Restrict which services can use passed roles"
 
     # Enforce IP restrictions for privileged actions (automation from CI/CD)
-    - actions: ["iam:AttachUserPolicy", "iam:PutUserPolicy", "iam:CreateAccessKey"]
+    - actions:
+        ["iam:AttachUserPolicy", "iam:PutUserPolicy", "iam:CreateAccessKey"]
       required_conditions:
         - condition_key: "aws:SourceIp"
           expected_value: ["10.0.0.0/8", "172.16.0.0/12"]
@@ -218,9 +235,17 @@ Privilege escalation often occurs when multiple actions are scattered across dif
 ```json
 {
   "Statement": [
-    {"Sid": "AllowUserManagement", "Action": "iam:CreateUser", "Resource": "*"},
-    {"Sid": "AllowS3Read", "Action": "s3:GetObject", "Resource": "*"},
-    {"Sid": "AllowPolicyAttachment", "Action": "iam:AttachUserPolicy", "Resource": "*"}
+    {
+      "Sid": "AllowUserManagement",
+      "Action": "iam:CreateUser",
+      "Resource": "*"
+    },
+    { "Sid": "AllowS3Read", "Action": "s3:GetObject", "Resource": "*" },
+    {
+      "Sid": "AllowPolicyAttachment",
+      "Action": "iam:AttachUserPolicy",
+      "Resource": "*"
+    }
   ]
 }
 ```
@@ -356,9 +381,9 @@ iam-validator validate --path policies/ --aws-services-dir ./aws-services
 - uses: boogy/iam-policy-validator@v1
   with:
     path: policies/
-    github-review: true        # Inline PR comments
-    github-summary: true       # Actions summary tab
-    fail-on-severity: high     # Block merge on high/critical
+    github-review: true # Inline PR comments
+    github-summary: true # Actions summary tab
+    fail-on-severity: high # Block merge on high/critical
 ```
 
 ---
@@ -388,14 +413,14 @@ Validates against official AWS IAM requirements:
 
 Identifies overly permissive configurations:
 
-| Check                     | What It Catches                                        |
-| ------------------------- | ------------------------------------------------------ |
-| **Wildcard Action**       | `Action: "*"` grants all AWS permissions               |
-| **Wildcard Resource**     | `Resource: "*"` applies to all resources               |
-| **Full Wildcard**         | Both `Action: "*"` AND `Resource: "*"` (admin access)  |
-| **Service Wildcards**     | `s3:*`, `iam:*`, `ec2:*` (overly broad)                |
+| Check                     | What It Catches                                          |
+| ------------------------- | -------------------------------------------------------- |
+| **Wildcard Action**       | `Action: "*"` grants all AWS permissions                 |
+| **Wildcard Resource**     | `Resource: "*"` applies to all resources                 |
+| **Full Wildcard**         | Both `Action: "*"` AND `Resource: "*"` (admin access)    |
+| **Service Wildcards**     | `s3:*`, `iam:*`, `ec2:*` (overly broad)                  |
 | **Sensitive Actions**     | 490+ privilege escalation patterns and dangerous actions |
-| **Condition Enforcement** | Organization-specific condition requirements           |
+| **Condition Enforcement** | Organization-specific condition requirements             |
 
 **Note on Sensitive Actions:** This check has two modes:
 
@@ -488,7 +513,7 @@ action_condition_enforcement:
     - actions: ["iam:CreateUser", "iam:DeleteUser", "iam:CreateAccessKey"]
       required_conditions:
         - condition_key: "aws:SourceIp"
-          expected_value: ["10.0.0.0/8", "52.94.76.0/24"]  # Corporate + GitHub Actions
+          expected_value: ["10.0.0.0/8", "52.94.76.0/24"] # Corporate + GitHub Actions
 
 # Ignore patterns
 ignore_patterns:
@@ -625,19 +650,19 @@ iam-validator analyze --path new-policy.json \
 
 ## Comparison Matrix
 
-| Feature                        | IAM Policy Validator             | IAM Lens                      | IAMSpy                 | Policy Sentry              |
-| ------------------------------ | -------------------------------- | ----------------------------- | ---------------------- | -------------------------- |
-| **Primary Purpose**            | Pre-deployment validation        | Runtime permission analysis   | Permission enumeration | Least-privilege generation |
-| **Use Case**                   | CI/CD policy scanning            | "What can this principal do?" | Pentesting/audit       | Policy creation            |
-| **Custom Security Rules**      | ✅ Full support                   | ❌ No                          | ❌ No                   | ❌ No                       |
+| Feature                        | IAM Policy Validator              | IAM Lens                      | IAMSpy                 | Policy Sentry              |
+| ------------------------------ | --------------------------------- | ----------------------------- | ---------------------- | -------------------------- |
+| **Primary Purpose**            | Pre-deployment validation         | Runtime permission analysis   | Permission enumeration | Least-privilege generation |
+| **Use Case**                   | CI/CD policy scanning             | "What can this principal do?" | Pentesting/audit       | Policy creation            |
+| **Custom Security Rules**      | ✅ Full support                   | ❌ No                         | ❌ No                  | ❌ No                      |
 | **Cross-Statement Patterns**   | ✅ Privilege escalation detection | N/A (different purpose)       | N/A                    | N/A                        |
-| **Action-Resource Validation** | ✅ Catches incompatible pairs     | N/A                           | ❌ No                   | ✅ Generates correct        |
-| **Organization Conditions**    | ✅ IP, tags, encryption, etc.     | ❌ No                          | ❌ No                   | ❌ No                       |
-| **CI/CD Ready**                | ✅ GitHub Actions native          | ⚠️ Manual setup                | ⚠️ Manual               | ⚠️ Manual                   |
-| **PR Line Comments**           | ✅ Diff-aware                     | ❌ No                          | ❌ No                   | ❌ No                       |
-| **AWS Service Data**           | ✅ Official API (auto-update)     | ✅ Real AWS account data       | ⚠️ Static               | ✅ Official API             |
-| **Offline Mode**               | ✅ Yes                            | ❌ Needs AWS account           | ✅ Yes                  | ❌ Needs internet           |
-| **Query Permissions**          | ✅ Yes                            | ✅ Yes (different approach)    | ⚠️ Enumerate only       | ✅ Excellent                |
+| **Action-Resource Validation** | ✅ Catches incompatible pairs     | N/A                           | ❌ No                  | ✅ Generates correct       |
+| **Organization Conditions**    | ✅ IP, tags, encryption, etc.     | ❌ No                         | ❌ No                  | ❌ No                      |
+| **CI/CD Ready**                | ✅ GitHub Actions native          | ⚠️ Manual setup               | ⚠️ Manual              | ⚠️ Manual                  |
+| **PR Line Comments**           | ✅ Diff-aware                     | ❌ No                         | ❌ No                  | ❌ No                      |
+| **AWS Service Data**           | ✅ Official API (auto-update)     | ✅ Real AWS account data      | ⚠️ Static              | ✅ Official API            |
+| **Offline Mode**               | ✅ Yes                            | ❌ Needs AWS account          | ✅ Yes                 | ❌ Needs internet          |
+| **Query Permissions**          | ✅ Yes                            | ✅ Yes (different approach)   | ⚠️ Enumerate only      | ✅ Excellent               |
 
 **Choose this tool if you:**
 

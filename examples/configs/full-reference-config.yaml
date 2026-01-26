@@ -379,70 +379,169 @@ resource_validation:
 # ============================================================================
 # Validates Principal elements in resource-based policies
 # Applies to: S3 buckets, SNS topics, SQS queues, Lambda functions, etc.
-# Only runs when: --policy-type RESOURCE_POLICY
+# Runs for: --policy-type RESOURCE_POLICY or TRUST_POLICY
 #
-# Three control mechanisms:
-#   1. blocked_principals: Block specific principals (deny list)
-#   2. allowed_principals: Allow only specific principals (whitelist mode)
-#   3. principal_condition_requirements: Require conditions for certain principals
+# Six control mechanisms:
+#   1. block_wildcard_principal: Strict mode to block "*" entirely
+#   2. block_service_principal_wildcard: Block dangerous {"Service": "*"}
+#   3. blocked_principals: Block specific principals (deny list)
+#   4. allowed_principals: Allow only specific principals (whitelist mode)
+#   5. allowed_service_principals: Control which AWS services are allowed
+#   6. principal_condition_requirements: Require conditions for principals
 #
 principal_validation:
   enabled: true
   severity: high
   description: "Validates Principal elements in resource policies for security best practices"
 
-  # 1. BLOCKED PRINCIPALS (Deny List)
-  # Principals that should NEVER be allowed
-  # Default: ["*"] blocks public access
-  blocked_principals:
-    - "*" # Block public access to everyone
-    # - "arn:aws:iam::*:root"  # Uncomment to block all AWS accounts
+  # ──────────────────────────────────────────────────────────────────────────
+  # 1. BLOCK WILDCARD PRINCIPAL (Strict Mode)
+  # ──────────────────────────────────────────────────────────────────────────
+  # Controls how `Principal: "*"` is handled:
+  #
+  #   false (default): Allow "*" but require conditions via principal_condition_requirements
+  #                    Use this for S3 bucket policies, SNS subscriptions, etc. that need
+  #                    public access restricted by aws:SourceArn/aws:SourceAccount
+  #
+  #   true:  Block "*" entirely - strictest option, no conditions checked
+  #          Use this if you never want public principals in your policies
+  #
+  # Example with false (default):
+  #   "Principal": "*",
+  #   "Condition": {"StringEquals": {"aws:SourceAccount": "123456789012"}}
+  #   → Valid if conditions satisfy principal_condition_requirements
+  #
+  # Example with true:
+  #   "Principal": "*"  → Blocked immediately as "blocked_principal"
+  #
+  block_wildcard_principal: false
 
-  # 2. ALLOWED PRINCIPALS (Whitelist Mode)
-  # When set, ONLY these principals are allowed
-  # Leave empty [] to allow all (except blocked)
-  # Examples:
-  #   - "arn:aws:iam::123456789012:root"  # Only your account
-  #   - "arn:aws:iam::*:role/OrgAccessRole"  # Specific role in any account
+  # ──────────────────────────────────────────────────────────────────────────
+  # 2. BLOCK SERVICE PRINCIPAL WILDCARDS
+  # ──────────────────────────────────────────────────────────────────────────
+  # Detects dangerous `{"Service": "*"}` patterns in Principal field.
+  # This allows ANY AWS service to access the resource - extremely permissive!
+  #
+  #   true (default): Block {"Service": "*"} - always report as CRITICAL
+  #   false: Allow {"Service": "*"} (not recommended)
+  #
+  # What's detected:
+  #   "Principal": {"Service": "*"}                              ← CRITICAL
+  #   "Principal": {"Service": ["lambda.amazonaws.com", "*"]}    ← CRITICAL
+  #
+  # What's NOT detected (NotPrincipal is different semantics):
+  #   "NotPrincipal": {"Service": "*"}  ← Means "everyone EXCEPT services"
+  #
+  # Why it's dangerous:
+  #   Any AWS service from any account can access your resource.
+  #   Without aws:SourceArn/aws:SourceAccount conditions, attackers could
+  #   use a service in their account to access your resources.
+  #
+  block_service_principal_wildcard: true
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 3. BLOCKED PRINCIPALS (Deny List)
+  # ──────────────────────────────────────────────────────────────────────────
+  # Principals that should NEVER be allowed, regardless of conditions.
+  # Supports glob patterns (e.g., "arn:aws:iam::*:root")
+  #
+  # Note: When block_wildcard_principal is true, "*" is automatically blocked
+  # regardless of this list.
+  #
+  # Default: [] (empty - use block_wildcard_principal for "*")
+  #
+  blocked_principals: []
+    # Examples:
+    # - "*"                        # Block public access (prefer block_wildcard_principal)
+    # - "arn:aws:iam::*:root"      # Block all root account principals
+    # - "arn:aws:iam::999999999999:*"  # Block specific untrusted account
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 4. ALLOWED PRINCIPALS (Whitelist Mode)
+  # ──────────────────────────────────────────────────────────────────────────
+  # When set (non-empty), ONLY these principals are allowed.
+  # Principals not in this list trigger "unauthorized_principal" error.
+  # Supports glob patterns.
+  #
+  # Default: [] (empty - allow all principals except blocked)
+  #
+  # Leave empty to allow all principals (except those in blocked_principals).
+  # Set to specific values for strict whitelist mode.
+  #
   allowed_principals: []
+    # Examples:
+    # - "arn:aws:iam::123456789012:root"        # Only your account
+    # - "arn:aws:iam::123456789012:role/*"      # Any role in your account
+    # - "arn:aws:iam::*:role/OrgAccessRole"     # Specific role in any account
 
-  # 3. PRINCIPAL CONDITION REQUIREMENTS
-  # Require specific conditions for certain principals
-  # Supports all_of/any_of/none_of logic like action_condition_enforcement
-  # Default: 2 enabled (public_access, prevent_insecure_transport)
+  # ──────────────────────────────────────────────────────────────────────────
+  # 5. ALLOWED SERVICE PRINCIPALS
+  # ──────────────────────────────────────────────────────────────────────────
+  # AWS service principals (*.amazonaws.com) that are always allowed.
+  #
+  # Default: ["aws:*"] - allows ALL AWS service principals
+  # The special value "aws:*" matches any *.amazonaws.com service.
+  #
+  # Note: "aws:*" is different from "*" (public access).
+  # Service principals like "lambda.amazonaws.com" are AWS infrastructure,
+  # not public internet access.
+  #
+  allowed_service_principals:
+    - "aws:*"  # Allow all AWS services (default)
+    #
+    # Or restrict to specific services:
+    # - "lambda.amazonaws.com"
+    # - "s3.amazonaws.com"
+    # - "sns.amazonaws.com"
+    # - "events.amazonaws.com"
+    # - "cloudfront.amazonaws.com"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 6. PRINCIPAL CONDITION REQUIREMENTS
+  # ──────────────────────────────────────────────────────────────────────────
+  # Require specific conditions when certain principals are used.
+  # Only checked when block_wildcard_principal is false.
+  #
+  # Supports all_of/any_of/none_of logic (like action_condition_enforcement):
+  #   all_of:  ALL conditions must be present
+  #   any_of:  At least ONE condition must be present
+  #   none_of: NONE of these conditions should be present
+  #
+  # Default: 2 requirements enabled from Python config
   # See: iam_validator/core/config/principal_requirements.py
   #
-  # Examples:
   # principal_condition_requirements:
-  #   # Public access must have source restrictions
+  #   # Require source restrictions for public access
   #   - principals: ["*"]
   #     severity: critical
   #     required_conditions:
-  #       any_of:  # At least ONE of these
+  #       any_of:
   #         - condition_key: "aws:SourceArn"
+  #           description: "Restrict to specific source ARN"
   #         - condition_key: "aws:SourceAccount"
+  #           description: "Restrict to specific AWS account"
   #         - condition_key: "aws:SourceVpce"
+  #           description: "Restrict to VPC endpoint"
+  #         - condition_key: "aws:SourceIp"
+  #           description: "Restrict to IP range"
   #
-  #   # Cross-account requires organization membership
+  #   # Require organization membership for cross-account access
   #   - principals: ["arn:aws:iam::*:root"]
   #     severity: high
   #     required_conditions:
-  #       - condition_key: "aws:PrincipalOrgID"
-  #         expected_value: ["o-abc123", "o-def456"]
-
-  # 4. ALLOWED SERVICE PRINCIPALS
-  # AWS service principals that are always allowed
-  # Default: "aws:*" = ALL AWS service principals (*.amazonaws.com)
-  # Note: "aws:*" is different from "*" (public access)
+  #       all_of:
+  #         - condition_key: "aws:PrincipalOrgID"
+  #           expected_value: "o-xxxxx"
+  #           description: "Must be in your organization"
   #
-  # Keep default (allow all AWS services):
-  # allowed_service_principals: ["aws:*"]
-  #
-  # Or restrict to specific services:
-  # allowed_service_principals:
-  #   - "cloudfront.amazonaws.com"
-  #   - "s3.amazonaws.com"
-  #   - "lambda.amazonaws.com"
+  #   # Forbid insecure transport
+  #   - principals: ["*"]
+  #     severity: high
+  #     required_conditions:
+  #       none_of:
+  #         - condition_key: "aws:SecureTransport"
+  #           expected_value: false
+  #           description: "Never allow HTTP (must use HTTPS)"
 
 # ============================================================================
 # 10. TRUST POLICY VALIDATION

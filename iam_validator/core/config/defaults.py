@@ -238,18 +238,26 @@ DEFAULT_CONFIG = {
     # Applies to: S3 buckets, SNS topics, SQS queues, Lambda functions, etc.
     # Only runs when: --policy-type RESOURCE_POLICY
     #
-    # Three control mechanisms:
-    #   1. blocked_principals - Block specific principals (deny list)
-    #   2. allowed_principals - Allow only specific principals (whitelist mode)
-    #   3. principal_condition_requirements - Require conditions for principals
-    #   4. allowed_service_principals - Always allow AWS service principals
+    # Control mechanisms:
+    #   1. block_wildcard_principal - Simple toggle for wildcard principal handling
+    #   2. blocked_principals - Block specific principals (deny list)
+    #   3. allowed_principals - Allow only specific principals (whitelist mode)
+    #   4. principal_condition_requirements - Require conditions for principals
+    #   5. allowed_service_principals - Always allow AWS service principals
+    #   6. block_service_principal_wildcard - Block {"Service": "*"} patterns
     "principal_validation": {
         "enabled": True,
         "severity": "high",  # Security issue, not IAM validity error
         "description": "Validates Principal elements in resource policies for security best practices",
-        # blocked_principals: Deny list - these principals are never allowed
-        # Default: ["*"] blocks public access
-        "blocked_principals": ["*"],
+        # block_wildcard_principal: Strict mode toggle for Principal: "*"
+        #   false (default): Allow wildcard principal but require conditions
+        #   true: Block wildcard principal entirely - strictest option
+        # When false, principal_condition_requirements for "*" are enforced,
+        # allowing patterns like S3 bucket policies with aws:SourceArn conditions.
+        "block_wildcard_principal": False,
+        # blocked_principals: Deny list - additional principals to block
+        # Note: When block_wildcard_principal is true, "*" is automatically blocked.
+        "blocked_principals": [],
         # allowed_principals: Whitelist mode - when set, ONLY these are allowed
         # Default: [] allows all (except blocked)
         "allowed_principals": [],
@@ -262,6 +270,12 @@ DEFAULT_CONFIG = {
         # Default: ["aws:*"] allows ALL AWS service principals
         # Note: "aws:*" is different from "*" (public access)
         "allowed_service_principals": ["aws:*"],
+        # block_service_principal_wildcard: Block {"Service": "*"} in Principal
+        # This pattern allows ANY AWS service to access the resource, which is
+        # extremely permissive. Without source verification conditions like
+        # aws:SourceArn or aws:SourceAccount, this creates a security risk.
+        # Default: True (always block this dangerous pattern)
+        "block_service_principal_wildcard": True,
     },
     # ========================================================================
     # 10. TRUST POLICY VALIDATION
