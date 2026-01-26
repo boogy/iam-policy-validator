@@ -85,17 +85,13 @@ GLOBAL_RESOURCE_SCOPING_CONDITION_KEYS = frozenset(
 )
 
 # Patterns that should be recognized (wildcards and tag-based keys)
-# These allow things like aws:RequestTag/Department or aws:PrincipalTag/Environment
+# IMPORTANT: aws:RequestTag and aws:ResourceTag are NOT global condition keys!
+# They are action-specific or resource-specific and must be explicitly listed in
+# the action's ActionConditionKeys or the resource's ConditionKeys.
+# Only aws:PrincipalTag is a true global condition key.
+#
 # Uses centralized tag key character class from constants
 AWS_CONDITION_KEY_PATTERNS = [
-    {
-        "pattern": rf"^aws:RequestTag/[{AWS_TAG_KEY_ALLOWED_CHARS}]+$",
-        "description": "Tag keys in the request (for tag-based access control)",
-    },
-    {
-        "pattern": rf"^aws:ResourceTag/[{AWS_TAG_KEY_ALLOWED_CHARS}]+$",
-        "description": "Tags on the resource being accessed",
-    },
     {
         "pattern": rf"^aws:PrincipalTag/[{AWS_TAG_KEY_ALLOWED_CHARS}]+$",
         "description": "Tags attached to the principal making the request",

@@ -40,19 +40,21 @@ class TestAWSGlobalConditions:
         assert conditions.is_valid_global_key("") is False
 
     def test_request_tag_pattern(self, conditions):
-        """Test validation of aws:RequestTag/* patterns."""
-        assert conditions.is_valid_global_key("aws:RequestTag/Environment") is True
-        assert conditions.is_valid_global_key("aws:RequestTag/Owner") is True
-        assert conditions.is_valid_global_key("aws:RequestTag/CostCenter") is True
-        assert conditions.is_valid_global_key("aws:RequestTag/Team-Name") is True
-        assert conditions.is_valid_global_key("aws:RequestTag/app.example.com/role") is True
+        """Test that aws:RequestTag/* are NOT global keys (they're action-specific)."""
+        # aws:RequestTag is NOT a global key - it's only supported by specific actions
+        assert conditions.is_valid_global_key("aws:RequestTag/Environment") is False
+        assert conditions.is_valid_global_key("aws:RequestTag/Owner") is False
+        assert conditions.is_valid_global_key("aws:RequestTag/CostCenter") is False
+        assert conditions.is_valid_global_key("aws:RequestTag/Team-Name") is False
+        assert conditions.is_valid_global_key("aws:RequestTag/app.example.com/role") is False
 
     def test_resource_tag_pattern(self, conditions):
-        """Test validation of aws:ResourceTag/* patterns."""
-        assert conditions.is_valid_global_key("aws:ResourceTag/Environment") is True
-        assert conditions.is_valid_global_key("aws:ResourceTag/Owner") is True
-        assert conditions.is_valid_global_key("aws:ResourceTag/Project") is True
-        assert conditions.is_valid_global_key("aws:ResourceTag/app:component") is True
+        """Test that aws:ResourceTag/* are NOT global keys (they're resource-specific)."""
+        # aws:ResourceTag is NOT a global key - it's only supported by resources that have tags
+        assert conditions.is_valid_global_key("aws:ResourceTag/Environment") is False
+        assert conditions.is_valid_global_key("aws:ResourceTag/Owner") is False
+        assert conditions.is_valid_global_key("aws:ResourceTag/Project") is False
+        assert conditions.is_valid_global_key("aws:ResourceTag/app:component") is False
 
     def test_principal_tag_pattern(self, conditions):
         """Test validation of aws:PrincipalTag/* patterns."""
@@ -95,10 +97,12 @@ class TestAWSGlobalConditions:
         assert conditions.get_key_type("aws:MultiFactorAuthAge") == "Numeric"
         assert conditions.get_key_type("aws:username") == "String"
 
-        # Pattern matches (tags) - all tag keys are String type
-        assert conditions.get_key_type("aws:RequestTag/Environment") == "String"
-        assert conditions.get_key_type("aws:ResourceTag/Name") == "String"
+        # Pattern matches (only PrincipalTag is global) - all tag keys are String type
         assert conditions.get_key_type("aws:PrincipalTag/Department") == "String"
+
+        # RequestTag and ResourceTag are NOT global
+        assert conditions.get_key_type("aws:RequestTag/Environment") is None
+        assert conditions.get_key_type("aws:ResourceTag/Name") is None
 
         # Invalid keys
         assert conditions.get_key_type("invalid:key") is None
@@ -108,7 +112,7 @@ class TestAWSGlobalConditions:
         """Test getting all condition key patterns."""
         patterns = conditions.get_patterns()
         assert isinstance(patterns, list)
-        assert len(patterns) == 3  # RequestTag, ResourceTag, PrincipalTag
+        assert len(patterns) == 1  # Only PrincipalTag (RequestTag and ResourceTag are NOT global)
 
         # Verify pattern structure
         for pattern_config in patterns:
@@ -117,7 +121,7 @@ class TestAWSGlobalConditions:
 
         # Ensure it's a copy, not the original
         patterns.append({"pattern": "test", "description": "test"})
-        assert len(conditions._patterns) == 3
+        assert len(conditions._patterns) == 1
 
     def test_singleton_get_global_conditions(self):
         """Test the singleton factory function."""
@@ -146,14 +150,18 @@ class TestAWSGlobalConditions:
     def test_tag_with_special_characters(self, conditions):
         """Test tag patterns with allowed special characters."""
         # According to the pattern: [a-zA-Z0-9+\-=._:/@]+
-        assert conditions.is_valid_global_key("aws:RequestTag/my-tag") is True
-        assert conditions.is_valid_global_key("aws:RequestTag/my_tag") is True
-        assert conditions.is_valid_global_key("aws:RequestTag/my.tag") is True
-        assert conditions.is_valid_global_key("aws:RequestTag/my:tag") is True
-        assert conditions.is_valid_global_key("aws:RequestTag/my/tag") is True
-        assert conditions.is_valid_global_key("aws:RequestTag/my@tag") is True
-        assert conditions.is_valid_global_key("aws:RequestTag/my+tag") is True
-        assert conditions.is_valid_global_key("aws:RequestTag/my=tag") is True
+        # Only PrincipalTag is global, so test with it
+        assert conditions.is_valid_global_key("aws:PrincipalTag/my-tag") is True
+        assert conditions.is_valid_global_key("aws:PrincipalTag/my_tag") is True
+        assert conditions.is_valid_global_key("aws:PrincipalTag/my.tag") is True
+        assert conditions.is_valid_global_key("aws:PrincipalTag/my:tag") is True
+        assert conditions.is_valid_global_key("aws:PrincipalTag/my/tag") is True
+        assert conditions.is_valid_global_key("aws:PrincipalTag/my@tag") is True
+        assert conditions.is_valid_global_key("aws:PrincipalTag/my+tag") is True
+        assert conditions.is_valid_global_key("aws:PrincipalTag/my=tag") is True
+
+        # RequestTag is NOT global
+        assert conditions.is_valid_global_key("aws:RequestTag/my-tag") is False
 
     def test_known_service_specific_keys_are_invalid(self, conditions):
         """Test that service-specific condition keys are not treated as global."""
