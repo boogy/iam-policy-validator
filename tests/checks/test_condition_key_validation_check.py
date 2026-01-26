@@ -33,9 +33,7 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_no_conditions(self, check, fetcher, config):
         """Test statement with no conditions."""
-        statement = Statement(
-            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
         fetcher.validate_condition_key.assert_not_called()
@@ -127,9 +125,7 @@ class TestConditionKeyPatternMatching:
         from iam_validator.core.aws_service.validators import condition_key_in_list
 
         # Pattern matching: condition key with valid tag should match pattern
-        assert condition_key_in_list(
-            "ssm:resourceTag/owner", ["ssm:resourceTag/tag-key"]
-        )
+        assert condition_key_in_list("ssm:resourceTag/owner", ["ssm:resourceTag/tag-key"])
         # Exact match should work
         assert condition_key_in_list("ssm:Overwrite", ["ssm:Overwrite"])
         # No match when patterns differ
@@ -139,12 +135,8 @@ class TestConditionKeyPatternMatching:
         """Test that aws:ResourceTag/owner matches aws:ResourceTag/${TagKey} pattern."""
         from iam_validator.core.aws_service.validators import condition_key_in_list
 
-        assert condition_key_in_list(
-            "aws:ResourceTag/owner", ["aws:ResourceTag/${TagKey}"]
-        )
-        assert condition_key_in_list(
-            "aws:RequestTag/Department", ["aws:RequestTag/${TagKey}"]
-        )
+        assert condition_key_in_list("aws:ResourceTag/owner", ["aws:ResourceTag/${TagKey}"])
+        assert condition_key_in_list("aws:RequestTag/Department", ["aws:RequestTag/${TagKey}"])
 
     @pytest.mark.asyncio
     async def test_ssm_put_parameter_with_resource_tag(self):
@@ -162,28 +154,18 @@ class TestConditionKeyPatternMatching:
         from iam_validator.core.aws_service.validators import condition_key_in_list
 
         # S3 uses /<key> placeholder - any pattern with "/" should work
-        assert condition_key_in_list(
-            "s3:RequestObjectTag/Environment", ["s3:RequestObjectTag/<key>"]
-        )
-        assert condition_key_in_list(
-            "s3:ExistingObjectTag/Team", ["s3:ExistingObjectTag/<key>"]
-        )
+        assert condition_key_in_list("s3:RequestObjectTag/Environment", ["s3:RequestObjectTag/<key>"])
+        assert condition_key_in_list("s3:ExistingObjectTag/Team", ["s3:ExistingObjectTag/<key>"])
 
     def test_generic_pattern_matching(self):
         """Test that any pattern with / matches condition keys with valid tag suffix."""
         from iam_validator.core.aws_service.validators import condition_key_in_list
 
         # Any pattern with "/" should match if prefix matches and suffix is valid tag
-        assert condition_key_in_list(
-            "svc:SomeCondition/MyValue", ["svc:SomeCondition/anything"]
-        )
-        assert condition_key_in_list(
-            "svc:Tag/Environment", ["svc:Tag/placeholder"]
-        )
+        assert condition_key_in_list("svc:SomeCondition/MyValue", ["svc:SomeCondition/anything"])
+        assert condition_key_in_list("svc:Tag/Environment", ["svc:Tag/placeholder"])
         # Different prefixes should NOT match
-        assert not condition_key_in_list(
-            "svc:Condition/Value", ["svc:OtherCondition/placeholder"]
-        )
+        assert not condition_key_in_list("svc:Condition/Value", ["svc:OtherCondition/placeholder"])
 
     @pytest.mark.asyncio
     async def test_s3_put_object_with_request_object_tag(self):
@@ -235,3 +217,57 @@ class TestTagKeyValidation:
         assert _is_valid_tag_key("a")
         assert _is_valid_tag_key("a" * 128)
         assert not _is_valid_tag_key("a" * 129)
+
+    @pytest.mark.asyncio
+    async def test_request_tag_not_supported_by_action(self):
+        """Test that aws:RequestTag is rejected for actions that don't support it.
+
+        This tests the fix for the issue where aws:RequestTag was incorrectly accepted
+        for all IAM actions because it appears in service-level condition keys.
+        Only actions that create/modify tagged resources should support aws:RequestTag.
+        """
+        check = ConditionKeyValidationCheck()
+        config = CheckConfig(check_id="condition_key_validation")
+
+        # Test with iam:SetDefaultPolicyVersion which does NOT support aws:RequestTag
+        statement = Statement(
+            Sid="SetDefaultOnly",
+            Effect="Allow",
+            Action=["iam:SetDefaultPolicyVersion"],
+            Resource=["arn:aws:iam::123456789012:policy/*"],
+            Condition={"StringEquals": {"aws:RequestTag/owner": "test"}},
+        )
+
+        async with AWSServiceFetcher() as fetcher:
+            issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should detect that aws:RequestTag is not supported
+        assert len(issues) == 1
+        assert issues[0].issue_type == "invalid_condition_key"
+        assert "aws:RequestTag/owner" in issues[0].message
+        assert "not supported" in issues[0].message.lower()
+
+    @pytest.mark.asyncio
+    async def test_request_tag_supported_by_action(self):
+        """Test that aws:RequestTag is accepted for actions that DO support it.
+
+        Actions like iam:CreatePolicy explicitly list aws:RequestTag in their
+        ActionConditionKeys, so it should be accepted.
+        """
+        check = ConditionKeyValidationCheck()
+        config = CheckConfig(check_id="condition_key_validation")
+
+        # Test with iam:CreatePolicy which DOES support aws:RequestTag
+        statement = Statement(
+            Sid="CreatePolicyOnly",
+            Effect="Allow",
+            Action=["iam:CreatePolicy"],
+            Resource=["arn:aws:iam::123456789012:policy/*"],
+            Condition={"StringEquals": {"aws:RequestTag/owner": "test"}},
+        )
+
+        async with AWSServiceFetcher() as fetcher:
+            issues = await check.execute(statement, 0, fetcher, config)
+
+        # Should NOT detect any issues - aws:RequestTag is valid for CreatePolicy
+        assert len(issues) == 0

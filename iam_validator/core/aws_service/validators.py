@@ -243,22 +243,30 @@ class ServiceValidator:
             _, action_name = self._parser.parse_action(action)
 
             # Check if it's a global condition key
+            # Note: Some aws: prefixed keys like aws:RequestTag/* and aws:ResourceTag/* are NOT
+            # global keys - they're action-specific or resource-specific. We'll check those later.
             is_global_key = False
             if condition_key.startswith("aws:"):
                 global_conditions = get_global_conditions()
                 if global_conditions.is_valid_global_key(condition_key):
                     is_global_key = True
-                else:
-                    return ConditionKeyValidationResult(
-                        is_valid=False,
-                        error_message=f"Invalid AWS global condition key: `{condition_key}`.",
-                    )
+                # If not a global key, continue to check action/resource-specific keys
+                # Don't return an error yet - aws:RequestTag, aws:ResourceTag are action-specific
 
             # Check service-specific condition keys (with pattern matching for tag keys)
-            if service_detail.condition_keys and condition_key_in_list(
-                condition_key, list(service_detail.condition_keys.keys())
-            ):
-                return ConditionKeyValidationResult(is_valid=True)
+            # IMPORTANT: aws:RequestTag and aws:ResourceTag patterns in service-level keys
+            # are NOT universally valid for all actions. Skip them here - they'll be checked
+            # at action/resource level.
+            if service_detail.condition_keys:
+                # Check if it matches service-level keys, but exclude RequestTag/ResourceTag
+                if condition_key_in_list(condition_key, list(service_detail.condition_keys.keys())):
+                    # If it's RequestTag or ResourceTag, don't return valid here - check action/resource level
+                    if not (
+                        condition_key.startswith("aws:RequestTag/")
+                        or condition_key.startswith("aws:ResourceTag/")
+                    ):
+                        return ConditionKeyValidationResult(is_valid=True)
+                    # For RequestTag/ResourceTag, continue to check action/resource level
 
             # Check action-specific condition keys
             if action_name in service_detail.actions:
@@ -298,8 +306,26 @@ class ServiceValidator:
             if is_global_key:
                 return ConditionKeyValidationResult(is_valid=True)
 
-            # Short error message
-            error_msg = f"Condition key `{condition_key}` is not valid for action `{action}`"
+            # If we reach here, the condition key was not found in any valid location
+            # Check if it's an aws: prefixed key that's not global - provide specific error
+            if condition_key.startswith("aws:"):
+                # Special handling for aws:RequestTag and aws:ResourceTag patterns
+                if condition_key.startswith("aws:RequestTag/"):
+                    error_msg = (
+                        f"Condition key `{condition_key}` is not supported by action `{action}`. "
+                        f"The `aws:RequestTag/${{TagKey}}` condition is only supported by actions that "
+                        f"create or modify resources with tags. This action does not support tag operations."
+                    )
+                elif condition_key.startswith("aws:ResourceTag/"):
+                    error_msg = (
+                        f"Condition key `{condition_key}` is not supported by the resources used by action `{action}`. "
+                        f"The `aws:ResourceTag/${{TagKey}}` condition is only supported by resources that have tags."
+                    )
+                else:
+                    error_msg = f"Invalid AWS condition key: `{condition_key}`. This key is not a valid global condition key and is not supported by action `{action}`."
+            else:
+                # Short error message for non-aws: keys
+                error_msg = f"Condition key `{condition_key}` is not valid for action `{action}`"
 
             # Collect valid condition keys for this action
             valid_keys: set[str] = set()
