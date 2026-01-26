@@ -13,6 +13,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.15.2] - 2025-01-26
+
+### Added
+
+**Confused Deputy Protection**
+
+- Service principal wildcard detection (`{"Service": "*"}`) - critical severity
+  - Detects dangerous patterns allowing any AWS service to access resources or assume roles
+  - Enabled by default via `block_service_principal_wildcard: true`
+  - Only checks `Principal` field (not `NotPrincipal`, which is an exclusion)
+- New configuration options for `principal_validation`:
+  - `block_wildcard_principal` - strict mode to block `*` entirely (default: false)
+  - `block_service_principal_wildcard` - block `{"Service": "*"}` patterns (default: true)
+- Improved handling of `Principal: "*"` with conditions for confused deputy prevention
+  - Default requires source verification (`aws:SourceArn`, `aws:SourceAccount`, `aws:SourceVpce`, or `aws:SourceIp`)
+
+**Condition Type Validation Improvements**
+
+- Enhanced ISO 8601 date validation with semantic checks:
+  - Validates month range (1-12)
+  - Validates day range based on month (1-28/29/30/31)
+  - Validates hour (0-23), minute (0-59), second (0-59)
+  - Leap year detection for February 29
+  - Timezone offset validation
+
+### Changed
+
+- `principal_validation` default behavior now allows `*` with conditions
+  - Use `block_wildcard_principal: true` to restore strict blocking
+- Duplicate findings avoided when service principal wildcard is detected
+
+---
+
+## [1.15.1] - 2025-01-24
+
+### Fixed
+
+**Condition Key Validation for aws:RequestTag and aws:ResourceTag**
+
+- `aws:RequestTag/${TagKey}` and `aws:ResourceTag/${TagKey}` now correctly validated as action/resource-specific condition keys (not global)
+- These keys are only valid for actions that create/modify tagged resources (e.g., `iam:CreatePolicy`, `iam:CreateRole`)
+- Invalid usage now flagged with descriptive error messages explaining the key is only for tagging operations
+- Example: `iam:SetDefaultPolicyVersion` with `aws:RequestTag/owner` now correctly fails validation
+
+---
+
 ## [1.15.0] - 2025-01-22
 
 ### Added
@@ -353,11 +399,10 @@ This project follows [Semantic Versioning](https://semver.org/):
 
 ### Supported Versions
 
-| Version | Support Status         |
-| ------- | ---------------------- |
-| 1.15.x  | ✅ Active development  |
-| 1.14.x  | ⚠️ Critical fixes only |
-| < 1.14  | ❌ End of life         |
+| Version | Support Status        |
+| ------- | --------------------- |
+| 1.15.x  | ✅ Active development |
+| < 1.15  | ❌ End of life        |
 
 ### Deprecation Policy
 
@@ -404,7 +449,9 @@ iam-validator validate --policy-type RESOURCE_CONTROL_POLICY policies/
 
 ---
 
-[Unreleased]: https://github.com/boogy/iam-policy-validator/compare/v1.15.0...HEAD
+[Unreleased]: https://github.com/boogy/iam-policy-validator/compare/v1.15.2...HEAD
+[1.15.2]: https://github.com/boogy/iam-policy-validator/compare/v1.15.1...v1.15.2
+[1.15.1]: https://github.com/boogy/iam-policy-validator/compare/v1.15.0...v1.15.1
 [1.15.0]: https://github.com/boogy/iam-policy-validator/compare/v1.14.7...v1.15.0
 [1.14.7]: https://github.com/boogy/iam-policy-validator/compare/v1.14.6...v1.14.7
 [1.14.6]: https://github.com/boogy/iam-policy-validator/compare/v1.14.5...v1.14.6

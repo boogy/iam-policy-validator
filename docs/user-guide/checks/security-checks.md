@@ -34,10 +34,7 @@ Replace with specific actions and resources:
 ```json
 {
   "Effect": "Allow",
-  "Action": [
-    "s3:GetObject",
-    "s3:PutObject"
-  ],
+  "Action": ["s3:GetObject", "s3:PutObject"],
   "Resource": "arn:aws:s3:::my-bucket/*"
 }
 ```
@@ -205,10 +202,7 @@ Use specific actions or action patterns:
 ```json
 {
   "Effect": "Allow",
-  "Action": [
-    "s3:Get*",
-    "s3:List*"
-  ],
+  "Action": ["s3:Get*", "s3:List*"],
   "Resource": "*"
 }
 ```
@@ -258,17 +252,120 @@ Add conditions to restrict usage:
 
 ## principal_validation
 
-Validates Principal elements in resource policies.
+Validates Principal elements in resource policies and trust policies.
 
-**Severity:** `high`
+**Severity:** `high` (varies by issue type)
 
 ### What It Checks
 
-- Blocks dangerous principals (`*`, anonymous access)
-- Validates AWS account IDs
-- Checks service principal format
+- **Service Principal Wildcards** (`critical`): Detects dangerous `{"Service": "*"}` patterns
+- **Wildcard Principals** (configurable): Detects `Principal: "*"` or `{"AWS": "*"}`
+- **Blocked Principals**: Validates against configurable blocked list
+- **Allowed Principals**: Enforces whitelist when configured
+- **Principal Condition Requirements**: Requires specific conditions for certain principals
+- **Service Principal Format**: Validates AWS service principal format
 
-### Fail Example
+### Service Principal Wildcards (Critical)
+
+The most dangerous pattern is `{"Service": "*"}` in trust policies, which allows **any AWS service** to assume a role.
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": { "Service": "*" },
+  "Action": "sts:AssumeRole"
+}
+```
+
+This is flagged as **critical** because it creates an extremely permissive trust relationship. Any AWS service - including services you don't control - could potentially assume this role.
+
+**Note:** `NotPrincipal: {"Service": "*"}` is NOT flagged because it means "everyone EXCEPT all services", which is an exclusion, not an overly permissive grant.
+
+### Wildcard Principal Handling
+
+The check supports two modes for handling `Principal: "*"`:
+
+1. **Default mode** (`block_wildcard_principal: false`): Allows `*` if appropriate conditions are present (configured via `principal_condition_requirements`)
+2. **Strict mode** (`block_wildcard_principal: true`): Blocks `*` entirely, regardless of conditions
+
+#### When Wildcard with Conditions is Valid
+
+Some use cases legitimately require `Principal: "*"` with conditions:
+
+- **S3 bucket policies** with `aws:SourceArn` and `aws:SourceAccount`
+- **SNS topic policies** for cross-account subscriptions
+- **Trust policies** with `sts:ExternalId` for confused deputy protection
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": "*",
+  "Action": "s3:GetObject",
+  "Resource": "arn:aws:s3:::bucket/*",
+  "Condition": {
+    "StringEquals": {
+      "aws:SourceAccount": "123456789012"
+    },
+    "ArnLike": {
+      "aws:SourceArn": "arn:aws:s3:::source-bucket"
+    }
+  }
+}
+```
+
+### Configuration Options
+
+```yaml
+principal_validation:
+  enabled: true
+
+  # Strict mode: block * entirely (default: false)
+  block_wildcard_principal: false
+
+  # Block {"Service": "*"} patterns (default: true)
+  block_service_principal_wildcard: true
+
+  # Explicit block list
+  blocked_principals:
+    - "arn:aws:iam::*:root"
+
+  # Whitelist mode (when set, only these are allowed)
+  allowed_principals:
+    - "arn:aws:iam::123456789012:*"
+
+  # Condition requirements for specific principals
+  principal_condition_requirements:
+    - principals: ["*"]
+      required_conditions:
+        any_of:
+          - condition_key: "aws:SourceArn"
+          - condition_key: "aws:SourceAccount"
+```
+
+### Fail Examples
+
+**Critical - Service Principal Wildcard:**
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": { "Service": "*" },
+  "Action": "sts:AssumeRole"
+}
+```
+
+**High - Wildcard without conditions (strict mode):**
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": "*",
+  "Action": "s3:GetObject",
+  "Resource": "arn:aws:s3:::bucket/*"
+}
+```
+
+**Medium - Missing required conditions (default mode):**
 
 ```json
 {
@@ -281,7 +378,17 @@ Validates Principal elements in resource policies.
 
 ### How to Fix
 
-Restrict to specific principals:
+**For service principal wildcards - specify the service:**
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": { "Service": "lambda.amazonaws.com" },
+  "Action": "sts:AssumeRole"
+}
+```
+
+**For wildcard principals - add conditions or specify principal:**
 
 ```json
 {
@@ -354,11 +461,7 @@ Replace NotAction with explicit Action lists:
 ```json
 {
   "Effect": "Allow",
-  "Action": [
-    "s3:GetObject",
-    "s3:PutObject",
-    "dynamodb:Query"
-  ],
+  "Action": ["s3:GetObject", "s3:PutObject", "dynamodb:Query"],
   "Resource": [
     "arn:aws:s3:::my-bucket/*",
     "arn:aws:dynamodb:us-east-1:123456789012:table/my-table"
@@ -374,7 +477,8 @@ If NotAction is truly required, add strict conditions:
   "NotAction": ["iam:*", "sts:*"],
   "Resource": "*",
   "Condition": {
-    "Bool": {"aws:MultiFactorAuthPresent": "true"},
-    "IpAddress": {"aws:SourceIp": "10.0.0.0/8"}
+    "Bool": { "aws:MultiFactorAuthPresent": "true" },
+    "IpAddress": { "aws:SourceIp": "10.0.0.0/8" }
   }
 }
+```

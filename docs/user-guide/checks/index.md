@@ -51,7 +51,7 @@ IAM Policy Validator includes 19 built-in checks across three categories.
 | `policy_size`               | error    | Character size limits                |
 | `sid_uniqueness`            | warning  | Unique SIDs                          |
 | `set_operator_validation`   | error    | ForAllValues/ForAnyValue usage       |
-| `principal_validation`      | high     | Principal format (resource policies) |
+| `principal_validation`      | high     | Principal validation & confused deputy protection |
 | `mfa_condition_antipattern` | warning  | MFA anti-patterns                    |
 
 ### Security Checks

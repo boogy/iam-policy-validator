@@ -15,6 +15,7 @@ We appreciate responsible disclosure of security vulnerabilities. If you discove
 Instead, please report security issues via one of these methods:
 
 1. **GitHub Security Advisories** (Preferred)
+
    - Go to the [Security Advisories page](https://github.com/boogy/iam-policy-validator/security/advisories)
    - Click "Report a vulnerability"
    - Provide detailed information about the vulnerability
@@ -205,9 +206,9 @@ Configure minimal permissions for GitHub Actions:
 
 ```yaml
 permissions:
-  contents: read           # Required: Read repository content
-  pull-requests: write     # Required: Post PR comments
-  id-token: write         # Required only for AWS OIDC authentication
+  contents: read # Required: Read repository content
+  pull-requests: write # Required: Post PR comments
+  id-token: write # Required only for AWS OIDC authentication
 ```
 
 ## Contact

@@ -3,6 +3,7 @@
 Validates Principal elements in resource-based policies for security best practices.
 This check enforces:
 - Blocked principals (e.g., public access via "*")
+- Service principal wildcards (e.g., {"Service": "*"} - extremely dangerous)
 - Allowed principals whitelist (optional)
 - Rich condition requirements for principals (supports any_of/all_of/none_of)
 - Service principal validation
@@ -77,21 +78,55 @@ class PrincipalValidationCheck(PolicyCheck):
             return issues
 
         # Get configuration (defaults match defaults.py)
-        blocked_principals = config.config.get("blocked_principals", ["*"])
+        blocked_principals = list(config.config.get("blocked_principals", []))
         allowed_principals = config.config.get("allowed_principals", [])
         principal_condition_requirements = config.config.get("principal_condition_requirements", [])
         # Default: "aws:*" allows ALL AWS service principals (*.amazonaws.com)
-        # This matches the default in defaults.py:251
+        # This matches the default in defaults.py
         allowed_service_principals = config.config.get("allowed_service_principals", ["aws:*"])
+        # Default: block service principal wildcards ({"Service": "*"})
+        # This is extremely dangerous as it allows ANY AWS service to assume the role
+        block_service_principal_wildcard = config.config.get(
+            "block_service_principal_wildcard", True
+        )
+        # block_wildcard_principal: Strict mode for Principal: "*"
+        # false (default): Allow wildcard principal but require conditions
+        # true: Block wildcard principal entirely, skip condition checks
+        block_wildcard_principal = config.config.get("block_wildcard_principal", False)
+        if block_wildcard_principal and "*" not in blocked_principals:
+            blocked_principals.append("*")
+
+        # Check for service principal wildcards FIRST (highest priority security issue)
+        # If detected, return early - no conditions can make {"Service": "*"} safe
+        if block_service_principal_wildcard:
+            service_wildcard_issues = self._check_service_principal_wildcards(
+                statement, statement_idx, config
+            )
+            if service_wildcard_issues:
+                # Return early - this is unfixable, don't suggest conditions
+                return service_wildcard_issues
 
         # Extract principals from statement
         principals = self._extract_principals(statement)
 
+        # Track blocked principals to skip condition checks for them
+        blocked_principal_values: set[str] = set()
+
+        # Check if statement has {"Service": "*"} pattern
+        # If so, we shouldn't also flag the * as a blocked principal
+        has_service_wildcard = self._has_service_principal_wildcard(statement)
+
         for principal in principals:
+            # Skip blocking check for "*" if it came from {"Service": "*"}
+            # That case is handled by _check_service_principal_wildcards
+            if principal == "*" and has_service_wildcard:
+                continue
+
             # Check if principal is blocked
             if self._is_blocked_principal(
                 principal, blocked_principals, allowed_service_principals
             ):
+                blocked_principal_values.add(principal)
                 issues.append(
                     ValidationIssue(
                         severity=self.get_severity(config),
@@ -129,15 +164,19 @@ class PrincipalValidationCheck(PolicyCheck):
                 continue
 
         # Check principal_condition_requirements (supports any_of/all_of/none_of)
+        # Skip condition checks for principals that are already blocked
         if principal_condition_requirements:
-            condition_issues = self._validate_principal_condition_requirements(
-                statement,
-                statement_idx,
-                principals,
-                principal_condition_requirements,
-                config,
-            )
-            issues.extend(condition_issues)
+            # Filter out blocked principals - they need to be removed, not conditioned
+            principals_to_check = [p for p in principals if p not in blocked_principal_values]
+            if principals_to_check:
+                condition_issues = self._validate_principal_condition_requirements(
+                    statement,
+                    statement_idx,
+                    principals_to_check,
+                    principal_condition_requirements,
+                    config,
+                )
+                issues.extend(condition_issues)
 
         return issues
 
@@ -177,6 +216,106 @@ class PrincipalValidationCheck(PolicyCheck):
                         principals.extend(value)
 
         return principals
+
+    def _has_service_principal_wildcard(self, statement: Statement) -> bool:
+        """Check if statement has {"Service": "*"} pattern.
+
+        This is used to avoid double-flagging - if the statement has a service
+        principal wildcard, we shouldn't also block it as a regular wildcard.
+        """
+        if statement.principal and isinstance(statement.principal, dict):
+            service_principals = statement.principal.get("Service")
+            if service_principals:
+                if isinstance(service_principals, str) and service_principals == "*":
+                    return True
+                if isinstance(service_principals, list) and "*" in service_principals:
+                    return True
+        return False
+
+    def _check_service_principal_wildcards(
+        self,
+        statement: Statement,
+        statement_idx: int,
+        _config: CheckConfig,
+    ) -> list[ValidationIssue]:
+        """Check for dangerous service principal wildcards in Principal field.
+
+        Detects patterns like:
+        - "Principal": {"Service": "*"}
+        - "Principal": {"Service": ["*"]}
+        - "Principal": {"Service": ["lambda.amazonaws.com", "*"]}
+
+        These are dangerous because they allow ANY AWS service to access the resource
+        or assume the role. Without proper source verification conditions (aws:SourceArn,
+        aws:SourceAccount), any service in any account could potentially access the resource.
+
+        Note: NotPrincipal with {"Service": "*"} is NOT flagged here because it means
+        "allow everyone EXCEPT all services" - a different concern (overly broad exclusion)
+        but not an overly permissive grant.
+
+        Args:
+            statement: The statement to check
+            statement_idx: Index of the statement
+            config: Check configuration
+
+        Returns:
+            List of validation issues
+        """
+        issues: list[ValidationIssue] = []
+
+        # Only check Principal field (not NotPrincipal)
+        # NotPrincipal: {"Service": "*"} means "everyone EXCEPT services" which is
+        # a different concern (overly broad exclusion) but not an overly permissive grant
+        if statement.principal is None:
+            return issues
+
+        if not isinstance(statement.principal, dict):
+            return issues
+
+        # Check the "Service" key specifically
+        service_principals = statement.principal.get("Service")
+        if service_principals is None:
+            return issues
+
+        # Normalize to list
+        if isinstance(service_principals, str):
+            service_principals = [service_principals]
+
+        # Check for wildcard in service principals
+        for service_principal in service_principals:
+            if service_principal == "*":
+                issues.append(
+                    ValidationIssue(
+                        severity="critical",  # Always critical - extremely permissive
+                        issue_type="service_principal_wildcard",
+                        message=(
+                            'Dangerous service principal wildcard: `"Principal": {"Service": "*"}`. '
+                            "This allows ANY AWS service to access this resource or assume this role. "
+                            "Without source verification conditions, this creates an overly permissive "
+                            "trust relationship."
+                        ),
+                        statement_index=statement_idx,
+                        statement_sid=statement.sid,
+                        line_number=statement.line_number,
+                        suggestion=(
+                            "Replace the wildcard with specific AWS service principals and add "
+                            "source verification conditions:\n\n"
+                            "1. Specify exact services:\n"
+                            '   `"Principal": {"Service": "lambda.amazonaws.com"}`\n\n'
+                            "2. Add source conditions:\n"
+                            "```json\n"
+                            '   "Condition": {\n'
+                            '     "ArnLike": {"aws:SourceArn": "arn:aws:lambda:*:ACCOUNT:function:*"},\n'
+                            '     "StringEquals": {"aws:SourceAccount": "ACCOUNT"}\n\n'
+                            "   }\n"
+                            "```\n"
+                        ),
+                        field_name="principal",
+                    )
+                )
+                break  # One issue is enough
+
+        return issues
 
     def _is_blocked_principal(
         self, principal: str, blocked_list: list[str], service_whitelist: list[str]

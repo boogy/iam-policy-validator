@@ -72,6 +72,7 @@ settings:
 ```
 
 Hidden issues won't appear in:
+
 - Console output
 - JSON/SARIF reports
 - GitHub PR comments
@@ -81,7 +82,7 @@ Hidden issues won't appear in:
 
 ```yaml
 settings:
-  hide_severities: [info]  # Global: hide info
+  hide_severities: [info] # Global: hide info
 
 wildcard_resource:
   # Override: hide low severity for this check only
@@ -131,16 +132,85 @@ action_condition_enforcement:
 
 ## Principal Validation
 
-For resource policies, validate Principal elements:
+For resource policies and trust policies, validate Principal elements:
 
 ```yaml
 principal_validation:
   enabled: true
+
+  # Block wildcard principal entirely (default: false)
+  # When false: allows "*" if appropriate conditions are present
+  # When true: blocks "*" regardless of conditions
+  block_wildcard_principal: false
+
+  # Block {"Service": "*"} patterns (default: true)
+  # This is a dangerous pattern that allows ANY AWS service
+  block_service_principal_wildcard: true
+
+  # Explicit block list (evaluated after service principal wildcard check)
   blocked_principals:
-    - "*"
     - "arn:aws:iam::*:root"
+
+  # Whitelist mode (when set, only these principals are allowed)
   allowed_principals:
     - "arn:aws:iam::123456789012:*"
+
+  # Service principals whitelist (supports glob patterns)
+  allowed_service_principals:
+    - "aws:*" # All AWS service principals
+```
+
+### Principal Condition Requirements
+
+Require specific conditions when certain principals are used:
+
+```yaml
+principal_validation:
+  principal_condition_requirements:
+    # Require source verification for wildcard principals
+    - principals: ["*"]
+      required_conditions:
+        any_of: # At least ONE must be present
+          - condition_key: "aws:SourceArn"
+          - condition_key: "aws:SourceAccount"
+
+    # Require MFA for root account access
+    - principals: ["arn:aws:iam::*:root"]
+      required_conditions:
+        all_of: # ALL must be present
+          - condition_key: "aws:MultiFactorAuthPresent"
+            expected_value: true
+
+    # Forbid specific conditions
+    - principals: ["*"]
+      required_conditions:
+        none_of: # NONE should be present
+          - condition_key: "aws:SecureTransport"
+            expected_value: false
+```
+
+### Use Cases
+
+**Strict mode (block all wildcards):**
+
+```yaml
+principal_validation:
+  block_wildcard_principal: true
+  block_service_principal_wildcard: true
+```
+
+**Permissive mode (allow wildcards with conditions):**
+
+```yaml
+principal_validation:
+  block_wildcard_principal: false
+  principal_condition_requirements:
+    - principals: ["*"]
+      required_conditions:
+        any_of:
+          - condition_key: "aws:SourceArn"
+          - condition_key: "aws:SourceAccount"
+          - condition_key: "aws:PrincipalOrgID"
 ```
 
 ## Custom Checks
