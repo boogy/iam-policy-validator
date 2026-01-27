@@ -12,6 +12,13 @@ from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
 
 
+def _format_list_with_backticks(items: list[str], max_items: int = 3) -> str:
+    """Format a list of items with backticks for markdown rendering."""
+    formatted = [f"`{item}`" for item in items[:max_items]]
+    suffix = "..." if len(items) > max_items else ""
+    return ", ".join(formatted) + suffix
+
+
 class NotActionNotResourceCheck(PolicyCheck):
     """Checks for dangerous NotAction/NotResource patterns.
 
@@ -59,18 +66,18 @@ class NotActionNotResourceCheck(PolicyCheck):
                         statement_index=statement_idx,
                         issue_type="not_action_allow",
                         message=(
-                            "Statement uses NotAction with Allow effect. "
+                            "Statement uses `NotAction` with `Allow` effect. "
                             "This grants ALL actions except the listed ones. "
                             "While conditions are present, this pattern is still risky."
                         ),
                         suggestion=(
-                            "Consider using explicit Action lists instead of NotAction. "
-                            "If NotAction is required, ensure conditions are comprehensive."
+                            "Consider using explicit `Action` lists instead of `NotAction`. "
+                            "If `NotAction` is required, ensure conditions are comprehensive."
                         ),
                         example='{\n  "Effect": "Allow",\n  "Action": ["s3:GetObject", "s3:ListBucket"],\n  "Resource": "*"\n}',
                         line_number=statement.line_number,
                         field_name="action",
-                        action=", ".join(not_actions[:3]) + ("..." if len(not_actions) > 3 else ""),
+                        action=_format_list_with_backticks(not_actions, 3),
                     )
                 )
             else:
@@ -82,20 +89,19 @@ class NotActionNotResourceCheck(PolicyCheck):
                         statement_index=statement_idx,
                         issue_type="not_action_allow_no_condition",
                         message=(
-                            "Statement uses NotAction with Allow effect and NO conditions. "
-                            f"This grants ALL AWS actions except: {', '.join(not_actions[:5])}"
-                            f"{'...' if len(not_actions) > 5 else ''}. "
+                            "Statement uses `NotAction` with `Allow` effect and NO conditions. "
+                            f"This grants ALL AWS actions except: {_format_list_with_backticks(not_actions, 5)}. "
                             "This is equivalent to granting near-administrator access."
                         ),
                         suggestion=(
-                            "Replace NotAction with explicit Action list. "
-                            "If NotAction is required, add strict conditions like "
-                            "aws:SourceIp, aws:PrincipalArn, or aws:MultiFactorAuthPresent."
+                            "Replace `NotAction` with explicit `Action` list. "
+                            "If `NotAction` is required, add strict conditions like "
+                            "`aws:SourceIp`, `aws:PrincipalArn`, or `aws:MultiFactorAuthPresent`."
                         ),
                         example='{\n  "Effect": "Allow",\n  "Action": ["specific:Action"],\n  "Resource": "*",\n  "Condition": {\n    "Bool": {"aws:MultiFactorAuthPresent": "true"}\n  }\n}',
                         line_number=statement.line_number,
                         field_name="action",
-                        action=", ".join(not_actions[:3]) + ("..." if len(not_actions) > 3 else ""),
+                        action=_format_list_with_backticks(not_actions, 3),
                     )
                 )
 
@@ -113,24 +119,49 @@ class NotActionNotResourceCheck(PolicyCheck):
                         statement_index=statement_idx,
                         issue_type="not_resource_broad",
                         message=(
-                            "Statement uses NotResource with Allow effect and broad Resource. "
-                            f"This grants access to ALL resources except: {', '.join(not_resources[:3])}"
-                            f"{'...' if len(not_resources) > 3 else ''}."
+                            "Statement uses `NotResource` with `Allow` effect and broad `Resource`. "
+                            f"This grants access to ALL resources except: {_format_list_with_backticks(not_resources, 3)}."
                         ),
                         suggestion=(
-                            "Replace NotResource with explicit Resource ARNs. "
-                            "Using NotResource grants access to all current and future resources "
+                            "Replace `NotResource` with explicit `Resource` ARNs. "
+                            "Using `NotResource` grants access to all current and future resources "
                             "except those explicitly excluded."
                         ),
                         example='{\n  "Effect": "Allow",\n  "Action": ["s3:GetObject"],\n  "Resource": "arn:aws:s3:::my-bucket/*"\n}',
                         line_number=statement.line_number,
                         field_name="resource",
-                        resource=", ".join(not_resources[:3])
-                        + ("..." if len(not_resources) > 3 else ""),
+                        resource=_format_list_with_backticks(not_resources, 3),
                     )
                 )
 
-        # Check 3: NotAction with Deny - less dangerous but worth noting
+        # Check 3: Combined NotAction AND NotResource with Allow
+        # This is the most dangerous pattern - grants nearly all actions on nearly all resources
+        if not_actions and not_resources and effect == "Allow":
+            issues.append(
+                ValidationIssue(
+                    severity="critical",
+                    statement_sid=statement.sid,
+                    statement_index=statement_idx,
+                    issue_type="combined_not_action_not_resource",
+                    message=(
+                        "**CRITICAL:** Policy uses both `NotAction` AND `NotResource` with `Allow` effect. "
+                        f"This grants ALL actions except [{_format_list_with_backticks(not_actions, 3)}] "
+                        f"on ALL resources except [{_format_list_with_backticks(not_resources, 3)}]. "
+                        "This is equivalent to near-administrator access."
+                    ),
+                    suggestion=(
+                        "Rewrite using explicit `Action` and `Resource` lists instead of negations. "
+                        "The combination of `NotAction` + `NotResource` is almost always a mistake."
+                    ),
+                    example='{\n  "Effect": "Allow",\n  "Action": ["specific:Action"],\n  "Resource": "arn:aws:service:::specific-resource"\n}',
+                    line_number=statement.line_number,
+                    field_name="action",
+                    action=_format_list_with_backticks(not_actions, 3),
+                    resource=_format_list_with_backticks(not_resources, 3),
+                )
+            )
+
+        # Check 4: NotAction with Deny - less dangerous but worth noting
         # NotAction with Deny means "deny everything except these actions"
         # which is actually a valid deny pattern but should be reviewed
         if not_actions and effect == "Deny":
@@ -145,18 +176,17 @@ class NotActionNotResourceCheck(PolicyCheck):
                         statement_index=statement_idx,
                         issue_type="not_action_deny_review",
                         message=(
-                            "Statement uses NotAction with Deny effect on all resources. "
-                            f"This denies everything except: {', '.join(not_actions[:5])}"
-                            f"{'...' if len(not_actions) > 5 else ''}. "
+                            "Statement uses `NotAction` with `Deny` effect on all resources. "
+                            f"This denies everything except: {_format_list_with_backticks(not_actions, 5)}. "
                             "Review to ensure this is the intended behavior."
                         ),
                         suggestion=(
                             "Verify that allowing only these specific actions is intended. "
-                            "Consider if an explicit Allow list would be clearer."
+                            "Consider if an explicit `Allow` list would be clearer."
                         ),
                         line_number=statement.line_number,
                         field_name="action",
-                        action=", ".join(not_actions[:3]) + ("..." if len(not_actions) > 3 else ""),
+                        action=_format_list_with_backticks(not_actions, 3),
                     )
                 )
 

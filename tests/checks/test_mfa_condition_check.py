@@ -66,8 +66,8 @@ class TestMFAConditionCheck:
         assert issues[0].issue_type == "mfa_antipattern_null_false"
 
     @pytest.mark.asyncio
-    async def test_null_mfa_present_true_no_issue(self, check, config):
-        """Test Null with MFA true (not an anti-pattern)."""
+    async def test_null_mfa_present_true_detects_antipattern(self, check, config):
+        """Test Null with MFA true (IS an anti-pattern - checks if key doesn't exist)."""
         statement = Statement(
             Effect="Allow",
             Action=["s3:*"],
@@ -75,7 +75,24 @@ class TestMFAConditionCheck:
             Condition={"Null": {"aws:MultiFactorAuthPresent": "true"}},
         )
         issues = await check.execute(statement, 0, None, config)
-        assert len(issues) == 0
+        # Null: true means "key doesn't exist" = no MFA, which is dangerous
+        assert len(issues) == 1
+        assert issues[0].issue_type == "mfa_antipattern_null_true"
+
+    @pytest.mark.asyncio
+    async def test_boolif_exists_mfa_present_false(self, check, config):
+        """Test dangerous pattern: BoolIfExists with MFA false (worse than Bool)."""
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:*"],
+            Resource=["*"],
+            Condition={"BoolIfExists": {"aws:MultiFactorAuthPresent": "false"}},
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "mfa_antipattern_boolif_exists_false"
+        # BoolIfExists with false is higher severity than Bool
+        assert issues[0].severity == "high"
 
     @pytest.mark.asyncio
     async def test_both_antipatterns_detected(self, check, config):
