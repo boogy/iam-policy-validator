@@ -395,9 +395,7 @@ Generate reports in multiple formats:
 
 ### Inline Review Comments
 
-When `create-review: true`, the action creates line-specific comments on the exact locations where issues are found:
-
-![PR Review Comment Example](../assets/pr-review-comment.png)
+When `create-review: true`, the action creates line-specific comments on the exact locations where issues are found in the PR diff.
 
 ### Summary Comment
 
