@@ -56,10 +56,35 @@ inputs:
     required: false
     default: ""
 
+  upload-sarif:
+    description: "Upload SARIF results to GitHub Code Scanning (requires format: sarif and output-file to be set)"
+    required: false
+    default: "false"
+
   recursive:
     description: "Recursively search directories for policy files"
     required: false
     default: "true"
+
+  stream:
+    description: "Process files one-by-one (memory efficient for large repos with many policies)"
+    required: false
+    default: "false"
+
+  batch-size:
+    description: "Number of policies to process per batch when streaming (default: 10)"
+    required: false
+    default: "10"
+
+  summary:
+    description: "Show Executive Summary section in enhanced format output"
+    required: false
+    default: "false"
+
+  severity-breakdown:
+    description: "Show Issue Severity Breakdown section in enhanced format output"
+    required: false
+    default: "false"
 
   use-access-analyzer:
     description: "Use AWS IAM Access Analyzer for validation (requires AWS credentials)"
@@ -72,7 +97,7 @@ inputs:
     default: "us-east-1"
 
   policy-type:
-    description: "Policy type for Access Analyzer (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY, RESOURCE_CONTROL_POLICY)"
+    description: "Policy type (IDENTITY_POLICY, RESOURCE_POLICY, TRUST_POLICY, SERVICE_CONTROL_POLICY, RESOURCE_CONTROL_POLICY)"
     required: false
     default: "IDENTITY_POLICY"
 
@@ -388,6 +413,20 @@ runs:
           ARGS="$ARGS --no-recursive"
         fi
 
+        # Add streaming mode flags
+        if [ "${{ inputs.stream }}" = "true" ]; then
+          ARGS="$ARGS --stream --batch-size ${{ inputs.batch-size }}"
+        fi
+
+        # Add enhanced output flags
+        if [ "${{ inputs.summary }}" = "true" ]; then
+          ARGS="$ARGS --summary"
+        fi
+
+        if [ "${{ inputs.severity-breakdown }}" = "true" ]; then
+          ARGS="$ARGS --severity-breakdown"
+        fi
+
         # Add fail-on-warnings flag
         if [ "${{ inputs.fail-on-warnings }}" = "true" ]; then
           ARGS="$ARGS --fail-on-warnings"
@@ -526,3 +565,10 @@ runs:
         name: iam-policy-validation-report
         path: ${{ github.workspace }}/${{ inputs.output-file }}
         retention-days: 30
+
+    - name: Upload SARIF to GitHub Code Scanning
+      if: always() && inputs.upload-sarif == 'true' && inputs.format == 'sarif' && inputs.output-file != ''
+      uses: github/codeql-action/upload-sarif@e6985fd516cce3b1a0e8db34a4013d2e50a1e252 # v4.32.0
+      with:
+        sarif_file: ${{ github.workspace }}/${{ inputs.output-file }}
+        category: iam-policy-validation
