@@ -50,7 +50,7 @@ repos:
         name: Validate IAM Policies
         entry: iam-validator validate
         language: system
-        args: ['--path', 'policies/', '--config', 'iam-validator.yaml']
+        args: ["--path", "policies/", "--config", "iam-validator.yaml"]
         files: ^policies/.*\.(json|yaml)$
         pass_filenames: false
 ```
@@ -65,7 +65,7 @@ repos:
         name: Validate IAM Policies
         entry: iam-validator validate --path
         language: system
-        args: ['--fail-on-warnings']
+        args: ["--fail-on-warnings"]
         files: \.(json|yaml)$
 ```
 
@@ -81,7 +81,7 @@ repos:
         name: Validate IAM Policies
         entry: python -m iam_validator.core.cli validate --path
         language: python
-        additional_dependencies: ['iam-policy-validator']
+        additional_dependencies: ["iam-policy-validator"]
         files: \.(json|yaml)$
 ```
 
@@ -102,4 +102,4 @@ git commit --no-verify -m "WIP: skip validation"
 ```
 
 !!! warning
-    Only skip validation for work-in-progress commits. Always validate before merging.
+Only skip validation for work-in-progress commits. Always validate before merging.

@@ -11,44 +11,44 @@ This guide covers everything you need to know to use IAM Policy Validator effect
 
 <div class="grid cards" markdown>
 
--   :material-console:{ .lg .middle } **CLI Reference**
+- :material-console:{ .lg .middle } **CLI Reference**
 
-    ---
+  ***
 
-    Complete command-line interface documentation
+  Complete command-line interface documentation
 
-    [:octicons-arrow-right-24: CLI Reference](cli-reference.md)
+  [:octicons-arrow-right-24: CLI Reference](cli-reference.md)
 
--   :material-cog:{ .lg .middle } **Configuration**
+- :material-cog:{ .lg .middle } **Configuration**
 
-    ---
+  ***
 
-    Customize validation rules and behavior
+  Customize validation rules and behavior
 
-    [:octicons-arrow-right-24: Configuration](configuration.md)
+  [:octicons-arrow-right-24: Configuration](configuration.md)
 
--   :material-shield-check:{ .lg .middle } **Validation Checks**
+- :material-shield-check:{ .lg .middle } **Validation Checks**
 
-    ---
+  ***
 
-    All 19 built-in checks explained
+  All 19 built-in checks explained
 
-    [:octicons-arrow-right-24: Checks](checks/index.md)
+  [:octicons-arrow-right-24: Checks](checks/index.md)
 
--   :material-file-document:{ .lg .middle } **Output Formats**
+- :material-file-document:{ .lg .middle } **Output Formats**
 
-    ---
+  ***
 
-    JSON, SARIF, HTML, CSV, and more
+  JSON, SARIF, HTML, CSV, and more
 
-    [:octicons-arrow-right-24: Output Formats](output-formats.md)
+  [:octicons-arrow-right-24: Output Formats](output-formats.md)
 
--   :material-bug:{ .lg .middle } **Troubleshooting**
+- :material-bug:{ .lg .middle } **Troubleshooting**
 
-    ---
+  ***
 
-    Common issues and solutions
+  Common issues and solutions
 
-    [:octicons-arrow-right-24: Troubleshooting](troubleshooting.md)
+  [:octicons-arrow-right-24: Troubleshooting](troubleshooting.md)
 
 </div>

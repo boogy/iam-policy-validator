@@ -1,17 +1,16 @@
-*[IAM]: Identity and Access Management
-*[ARN]: Amazon Resource Name
-*[AWS]: Amazon Web Services
-*[CLI]: Command Line Interface
-*[SDK]: Software Development Kit
-*[API]: Application Programming Interface
-*[CI/CD]: Continuous Integration/Continuous Deployment
-*[JSON]: JavaScript Object Notation
-*[YAML]: YAML Ain't Markup Language
-*[MFA]: Multi-Factor Authentication
-*[STS]: Security Token Service
-*[RCP]: Resource Control Policy
-*[SCP]: Service Control Policy
-*[OIDC]: OpenID Connect
-*[SAML]: Security Assertion Markup Language
-*[PR]: Pull Request
-*[SHA]: Secure Hash Algorithm
+_[IAM]: Identity and Access Management
+_[ARN]: Amazon Resource Name
+_[AWS]: Amazon Web Services
+_[CLI]: Command Line Interface
+_[SDK]: Software Development Kit
+_[API]: Application Programming Interface
+_[CI/CD]: Continuous Integration/Continuous Deployment
+_[JSON]: JavaScript Object Notation
+_[YAML]: YAML Ain't Markup Language
+_[MFA]: Multi-Factor Authentication
+_[STS]: Security Token Service
+_[RCP]: Resource Control Policy
+_[SCP]: Service Control Policy
+_[OIDC]: OpenID Connect
+_[SAML]: Security Assertion Markup Language
+_[PR]: Pull Request \*[SHA]: Secure Hash Algorithm

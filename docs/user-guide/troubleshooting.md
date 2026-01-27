@@ -53,6 +53,7 @@ iam-validator validate --path ./policies/ --verbose
 If you get JSON parsing errors:
 
 1. Validate JSON syntax with `jq`:
+
    ```bash
    jq . policy.json
    ```

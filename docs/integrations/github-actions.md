@@ -15,8 +15,8 @@ name: Validate IAM Policies
 on:
   pull_request:
     paths:
-      - '**.json'
-      - '**.yaml'
+      - "**.json"
+      - "**.yaml"
 
 jobs:
   validate:
@@ -52,8 +52,8 @@ name: IAM Policy Validation
 on:
   pull_request:
     paths:
-      - 'policies/**'
-      - 'terraform/**/*.json'
+      - "policies/**"
+      - "terraform/**/*.json"
 
 permissions:
   contents: read
