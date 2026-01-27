@@ -234,7 +234,7 @@ class WildcardResourceCheck(PolicyCheck):
                 else:
                     action_list = ", ".join(f"`{a}`" for a in sorted_actions[:5])
                     action_list += f" (+{len(sorted_actions) - 5} more)"
-                message = 'Statement applies to all resources (`"*"`)'
+                message = f'Statement applies to all resources (`"*"`) with actions that typically require specific resources: {action_list}'
 
                 # Add adjustment reason if present
                 if adjustment_reason:

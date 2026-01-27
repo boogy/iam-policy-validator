@@ -900,8 +900,6 @@ note:
 
 # For testing
 if __name__ == "__main__":
-    import asyncio
-
     cmd = QueryCommand()
     arg_parser = argparse.ArgumentParser()
     cmd.add_arguments(arg_parser)
