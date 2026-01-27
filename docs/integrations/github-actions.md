@@ -457,7 +457,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  security-events: write
+  security-events: write  # Required for SARIF upload
 
 jobs:
   validate:
@@ -468,7 +468,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate Policies
-        id: validate
         uses: boogy/iam-policy-validator@v1
         with:
           path: |
@@ -483,15 +482,7 @@ jobs:
           severity-breakdown: true
           format: sarif
           output-file: iam-results.sarif
-          upload-sarif: true
-
-      - name: Upload Validation Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: iam-validation-report
-          path: iam-results.sarif
-          retention-days: 30
+          upload-sarif: true  # Uploads to GitHub Code Scanning
 ```
 
 ---
