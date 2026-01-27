@@ -102,7 +102,13 @@ class TestNotActionNotResourceCheck:
             resource="*",
         )
         issues = await check.execute(statement, 0, mock_fetcher, config)
-        assert len(issues) == 2
+        # Expect 3 issues: NotAction alone, NotResource alone, AND combined critical
+        assert len(issues) == 3
         issue_types = {i.issue_type for i in issues}
         assert "not_action_allow_no_condition" in issue_types
         assert "not_resource_broad" in issue_types
+        assert "combined_not_action_not_resource" in issue_types
+
+        # The combined check should be critical severity
+        combined_issue = next(i for i in issues if i.issue_type == "combined_not_action_not_resource")
+        assert combined_issue.severity == "critical"
