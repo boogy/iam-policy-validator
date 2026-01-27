@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.15.4] - 2025-01-27
+
+### Fixed
+
+**Code Quality Improvements**
+
+- Remove duplicate `asyncio` import in query command (CodeQL: py/repeated-import)
+- Fix unused `action_list` variable in wildcard resource check (CodeQL: py/unused-local-variable)
+  - Now includes the action list in error messages for better context
+
+---
+
 ## [1.15.3] - 2025-01-27
 
 ### Added
