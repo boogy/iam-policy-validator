@@ -13,6 +13,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.15.3] - 2025-01-27
+
+### Added
+
+**Enhanced NotAction/NotResource Detection**
+
+- New **critical** severity check for combined `NotAction` + `NotResource` with `Allow` effect
+  - Detects near-administrator access patterns that grant all actions except a few on all resources except a few
+  - Example: `{"Effect": "Allow", "NotAction": ["iam:DeleteUser"], "NotResource": ["arn:aws:s3:::bucket/*"]}`
+- Improved message formatting with markdown backticks for better GitHub PR comment rendering
+
+**MFA Condition Anti-Pattern Detection**
+
+- Detect `BoolIfExists` with `aws:MultiFactorAuthPresent = false` (**high** severity)
+  - More dangerous than `Bool` because it also matches when the key is missing entirely
+- Detect `Null` with `aws:MultiFactorAuthPresent = true` (warning)
+  - Checks if key doesn't exist, meaning no MFA was provided in the request context
+
+---
+
 ## [1.15.2] - 2025-01-26
 
 ### Added
