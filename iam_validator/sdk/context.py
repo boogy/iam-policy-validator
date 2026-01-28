@@ -197,8 +197,8 @@ async def validator(
         ...     results = await v.validate_directory("./policies")
         ...     v.generate_report(results, format="console")
     """
-    fetcher = AWSServiceFetcher()
-    yield ValidationContext(fetcher, config_path)
+    async with AWSServiceFetcher() as fetcher:
+        yield ValidationContext(fetcher, config_path)
 
 
 @asynccontextmanager
@@ -219,5 +219,5 @@ async def validator_from_config(config_path: str) -> AsyncIterator[ValidationCon
         ...     results = await v.validate_directory("./policies")
         ...     v.generate_report(results)
     """
-    fetcher = AWSServiceFetcher()
-    yield ValidationContext(fetcher, config_path=config_path)
+    async with AWSServiceFetcher() as fetcher:
+        yield ValidationContext(fetcher, config_path=config_path)

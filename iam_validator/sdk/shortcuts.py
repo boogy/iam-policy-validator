@@ -7,7 +7,6 @@ validation tasks without requiring deep knowledge of the internal API.
 
 from pathlib import Path
 
-from iam_validator.core.config.config_loader import ValidatorConfig
 from iam_validator.core.models import PolicyValidationResult, ValidationIssue
 from iam_validator.core.policy_checks import validate_policies
 from iam_validator.core.policy_loader import PolicyLoader
@@ -16,7 +15,6 @@ from iam_validator.core.policy_loader import PolicyLoader
 async def validate_file(
     file_path: str | Path,
     config_path: str | None = None,
-    config: ValidatorConfig | None = None,
 ) -> PolicyValidationResult:
     """
     Validate a single IAM policy file.
@@ -24,7 +22,6 @@ async def validate_file(
     Args:
         file_path: Path to the policy file (JSON or YAML)
         config_path: Optional path to configuration file
-        config: Optional ValidatorConfig object (overrides config_path)
 
     Returns:
         PolicyValidationResult for the policy
@@ -62,7 +59,6 @@ async def validate_file(
 async def validate_directory(
     dir_path: str | Path,
     config_path: str | None = None,
-    config: ValidatorConfig | None = None,
     recursive: bool = True,
 ) -> list[PolicyValidationResult]:
     """
@@ -71,7 +67,6 @@ async def validate_directory(
     Args:
         dir_path: Path to directory containing policy files
         config_path: Optional path to configuration file
-        config: Optional ValidatorConfig object (overrides config_path)
         recursive: Whether to search subdirectories (default: True)
 
     Returns:
@@ -83,7 +78,7 @@ async def validate_directory(
         >>> print(f"{valid_count}/{len(results)} policies are valid")
     """
     loader = PolicyLoader()
-    policies = loader.load_from_path(str(dir_path))
+    policies = loader.load_from_path(str(dir_path), recursive=recursive)
 
     if not policies:
         raise ValueError(f"No IAM policies found in {dir_path}")
@@ -98,7 +93,6 @@ async def validate_json(
     policy_json: dict,
     policy_name: str = "inline-policy",
     config_path: str | None = None,
-    config: ValidatorConfig | None = None,
 ) -> PolicyValidationResult:
     """
     Validate an IAM policy from a Python dictionary.
@@ -107,7 +101,6 @@ async def validate_json(
         policy_json: IAM policy as a Python dict
         policy_name: Name to identify this policy in results
         config_path: Optional path to configuration file
-        config: Optional ValidatorConfig object (overrides config_path)
 
     Returns:
         PolicyValidationResult for the policy
@@ -148,7 +141,6 @@ async def validate_json(
 async def quick_validate(
     policy: str | Path | dict,
     config_path: str | None = None,
-    config: ValidatorConfig | None = None,
 ) -> bool:
     """
     Quick validation returning just True/False.
@@ -158,7 +150,6 @@ async def quick_validate(
     Args:
         policy: File path, directory path, or policy dict
         config_path: Optional path to configuration file
-        config: Optional ValidatorConfig object (overrides config_path)
 
     Returns:
         True if all policies are valid, False otherwise
@@ -194,7 +185,6 @@ async def get_issues(
     policy: str | Path | dict,
     min_severity: str = "medium",
     config_path: str | None = None,
-    config: ValidatorConfig | None = None,
 ) -> list[ValidationIssue]:
     """
     Get just the issues from validation, filtered by severity.
@@ -203,7 +193,6 @@ async def get_issues(
         policy: File path, directory path, or policy dict
         min_severity: Minimum severity to include (critical, high, medium, low, info)
         config_path: Optional path to configuration file
-        config: Optional ValidatorConfig object (overrides config_path)
 
     Returns:
         List of ValidationIssues meeting the severity threshold
@@ -252,7 +241,6 @@ async def get_issues(
 async def count_issues_by_severity(
     policy: str | Path | dict,
     config_path: str | None = None,
-    config: ValidatorConfig | None = None,
 ) -> dict[str, int]:
     """
     Count issues grouped by severity level.
@@ -260,7 +248,6 @@ async def count_issues_by_severity(
     Args:
         policy: File path, directory path, or policy dict
         config_path: Optional path to configuration file
-        config: Optional ValidatorConfig object (overrides config_path)
 
     Returns:
         Dictionary mapping severity levels to counts
