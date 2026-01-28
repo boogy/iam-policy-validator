@@ -16,8 +16,7 @@ from iam_validator.sdk import validate_file
 
 result = await validate_file(
     "policy.json",
-    config_path=None,  # Optional config file
-    config=None        # Optional Config object
+    config_path=None,  # Optional config file path
 )
 ```
 
@@ -32,8 +31,7 @@ from iam_validator.sdk import validate_directory
 
 results = await validate_directory(
     "./policies/",
-    config_path=None,
-    config=None
+    config_path=None,  # Optional config file path
 )
 ```
 
@@ -54,8 +52,7 @@ policy = {
 result = await validate_json(
     policy,
     policy_name="inline",
-    config_path=None,
-    config=None
+    config_path=None,  # Optional config file path
 )
 ```
 
@@ -124,12 +121,28 @@ result.policy        # IAMPolicy - Parsed policy object
 Each issue contains:
 
 ```python
-issue.severity        # str - error, warning, critical, high, etc.
+# Core fields
+issue.severity        # str - error, warning, critical, high, medium, low
 issue.message         # str - Human-readable description
-issue.check_id        # str - Check that found this issue
+issue.issue_type      # str - Category (e.g., "invalid_action", "overly_permissive")
+issue.check_id        # str | None - Check that found this issue
 issue.statement_index # int - Statement number (0-based)
 issue.statement_sid   # str | None - Statement ID
+
+# Context fields
+issue.action          # str | None - Action involved
+issue.resource        # str | None - Resource involved
+issue.condition_key   # str | None - Condition key involved
+issue.field_name      # str | None - Field: "action", "resource", "condition", etc.
 issue.line_number     # int | None - Line in source file
+
+# Guidance fields
 issue.suggestion      # str | None - How to fix
-issue.example         # str | None - Code example
+issue.example         # str | None - Code example (JSON/YAML)
+
+# Enhanced fields (for detailed findings)
+issue.risk_explanation   # str | None - Why this is a security risk
+issue.documentation_url  # str | None - Link to relevant documentation
+issue.remediation_steps  # list[str] | None - Step-by-step fix guidance
+issue.risk_category      # str | None - Risk category for classification
 ```

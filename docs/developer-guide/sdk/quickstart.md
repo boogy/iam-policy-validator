@@ -13,6 +13,35 @@ Get up and running with the Python SDK in minutes.
 pip install iam-policy-validator
 ```
 
+### Installation Options
+
+Install with optional dependencies for additional features:
+
+```bash
+# With MCP server support (for AI assistant integration)
+pip install iam-policy-validator[mcp]
+
+# With development dependencies (pytest, mypy, ruff)
+pip install iam-policy-validator[dev]
+
+# With documentation dependencies (mkdocs)
+pip install iam-policy-validator[docs]
+```
+
+Or with uv:
+
+```bash
+# Basic installation
+uv add iam-policy-validator
+
+# With MCP server support
+uv add iam-policy-validator[mcp]
+
+# Sync with extras in pyproject.toml
+uv sync --extra mcp
+uv sync --extra dev
+```
+
 ## Basic Validation
 
 ### Validate a File
@@ -75,21 +104,13 @@ result = await validate_json(policy)
 ## Using Configuration
 
 ```python
-from iam_validator.sdk import validate_file, Config
+from iam_validator.sdk import validate_file
 
-# From config file
+# Use a config file
 result = await validate_file(
     "policy.json",
     config_path="./iam-validator.yaml"
 )
-
-# Programmatic config
-config = Config({
-    "fail_on_severity": ["error", "critical", "high"],
-    "wildcard_action": {"severity": "critical"}
-})
-
-result = await validate_file("policy.json", config=config)
 ```
 
 ## Context Manager

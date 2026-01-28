@@ -43,19 +43,30 @@ Represents a validation issue found in a policy.
 
 ```python
 class ValidationIssue(BaseModel):
+    # Core fields
     severity: str              # error, warning, critical, high, medium, low
     statement_index: int       # Statement number (0-based)
-    issue_type: str            # Issue category
+    issue_type: str            # Issue category (e.g., "invalid_action", "overly_permissive")
     message: str               # Human-readable description
-    check_id: str | None       # Check that found this
-    statement_sid: str | None  # Statement ID
-    action: str | None         # Action involved
-    resource: str | None       # Resource involved
-    condition_key: str | None  # Condition key involved
-    suggestion: str | None     # How to fix
-    example: str | None        # Code example
-    line_number: int | None    # Line in source file
-    field_name: str | None     # Field name (action, resource, etc.)
+    check_id: str | None       # Check that found this (e.g., "wildcard_action")
+    statement_sid: str | None  # Statement ID if present
+
+    # Context fields
+    action: str | None         # Action involved in the issue
+    resource: str | None       # Resource involved in the issue
+    condition_key: str | None  # Condition key involved in the issue
+    field_name: str | None     # Field name: "action", "resource", "condition", "principal", "effect", "sid"
+    line_number: int | None    # Line number in source file
+
+    # Guidance fields
+    suggestion: str | None     # How to fix the issue
+    example: str | None        # Code example (JSON/YAML)
+
+    # Enhanced finding quality fields
+    risk_explanation: str | None      # Why this is a security risk
+    documentation_url: str | None     # Link to AWS docs or runbook
+    remediation_steps: list[str] | None  # Step-by-step fix guidance
+    risk_category: str | None         # Category: "privilege_escalation", "data_exfiltration", etc.
 ```
 
 ## PolicyValidationResult
