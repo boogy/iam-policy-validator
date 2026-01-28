@@ -9,7 +9,7 @@ IAM Policy Validator provides a Model Context Protocol (MCP) server for AI assis
 
 ## What is MCP?
 
-[Model Context Protocol](https://modelcontextprotocol.io/) is an open protocol that enables AI assistants to interact with external tools and data sources. The IAM Policy Validator MCP server exposes 25+ tools for:
+[Model Context Protocol](https://modelcontextprotocol.io/) is an open protocol that enables AI assistants to interact with external tools and data sources. The IAM Policy Validator MCP server exposes 35 tools for:
 
 - **Policy Validation** - Validate IAM policies against AWS rules and security best practices
 - **Policy Generation** - Generate secure policies from templates or natural language
@@ -376,23 +376,35 @@ principal_validation:
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `generate_policy_from_template` | Generate a policy from a built-in secure template                                                                                                                            |
 | `build_minimal_policy`          | Build a least-privilege policy from actions and resources. Automatically applies required conditions for sensitive actions (e.g., `iam:PassedToService` for `iam:PassRole`). |
+| `build_arn`                     | Build a valid ARN from components (service, resource type, resource name, region, account) with format validation                                                            |
 | `list_templates`                | List all available policy templates                                                                                                                                          |
 | `suggest_actions`               | Suggest AWS actions based on natural language description                                                                                                                    |
 | `get_required_conditions`       | Get recommended conditions for sensitive actions                                                                                                                             |
 | `check_sensitive_actions`       | Check if actions are in the sensitive actions catalog                                                                                                                        |
 
+### Analysis Tools
+
+| Tool               | Description                                                                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `explain_policy`   | Generate a human-readable explanation of what a policy allows or denies, including security concerns and services used |
+| `compare_policies` | Compare two IAM policies and highlight differences in permissions, actions added/removed, and resource scope changes   |
+
 ### Query Tools
 
-| Tool                     | Description                                        |
-| ------------------------ | -------------------------------------------------- |
-| `query_service_actions`  | Get all actions for an AWS service                 |
-| `query_action_details`   | Get detailed information about a specific action   |
-| `expand_wildcard_action` | Expand patterns like `s3:Get*` to specific actions |
-| `query_condition_keys`   | Get condition keys for a service                   |
-| `query_arn_formats`      | Get ARN format patterns for a service              |
-| `list_checks`            | List all available validation checks               |
-| `get_policy_summary`     | Analyze a policy's structure                       |
-| `list_sensitive_actions` | List sensitive actions by category                 |
+| Tool                                    | Description                                                                             |
+| --------------------------------------- | --------------------------------------------------------------------------------------- |
+| `query_service_actions`                 | Get all actions for an AWS service                                                      |
+| `query_action_details`                  | Get detailed information about a specific action                                        |
+| `query_actions_batch`                   | Get details for multiple actions in a single call (more efficient than individual calls)|
+| `expand_wildcard_action`                | Expand patterns like `s3:Get*` to specific actions                                      |
+| `query_condition_keys`                  | Get condition keys for a service                                                        |
+| `query_arn_formats`                     | Get ARN format patterns for a service                                                   |
+| `list_checks`                           | List all available validation checks                                                    |
+| `get_check_details`                     | Get full documentation for a specific check including examples and configuration options|
+| `get_policy_summary`                    | Analyze a policy's structure                                                            |
+| `list_sensitive_actions`                | List sensitive actions by category                                                      |
+| `check_actions_batch`                   | Validate and check sensitivity for multiple actions in one call                         |
+| `get_condition_requirements_for_action` | Get required conditions for a specific action based on sensitivity and best practices   |
 
 ### Fix and Help Tools
 
