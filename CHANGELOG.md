@@ -13,6 +13,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.15.5] - 2025-01-28
+
+### Fixed
+
+**Shell Completions**
+
+- Remove `--instructions` and `--instructions-file` from `iam-validator mcp` subcommand completions
+  - These options only exist in the standalone `iam-validator-mcp` command, not the subcommand
+
+**SDK Context Manager**
+
+- Fix `validator()` and `validator_from_config()` to properly initialize and cleanup `AWSServiceFetcher`
+  - Now uses `async with` for correct HTTP client lifecycle management
+  - Ensures connections are properly closed when context exits
+
+**SDK Shortcuts**
+
+- Remove unused `config` parameter from validation functions (`validate_file`, `validate_directory`, `validate_json`, `quick_validate`, `get_issues`, `count_issues_by_severity`)
+- Fix `recursive` parameter in `validate_directory()` to actually be passed to `PolicyLoader.load_from_path()`
+
+### Documentation
+
+- Update MCP tool count from "25+" to "35" and document 7 missing tools
+- Expand SDK API reference with ARN utilities, query utilities, and policy utilities
+- Add all 17 `ValidationIssue` fields to documentation
+- Add SDK installation extras (`[mcp]`, `[dev]`, `[docs]`)
+- Add output format examples with sample outputs for JSON, SARIF, Markdown, HTML, CSV
+- Expand configuration reference with global settings, check options, environment variables
+
+---
+
 ## [1.15.4] - 2025-01-27
 
 ### Fixed
