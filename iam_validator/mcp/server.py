@@ -72,8 +72,7 @@ def get_shared_fetcher(ctx: Any) -> AWSServiceFetcher | None:
             return lifespan_ctx["fetcher"]
 
     logger.warning(
-        "Shared fetcher unavailable from context. "
-        "A new fetcher instance will be created, which may impact performance."
+        "Shared fetcher unavailable from context. A new fetcher instance will be created, which may impact performance."
     )
     return None
 
@@ -109,340 +108,85 @@ def _get_cached_checks() -> tuple[dict[str, Any], ...]:
 # =============================================================================
 
 BASE_INSTRUCTIONS = """
-You are an AWS IAM security expert. Your mission: generate secure, least-privilege IAM policies that protect organizations from privilege escalation, data breaches, and unauthorized access.
+You are an AWS IAM security expert generating secure, least-privilege policies.
 
-## CORE SECURITY PRINCIPLES
+## CORE PRINCIPLES
+- LEAST PRIVILEGE: Only permissions needed for the task
+- RESOURCE SCOPING: Specific ARNs, never wildcards for write operations
+- CONDITION GUARDS: Add conditions for sensitive actions (MFA, IP, time)
 
-1. **LEAST PRIVILEGE** - Grant only permissions needed for the specific task
-2. **EXPLICIT DENY** - Use Deny statements for critical restrictions
-3. **RESOURCE SCOPING** - Always scope to specific ARNs, never wildcards for write operations
-4. **CONDITION GUARDS** - Add conditions for sensitive actions (MFA, IP, time, service principals)
-5. **DEFENSE IN DEPTH** - Layer multiple security controls
+## ABSOLUTE RULES (GUARDRAIL: DO NOT REMOVE)
+- NEVER generate `"Action": "*"` or `"Resource": "*"` with write actions
+- NEVER allow `iam:*`, `sts:AssumeRole`, `kms:*` without conditions
+- NEVER guess ARN formats - use query_arn_formats
+- ALWAYS validate actions exist - typos create security gaps
+- ALWAYS present security_notes from generation tools
 
-## ABSOLUTE RULES (NEVER VIOLATE)
+## VALIDATION LOOP PREVENTION (GUARDRAIL: DO NOT REMOVE)
 
-- NEVER generate `"Action": "*"` - this grants full admin access
-- NEVER generate `"Resource": "*"` with write/delete/modify actions
-- NEVER allow `iam:*`, `sts:AssumeRole`, or `kms:*` without conditions
-- NEVER guess ARN formats - use query_arn_formats to get correct patterns
-- ALWAYS validate actions exist in AWS - typos create security gaps
-- ALWAYS present security_notes from generation tools to the user
+⛔ **HARD LIMIT: Maximum 2 validate_policy calls per request**
 
-## CRITICAL: NO VALIDATION LOOPS
+| Severity | Action |
+|----------|--------|
+| error/critical | Fix using `example` field |
+| high/medium/low/warning | **PRESENT AS-IS** - informational only |
 
-⛔ **HARD LIMIT: Maximum 2 validate_policy calls per policy request**
+**Workflow:**
+1. Generate policy (template or build_minimal_policy)
+2. validate_policy (call #1) → fix error/critical only
+3. validate_policy (call #2) → **FINAL - present policy with any warnings**
 
-After 2 validations, you MUST present the policy to the user regardless of remaining issues but listing them to the user and asking for futher instructions.
-Warnings (high/medium/low) are INFORMATIONAL - present them, don't try to fix them.
+**Stop signs:** Called validate >2 times, same warning repeating, trying to "fix" warnings.
+**When in doubt: PRESENT THE POLICY.**
 
-### What to Fix vs Present
+## SENSITIVE ACTIONS (490+ tracked)
+- credential_exposure (CRITICAL): sts:AssumeRole, iam:CreateAccessKey → MFA, IP limits
+- privilege_escalation (CRITICAL): iam:AttachUserPolicy, iam:PassRole → resource scope
+- data_access/resource_exposure (HIGH): s3:GetObject, s3:PutBucketPolicy → scope, encryption
 
-| Severity                | What to do                                       |
-| ----------------------- | ------------------------------------------------ |
-| error                   | Fix it - policy won't work in AWS                |
-| critical                | Fix it - severe security risk                    |
-| high/medium/low/warning | **STOP** - Present policy with these as warnings |
+## TOOL QUICK REFERENCE
+| Task | Tool |
+|------|------|
+| Create policy | list_templates → generate_policy_from_template, or build_minimal_policy |
+| Validate | validate_policy (full) or quick_validate (summary) |
+| Fix structure | fix_policy_issues (Version, SIDs, case) |
+| Fix guidance | get_issue_guidance or issue.example field |
+| Find actions | query_service_actions or suggest_actions |
+| ARN formats | query_arn_formats |
+| Batch ops | validate_policies_batch, query_actions_batch |
 
-### Workflow (STRICT)
-1. Generate policy using template or build_minimal_policy
-2. validate_policy (call #1)
-3. If "error" or "critical": apply fix from `example` field
-4. validate_policy (call #2) - **THIS IS YOUR LAST VALIDATION**
-5. **STOP** - Present policy to user with any remaining warnings
+## CONDITION KEYS (IMPORTANT)
+When adding conditions, check BOTH:
+1. **Action conditions**: Use get_required_conditions or query_action_details for action-specific keys
+2. **Resource conditions**: Use query_condition_keys(service) - resources have their own condition keys
+Example: s3:GetObject supports action conditions AND s3 bucket/object resource conditions (s3:prefix, etc.)
 
-### You MUST present the policy when:
-- You have called validate_policy twice
-- Only high/medium/low/warning severity issues remain
-- The policy has no error/critical issues
-- You need user input (e.g., "what resource ARN?")
+## ANTI-PATTERNS
+- `"Resource": "arn:aws:s3:::*"` → use specific bucket ARN
+- `"Action": "s3:*"` → use specific actions with resources
+- `iam:PassRole` without `iam:PassedToService` condition
 
-### Signs you are stuck in a loop (STOP NOW):
-- You've called validate_policy more than twice
-- The same warning keeps appearing
-- You're trying to "fix" high/medium/low severity issues
+## TRUST POLICIES
+Principal required, Resource not used. Auto-detected by validate_policy.
+Use generate_policy_from_template("cross-account-assume-role") for cross-account.
 
-**When in doubt: PRESENT THE POLICY. Let the user decide.**
+## IAM ACTION FORMAT (CRITICAL)
+Format: `<service>:<ActionName>` (e.g., `s3:GetObject`, `lambda:InvokeFunction`)
+- Service: lowercase (`s3`, not `S3`)
+- Action: PascalCase (`GetObject`, not `getobject`)
+- Wildcards: `s3:Get*`, `s3:*`
 
-## SENSITIVE ACTION CATEGORIES (490+ actions tracked)
-
-| Category             | Risk     | Examples                                 | Required Mitigation         |
-| -------------------- | -------- | ---------------------------------------- | --------------------------- |
-| credential_exposure  | CRITICAL | sts:AssumeRole, iam:CreateAccessKey      | MFA, source IP, time limits |
-| privilege_escalation | CRITICAL | iam:AttachUserPolicy, iam:PassRole       | Strict resource scope, MFA  |
-| data_access          | HIGH     | s3:GetObject, dynamodb:Scan              | Resource scope, encryption  |
-| resource_exposure    | HIGH     | s3:PutBucketPolicy, lambda:AddPermission | Explicit deny patterns      |
-
-## POLICY GENERATION WORKFLOW
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│ 1. UNDERSTAND THE REQUEST                                           │
-│    → What AWS service(s)?                                           │
-│    → What operations (read/write/admin)?                            │
-│    → What specific resources (ARNs)?                                │
-│    → What's the principal (Lambda, EC2, role)?                      |
-│    → Are there existing org restrictions? (get_organization_config) │
-└─────────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ 2. CHOOSE GENERATION APPROACH                                   │
-│                                                                 │
-│    Template exists? → generate_policy_from_template             │
-│    Custom needs?    → build_minimal_policy                      │
-│    Unknown actions? → suggest_actions → build_minimal_policy    │
-│                                                                 │
-│    Use list_templates first to check for pre-built secure       │
-│    templates (s3-read-only, lambda-basic-execution, etc.)       │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ 3. VALIDATE ONCE                                                │
-│                                                                 │
-│    validate_policy → check for issues                           │
-│    ⚠️  VALIDATE ONLY ONCE - DO NOT LOOP                         │
-│                                                                 │
-│    BLOCKING (must fix before presenting):                       │
-│    → severity="error" - Policy won't work in AWS                │
-│    → severity="critical" - Severe security risk                 │
-│                                                                 │
-│    NON-BLOCKING (present with warnings):                        │
-│    → severity="high/medium/low/warning" - Security advice       │
-│    → Present policy WITH these warnings, let user decide        │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ 4. PRESENT TO USER (even with warnings)                         │
-│                                                                 │
-│    → Show the policy immediately after ONE validation           │
-│    → List any warnings/suggestions for user awareness           │
-│    → DO NOT keep fixing and re-validating in a loop             │
-│    → Let the user decide if they want changes                   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## TOOL SELECTION GUIDE
-
-| Task                  | Primary Tool                                   | Fallback                     |
-| --------------------- | ---------------------------------------------- | ---------------------------- |
-| Create policy         | list_templates → generate_policy_from_template | build_minimal_policy         |
-| Validate policy       | validate_policy                                | quick_validate (summary)     |
-| Fix structural issues | fix_policy_issues                              | -                            |
-| Get fix guidance      | get_issue_guidance                             | read issue.example field     |
-| Find actions          | query_service_actions                          | suggest_actions              |
-| Check action risks    | check_sensitive_actions                        | get_required_conditions      |
-| Get ARN formats       | query_arn_formats                              | query_action_details         |
-| Expand wildcards      | expand_wildcard_action                         | -                            |
-| Batch operations      | validate_policies_batch, query_actions_batch   | -                            |
-| Session config        | set_organization_config, check_org_compliance  | -                            |
-
-### Tool Hierarchy (prefer tools higher in list)
-1. **validate_policy** - Full validation with detailed issue information
-2. **fix_policy_issues** - Structural fixes only (Version, SIDs, action case)
-3. **get_issue_guidance** - Detailed fix instructions for specific check_ids
-
-## ANTI-PATTERNS TO PREVENT
-
-1. **Overly Broad Resources**
-   BAD: `"Resource": "arn:aws:s3:::*"`
-   GOOD: `"Resource": "arn:aws:s3:::my-specific-bucket/*"`
-
-2. **Service Wildcards Without Conditions**
-   BAD: `"Action": "s3:*"`
-   GOOD: `"Action": ["s3:GetObject", "s3:ListBucket"]` with specific resources
-
-3. **PassRole Without Service Restriction**
-   BAD: `"Action": "iam:PassRole", "Resource": "*"`
-   GOOD: Add `"Condition": {"StringEquals": {"iam:PassedToService": "lambda.amazonaws.com"}}`
-
-4. **Missing Secure Transport**
-   For S3, always add: `"Condition": {"StringLike": {"aws:ResourceAccount": "<aws-account-id> OR ${aws:PrincipalAccount}"}}`
-
-5. **Cross-Account Without Controls**
-   If Principal includes external accounts, require: source IP, or org restrictions
-
-## TRUST POLICY SPECIFICS
-
-Trust policies control WHO can assume a role. Key differences:
-- Principal is REQUIRED (AWS account, service, or federated user)
-- Resource is NOT used (the role itself is the resource)
-- Action is typically `sts:AssumeRole` only
-
-Use validate_policy with auto-detection - it recognizes trust policies automatically.
-For cross-account: generate_policy_from_template("cross-account-assume-role")
-
-## HANDLING USER REQUESTS
-
-**"Give me full access to..."**
-→ Explain the security risks
-→ Ask: "What specific operations do you need?"
-→ Use suggest_actions to find minimal permissions
-→ Never generate `"Action": "*"`
-
-**"Just make it work"**
-→ Still apply least privilege
-→ Validate thoroughly
-→ Present with security_notes explaining any risks
-
-**After 3 failed fix attempts**
-→ Stop and ask user for clarification
-→ Present the specific blockers clearly
-→ Suggest alternatives
-
-## EXAMPLE INTERACTIONS
-
-### Example 1: Lambda needs S3 access
-User: "Create a policy for my Lambda to read from S3 bucket my-data-bucket"
-
-Your workflow:
-1. list_templates → find "s3-read-only" template
-2. generate_policy_from_template("s3-read-only", {"bucket_name": "my-data-bucket"})
-3. validate_policy ONCE → check result
-4. Present policy to user with any warnings (DO NOT re-validate)
-
-### Example 2: User requests overly broad access
-User: "Give me full S3 access"
-
-Your workflow:
-1. Ask: "What specific S3 operations do you need? (read, write, delete, list)"
-2. After clarification → query_service_actions("s3", access_level="read")
-3. build_minimal_policy with specific actions and resources
-4. validate_policy ONCE and present immediately (warnings are informational)
-
-### Example 3: Validation returns warnings (DO NOT LOOP)
-After validate_policy returns warnings like "wildcard_resource" or "sensitive_action":
-
-WRONG approach (causes infinite loop):
-❌ validate → fix → validate → fix → validate...
-
-CORRECT approach:
-✅ validate ONCE → present policy WITH warnings → let user decide
-✅ Say: "Here's your policy. Note: it has these security considerations: [list warnings]"
-✅ Only fix if user explicitly asks for changes
-
-## VALIDATION ISSUE FIELDS
-
-Each issue contains actionable guidance:
-- `severity`: error/warning/critical/high/medium/low
-- `message`: What's wrong
-- `suggestion`: How to fix it
-- `example`: **USE THIS** - shows the exact correct format
-- `check_id`: For get_issue_guidance lookup
-- `risk_explanation`: Why this matters
-- `remediation_steps`: Step-by-step fix
-
-## RESOURCES AND PROMPTS AVAILABLE
-
-### Prompts (use for guided workflows)
-- `generate_secure_policy` - Step-by-step policy creation with validation
-- `fix_policy_issues_workflow` - Systematic issue fixing (max 2 iterations)
-- `review_policy_security` - Security analysis without modification
-
-### Resources (reference data)
-- `iam://templates` - Pre-built secure templates
-- `iam://checks` - All 19 validation checks
-- `iam://sensitive-categories` - Sensitive action categories
-- `iam://config-schema` - Configuration settings schema
-- `iam://config-examples` - Example configurations
-- `iam://workflow-examples` - Detailed step-by-step examples
-
-Read iam://workflow-examples for comprehensive usage patterns.
-
-## IAM ACTION AND POLICY FORMATTING RULES
-
-### Action Formatting (CRITICAL)
-- **Service prefix MUST be lowercase**: `s3:GetObject` ✓, `S3:GetObject` ✗
-- **Action name uses PascalCase**: `s3:GetObject` ✓, `s3:getobject` ✗
-- **Full format**: `<service>:<ActionName>` (e.g., `lambda:InvokeFunction`)
-- **Wildcards**: Use `*` for patterns (`s3:Get*`, `s3:*Object`, `s3:*`)
-- **Common mistakes to avoid**:
-  - `S3:GetObject` → should be `s3:GetObject` (lowercase service)
-  - `s3:getObject` → should be `s3:GetObject` (PascalCase action)
-  - `s3.GetObject` → should be `s3:GetObject` (colon separator)
-  - `arn:aws:s3:::bucket` in Action → Actions are not ARNs
-
-### Policy Structure (REQUIRED FORMAT)
+## POLICY STRUCTURE
 ```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "UniqueStatementId",
-      "Effect": "Allow",
-      "Action": ["service:ActionName"],
-      "Resource": ["arn:aws:service:region:account:resource"]
-    }
-  ]
-}
+{"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": ["arn:aws:s3:::bucket/*"]}]}
 ```
+- Version: Always "2012-10-17"
+- Effect: "Allow" or "Deny" (exact case)
+- Use query_arn_formats for correct ARN patterns
 
-### Version Field
-- ALWAYS use `"Version": "2012-10-17"` (current version)
-- `"2008-10-17"` is deprecated and lacks features like policy variables
-
-### Statement Fields
-| Field       | Required    | Type          | Valid Values                                |
-| ----------- | ----------- | ------------- | ------------------------------------------- |
-| Effect      | Yes         | string        | `"Allow"` or `"Deny"`                       |
-| Action      | Yes*        | string/array  | Service actions like `"s3:GetObject"`       |
-| NotAction   | No*         | string/array  | Actions to exclude                          |
-| Resource    | Yes*        | string/array  | ARNs like `"arn:aws:s3:::bucket/*"`         |
-| NotResource | No*         | string/array  | Resources to exclude                        |
-| Principal   | Conditional | string/object | For resource policies only                  |
-| Condition   | No          | object        | Condition operators and keys                |
-| Sid         | No          | string        | Statement identifier (unique within policy) |
-
-*Either Action or NotAction required; Either Resource or NotResource required
-
-### Resource ARN Formatting
-- **Format**: `arn:aws:<service>:<region>:<account>:<resource>`
-- **S3 buckets**: `arn:aws:s3:::<bucket-name>` (no region/account)
-- **S3 objects**: `arn:aws:s3:::<bucket-name>/<key-path>`
-- **DynamoDB tables**: `arn:aws:dynamodb:<region>:<account>:table/<table-name>`
-- **Lambda functions**: `arn:aws:lambda:<region>:<account>:function:<function-name>`
-- **Wildcards**: Use `*` for patterns (`arn:aws:s3:::my-bucket/*`)
-- Use query_arn_formats to get correct ARN patterns for any service
-
-### Condition Block Formatting
-```json
-"Condition": {
-  "<ConditionOperator>": {
-    "<ConditionKey>": "<value>"
-  }
-}
-```
-
-**Common operators**:
-- `StringEquals`, `StringNotEquals`, `StringLike`, `StringNotLike`
-- `ArnEquals`, `ArnLike`, `ArnNotEquals`, `ArnNotLike`
-- `NumericEquals`, `NumericLessThan`, `NumericGreaterThan`
-- `DateEquals`, `DateLessThan`, `DateGreaterThan`
-- `Bool` (for boolean conditions like `aws:SecureTransport`)
-- `IpAddress`, `NotIpAddress` (for source IP restrictions)
-
-**Set operators** (for multi-value keys):
-- `ForAllValues:StringEquals` - All values must match
-- `ForAnyValue:StringEquals` - At least one value must match
-
-### Principal Formatting (Resource Policies Only)
-```json
-"Principal": {
-  "AWS": "arn:aws:iam::123456789012:role/RoleName"
-}
-```
-Or for service principals:
-```json
-"Principal": {
-  "Service": "lambda.amazonaws.com"
-}
-```
-
-### Common Formatting Errors to Catch
-1. **Missing Version**: Always include `"Version": "2012-10-17"`
-2. **Effect typos**: `"allow"` → `"Allow"`, `"DENY"` → `"Deny"`
-3. **Invalid ARN format**: Missing colons or wrong segment count
-4. **Single string vs array**: `"Action": "s3:GetObject"` works but `["s3:GetObject"]` preferred
-
-ALWAYS validate actions exist using query_action_details or validate_policy before presenting to users.
+## RESOURCES
+- iam://templates, iam://checks, iam://workflow-examples
+- Prompts: generate_secure_policy, fix_policy_issues_workflow, review_policy_security
 """
 
 
@@ -480,37 +224,18 @@ async def validate_policy(
     verbose: bool = True,
     use_org_config: bool = True,
 ) -> dict[str, Any]:
-    """Validate an IAM policy.
+    """Validate an IAM policy against AWS rules and security best practices.
 
-    Validates a policy against AWS IAM rules and security best practices.
-    Runs all enabled checks and returns validation results.
-
-    Policy Type Auto-Detection:
-    If policy_type is None (default), the policy type is automatically detected:
-    - "trust" if contains sts:AssumeRole action (trust/assume role policy)
-    - "resource" if contains Principal/NotPrincipal (resource-based policy)
-    - "identity" otherwise (identity-based policy attached to users/roles/groups)
-
-    If an organization config is set and use_org_config=True, the validation
-    will use organization-specific check overrides, ignore patterns, and
-    severity settings.
+    Auto-detects policy type (identity/resource/trust) from structure if not specified.
 
     Args:
-        policy: IAM policy as a dictionary
-        policy_type: Type of policy to validate. If None (default), auto-detects from structure.
-            Explicit options:
-            - "identity": Identity-based policy (attached to users/roles/groups)
-            - "resource": Resource-based policy (attached to resources like S3 buckets)
-            - "trust": Trust policy (role assumption policy)
-        verbose: If True (default), return all issue fields. If False, return only
-            essential fields (severity, message, suggestion, check_id) to reduce tokens.
-        use_org_config: Whether to apply session organization config (default: True)
+        policy: IAM policy dictionary
+        policy_type: "identity", "resource", or "trust" (auto-detected if None)
+        verbose: Return all fields (True) or essential only (False)
+        use_org_config: Apply session org config (default: True)
 
     Returns:
-        Dictionary with:
-            - is_valid: True if no errors/warnings found
-            - issues: List of validation issues
-            - policy_file: Source identifier
+        {is_valid, issues, policy_file}
     """
     from iam_validator.mcp.tools.validation import validate_policy as _validate
 
@@ -556,19 +281,13 @@ async def validate_policy(
 
 @mcp.tool()
 async def quick_validate(policy: dict[str, Any]) -> dict[str, Any]:
-    """Quick pass/fail validation check for a policy.
-
-    Lightweight validation that returns essential information:
-    whether the policy is valid, number of issues, and critical issues.
+    """Quick pass/fail validation returning only essential info.
 
     Args:
-        policy: IAM policy as a Python dictionary
+        policy: IAM policy dictionary
 
     Returns:
-        Dictionary with:
-            - is_valid: Whether the policy passed validation
-            - issue_count: Total number of issues found
-            - critical_issues: List of critical/high severity issue messages
+        {is_valid, issue_count, critical_issues}
     """
     from iam_validator.mcp.tools.validation import quick_validate as _quick_validate
 
@@ -584,71 +303,54 @@ async def quick_validate(policy: dict[str, Any]) -> dict[str, Any]:
 async def generate_policy_from_template(
     template_name: str,
     variables: dict[str, str],
+    verbose: bool = False,
 ) -> dict[str, Any]:
     """Generate an IAM policy from a built-in template.
 
-    IMPORTANT: Call list_templates first to see available templates and their
-    required variables with descriptions.
+    Call list_templates first to see available templates and required variables.
 
     Args:
-        template_name: Template name from list_templates. Common templates:
-            - s3-read-only: Read from S3 bucket
-            - s3-read-write: Read/write to S3 bucket
-            - lambda-basic-execution: Basic Lambda with CloudWatch logs
-            - lambda-s3-trigger: Lambda triggered by S3 events
-            - dynamodb-crud: DynamoDB table operations
-            - cloudwatch-logs: Write to CloudWatch Logs
-        variables: Dictionary of variable values. Get required variables from
-            list_templates. Common variables:
-            - bucket_name: S3 bucket name (without arn: prefix)
-            - function_name: Lambda function name
-            - table_name: DynamoDB table name
-            - account_id: 12-digit AWS account ID
-            - region: AWS region (e.g., us-east-1)
+        template_name: Template name (e.g., "s3-read-only", "lambda-basic-execution")
+        variables: Template variables (e.g., {"bucket_name": "my-bucket", "account_id": "123456789012"})
+        verbose: Return all fields (True) or essential only (False)
 
     Returns:
-        Dictionary with:
-            - policy: The generated IAM policy (ready to use)
-            - validation: Validation results with any issues found
-            - security_notes: Security warnings to review
-            - template_used: Template name for reference
-
-    Example:
-        # First check what variables lambda-s3-trigger needs:
-        templates = await list_templates()
-
-        # Then generate with all required variables:
-        result = await generate_policy_from_template(
-            template_name="lambda-s3-trigger",
-            variables={
-                "bucket_name": "my-bucket",
-                "function_name": "my-function",
-                "account_id": "123456789012",
-                "region": "us-east-1"
-            }
-        )
+        {policy, validation, security_notes, template_used}
     """
     from iam_validator.mcp.tools.generation import (
         generate_policy_from_template as _generate,
     )
 
     result = await _generate(template_name=template_name, variables=variables)
+
+    if verbose:
+        issues = [
+            {
+                "severity": issue.severity,
+                "message": issue.message,
+                "suggestion": issue.suggestion,
+                "example": issue.example,
+                "check_id": issue.check_id,
+                "risk_explanation": issue.risk_explanation,
+                "remediation_steps": issue.remediation_steps,
+            }
+            for issue in result.validation.issues
+        ]
+    else:
+        issues = [
+            {
+                "severity": issue.severity,
+                "message": issue.message,
+                "check_id": issue.check_id,
+            }
+            for issue in result.validation.issues
+        ]
+
     return {
         "policy": result.policy,
         "validation": {
             "is_valid": result.validation.is_valid,
-            "issues": [
-                {
-                    "severity": issue.severity,
-                    "message": issue.message,
-                    "suggestion": issue.suggestion,
-                    "example": issue.example,
-                    "check_id": issue.check_id,
-                    "risk_explanation": issue.risk_explanation,
-                    "remediation_steps": issue.remediation_steps,
-                }
-                for issue in result.validation.issues
-            ],
+            "issues": issues,
         },
         "security_notes": result.security_notes,
         "template_used": result.template_used,
@@ -660,43 +362,51 @@ async def build_minimal_policy(
     actions: list[str],
     resources: list[str],
     conditions: dict[str, Any] | None = None,
+    verbose: bool = False,
 ) -> dict[str, Any]:
     """Build a minimal IAM policy from explicit actions and resources.
 
-    Constructs a policy statement from provided actions and resources.
-    Validates that actions exist in AWS using built-in checks, warns about
-    sensitive actions, and returns security notes from validation.
-
     Args:
-        actions: List of AWS actions (e.g., ["s3:GetObject", "s3:ListBucket"])
-        resources: List of resource ARNs (e.g., ["arn:aws:s3:::my-bucket/*"])
-        conditions: Optional conditions to add to the statement
+        actions: AWS actions (e.g., ["s3:GetObject", "s3:ListBucket"])
+        resources: Resource ARNs (e.g., ["arn:aws:s3:::my-bucket/*"])
+        conditions: Optional conditions to add
+        verbose: Return all fields (True) or essential only (False)
 
     Returns:
-        Dictionary with:
-            - policy: The generated IAM policy
-            - validation: Validation results from built-in checks
-            - security_notes: Security warnings from validation
+        {policy, validation, security_notes}
     """
     from iam_validator.mcp.tools.generation import build_minimal_policy as _build
 
     result = await _build(actions=actions, resources=resources, conditions=conditions)
+
+    if verbose:
+        issues = [
+            {
+                "severity": issue.severity,
+                "message": issue.message,
+                "suggestion": issue.suggestion,
+                "example": issue.example,
+                "check_id": issue.check_id,
+                "risk_explanation": issue.risk_explanation,
+                "remediation_steps": issue.remediation_steps,
+            }
+            for issue in result.validation.issues
+        ]
+    else:
+        issues = [
+            {
+                "severity": issue.severity,
+                "message": issue.message,
+                "check_id": issue.check_id,
+            }
+            for issue in result.validation.issues
+        ]
+
     return {
         "policy": result.policy,
         "validation": {
             "is_valid": result.validation.is_valid,
-            "issues": [
-                {
-                    "severity": issue.severity,
-                    "message": issue.message,
-                    "suggestion": issue.suggestion,
-                    "example": issue.example,
-                    "check_id": issue.check_id,
-                    "risk_explanation": issue.risk_explanation,
-                    "remediation_steps": issue.remediation_steps,
-                }
-                for issue in result.validation.issues
-            ],
+            "issues": issues,
         },
         "security_notes": result.security_notes,
     }
@@ -704,19 +414,12 @@ async def build_minimal_policy(
 
 @mcp.tool()
 async def list_templates() -> list[dict[str, Any]]:
-    """List all available policy templates with their required variables.
+    """List available policy templates and their required variables.
 
-    IMPORTANT: Always call this BEFORE generate_policy_from_template to see
-    what variables each template requires.
+    Call this before generate_policy_from_template.
 
     Returns:
-        List of template dictionaries, each containing:
-            - name: Template identifier (pass to generate_policy_from_template)
-            - description: What the template does
-            - variables: List of required variables with:
-                - name: Variable name (key for the variables dict)
-                - description: What value to provide (e.g., "AWS account ID (12-digit number)")
-                - required: Whether the variable must be provided
+        List of {name, description, variables}
     """
     from iam_validator.mcp.tools.generation import list_templates as _list_templates
 
@@ -728,14 +431,11 @@ async def suggest_actions(
     description: str,
     service: str | None = None,
 ) -> list[str]:
-    """Suggest AWS actions based on a natural language description.
-
-    Uses keyword pattern matching to suggest appropriate AWS actions.
-    Useful for discovering actions when building policies.
+    """Suggest AWS actions based on natural language description.
 
     Args:
-        description: Natural language description (e.g., "read files from S3")
-        service: Optional AWS service to limit suggestions (e.g., "s3", "lambda")
+        description: What you need (e.g., "read files from S3")
+        service: Optional service filter (e.g., "s3", "lambda")
 
     Returns:
         List of suggested action names
@@ -747,16 +447,15 @@ async def suggest_actions(
 
 @mcp.tool()
 async def get_required_conditions(actions: list[str]) -> dict[str, Any]:
-    """Get the conditions required for a list of actions.
+    """Get recommended IAM conditions for actions based on security best practices.
 
-    Analyzes actions and returns condition requirements based on security
-    best practices (e.g., MFA for sensitive actions, IP restrictions).
+    NOTE: Also check query_condition_keys(service) for resource-level conditions.
 
     Args:
-        actions: List of AWS actions to analyze
+        actions: AWS actions to analyze (e.g., ["iam:PassRole"])
 
     Returns:
-        Dictionary mapping condition keys to required values, grouped by type
+        Condition requirements grouped by type
     """
     from iam_validator.mcp.tools.generation import (
         get_required_conditions as _get_conditions,
@@ -766,53 +465,40 @@ async def get_required_conditions(actions: list[str]) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def check_sensitive_actions(actions: list[str]) -> dict[str, Any]:
-    """Check if any actions are sensitive and get remediation guidance.
+async def check_sensitive_actions(
+    actions: list[str],
+    verbose: bool = False,
+) -> dict[str, Any]:
+    """Check if actions are sensitive and get remediation guidance.
 
-    Analyzes actions against the sensitive actions catalog (490+ actions)
-    and returns risk category, severity, and **REMEDIATION GUIDANCE** including
-    recommended IAM conditions and mitigation steps.
+    Analyzes actions against 490+ sensitive actions catalog. Also verify
+    resource-level conditions with query_condition_keys(service).
 
     Args:
-        actions: List of AWS actions to check (e.g., ["iam:PassRole", "s3:GetObject"])
+        actions: Actions to check (e.g., ["iam:PassRole", "s3:GetObject"])
+        verbose: Return all fields (True) or essential only (False)
 
     Returns:
-        Dictionary with:
-            - sensitive_actions: List of dictionaries for each sensitive action found
-                - action: The action name
-                - category: Risk category (credential_exposure, data_access, priv_esc, resource_exposure)
-                - severity: Severity level (critical or high)
-                - description: Category description
-                - remediation: Mitigation guidance including:
-                    - risk_level: CRITICAL or HIGH
-                    - why_dangerous: Explanation of the risk
-                    - recommended_conditions: List of IAM conditions to add
-                    - mitigation_steps: Steps to reduce risk
-                    - condition_example: JSON example of the condition block to add
-                    - specific_guidance: Action-specific advice (for iam:PassRole, sts:AssumeRole, etc.)
-            - total_checked: Number of actions checked
-            - sensitive_count: Number of sensitive actions found
-            - categories_found: List of unique risk categories found
-            - has_critical: Whether any critical severity actions were found
-            - summary: Quick summary with top recommendations
-
-    Example response for iam:PassRole:
-        {
-            "action": "iam:PassRole",
-            "category": "priv_esc",
-            "severity": "critical",
-            "remediation": {
-                "recommended_conditions": [{"condition": "iam:PassedToService", ...}],
-                "condition_example": {"Condition": {"StringEquals": {"iam:PassedToService": "lambda.amazonaws.com"}}},
-                "specific_guidance": "Always restrict iam:PassRole to specific services..."
-            }
-        }
+        {sensitive_actions, total_checked, sensitive_count, categories_found, has_critical, summary}
     """
     from iam_validator.mcp.tools.generation import (
         check_sensitive_actions as _check_sensitive,
     )
 
-    return await _check_sensitive(actions=actions)
+    result = await _check_sensitive(actions=actions)
+
+    if not verbose and "sensitive_actions" in result:
+        # Lean response: only essential fields per action
+        result["sensitive_actions"] = [
+            {
+                "action": sa.get("action"),
+                "category": sa.get("category"),
+                "severity": sa.get("severity"),
+            }
+            for sa in result.get("sensitive_actions", [])
+        ]
+
+    return result
 
 
 # =============================================================================
@@ -826,20 +512,19 @@ async def query_service_actions(
     access_level: str | None = None,
     limit: int | None = None,
     offset: int = 0,
+    verbose: bool = False,
 ) -> dict[str, Any]:
     """Get all actions for a service, optionally filtered by access level.
 
     Args:
-        service: AWS service prefix (e.g., "s3", "iam", "ec2")
-        access_level: Optional filter (read|write|list|tagging|permissions-management)
-        limit: Maximum number of actions to return (default: all)
-        offset: Number of actions to skip for pagination (default: 0)
+        service: Service prefix (e.g., "s3", "iam", "ec2")
+        access_level: Filter: read|write|list|tagging|permissions-management
+        limit: Max actions to return
+        offset: Skip N actions for pagination
+        verbose: Return full action details (True) or names only (False)
 
     Returns:
-        Dictionary with:
-            - actions: List of action names
-            - total: Total number of actions available
-            - has_more: Whether more actions are available
+        {actions, total, has_more}
     """
     from iam_validator.mcp.tools.query import query_service_actions as _query
 
@@ -852,6 +537,10 @@ async def query_service_actions(
     if limit:
         all_actions = all_actions[:limit]
 
+    # Lean response: just action names as strings if not verbose
+    if not verbose and all_actions and isinstance(all_actions[0], dict):
+        all_actions = [a.get("name", a) if isinstance(a, dict) else a for a in all_actions]
+
     return {
         "actions": all_actions,
         "total": total,
@@ -861,14 +550,13 @@ async def query_service_actions(
 
 @mcp.tool()
 async def query_action_details(action: str) -> dict[str, Any] | None:
-    """Get detailed information about a specific action.
+    """Get metadata for a specific action.
 
     Args:
         action: Full action name (e.g., "s3:GetObject", "iam:CreateUser")
 
     Returns:
-        Dictionary with action metadata (access_level, resource_types, condition_keys),
-        or None if not found
+        {action, service, access_level, resource_types, condition_keys, description} or None
     """
     from iam_validator.mcp.tools.query import query_action_details as _query
 
@@ -887,10 +575,10 @@ async def query_action_details(action: str) -> dict[str, Any] | None:
 
 @mcp.tool()
 async def expand_wildcard_action(pattern: str) -> list[str]:
-    """Expand wildcards like "s3:Get*" to specific actions.
+    """Expand wildcard action pattern to specific actions.
 
     Args:
-        pattern: Action pattern with wildcards (e.g., "s3:Get*", "iam:*User*")
+        pattern: Pattern with wildcards (e.g., "s3:Get*", "iam:*User*")
 
     Returns:
         List of matching action names
@@ -902,13 +590,15 @@ async def expand_wildcard_action(pattern: str) -> list[str]:
 
 @mcp.tool()
 async def query_condition_keys(service: str) -> list[str]:
-    """Get all condition keys for a service.
+    """Get resource-level condition keys for a service.
+
+    Use with get_required_conditions for complete condition coverage (action + resource).
 
     Args:
-        service: AWS service prefix (e.g., "s3", "iam")
+        service: Service prefix (e.g., "s3", "iam")
 
     Returns:
-        List of condition key names (e.g., ["s3:prefix", "s3:x-amz-acl"])
+        List of condition keys (e.g., ["s3:prefix", "s3:x-amz-acl"])
     """
     from iam_validator.mcp.tools.query import query_condition_keys as _query
 
@@ -917,13 +607,13 @@ async def query_condition_keys(service: str) -> list[str]:
 
 @mcp.tool()
 async def query_arn_formats(service: str) -> list[dict[str, Any]]:
-    """Get ARN formats for a service's resources.
+    """Get ARN format patterns for a service's resources.
 
     Args:
-        service: AWS service prefix (e.g., "s3", "iam")
+        service: Service prefix (e.g., "s3", "iam")
 
     Returns:
-        List of dictionaries with resource_type and arn_formats keys
+        List of {resource_type, arn_formats}
     """
     from iam_validator.mcp.tools.query import query_arn_formats as _query
 
@@ -935,7 +625,7 @@ async def list_checks() -> list[dict[str, Any]]:
     """List all available validation checks.
 
     Returns:
-        List of dictionaries with check_id, description, and default_severity
+        List of {check_id, description, default_severity}
     """
     # Use cached registry instead of creating new one each call
     # Convert tuple back to list for API compatibility
@@ -944,20 +634,13 @@ async def list_checks() -> list[dict[str, Any]]:
 
 @mcp.tool()
 async def get_policy_summary(policy: dict[str, Any]) -> dict[str, Any]:
-    """Analyze a policy and return summary statistics.
+    """Get summary statistics for a policy.
 
     Args:
-        policy: IAM policy as a dictionary
+        policy: IAM policy dictionary
 
     Returns:
-        Dictionary with:
-            - total_statements: Number of statements
-            - allow_statements: Number of Allow statements
-            - deny_statements: Number of Deny statements
-            - services_used: List of AWS services referenced
-            - actions_count: Total number of actions
-            - has_wildcards: Whether policy contains wildcards
-            - has_conditions: Whether policy has conditions
+        {total_statements, allow_statements, deny_statements, services_used, actions_count, has_wildcards, has_conditions}
     """
     from iam_validator.mcp.tools.query import get_policy_summary as _get_summary
 
@@ -978,25 +661,18 @@ async def list_sensitive_actions(
     category: str | None = None,
     limit: int | None = None,
     offset: int = 0,
+    verbose: bool = False,
 ) -> dict[str, Any]:
-    """List sensitive actions, optionally filtered by category.
-
-    The sensitive actions catalog contains 490+ actions across 4 categories.
+    """List sensitive actions from the 490+ action catalog.
 
     Args:
-        category: Optional filter:
-            - credential_exposure: Actions that can expose credentials (46 actions)
-            - data_access: Actions that access data (109 actions)
-            - privilege_escalation: Actions that can escalate privileges (27 actions)
-            - resource_exposure: Actions that can expose resources (321 actions)
-        limit: Maximum number of actions to return (default: all)
-        offset: Number of actions to skip for pagination (default: 0)
+        category: Filter by "credential_exposure", "data_access", "privilege_escalation", or "resource_exposure"
+        limit: Max actions to return
+        offset: Skip N actions for pagination
+        verbose: Return full action details (True) or names only (False)
 
     Returns:
-        Dictionary with:
-            - actions: List of sensitive action names
-            - total: Total number of actions available
-            - has_more: Whether more actions are available
+        {actions, total, has_more}
     """
     from iam_validator.mcp.tools.query import list_sensitive_actions as _list_sensitive
 
@@ -1009,6 +685,10 @@ async def list_sensitive_actions(
     if limit:
         all_actions = all_actions[:limit]
 
+    # Lean response: just action names if not verbose
+    if not verbose and all_actions and isinstance(all_actions[0], dict):
+        all_actions = [a.get("action", a) if isinstance(a, dict) else a for a in all_actions]
+
     return {
         "actions": all_actions,
         "total": total,
@@ -1018,16 +698,13 @@ async def list_sensitive_actions(
 
 @mcp.tool()
 async def get_condition_requirements_for_action(action: str) -> dict[str, Any] | None:
-    """Get required conditions for a specific action.
-
-    Checks if the action has condition requirements based on the sensitive
-    actions catalog and condition requirements configuration.
+    """Get condition requirements for a specific action.
 
     Args:
         action: Full action name (e.g., "iam:PassRole", "s3:GetObject")
 
     Returns:
-        Dictionary with condition requirements, or None if no requirements
+        Condition requirements dict, or None if no requirements
     """
     from iam_validator.mcp.tools.query import get_condition_requirements as _get_reqs
 
@@ -1044,37 +721,20 @@ async def fix_policy_issues(
     policy: dict[str, Any],
     issues_to_fix: list[str] | None = None,
     policy_type: str | None = None,
+    verbose: bool = False,
 ) -> dict[str, Any]:
-    """Attempt to automatically fix common structural policy issues.
+    """Auto-fix structural policy issues (Version, duplicate SIDs, action case).
 
-    This tool applies simple structural fixes. For security-related fixes
-    (conditions, sensitive actions), use the suggestion and example fields
-    from validate_policy to apply fixes manually.
-
-    Auto-fixable issues (structural only):
-    - Missing Version field → adds "2012-10-17"
-    - Duplicate SIDs → makes them unique
-    - Action case normalization → converts "S3:GetObject" to "s3:GetObject"
-
-    NOT auto-fixable (require user input):
-    - Action: "*" → requires user to specify which actions
-    - Resource: "*" → requires user to specify which resources
-    - Missing conditions → use validate_policy example field to see correct fix
-    - Invalid actions → use query_service_actions to find valid actions
+    Does NOT fix wildcards or missing conditions - those need user input.
 
     Args:
-        policy: The IAM policy to fix
-        issues_to_fix: Optional list of check_ids to fix. If None, attempts all fixes.
-            Example: ["policy_structure", "sid_uniqueness", "action_validation"]
-        policy_type: Type of policy. If None (default), auto-detects from structure.
-            Options: "identity", "resource", "trust"
+        policy: IAM policy to fix
+        issues_to_fix: Check IDs to fix (None = all structural fixes)
+        policy_type: "identity", "resource", or "trust" (auto-detected if None)
+        verbose: Return all fields (True) or essential only (False)
 
     Returns:
-        Dictionary with:
-            - fixed_policy: The policy with structural fixes applied
-            - fixes_applied: List of fixes that were applied
-            - unfixed_issues: Issues that require manual intervention (with guidance)
-            - validation: New validation result after fixes
+        {fixed_policy, fixes_applied, unfixed_issues, validation}
     """
     import copy
 
@@ -1172,47 +832,48 @@ async def fix_policy_issues(
     # Re-validate the fixed policy
     final_result = await _validate(policy=fixed_policy, policy_type=effective_policy_type)
 
+    if verbose:
+        validation_issues = [
+            {
+                "severity": issue.severity,
+                "message": issue.message,
+                "suggestion": issue.suggestion,
+                "example": issue.example,
+                "check_id": issue.check_id,
+            }
+            for issue in final_result.issues
+        ]
+    else:
+        validation_issues = [
+            {
+                "severity": issue.severity,
+                "message": issue.message,
+                "check_id": issue.check_id,
+            }
+            for issue in final_result.issues
+        ]
+
     return {
         "fixed_policy": fixed_policy,
         "fixes_applied": fixes_applied,
-        "unfixed_issues": unfixed_issues,
+        "unfixed_issues": unfixed_issues if verbose else len(unfixed_issues),
         "validation": {
             "is_valid": final_result.is_valid,
             "issue_count": len(final_result.issues),
-            "issues": [
-                {
-                    "severity": issue.severity,
-                    "message": issue.message,
-                    "suggestion": issue.suggestion,
-                    "example": issue.example,
-                    "check_id": issue.check_id,
-                }
-                for issue in final_result.issues
-            ],
+            "issues": validation_issues,
         },
     }
 
 
 @mcp.tool()
 async def get_issue_guidance(check_id: str) -> dict[str, Any]:
-    """Get detailed guidance on how to fix a specific validation issue.
-
-    Use this when you encounter a validation issue and need detailed
-    instructions on how to resolve it. Provides step-by-step fixes.
+    """Get step-by-step fix guidance for a validation issue.
 
     Args:
-        check_id: The check ID from the validation issue (e.g., "wildcard_action",
-            "action_validation", "sensitive_action")
+        check_id: Check ID (e.g., "wildcard_action", "sensitive_action")
 
     Returns:
-        Dictionary with:
-            - check_id: The check identifier
-            - description: What this check validates
-            - common_causes: Why this issue typically occurs
-            - fix_steps: Step-by-step instructions to fix
-            - example_before: Example of problematic policy
-            - example_after: Example of fixed policy
-            - related_tools: MCP tools that can help fix this issue
+        {check_id, description, common_causes, fix_steps, example_before, example_after, related_tools}
     """
     guidance_db: dict[str, dict[str, Any]] = {
         "wildcard_action": {
@@ -1361,24 +1022,13 @@ async def get_issue_guidance(check_id: str) -> dict[str, Any]:
 
 @mcp.tool()
 async def get_check_details(check_id: str) -> dict[str, Any]:
-    """Get full documentation for a specific validation check.
-
-    Returns comprehensive information about a check including its description,
-    severity, configuration options, example violations, and fixes.
+    """Get full documentation for a validation check.
 
     Args:
-        check_id: The check ID (e.g., "wildcard_action", "sensitive_action")
+        check_id: Check ID (e.g., "wildcard_action", "sensitive_action")
 
     Returns:
-        Dictionary with:
-            - check_id: The check identifier
-            - description: Full description of what the check validates
-            - default_severity: Default severity level
-            - category: Check category (security, aws, structure)
-            - example_violation: Example policy that would trigger this check
-            - example_fix: How to fix the violation
-            - configuration: Available configuration options
-            - related_checks: Related check IDs
+        {check_id, description, default_severity, category, example_violation, example_fix, configuration, related_checks}
     """
     from iam_validator.core.check_registry import create_default_registry
 
@@ -1476,22 +1126,18 @@ async def get_check_details(check_id: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def explain_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    """Generate a human-readable explanation of what a policy allows or denies.
-
-    Analyzes the policy structure and produces a plain-language summary
-    of the effective permissions, including security concerns.
+async def explain_policy(
+    policy: dict[str, Any],
+    verbose: bool = False,
+) -> dict[str, Any]:
+    """Generate human-readable explanation of policy permissions and security concerns.
 
     Args:
-        policy: IAM policy as a dictionary
+        policy: IAM policy dictionary
+        verbose: Return all fields (True) or essential only (False)
 
     Returns:
-        Dictionary with:
-            - summary: Brief one-line summary
-            - statements: Detailed explanation of each statement
-            - services_accessed: List of AWS services with access types
-            - security_concerns: Identified security issues
-            - recommendations: Suggested improvements
+        {summary, statements, services_accessed, security_concerns, recommendations}
     """
     from iam_validator.mcp.tools.query import get_policy_summary as _get_summary
 
@@ -1584,15 +1230,25 @@ async def explain_policy(policy: dict[str, Any]) -> dict[str, Any]:
     total_deny = len(statements) - total_allow
     brief_summary = f"Policy with {len(statements)} statement(s): {total_allow} Allow, {total_deny} Deny across {len(services_with_access)} service(s)"
 
-    return {
-        "summary": brief_summary,
-        "statements": statement_explanations,
-        "services_accessed": services_summary,
-        "security_concerns": security_concerns,
-        "recommendations": recommendations,
-        "has_wildcards": summary.has_wildcards,
-        "has_conditions": summary.has_conditions,
-    }
+    if verbose:
+        return {
+            "summary": brief_summary,
+            "statements": statement_explanations,
+            "services_accessed": services_summary,
+            "security_concerns": security_concerns,
+            "recommendations": recommendations,
+            "has_wildcards": summary.has_wildcards,
+            "has_conditions": summary.has_conditions,
+        }
+    else:
+        return {
+            "summary": brief_summary,
+            "security_concerns": security_concerns,
+            "recommendations": recommendations,
+            "has_wildcards": summary.has_wildcards,
+            "statement_count": len(statement_explanations),
+            "services_count": len(services_summary),
+        }
 
 
 @mcp.tool()
@@ -1604,23 +1260,18 @@ async def build_arn(
     account_id: str = "",
     partition: str = "aws",
 ) -> dict[str, Any]:
-    """Build a valid ARN from components.
-
-    Helps construct ARNs with proper format validation for the specified service.
+    """Build a valid ARN from components with format validation.
 
     Args:
         service: AWS service (e.g., "s3", "lambda", "dynamodb")
-        resource_type: Type of resource (e.g., "bucket", "function", "table")
+        resource_type: Resource type (e.g., "bucket", "function", "table")
         resource_name: Name of the resource
-        region: AWS region (required for regional resources, empty for global)
-        account_id: AWS account ID (12 digits, empty for some services like S3)
-        partition: AWS partition (default: "aws", or "aws-cn", "aws-us-gov")
+        region: AWS region (empty for global resources)
+        account_id: 12-digit AWS account ID (empty for S3)
+        partition: "aws", "aws-cn", or "aws-us-gov"
 
     Returns:
-        Dictionary with:
-            - arn: The constructed ARN
-            - valid: Whether the ARN format is valid
-            - notes: Any notes about the ARN format
+        {arn, valid, notes}
     """
     # ARN format patterns by service
     arn_patterns: dict[str, dict[str, Any]] = {
@@ -1753,24 +1404,17 @@ async def build_arn(
 async def compare_policies(
     policy_a: dict[str, Any],
     policy_b: dict[str, Any],
+    verbose: bool = False,
 ) -> dict[str, Any]:
     """Compare two IAM policies and highlight differences.
 
-    Analyzes both policies and shows what permissions differ between them.
-
     Args:
-        policy_a: First IAM policy (baseline)
-        policy_b: Second IAM policy (comparison)
+        policy_a: First policy (baseline)
+        policy_b: Second policy (comparison)
+        verbose: Return all fields (True) or essential only (False)
 
     Returns:
-        Dictionary with:
-            - summary: Brief comparison summary
-            - added_actions: Actions in policy_b but not in policy_a
-            - removed_actions: Actions in policy_a but not in policy_b
-            - added_resources: Resources in policy_b but not in policy_a
-            - removed_resources: Resources in policy_a but not in policy_b
-            - condition_changes: Differences in conditions
-            - effect_changes: Statements with different effects
+        {summary, added_actions, removed_actions, added_resources, removed_resources, condition_changes, effect_changes}
     """
 
     def extract_policy_elements(policy: dict[str, Any]) -> dict[str, Any]:
@@ -1844,18 +1488,28 @@ async def compare_policies(
 
     summary = ", ".join(changes) if changes else "No significant differences found"
 
-    return {
-        "summary": summary,
-        "added_actions": added_actions,
-        "removed_actions": removed_actions,
-        "added_resources": added_resources,
-        "removed_resources": removed_resources,
-        "condition_changes": {
-            "policy_a_conditions": len(elements_a["conditions"]),
-            "policy_b_conditions": len(elements_b["conditions"]),
-        },
-        "effect_changes": effect_changes,
-    }
+    if verbose:
+        return {
+            "summary": summary,
+            "added_actions": added_actions,
+            "removed_actions": removed_actions,
+            "added_resources": added_resources,
+            "removed_resources": removed_resources,
+            "condition_changes": {
+                "policy_a_conditions": len(elements_a["conditions"]),
+                "policy_b_conditions": len(elements_b["conditions"]),
+            },
+            "effect_changes": effect_changes,
+        }
+    else:
+        return {
+            "summary": summary,
+            "added_actions_count": len(added_actions),
+            "removed_actions_count": len(removed_actions),
+            "added_resources_count": len(added_resources),
+            "removed_resources_count": len(removed_resources),
+            "effect_changes_count": len(effect_changes),
+        }
 
 
 # =============================================================================
@@ -1870,28 +1524,15 @@ async def validate_policies_batch(
     policy_type: str | None = None,
     verbose: bool = False,
 ) -> list[dict[str, Any]]:
-    """Validate multiple IAM policies in a single call.
-
-    More efficient than calling validate_policy multiple times when you need
-    to validate several policies at once. Validations run in parallel.
-
-    Policy Type Auto-Detection:
-    If policy_type is None (default), each policy's type is automatically detected
-    from its structure (see validate_policy for detection rules).
+    """Validate multiple IAM policies in parallel (more efficient than multiple validate_policy calls).
 
     Args:
-        ctx: FastMCP context (automatically passed by framework)
-        policies: List of IAM policy dictionaries to validate
-        policy_type: Type of policies. If None (default), auto-detects each policy.
-            Options: "identity", "resource", "trust"
-        verbose: If True, return all issue fields. If False (default), return
-            only essential fields to reduce tokens.
+        policies: List of IAM policy dictionaries
+        policy_type: "identity", "resource", or "trust" (auto-detected if None)
+        verbose: Return all fields (True) or essential only (False)
 
     Returns:
-        List of validation results, each containing:
-            - policy_index: Index of the policy in the input list
-            - is_valid: Whether the policy passed validation
-            - issues: List of validation issues
+        List of {policy_index, is_valid, issues}
     """
     import asyncio
 
@@ -1941,18 +1582,13 @@ async def validate_policies_batch(
 
 @mcp.tool()
 async def query_actions_batch(actions: list[str], ctx: Context) -> dict[str, dict[str, Any] | None]:
-    """Get details for multiple actions in a single call.
-
-    More efficient than calling query_action_details multiple times when you
-    need information about several actions at once.
+    """Get details for multiple actions in parallel (more efficient than multiple query_action_details calls).
 
     Args:
-        ctx: FastMCP context (automatically passed by framework)
-        actions: List of full action names (e.g., ["s3:GetObject", "iam:CreateUser"])
+        actions: Action names (e.g., ["s3:GetObject", "iam:CreateUser"])
 
     Returns:
-        Dictionary mapping action names to their details (or None if not found).
-        Each action detail contains: service, access_level, resource_types, condition_keys
+        Dict mapping action names to {service, access_level, resource_types, condition_keys} or None
     """
     import asyncio
 
@@ -1986,21 +1622,19 @@ async def query_actions_batch(actions: list[str], ctx: Context) -> dict[str, dic
 
 
 @mcp.tool()
-async def check_actions_batch(actions: list[str], ctx: Context) -> dict[str, Any]:
-    """Validate and check sensitivity for multiple actions in one call.
-
-    Combines action validation and sensitivity checking into a single tool
-    for efficient batch processing.
+async def check_actions_batch(
+    actions: list[str],
+    ctx: Context,
+    verbose: bool = False,
+) -> dict[str, Any]:
+    """Validate existence and check sensitivity for multiple actions in parallel.
 
     Args:
-        ctx: FastMCP context (automatically passed by framework)
-        actions: List of AWS actions to check (e.g., ["s3:GetObject", "iam:PassRole"])
+        actions: AWS actions to check (e.g., ["s3:GetObject", "iam:PassRole"])
+        verbose: Return all fields (True) or essential only (False)
 
     Returns:
-        Dictionary with:
-            - valid_actions: List of actions that exist in AWS
-            - invalid_actions: List of actions that don't exist (with error messages)
-            - sensitive_actions: List of sensitive actions with their categories
+        {valid_actions, invalid_actions, sensitive_actions}
     """
     import asyncio
 
@@ -2078,11 +1712,20 @@ async def check_actions_batch(actions: list[str], ctx: Context) -> dict[str, Any
         if result["sensitive"]:
             sensitive_actions.append({"action": action, **result["sensitive"]})
 
-    return {
-        "valid_actions": valid_actions,
-        "invalid_actions": invalid_actions,
-        "sensitive_actions": sensitive_actions,
-    }
+    if verbose:
+        return {
+            "valid_actions": valid_actions,
+            "invalid_actions": invalid_actions,
+            "sensitive_actions": sensitive_actions,
+        }
+    else:
+        return {
+            "valid_actions": valid_actions,
+            "invalid_count": len(invalid_actions),
+            "sensitive_count": len(sensitive_actions),
+            "invalid_actions": [ia["action"] for ia in invalid_actions],
+            "sensitive_actions": [sa["action"] for sa in sensitive_actions],
+        }
 
 
 # =============================================================================
@@ -2096,34 +1739,12 @@ async def set_organization_config(
 ) -> dict[str, Any]:
     """Set validator configuration for this MCP session.
 
-    The configuration uses the same format as the iam-validator YAML config files.
-    It applies to all subsequent validation operations until cleared or updated.
-
     Args:
-        config: Validator configuration dictionary with:
-            - settings: Global settings
-                - fail_on_severity: List of severities that cause failure
-                  (e.g., ["error", "critical", "high"])
-                - parallel_execution: Enable parallel check execution (default: true)
-                - fail_fast: Stop on first error (default: false)
-            - Check IDs as keys with configuration:
-                - enabled: Enable/disable the check (default: true)
-                - severity: Override check severity (error|critical|high|medium|low|warning)
-                - ignore_patterns: Patterns to skip (see docs for pattern syntax)
+        config: Config with "settings" (fail_on_severity, parallel_execution) and
+            check IDs as keys (enabled, severity, ignore_patterns)
 
     Returns:
-        Dictionary with:
-            - success: Whether config was set successfully
-            - applied_config: The effective configuration (settings + checks)
-            - warnings: Any configuration warnings
-
-    Example:
-        >>> result = await set_organization_config({
-        ...     "settings": {"fail_on_severity": ["error", "critical"]},
-        ...     "wildcard_action": {"enabled": True, "severity": "critical"},
-        ...     "sensitive_action": {"enabled": True, "severity": "high"},
-        ...     "policy_size": {"enabled": False}  # Disable a check
-        ... })
+        {success, applied_config, warnings}
     """
     from iam_validator.mcp.tools.org_config_tools import set_organization_config_impl
 
@@ -2132,13 +1753,10 @@ async def set_organization_config(
 
 @mcp.tool()
 async def get_organization_config() -> dict[str, Any]:
-    """Get the current organization configuration for this session.
+    """Get the current session organization configuration.
 
     Returns:
-        Dictionary with:
-            - has_config: Whether an organization config is currently set
-            - config: The current configuration (or null if not set)
-            - source: Where the config came from ("session", "yaml", or "none")
+        {has_config, config, source}
     """
     from iam_validator.mcp.tools.org_config_tools import get_organization_config_impl
 
@@ -2147,14 +1765,10 @@ async def get_organization_config() -> dict[str, Any]:
 
 @mcp.tool()
 async def clear_organization_config() -> dict[str, str]:
-    """Clear the organization configuration for this session.
-
-    After clearing, validation and generation will use default settings
-    without any organization-specific restrictions.
+    """Clear session organization config, reverting to defaults.
 
     Returns:
-        Dictionary with:
-            - status: "cleared" if config was removed, "no_config_set" if none existed
+        {status: "cleared" or "no_config_set"}
     """
     from iam_validator.mcp.tools.org_config_tools import clear_organization_config_impl
 
@@ -2165,39 +1779,13 @@ async def clear_organization_config() -> dict[str, str]:
 async def load_organization_config_from_yaml(
     yaml_content: str,
 ) -> dict[str, Any]:
-    """Load validator configuration from YAML content.
-
-    Parses YAML configuration and sets it as the session config.
-    Uses the same format as iam-validator.yaml configuration files.
+    """Load validator configuration from YAML content and set as session config.
 
     Args:
-        yaml_content: YAML configuration string. Example:
-            settings:
-              fail_on_severity:
-                - error
-                - critical
-                - high
-
-            # Enable/disable/configure specific checks
-            wildcard_action:
-              enabled: true
-              severity: critical
-
-            sensitive_action:
-              enabled: true
-              severity: high
-              ignore_patterns:
-                - action: "^s3:Get.*"  # Ignore S3 read actions
-
-            policy_size:
-              enabled: false  # Disable this check
+        yaml_content: YAML string with settings and check configurations
 
     Returns:
-        Dictionary with:
-            - success: Whether config was loaded successfully
-            - applied_config: The effective configuration (settings + checks)
-            - warnings: Any warnings (unknown keys, etc.)
-            - error: Error message if loading failed
+        {success, applied_config, warnings, error}
     """
     from iam_validator.mcp.tools.org_config_tools import (
         load_organization_config_from_yaml_impl,
@@ -2209,29 +1797,30 @@ async def load_organization_config_from_yaml(
 @mcp.tool()
 async def check_org_compliance(
     policy: dict[str, Any],
+    verbose: bool = False,
 ) -> dict[str, Any]:
-    """Validate a policy using the current session configuration.
-
-    Runs the full IAM validator with the session configuration applied.
-    This includes all enabled checks with their configured severity levels
-    and ignore patterns.
-
-    If no session config is set, uses default validator settings.
+    """Validate a policy using session org config (or defaults if none set).
 
     Args:
-        policy: IAM policy as a dictionary
+        policy: IAM policy dictionary
+        verbose: Return all fields (True) or essential only (False)
 
     Returns:
-        Dictionary with:
-            - compliant: True if no issues exceed fail_on_severity threshold
-            - has_org_config: Whether a session config is set
-            - violations: List of validation issues found (type, message, severity)
-            - warnings: List of warnings
-            - suggestions: How to fix issues
+        {compliant, has_org_config, violations, warnings, suggestions}
     """
     from iam_validator.mcp.tools.org_config_tools import check_org_compliance_impl
 
-    return await check_org_compliance_impl(policy)
+    result = await check_org_compliance_impl(policy)
+
+    if not verbose:
+        # Lean response: counts instead of full lists
+        result["violation_count"] = len(result.get("violations", []))
+        result["warning_count"] = len(result.get("warnings", []))
+        if "suggestions" in result and isinstance(result["suggestions"], list):
+            result["suggestion_count"] = len(result["suggestions"])
+            del result["suggestions"]
+
+    return result
 
 
 @mcp.tool()
@@ -2240,36 +1829,15 @@ async def validate_with_config(
     config: dict[str, Any],
     policy_type: str | None = None,
 ) -> dict[str, Any]:
-    """Validate a policy with explicit inline configuration.
-
-    Useful for one-off validation with specific settings without modifying
-    the session config. The provided config is used only for this call.
-
-    Policy Type Auto-Detection:
-    If policy_type is None (default), the policy type is automatically detected
-    from the policy structure (see validate_policy for detection rules).
+    """Validate a policy with inline configuration (one-off, doesn't modify session).
 
     Args:
         policy: IAM policy to validate
-        config: Inline configuration (same format as set_organization_config):
-            - settings: Global settings (fail_on_severity, parallel_execution, etc.)
-            - Check IDs as keys: {enabled, severity, ignore_patterns}
-        policy_type: Type of policy ("identity", "resource", "trust")
+        config: Same format as set_organization_config
+        policy_type: "identity", "resource", or "trust" (auto-detected if None)
 
     Returns:
-        Dictionary with:
-            - is_valid: Whether the policy passed all checks
-            - issues: List of validation issues (severity, message, suggestion, check_id)
-            - config_applied: The configuration that was used
-
-    Example:
-        >>> result = await validate_with_config(
-        ...     policy=my_policy,
-        ...     config={
-        ...         "settings": {"fail_on_severity": ["error"]},
-        ...         "wildcard_action": {"severity": "warning"}  # Downgrade to warning
-        ...     }
-        ... )
+        {is_valid, issues, config_applied}
     """
     from iam_validator.mcp.tools.org_config_tools import validate_with_config_impl
 
@@ -2285,33 +1853,15 @@ async def validate_with_config(
 async def set_custom_instructions(
     instructions: str,
 ) -> dict[str, Any]:
-    """Set custom instructions for policy generation.
+    """Set custom policy generation guidelines for this session.
 
-    Custom instructions are appended to the default MCP server instructions,
-    allowing organizations to add their own policy generation guidelines.
-
-    These instructions will influence how the AI assistant generates and
-    validates IAM policies during this session.
+    Instructions are appended to default server instructions.
 
     Args:
-        instructions: Custom instructions text (markdown supported). Examples:
-            - "All policies must include aws:PrincipalOrgID condition"
-            - "Use resource tags for access control where possible"
-            - "S3 buckets must have encryption conditions"
+        instructions: Custom instructions text (markdown supported)
 
     Returns:
-        Dictionary with:
-            - success: True if instructions were set
-            - instructions_preview: First 200 chars of the instructions
-            - previous_source: Source of any replaced instructions
-
-    Example:
-        >>> await set_custom_instructions('''
-        ... ## Organization Security Requirements
-        ... - All policies must restrict to our AWS Organization
-        ... - MFA is required for any IAM modifications
-        ... - S3 access must include secure transport conditions
-        ... ''')
+        {success, instructions_preview, previous_source}
     """
     from iam_validator.mcp.session_config import CustomInstructionsManager
 
@@ -2333,13 +1883,10 @@ async def set_custom_instructions(
 
 @mcp.tool()
 async def get_custom_instructions() -> dict[str, Any]:
-    """Get the current custom instructions.
+    """Get current custom instructions.
 
     Returns:
-        Dictionary with:
-            - has_instructions: Whether custom instructions are set
-            - instructions: The custom instructions (or None)
-            - source: Where the instructions came from (api, env, file, config, none)
+        {has_instructions, instructions, source}
     """
     from iam_validator.mcp.session_config import CustomInstructionsManager
 
@@ -2354,11 +1901,10 @@ async def get_custom_instructions() -> dict[str, Any]:
 
 @mcp.tool()
 async def clear_custom_instructions() -> dict[str, str]:
-    """Clear custom instructions, reverting to default server instructions.
+    """Clear custom instructions, reverting to defaults.
 
     Returns:
-        Dictionary with:
-            - status: "cleared" if instructions were removed, "no_instructions_set" if none existed
+        {status: "cleared" or "no_instructions_set"}
     """
     from iam_validator.mcp.session_config import CustomInstructionsManager
 

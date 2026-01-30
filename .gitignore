@@ -87,3 +87,4 @@ aws_services/
 
 .mcp.json
 .serena
+agent-sync/
