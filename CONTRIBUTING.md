@@ -59,6 +59,44 @@ iam_validator/
 - **New Command**: Add to `iam_validator/commands/`
 - **New Formatter**: Add to `iam_validator/core/formatters/`
 
+## MCP Tool Docstring Guidelines
+
+When adding or modifying MCP tools in `iam_validator/mcp/server.py`, follow this template:
+
+```python
+@mcp.tool()
+async def tool_name(
+    param1: str,
+    param2: bool = False,
+) -> dict[str, Any]:
+    """One-sentence description of what the tool does.
+
+    [Optional: One line of critical context]
+
+    Args:
+        param1: Description (e.g., "s3:GetObject")
+        param2: Description
+
+    Returns:
+        {field1, field2, field3}
+    """
+```
+
+### Rules
+
+- **Max 300 tokens** per tool docstring (~1200 characters)
+- **Always include format hints** for IAM actions: `(e.g., "s3:GetObject")`
+- **Use simple field lists** for Returns, not nested structures
+- **Don't repeat** BASE_INSTRUCTIONS content in tool docstrings
+- **Keep first sentence descriptive** - it's crucial for tool discovery
+
+### Token Limits
+
+| Component | Max Tokens |
+|-----------|------------|
+| Tool docstring | 300 |
+| BASE_INSTRUCTIONS | 2500 |
+
 ## Getting Help
 
 - [GitHub Issues](https://github.com/boogy/iam-policy-validator/issues)
