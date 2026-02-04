@@ -11,6 +11,7 @@ from typing import ClassVar
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.condition_validators import (
+    has_if_exists_suffix,
     is_multivalued_context_key,
     normalize_operator,
 )
@@ -81,6 +82,7 @@ class SetOperatorValidationCheck(PolicyCheck):
         # Second pass: Validate set operator usage
         for operator, conditions in statement.condition.items():
             base_operator, _operator_type, set_prefix = normalize_operator(operator)
+            has_ifexists = has_if_exists_suffix(operator)
 
             if not set_prefix:
                 continue
@@ -110,15 +112,27 @@ class SetOperatorValidationCheck(PolicyCheck):
                 # Issue 2: ForAllValues with Allow effect without Null check (security risk)
                 if set_prefix == "ForAllValues" and effect == "Allow":
                     if condition_key not in null_checked_keys:
+                        if has_ifexists:
+                            message = (
+                                f"Compounded security risk: `{operator}` with `Allow` effect "
+                                f"on `{condition_key}` is doubly permissive. `ForAllValues` "
+                                f"passes when the value set is empty, and `IfExists` passes "
+                                f"when the key is missing entirely. Both mechanisms "
+                                f"independently allow access without matching any values. "
+                                f'Add: `"Null": {{"{condition_key}": "false"}}` and consider '
+                                f"removing `IfExists`."
+                            )
+                        else:
+                            message = (
+                                f"Security risk: `ForAllValues` with `Allow` effect on `{condition_key}` "
+                                f"should include a `Null` condition check. Without it, requests with missing "
+                                f'`{condition_key}` will be granted access. Add: `"Null": {{"{condition_key}": "false"}}`. '
+                                f"See: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-single-vs-multi-valued-context-keys.html"
+                            )
                         issues.append(
                             ValidationIssue(
                                 severity="warning",
-                                message=(
-                                    f"Security risk: `ForAllValues` with `Allow` effect on `{condition_key}` "
-                                    f"should include a `Null` condition check. Without it, requests with missing "
-                                    f'`{condition_key}` will be granted access. Add: `"Null": {{"{condition_key}": "false"}}`. '
-                                    f"See: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-single-vs-multi-valued-context-keys.html"
-                                ),
+                                message=message,
                                 statement_sid=statement_sid,
                                 statement_index=statement_idx,
                                 issue_type="forallvalues_allow_without_null_check",

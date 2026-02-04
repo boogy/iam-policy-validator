@@ -706,6 +706,7 @@ def create_default_registry(
         # 3. TYPE VALIDATION (Condition operator type checking)
         registry.register(checks.ConditionTypeMismatchCheck())  # Operator-value type compatibility
         registry.register(checks.SetOperatorValidationCheck())  # ForAllValues/ForAnyValue usage
+        registry.register(checks.IfExistsConditionCheck())  # IfExists usage validation
 
         # 4. RESOURCE MATCHING (Action-resource relationship validation)
         registry.register(

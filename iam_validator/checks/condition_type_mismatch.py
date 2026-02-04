@@ -8,6 +8,7 @@ from typing import ClassVar
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.condition_validators import (
+    has_if_exists_suffix,
     normalize_operator,
     translate_type,
     validate_value_for_type,
@@ -69,6 +70,25 @@ class ConditionTypeMismatchCheck(PolicyCheck):
 
             if operator_type is None:
                 # Unknown operator - this will be caught by another check
+                continue
+
+            # Detect NullIfExists as invalid syntax (must be BEFORE skip_operators guard)
+            if base_operator == "Null" and has_if_exists_suffix(operator):
+                issues.append(
+                    ValidationIssue(
+                        severity=self.get_severity(config),
+                        message=(
+                            f"Invalid operator `{operator}`. The `Null` condition operator "
+                            f"does not support the `IfExists` suffix. The `Null` operator "
+                            f"already checks for key existence \u2014 use `Null` directly."
+                        ),
+                        statement_sid=statement_sid,
+                        statement_index=statement_idx,
+                        issue_type="invalid_operator",
+                        line_number=line_number,
+                        field_name="condition",
+                    )
+                )
                 continue
 
             if base_operator in skip_operators:

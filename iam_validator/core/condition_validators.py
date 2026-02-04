@@ -3,7 +3,8 @@ Condition Key and Value Validators.
 
 This module provides validators for IAM policy condition operators, keys, and values.
 Based on AWS IAM Policy Elements Reference:
-https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html
+- https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html
+- https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-keys.html
 
 Supports:
 - All standard IAM condition operators (String, Numeric, Date, Bool, Binary, IP, ARN)
@@ -69,6 +70,49 @@ CONDITION_OPERATORS = {
 # Reference: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_multi-value-conditions.html
 SET_OPERATOR_PREFIXES = ["ForAllValues", "ForAnyValue"]
 
+# Condition keys that are sometimes absent from the request context AND are
+# security-sensitive. Using IfExists with these keys in Allow statements can
+# bypass security controls when the key is missing.
+# Note: aws:MultiFactorAuthPresent is excluded — handled by mfa_condition_antipattern check.
+# Note: Always-present keys are in ALWAYS_PRESENT_CONDITION_KEYS.
+# Reference: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-keys.html
+SECURITY_SENSITIVE_CONDITION_KEYS = frozenset(
+    {
+        "aws:SourceIp",  # Absent when requester uses VPC endpoint
+        "aws:VpcSourceIp",  # Related to VPC context
+        "aws:SourceVpc",  # Only present with VPC endpoint
+        "aws:SourceVpce",  # Only present with VPC endpoint
+        "aws:SourceArn",  # Only for direct service principal calls
+        "aws:SourceAccount",  # Only for direct service principal calls
+        "aws:SourceOrgID",  # Only for service principal calls + org membership
+        "aws:SourceOrgPaths",  # Only for service principal calls + org membership
+        "aws:PrincipalOrgID",  # Only if principal is a member of an organization
+        "aws:PrincipalOrgPaths",  # Only if principal is a member of an organization
+        "aws:PrincipalArn",  # All signed requests only; absent for anonymous requests
+        "aws:ResourceAccount",  # Always included for most actions (has documented exceptions)
+        "aws:ResourceOrgID",  # Only if resource account is in an organization
+        "aws:ResourceOrgPaths",  # Only if resource account is in an organization
+    }
+)
+
+# Condition keys that are always present in every AWS request context.
+# Using IfExists with these keys is redundant since the key is never absent.
+# Reference: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-keys.html
+ALWAYS_PRESENT_CONDITION_KEYS = frozenset(
+    {
+        # "always included in the request context" per AWS docs
+        "aws:CurrentTime",
+        "aws:EpochTime",
+        "aws:SecureTransport",
+        "aws:ViaAWSService",
+        "aws:RequestedRegion",
+        # "included in the request context for all requests, including anonymous requests"
+        "aws:PrincipalAccount",
+        "aws:PrincipalType",
+        "aws:userid",
+    }
+)
+
 
 def normalize_operator(operator: str) -> tuple[str, str | None, str | None]:
     """
@@ -120,6 +164,37 @@ def normalize_operator(operator: str) -> tuple[str, str | None, str | None]:
             return base_op, op_type, set_prefix
 
     return operator, None, set_prefix
+
+
+def has_if_exists_suffix(operator: str) -> bool:
+    """
+    Check if a condition operator has the IfExists suffix.
+
+    Handles set operator prefixes (ForAllValues/ForAnyValue).
+    Case-sensitive for the IfExists suffix, matching AWS IAM behavior.
+
+    Args:
+        operator: Raw operator string (e.g., "StringEqualsIfExists", "ForAllValues:StringLikeIfExists")
+
+    Returns:
+        True if the operator has the IfExists suffix
+
+    Examples:
+        >>> has_if_exists_suffix("StringEqualsIfExists")
+        True
+        >>> has_if_exists_suffix("StringEquals")
+        False
+        >>> has_if_exists_suffix("ForAllValues:StringLikeIfExists")
+        True
+        >>> has_if_exists_suffix("BoolIfExists")
+        True
+    """
+    cleaned = operator
+    if ":" in operator:
+        parts = operator.split(":", 1)
+        if parts[0] in SET_OPERATOR_PREFIXES:
+            cleaned = parts[1]
+    return cleaned.endswith("IfExists")
 
 
 def translate_type(doc_type: str) -> str:
@@ -264,8 +339,7 @@ def _validate_date_value(value_str: str) -> tuple[bool, str | None]:
             if epoch > 32503680000:  # Year 3000 in seconds
                 return (
                     False,
-                    f"UNIX epoch timestamp appears unreasonably large: {value_str}. "
-                    "Expected seconds since 1970-01-01.",
+                    f"UNIX epoch timestamp appears unreasonably large: {value_str}. Expected seconds since 1970-01-01.",
                 )
             return True, None
         except (ValueError, OverflowError):

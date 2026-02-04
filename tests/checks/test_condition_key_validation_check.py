@@ -271,3 +271,136 @@ class TestTagKeyValidation:
 
         # Should NOT detect any issues - aws:RequestTag is valid for CreatePolicy
         assert len(issues) == 0
+
+
+class TestIfExistsFalsePositiveSuppression:
+    """Test that IfExists suppresses false positive condition key errors."""
+
+    @pytest.fixture
+    def check(self):
+        return ConditionKeyValidationCheck()
+
+    @pytest.fixture
+    def fetcher(self):
+        mock = MagicMock(spec=AWSServiceFetcher)
+        mock.validate_condition_key = AsyncMock()
+        return mock
+
+    @pytest.fixture
+    def config(self):
+        return CheckConfig(check_id="condition_key_validation")
+
+    @pytest.mark.asyncio
+    async def test_ifexists_suppresses_error_when_key_valid_for_some_actions(
+        self, check, fetcher, config
+    ):
+        """IfExists with key valid for some actions should not produce error."""
+
+        # CreateBucket supports RequestTag, ListBucket does not
+        async def mock_validate(action, key, resources):
+            if action == "s3:CreateBucket":
+                return ConditionKeyValidationResult(is_valid=True)
+            return ConditionKeyValidationResult(
+                is_valid=False,
+                error_message=f"Condition key '{key}' is not supported by {action}",
+            )
+
+        fetcher.validate_condition_key.side_effect = mock_validate
+
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:CreateBucket", "s3:ListBucket"],
+            Resource=["*"],
+            Condition={
+                "StringEqualsIfExists": {
+                    "aws:RequestTag/owner": "${aws:PrincipalTag/owner}"
+                }
+            },
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        # Should not have error - IfExists handles ListBucket
+        assert not any(i.issue_type == "invalid_condition_key" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_without_ifexists_reports_error_for_invalid_actions(
+        self, check, fetcher, config
+    ):
+        """Without IfExists, key invalid for any action should produce error."""
+
+        async def mock_validate(action, key, resources):
+            if action == "s3:CreateBucket":
+                return ConditionKeyValidationResult(is_valid=True)
+            return ConditionKeyValidationResult(
+                is_valid=False,
+                error_message=f"Condition key '{key}' is not supported by {action}",
+            )
+
+        fetcher.validate_condition_key.side_effect = mock_validate
+
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:CreateBucket", "s3:ListBucket"],
+            Resource=["*"],
+            Condition={
+                "StringEquals": {
+                    "aws:RequestTag/owner": "${aws:PrincipalTag/owner}"
+                }
+            },
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        # Should report error because without IfExists, key must be valid for all actions
+        assert any(i.issue_type == "invalid_condition_key" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_ifexists_still_reports_error_when_key_invalid_for_all_actions(
+        self, check, fetcher, config
+    ):
+        """IfExists does not help if key is invalid for ALL actions."""
+        fetcher.validate_condition_key.return_value = ConditionKeyValidationResult(
+            is_valid=False,
+            error_message="Condition key 'ec2:InstanceType' is not valid for s3 actions",
+        )
+
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:ListBucket", "s3:GetObject"],
+            Resource=["*"],
+            Condition={"StringEqualsIfExists": {"ec2:InstanceType": "t3.micro"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        # Should still report error - key invalid for ALL actions
+        assert any(i.issue_type == "invalid_condition_key" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_ifexists_preserves_global_key_warnings(
+        self, check, fetcher, config
+    ):
+        """IfExists suppression should still report global key warnings."""
+
+        async def mock_validate(action, key, resources):
+            if action == "s3:CreateBucket":
+                return ConditionKeyValidationResult(
+                    is_valid=True,
+                    warning_message="Global condition key warning",
+                )
+            return ConditionKeyValidationResult(
+                is_valid=False,
+                error_message=f"Not supported by {action}",
+            )
+
+        fetcher.validate_condition_key.side_effect = mock_validate
+
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:CreateBucket", "s3:ListBucket"],
+            Resource=["*"],
+            Condition={
+                "StringEqualsIfExists": {"aws:PrincipalOrgID": "o-123456789"}
+            },
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        # Should suppress invalid_condition_key but report warning
+        assert not any(i.issue_type == "invalid_condition_key" for i in issues)
+        assert any(
+            i.issue_type == "global_condition_key_with_action_specific" for i in issues
+        )

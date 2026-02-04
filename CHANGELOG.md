@@ -13,6 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.16.0] - 2026-02-05
+
+### Added
+
+- New `ifexists_condition_usage` check validating proper usage of the `IfExists` suffix on condition operators:
+  - Detects `IfExists` on security-sensitive keys in Allow statements (may bypass controls)
+  - Warns about non-negated `IfExists` weakening Deny statements
+  - Flags redundant `IfExists` on always-present keys (e.g., `aws:SecureTransport`)
+  - Optionally suggests `IfExists` for negated operators in Deny statements
+- Security-sensitive and always-present condition key constants in `condition_validators` module
+
+### Improved
+
+- `condition_key_validation`: Suppress false positive errors when `IfExists` is used with keys valid for some but not all actions in the statement
+- `condition_type_mismatch`: Detect `NullIfExists` as invalid syntax (the `Null` operator already checks for key existence)
+- `set_operator_validation`: Compound warning when `ForAllValues` is combined with `IfExists` (doubly permissive pattern)
+
+---
+
 ## [1.15.5] - 2025-01-28
 
 ### Fixed
