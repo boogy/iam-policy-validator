@@ -324,3 +324,72 @@ class TestEnhancedDateValidation:
         issues = await check.execute(statement, 0, fetcher, config)
         date_format_issues = [i for i in issues if i.issue_type == "invalid_value_format"]
         assert len(date_format_issues) == 0
+
+
+class TestNullIfExistsDetection:
+    """Test NullIfExists is detected as invalid syntax."""
+
+    @pytest.fixture
+    def check(self):
+        return ConditionTypeMismatchCheck()
+
+    @pytest.fixture
+    def fetcher(self):
+        return MagicMock(spec=AWSServiceFetcher)
+
+    @pytest.fixture
+    def config(self):
+        return CheckConfig(check_id="condition_type_mismatch")
+
+    @pytest.mark.asyncio
+    async def test_null_ifexists_is_error(self, check, fetcher, config):
+        """NullIfExists should be flagged as invalid operator."""
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:::bucket/*"],
+            Condition={"NullIfExists": {"aws:MultiFactorAuthPresent": "true"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "invalid_operator"
+        assert "NullIfExists" in issues[0].message
+        assert "does not support" in issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_null_without_ifexists_still_skipped(self, check, fetcher, config):
+        """Regular Null operator should still be skipped (no error)."""
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:::bucket/*"],
+            Condition={"Null": {"aws:MultiFactorAuthPresent": "true"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_other_ifexists_operators_still_work(self, check, fetcher, config):
+        """StringEqualsIfExists should NOT trigger NullIfExists error."""
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:::bucket/*"],
+            Condition={"StringEqualsIfExists": {"aws:SourceIp": "1.2.3.4"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        # Should not have invalid_operator issue
+        assert not any(i.issue_type == "invalid_operator" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_foranyvalue_null_ifexists_is_error(self, check, fetcher, config):
+        """ForAnyValue:NullIfExists should also be flagged."""
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:::bucket/*"],
+            Condition={"ForAnyValue:NullIfExists": {"aws:TagKeys": "true"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "invalid_operator"
