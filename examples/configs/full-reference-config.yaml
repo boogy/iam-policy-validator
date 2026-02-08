@@ -5,8 +5,8 @@
 # and their default values. Most users won't need this level of customization.
 #
 # For simpler configs, see:
-#   - examples/configs/basic-config.yaml (minimal config)
 #   - examples/configs/strict-security.yaml (production config)
+#   - examples/configs/offline-validation.yaml (air-gapped environments)
 # ============================================================================
 
 # ============================================================================
@@ -241,7 +241,7 @@ settings:
   allow_template_variables: true
 
 # ============================================================================
-# BUILT-IN CHECKS - AWS Validation (19 checks total)
+# BUILT-IN CHECKS - AWS Validation (22 checks total)
 # ============================================================================
 # These validate that policies conform to AWS requirements
 # Disable all with: settings.enable_builtin_checks: false (useful with Access Analyzer)
@@ -254,7 +254,19 @@ settings:
 # ============================================================================
 
 # ============================================================================
-# 1. SID UNIQUENESS
+# 1. POLICY STRUCTURE
+# ============================================================================
+# Validates fundamental policy structure (must run first)
+# Checks: required fields (Effect, Action/NotAction), valid values,
+# conflicting elements (Action+NotAction, Resource+NotResource, Principal+NotPrincipal)
+policy_structure:
+  enabled: true
+  severity: error
+  description: "Validates basic policy structure including required fields, valid values, and conflicting elements"
+  # ignore_patterns available - see top of file for usage examples
+
+# ============================================================================
+# 2. SID UNIQUENESS
 # ============================================================================
 sid_uniqueness:
   enabled: true
@@ -267,7 +279,7 @@ sid_uniqueness:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 2. POLICY SIZE
+# 3. POLICY SIZE
 # ============================================================================
 policy_size:
   enabled: true
@@ -290,7 +302,7 @@ policy_size:
   #   inline_role: 10240
 
 # ============================================================================
-# 3. ACTION VALIDATION
+# 4. ACTION VALIDATION
 # ============================================================================
 action_validation:
   enabled: true
@@ -299,7 +311,7 @@ action_validation:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 4. CONDITION KEY VALIDATION
+# 5. CONDITION KEY VALIDATION
 # ============================================================================
 condition_key_validation:
   enabled: true
@@ -315,7 +327,7 @@ condition_key_validation:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 5. CONDITION TYPE MISMATCH
+# 6. CONDITION TYPE MISMATCH
 # ============================================================================
 # Validate condition operator types match key types and value formats
 # Checks that:
@@ -333,7 +345,7 @@ condition_type_mismatch:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 6. SET OPERATOR VALIDATION
+# 7. SET OPERATOR VALIDATION
 # ============================================================================
 set_operator_validation:
   enabled: true
@@ -344,7 +356,21 @@ set_operator_validation:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 7. MFA CONDITION ANTIPATTERN
+# 8. IFEXISTS CONDITION USAGE
+# ============================================================================
+# Validates IfExists condition operator usage
+# Detects patterns where IfExists operators may silently skip evaluation:
+#   - IfExists on required condition keys (e.g., aws:MultiFactorAuthPresent with IfExists
+#     allows unauthenticated access when MFA key is absent)
+#   - IfExists that weakens security controls
+ifexists_condition_usage:
+  enabled: true
+  severity: warning
+  description: "Validates IfExists condition operator usage and detects weakened security controls"
+  # ignore_patterns available - see top of file for usage examples
+
+# ============================================================================
+# 9. MFA CONDITION ANTIPATTERN
 # ============================================================================
 # Detect MFA condition anti-patterns
 # Identifies dangerous MFA-related patterns that may not enforce MFA as intended:
@@ -359,7 +385,7 @@ mfa_condition_antipattern:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 8. RESOURCE VALIDATION
+# 10. RESOURCE VALIDATION
 # ============================================================================
 resource_validation:
   enabled: true
@@ -375,7 +401,7 @@ resource_validation:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 9. PRINCIPAL VALIDATION
+# 11. PRINCIPAL VALIDATION
 # ============================================================================
 # Validates Principal elements in resource-based policies
 # Applies to: S3 buckets, SNS topics, SQS queues, Lambda functions, etc.
@@ -544,7 +570,7 @@ principal_validation:
   #           description: "Never allow HTTP (must use HTTPS)"
 
 # ============================================================================
-# 10. TRUST POLICY VALIDATION
+# 12. TRUST POLICY VALIDATION
 # ============================================================================
 # Validates trust policies (role assumption policies) for security best practices
 # Ensures assume role actions have appropriate principals and conditions
@@ -585,7 +611,7 @@ trust_policy_validation:
   #       - "SAML:aud"
 
 # ============================================================================
-# 11. POLICY TYPE VALIDATION
+# 13. POLICY TYPE VALIDATION
 # ============================================================================
 # Validate policy type requirements (new in v1.3.0)
 # Ensures policies conform to the declared type (IDENTITY vs RESOURCE_POLICY)
@@ -601,7 +627,7 @@ policy_type_validation:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 12. ACTION-RESOURCE MATCHING
+# 14. ACTION-RESOURCE MATCHING
 # ============================================================================
 # Resource-Action Matching Check (inspired by Parliament's RESOURCE_MISMATCH)
 # Validates that resources in policy statements match the required resource types for actions
@@ -624,7 +650,7 @@ action_resource_matching:
   #     action: "s3:GetObject"
 
 # ============================================================================
-# Security Best Practices Checks (6 checks)
+# Security Best Practices Checks (7 checks)
 # ============================================================================
 # Individual checks for security anti-patterns
 #
@@ -644,7 +670,7 @@ action_resource_matching:
 # ============================================================================
 
 # ============================================================================
-# 13. WILDCARD ACTION
+# 15. WILDCARD ACTION
 # ============================================================================
 # Check for wildcard actions (Action: "*")
 # Flags statements that allow all actions
@@ -680,7 +706,7 @@ wildcard_action:
   #     resource: "arn:aws:s3:::.*-tfstate.*"
 
 # ============================================================================
-# 14. WILDCARD RESOURCE
+# 16. WILDCARD RESOURCE
 # ============================================================================
 # Check for wildcard resources (Resource: "*")
 # Flags statements that apply to all resources
@@ -763,7 +789,7 @@ wildcard_resource:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 15. FULL WILDCARD (CRITICAL)
+# 17. FULL WILDCARD (CRITICAL)
 # ============================================================================
 # Check for BOTH Action: "*" AND Resource: "*" (CRITICAL)
 # This grants full administrative access (AdministratorAccess equivalent)
@@ -784,7 +810,7 @@ full_wildcard:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 16. SERVICE WILDCARD
+# 18. SERVICE WILDCARD
 # ============================================================================
 # Check for service-level wildcards (e.g., "iam:*", "s3:*", "ec2:*")
 # These grant ALL permissions for a service (often too permissive)
@@ -803,7 +829,7 @@ service_wildcard:
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
-# 17. SENSITIVE ACTION
+# 19. SENSITIVE ACTION
 # ============================================================================
 # Check for sensitive actions without IAM conditions
 # Sensitive actions: credential exposure, data access, privilege escalation, resource exposure
@@ -893,7 +919,7 @@ sensitive_action:
   #       - "^iam:List.*"   # All IAM List actions
 
 # ============================================================================
-# 18. ACTION CONDITION ENFORCEMENT
+# 20. ACTION CONDITION ENFORCEMENT
 # ============================================================================
 # Enforce specific IAM condition requirements for actions
 #
@@ -1026,7 +1052,7 @@ action_condition_enforcement:
 #
 #
 # ============================================================================
-# 19. NOT_ACTION_NOT_RESOURCE
+# 21. NOT_ACTION_NOT_RESOURCE
 # ============================================================================
 # Check for dangerous NotAction/NotResource patterns in IAM policies
 #
@@ -1057,6 +1083,25 @@ not_action_not_resource:
   #   # Ignore NotAction Deny patterns in permission boundary policies
   #   - filepath: ".*permission-boundary.*"
   #     action: ".*"
+
+# ============================================================================
+# 22. NOT_PRINCIPAL VALIDATION
+# ============================================================================
+# Check for NotPrincipal usage patterns in IAM policies
+#
+# NotPrincipal is a powerful but dangerous IAM feature. When used with Allow,
+# it grants access to ALL principals EXCEPT those listed - often unintended.
+# When used with Deny, it exempts listed principals from the denial.
+#
+# Patterns detected:
+#   1. NotPrincipal with Effect: Allow - grants broad access by exclusion
+#   2. NotPrincipal usage in resource policies - may expose resources
+#   3. NotPrincipal without restrictive conditions - missing safeguards
+not_principal_validation:
+  enabled: true
+  severity: warning
+  description: "Checks for NotPrincipal usage patterns that may unintentionally grant broad access"
+  # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
 # CUSTOM CHECKS - Business Rules

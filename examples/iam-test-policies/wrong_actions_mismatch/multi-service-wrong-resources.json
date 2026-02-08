@@ -1,0 +1,65 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EC2TerminateInstancesWithVolumeARN",
+      "Effect": "Allow",
+      "Action": "ec2:TerminateInstances",
+      "Resource": "arn:aws:ec2:us-east-1:123456789012:volume/*"
+    },
+    {
+      "Sid": "EC2DeleteVolumeWithInstanceARN",
+      "Effect": "Allow",
+      "Action": "ec2:DeleteVolume",
+      "Resource": "arn:aws:ec2:us-east-1:123456789012:instance/*"
+    },
+    {
+      "Sid": "EC2CreateSnapshotWithInstanceARN",
+      "Effect": "Allow",
+      "Action": "ec2:CreateSnapshot",
+      "Resource": "arn:aws:ec2:us-east-1:123456789012:instance/*"
+    },
+    {
+      "Sid": "EC2AttachVolumeWithSnapshotARN",
+      "Effect": "Allow",
+      "Action": "ec2:AttachVolume",
+      "Resource": "arn:aws:ec2:us-east-1:123456789012:snapshot/*"
+    },
+    {
+      "Sid": "DynamoDBGetItemWithIndexARN",
+      "Effect": "Allow",
+      "Action": "dynamodb:GetItem",
+      "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/MyTable/index/*"
+    },
+    {
+      "Sid": "DynamoDBQueryWithStreamARN",
+      "Effect": "Allow",
+      "Action": "dynamodb:Query",
+      "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/MyTable/stream/*"
+    },
+    {
+      "Sid": "DynamoDBDeleteTableWithBackupARN",
+      "Effect": "Allow",
+      "Action": "dynamodb:DeleteTable",
+      "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/MyTable/backup/*"
+    },
+    {
+      "Sid": "LambdaInvokeWithLayerARN",
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:layer:my-layer:*"
+    },
+    {
+      "Sid": "LambdaGetLayerWithFunctionARN",
+      "Effect": "Allow",
+      "Action": "lambda:GetLayerVersion",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:my-function"
+    },
+    {
+      "Sid": "LambdaDeleteWithEventSourceARN",
+      "Effect": "Allow",
+      "Action": "lambda:DeleteFunction",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:event-source-mapping:*"
+    }
+  ]
+}

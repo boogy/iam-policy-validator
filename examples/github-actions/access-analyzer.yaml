@@ -1,0 +1,43 @@
+# Use AWS IAM Access Analyzer alongside built-in checks.
+# Requires an IAM role with access-analyzer:ValidatePolicy permissions.
+name: Access Analyzer Validation
+
+on:
+  pull_request:
+    paths:
+      - "policies/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write # OIDC auth
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Validate with Access Analyzer + built-in checks
+        uses: boogy/iam-policy-auditor@v1
+        with:
+          path: policies/
+          use-access-analyzer: true
+          run-all-checks: true
+          post-comment: true
+          create-review: true
+          fail-on-warnings: true
+
+      # Optional: block dangerous actions
+      # - name: Block dangerous actions
+      #   uses: boogy/iam-policy-auditor@v1
+      #   with:
+      #     path: policies/
+      #     use-access-analyzer: true
+      #     check-access-not-granted: "iam:CreateAccessKey iam:DeleteUser s3:DeleteBucket"
+      #     fail-on-warnings: true

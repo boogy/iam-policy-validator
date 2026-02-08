@@ -4,8 +4,9 @@ Example custom check: Cross-Account ExternalId Validation
 This check enforces that cross-account assume role permissions include an
 ExternalId condition to prevent the "confused deputy" security problem.
 
-This demonstrates a custom check for TRUST POLICIES that validates principal
-and condition relationships - something the built-in checks don't cover.
+This demonstrates a custom check for TRUST POLICIES with organization-specific
+logic (trusted account allowlisting) that goes beyond the built-in
+trust_policy_validation check.
 
 The Confused Deputy Problem:
 When your AWS account creates a role that can be assumed by a third-party
@@ -44,9 +45,7 @@ class CrossAccountExternalIdCheck(PolicyCheck):
     """Ensures cross-account sts:AssumeRole has ExternalId condition."""
 
     check_id: ClassVar[str] = "cross_account_external_id"
-    description: ClassVar[str] = (
-        "Ensures cross-account assume role permissions include ExternalId"
-    )
+    description: ClassVar[str] = "Ensures cross-account assume role permissions include ExternalId"
     default_severity: ClassVar[str] = "error"
 
     async def execute(
@@ -93,13 +92,7 @@ class CrossAccountExternalIdCheck(PolicyCheck):
                         "Add a StringEquals condition for sts:ExternalId with a unique "
                         "secret shared between you and the trusted party"
                     ),
-                    example=(
-                        '"Condition": {\n'
-                        '  "StringEquals": {\n'
-                        '    "sts:ExternalId": "unique-secret-id"\n'
-                        '  }\n'
-                        '}'
-                    ),
+                    example=('"Condition": {\n  "StringEquals": {\n    "sts:ExternalId": "unique-secret-id"\n  }\n}'),
                     line_number=statement.line_number,
                     field_name="condition",
                     documentation_url="https://docs.aws.amazon.com/IAM/latest/UserGuide/confused-deputy.html",
@@ -112,10 +105,7 @@ class CrossAccountExternalIdCheck(PolicyCheck):
         """Check if statement includes sts:AssumeRole action."""
         actions = statement.get_actions()
         assume_role_patterns = ["sts:AssumeRole", "sts:*", "*"]
-        return any(
-            action in assume_role_patterns or action.startswith("sts:AssumeRole")
-            for action in actions
-        )
+        return any(action in assume_role_patterns or action.startswith("sts:AssumeRole") for action in actions)
 
     def _extract_account_from_principal(self, principal: Any) -> str | None:
         """Extract AWS account ID from principal."""

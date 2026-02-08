@@ -22,6 +22,7 @@ Let me clarify a few details to generate the most secure policy:
 4. **Region/Account**: Should we scope to specific region/account?
 
 For this example, I'll assume:
+
 - S3 bucket: `my-app-data-bucket`
 - DynamoDB table: `my-app-users`
 - Lambda function: `my-data-processor`
@@ -69,10 +70,7 @@ Input: {"service": "dynamodb"}
     {
       "Sid": "S3ReadAccess",
       "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:GetObjectVersion"
-      ],
+      "Action": ["s3:GetObject", "s3:GetObjectVersion"],
       "Resource": "arn:aws:s3:::my-app-data-bucket/*",
       "Condition": {
         "StringEqual": {
@@ -83,10 +81,7 @@ Input: {"service": "dynamodb"}
     {
       "Sid": "S3ListBucket",
       "Effect": "Allow",
-      "Action": [
-        "s3:ListBucket",
-        "s3:GetBucketLocation"
-      ],
+      "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
       "Resource": "arn:aws:s3:::my-app-data-bucket"
     },
     {
@@ -124,24 +119,28 @@ Input: {
 ```
 
 **Validation Results**:
+
 - **Valid**: true
 - **Issues**: 0
 
 ### Security Analysis
 
 **What this policy allows:**
+
 - Write Lambda execution logs to the specific log group
 - Read objects from the S3 bucket (with TLS required)
 - List the S3 bucket contents
 - Read/write items in the DynamoDB table and its indexes
 
 **Security measures in place:**
+
 1. **Resource scoping**: All resources are explicitly named, no wildcards
 2. **TLS enforcement**: S3 access requires secure transport
 3. **Account scoping**: DynamoDB access restricted to same account
 4. **Log isolation**: CloudWatch logs scoped to specific function
 
 **What this policy does NOT allow:**
+
 - Access to other S3 buckets
 - Access to other DynamoDB tables
 - Deleting the S3 bucket or DynamoDB table
@@ -153,16 +152,19 @@ Input: {
 1. **Attach to Lambda execution role**: Create an IAM role with this policy and the AWS managed `AWSLambdaBasicExecutionRole` for X-Ray tracing if needed.
 
 2. **Trust policy needed**: The role also needs a trust policy:
+
 ```json
 {
   "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {
-      "Service": "lambda.amazonaws.com"
-    },
-    "Action": "sts:AssumeRole"
-  }]
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "lambda.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
 }
 ```
 
@@ -181,6 +183,7 @@ If the user had asked "just give me full access", here's how to respond:
 > I can't generate a policy with `s3:*` or `dynamodb:*` on all resources as this violates least-privilege principles and would fail security validation.
 >
 > However, I can help you with:
+>
 > 1. **List your specific needs** - Which buckets/tables? What operations?
 > 2. **Use templates** - I have secure templates for common patterns
 > 3. **Time-boxed access** - If you need broad access temporarily for debugging, I can add time-based conditions
