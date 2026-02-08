@@ -90,9 +90,7 @@ class ValidationContext:
             config_path=self.config_path,
         )
 
-    async def validate_json(
-        self, policy_json: dict, policy_name: str = "inline-policy"
-    ) -> PolicyValidationResult:
+    async def validate_json(self, policy_json: dict, policy_name: str = "inline-policy") -> PolicyValidationResult:
         """
         Validate an IAM policy from a Python dictionary.
 
@@ -123,9 +121,7 @@ class ValidationContext:
             )
         )
 
-    def generate_report(
-        self, results: list[PolicyValidationResult], format: str = "console"
-    ) -> str:
+    def generate_report(self, results: list[PolicyValidationResult], format: str = "console") -> str:
         """
         Generate a report from validation results.
 

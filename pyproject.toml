@@ -84,7 +84,7 @@ check_untyped_defs = false
 disallow_untyped_defs = false
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py310"
 extend-exclude = ["examples/**/*.py"]  # Don't lint examples
 

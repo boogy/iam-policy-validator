@@ -160,9 +160,7 @@ def _check_all_of_pattern(
             f"Policy grants [{action_list}] across statements - enables privilege escalation. Found: {stmt_summary}",
         )
         # Replace placeholders if present in custom message
-        message = message_template.replace("{actions}", f"`{action_list}`").replace(
-            "{statements}", stmt_summary
-        )
+        message = message_template.replace("{actions}", f"`{action_list}`").replace("{statements}", stmt_summary)
 
         # Use custom suggestion if provided in item_config, otherwise use default
         suggestion = item_config.get(

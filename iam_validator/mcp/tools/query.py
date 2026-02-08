@@ -52,10 +52,7 @@ async def query_service_actions(
             # Validate access level
             valid_levels = ["read", "write", "list", "tagging", "permissions-management"]
             if access_level.lower() not in valid_levels:
-                raise ValueError(
-                    f"Invalid access level '{access_level}'. "
-                    f"Must be one of: {', '.join(valid_levels)}"
-                )
+                raise ValueError(f"Invalid access level '{access_level}'. Must be one of: {', '.join(valid_levels)}")
             return await get_actions_by_access_level(_fetcher, service, access_level)  # type: ignore
 
         # Get all actions (no filter)
@@ -68,9 +65,7 @@ async def query_service_actions(
             await _fetcher.__aexit__(None, None, None)
 
 
-async def query_action_details(
-    action: str, fetcher: AWSServiceFetcher | None = None
-) -> ActionDetails | None:
+async def query_action_details(action: str, fetcher: AWSServiceFetcher | None = None) -> ActionDetails | None:
     """Get detailed information about a specific action.
 
     Args:
@@ -120,9 +115,7 @@ async def query_action_details(
             await _fetcher.__aexit__(None, None, None)
 
 
-async def expand_wildcard_action(
-    pattern: str, fetcher: AWSServiceFetcher | None = None
-) -> list[str]:
+async def expand_wildcard_action(pattern: str, fetcher: AWSServiceFetcher | None = None) -> list[str]:
     """Expand wildcards like "s3:Get*" to specific actions.
 
     Args:
@@ -186,9 +179,7 @@ async def query_condition_keys(service: str, fetcher: AWSServiceFetcher | None =
             await _fetcher.__aexit__(None, None, None)
 
 
-async def query_arn_formats(
-    service: str, fetcher: AWSServiceFetcher | None = None
-) -> list[dict[str, Any]]:
+async def query_arn_formats(service: str, fetcher: AWSServiceFetcher | None = None) -> list[dict[str, Any]]:
     """Get ARN formats for a service's resources.
 
     Args:
@@ -299,12 +290,7 @@ async def list_sensitive_actions(category: str | None = None) -> list[str]:
     """
     if category is None:
         # Return all sensitive actions
-        all_actions = (
-            CREDENTIAL_EXPOSURE_ACTIONS
-            | DATA_ACCESS_ACTIONS
-            | PRIV_ESC_ACTIONS
-            | RESOURCE_EXPOSURE_ACTIONS
-        )
+        all_actions = CREDENTIAL_EXPOSURE_ACTIONS | DATA_ACCESS_ACTIONS | PRIV_ESC_ACTIONS | RESOURCE_EXPOSURE_ACTIONS
         return sorted(all_actions)
 
     # Normalize category name
@@ -321,9 +307,7 @@ async def list_sensitive_actions(category: str | None = None) -> list[str]:
 
     if category_lower not in category_map:
         valid_categories = [k for k in category_map.keys() if not k.endswith("_esc")]
-        raise ValueError(
-            f"Invalid category '{category}'. Must be one of: {', '.join(valid_categories)}"
-        )
+        raise ValueError(f"Invalid category '{category}'. Must be one of: {', '.join(valid_categories)}")
 
     return sorted(category_map[category_lower])
 

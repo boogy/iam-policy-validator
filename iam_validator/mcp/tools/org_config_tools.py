@@ -167,8 +167,7 @@ async def check_org_compliance_impl(
     result = await validate_policy(policy=policy, use_org_config=True)
 
     violations = [
-        {"type": issue.issue_type, "message": issue.message, "severity": issue.severity}
-        for issue in result.issues
+        {"type": issue.issue_type, "message": issue.message, "severity": issue.severity} for issue in result.issues
     ]
 
     suggestions = [issue.suggestion for issue in result.issues if issue.suggestion]

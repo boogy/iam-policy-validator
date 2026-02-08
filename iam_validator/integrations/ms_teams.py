@@ -86,24 +86,17 @@ class MSTeamsIntegration:
 
         # Must be HTTPS for security
         if not webhook_url.startswith("https://"):
-            logger.warning(
-                f"Webhook URL must use HTTPS: {webhook_url[:50]}... "
-                "(MS Teams webhooks require HTTPS)"
-            )
+            logger.warning(f"Webhook URL must use HTTPS: {webhook_url[:50]}... (MS Teams webhooks require HTTPS)")
             return None
 
         # Basic URL validation - should contain office.com or webhook.office365.com
         if "webhook.office" not in webhook_url.lower():
-            logger.warning(
-                f"Webhook URL doesn't appear to be a valid MS Teams webhook: {webhook_url[:50]}..."
-            )
+            logger.warning(f"Webhook URL doesn't appear to be a valid MS Teams webhook: {webhook_url[:50]}...")
             # Still allow it, but warn
 
         # Length check to prevent extremely long URLs
         if len(webhook_url) > 2048:
-            logger.warning(
-                f"Webhook URL is unusually long ({len(webhook_url)} chars), may be invalid"
-            )
+            logger.warning(f"Webhook URL is unusually long ({len(webhook_url)} chars), may be invalid")
             return None
 
         # Ensure only ASCII characters

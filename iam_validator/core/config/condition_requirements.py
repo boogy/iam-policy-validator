@@ -38,9 +38,7 @@ IAM_PASS_ROLE_REQUIREMENT: Final[dict[str, Any]] = {
     "required_conditions": [
         {
             "condition_key": "iam:PassedToService",
-            "description": (
-                "Restrict which AWS services can assume the passed role to prevent privilege escalation"
-            ),
+            "description": ("Restrict which AWS services can assume the passed role to prevent privilege escalation"),
             "example": (
                 '"Condition": {\n'
                 '  "StringEquals": {\n'

@@ -77,9 +77,7 @@ def normalize_policy(policy: IAMPolicy) -> IAMPolicy:
         action = [stmt.action] if isinstance(stmt.action, str) else stmt.action
         resource = [stmt.resource] if isinstance(stmt.resource, str) else stmt.resource
         not_action = [stmt.not_action] if isinstance(stmt.not_action, str) else stmt.not_action
-        not_resource = (
-            [stmt.not_resource] if isinstance(stmt.not_resource, str) else stmt.not_resource
-        )
+        not_resource = [stmt.not_resource] if isinstance(stmt.not_resource, str) else stmt.not_resource
 
         # Create a new statement with normalized fields
         # Use capitalized field names (aliases) for Pydantic model construction
@@ -168,9 +166,7 @@ def extract_resources(policy: IAMPolicy) -> list[str]:
 
         # Handle NotResource field
         if stmt.not_resource:
-            not_resources = (
-                [stmt.not_resource] if isinstance(stmt.not_resource, str) else stmt.not_resource
-            )
+            not_resources = [stmt.not_resource] if isinstance(stmt.not_resource, str) else stmt.not_resource
             resources.update(not_resources)
 
     return sorted(resources)

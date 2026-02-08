@@ -62,8 +62,13 @@ def get_sensitive_actions_by_categories(
     return get_sensitive_actions(categories)
 
 
-# Export for backward compatibility
-DEFAULT_SENSITIVE_ACTIONS = _get_default_sensitive_actions()
+def __getattr__(name: str) -> frozenset[str]:
+    """Lazy module-level attribute access for backward compatibility."""
+    if name == "DEFAULT_SENSITIVE_ACTIONS":
+        value = _get_default_sensitive_actions()
+        globals()["DEFAULT_SENSITIVE_ACTIONS"] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def check_sensitive_actions(
@@ -115,14 +120,10 @@ def check_sensitive_actions(
     sensitive_patterns_config = config.config.get("sensitive_action_patterns")
 
     # Check sensitive_actions (exact matches)
-    actions_match, actions_matched = check_actions_config(
-        filtered_actions, sensitive_actions_config, default_actions
-    )
+    actions_match, actions_matched = check_actions_config(filtered_actions, sensitive_actions_config, default_actions)
 
     # Check sensitive_action_patterns (regex patterns)
-    patterns_match, patterns_matched = check_patterns_config(
-        filtered_actions, sensitive_patterns_config
-    )
+    patterns_match, patterns_matched = check_patterns_config(filtered_actions, sensitive_patterns_config)
 
     # Combine results - if either matched, we consider it sensitive
     is_sensitive = actions_match or patterns_match
@@ -144,9 +145,7 @@ def check_sensitive_actions(
     return is_sensitive, matched_actions
 
 
-def check_actions_config(
-    actions: list[str], config, default_actions: frozenset[str]
-) -> tuple[bool, list[str]]:
+def check_actions_config(actions: list[str], config, default_actions: frozenset[str]) -> tuple[bool, list[str]]:
     """
     Check actions against sensitive_actions configuration.
 

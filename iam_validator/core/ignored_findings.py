@@ -162,7 +162,9 @@ class IgnoredFindingsStore:
 
         if self._comment_id:
             # Update existing comment
-            result = await self.github._update_comment(self._comment_id, body)
+            # TODO: Replace with public method once GitHubIntegration exposes
+            # a public update_comment(comment_id, body) method.
+            result = await self.github._update_comment(self._comment_id, body)  # noqa: SLF001
             if result:
                 logger.debug("Updated ignored findings storage comment")
                 return True
@@ -289,8 +291,7 @@ class IgnoredFindingsStore:
                 # Validate version
                 if data.get("version", 0) > STORAGE_VERSION:
                     logger.warning(
-                        f"Storage version {data.get('version')} is newer than "
-                        f"supported version {STORAGE_VERSION}"
+                        f"Storage version {data.get('version')} is newer than supported version {STORAGE_VERSION}"
                     )
                 return data
             except json.JSONDecodeError as e:
@@ -358,9 +359,7 @@ class IgnoredFindingsStore:
             comment = await self.github.get_comment_by_id(finding.reply_comment_id)
             if not comment:
                 # Comment was deleted - ignore is invalid
-                logger.warning(
-                    f"Reply comment {finding.reply_comment_id} for finding {finding_id} was deleted"
-                )
+                logger.warning(f"Reply comment {finding.reply_comment_id} for finding {finding_id} was deleted")
                 invalid_ids.append(finding_id)
                 continue
 
@@ -368,8 +367,7 @@ class IgnoredFindingsStore:
             author = comment.get("user", {}).get("login", "").lower()
             if author != finding.ignored_by.lower():
                 logger.warning(
-                    f"Author mismatch for finding {finding_id}: "
-                    f"stored={finding.ignored_by}, actual={author}"
+                    f"Author mismatch for finding {finding_id}: stored={finding.ignored_by}, actual={author}"
                 )
                 invalid_ids.append(finding_id)
 

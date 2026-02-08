@@ -21,6 +21,7 @@ Example usage:
         check_config = config.get_check_config("wildcard_action")
 """
 
+import threading
 from typing import Any
 
 import yaml
@@ -41,6 +42,7 @@ class SessionConfigManager:
 
     _session_config: ValidatorConfig | None = None
     _config_source: str = "none"
+    _lock: threading.Lock = threading.Lock()
 
     @classmethod
     def set_config(cls, config_dict: dict[str, Any], source: str = "session") -> ValidatorConfig:
@@ -53,9 +55,10 @@ class SessionConfigManager:
         Returns:
             The created ValidatorConfig instance
         """
-        cls._session_config = ValidatorConfig(config_dict, use_defaults=True)
-        cls._config_source = source
-        return cls._session_config
+        with cls._lock:
+            cls._session_config = ValidatorConfig(config_dict, use_defaults=True)
+            cls._config_source = source
+            return cls._session_config
 
     @classmethod
     def get_config(cls) -> ValidatorConfig | None:
@@ -64,7 +67,8 @@ class SessionConfigManager:
         Returns:
             Current ValidatorConfig, or None if not set
         """
-        return cls._session_config
+        with cls._lock:
+            return cls._session_config
 
     @classmethod
     def get_config_source(cls) -> str:
@@ -73,7 +77,8 @@ class SessionConfigManager:
         Returns:
             Source identifier: "session", "yaml", "file", or "none"
         """
-        return cls._config_source
+        with cls._lock:
+            return cls._config_source
 
     @classmethod
     def clear_config(cls) -> bool:
@@ -82,10 +87,11 @@ class SessionConfigManager:
         Returns:
             True if config was cleared, False if no config was set
         """
-        had_config = cls._session_config is not None
-        cls._session_config = None
-        cls._config_source = "none"
-        return had_config
+        with cls._lock:
+            had_config = cls._session_config is not None
+            cls._session_config = None
+            cls._config_source = "none"
+            return had_config
 
     @classmethod
     def has_config(cls) -> bool:
@@ -94,7 +100,8 @@ class SessionConfigManager:
         Returns:
             True if config is set, False otherwise
         """
-        return cls._session_config is not None
+        with cls._lock:
+            return cls._session_config is not None
 
     @classmethod
     def load_from_yaml(cls, yaml_content: str) -> tuple[ValidatorConfig, list[str]]:
@@ -160,7 +167,8 @@ class SessionConfigManager:
 
         yaml_content = path.read_text()
         config, warnings = cls.load_from_yaml(yaml_content)
-        cls._config_source = "file"
+        with cls._lock:
+            cls._config_source = "file"
         return config, warnings
 
 
@@ -224,6 +232,7 @@ class CustomInstructionsManager:
 
     _custom_instructions: str | None = None
     _instructions_source: str = "none"
+    _lock: threading.Lock = threading.Lock()
 
     @classmethod
     def set_instructions(cls, instructions: str, source: str = "api") -> None:
@@ -233,9 +242,10 @@ class CustomInstructionsManager:
             instructions: Custom instructions text (markdown supported)
             source: Source identifier ("api", "env", "file", "config")
         """
-        stripped = instructions.strip() if instructions else ""
-        cls._custom_instructions = stripped if stripped else None
-        cls._instructions_source = source if cls._custom_instructions else "none"
+        with cls._lock:
+            stripped = instructions.strip() if instructions else ""
+            cls._custom_instructions = stripped if stripped else None
+            cls._instructions_source = source if cls._custom_instructions else "none"
 
     @classmethod
     def get_instructions(cls) -> str | None:
@@ -244,7 +254,8 @@ class CustomInstructionsManager:
         Returns:
             Custom instructions string, or None if not set
         """
-        return cls._custom_instructions
+        with cls._lock:
+            return cls._custom_instructions
 
     @classmethod
     def get_source(cls) -> str:
@@ -253,7 +264,8 @@ class CustomInstructionsManager:
         Returns:
             Source identifier: "api", "env", "file", "config", or "none"
         """
-        return cls._instructions_source
+        with cls._lock:
+            return cls._instructions_source
 
     @classmethod
     def clear_instructions(cls) -> bool:
@@ -262,10 +274,11 @@ class CustomInstructionsManager:
         Returns:
             True if instructions were cleared, False if none were set
         """
-        had_instructions = cls._custom_instructions is not None
-        cls._custom_instructions = None
-        cls._instructions_source = "none"
-        return had_instructions
+        with cls._lock:
+            had_instructions = cls._custom_instructions is not None
+            cls._custom_instructions = None
+            cls._instructions_source = "none"
+            return had_instructions
 
     @classmethod
     def has_instructions(cls) -> bool:
@@ -274,7 +287,8 @@ class CustomInstructionsManager:
         Returns:
             True if instructions are set, False otherwise
         """
-        return cls._custom_instructions is not None
+        with cls._lock:
+            return cls._custom_instructions is not None
 
     @classmethod
     def load_from_env(cls) -> bool:

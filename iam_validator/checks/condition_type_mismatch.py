@@ -22,9 +22,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
     """Check for type mismatches between operators, keys, and values."""
 
     check_id: ClassVar[str] = "condition_type_mismatch"
-    description: ClassVar[str] = (
-        "Validates condition operator types match key types and value formats"
-    )
+    description: ClassVar[str] = "Validates condition operator types match key types and value formats"
     default_severity: ClassVar[str] = "error"
 
     async def execute(
@@ -99,28 +97,24 @@ class ConditionTypeMismatchCheck(PolicyCheck):
             # Check each condition key
             for condition_key, condition_values in conditions.items():
                 # Normalize values to a list
-                values = (
-                    condition_values if isinstance(condition_values, list) else [condition_values]
-                )
+                values = condition_values if isinstance(condition_values, list) else [condition_values]
 
                 # Get the expected type for this condition key
-                key_type = await self._get_condition_key_type(
-                    fetcher, condition_key, actions, resources
-                )
+                key_type = await self._get_condition_key_type(fetcher, condition_key, actions, resources)
 
                 if key_type is not None:
                     # Normalize the key type
                     key_type = translate_type(key_type)
-                    operator_type = translate_type(operator_type)
+                    translated_type = translate_type(operator_type)
 
                     # Special case: String operators with ARN types (usable but not recommended)
-                    if operator_type == "String" and key_type == "ARN":
+                    if translated_type == "String" and key_type == "ARN":
                         issues.append(
                             ValidationIssue(
                                 severity="warning",
                                 message=(
                                     f"Type mismatch (usable but not recommended): Operator `{operator}` expects "
-                                    f"`{operator_type}` values, but condition key `{condition_key}` is type `{key_type}`. "
+                                    f"`{translated_type}` values, but condition key `{condition_key}` is type `{key_type}`. "
                                     f"Consider using an ARN-specific operator like `ArnEquals` or `ArnLike` instead."
                                 ),
                                 statement_sid=statement_sid,
@@ -131,12 +125,12 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                             )
                         )
                     # Check if operator type matches key type
-                    elif not self._types_compatible(operator_type, key_type):
+                    elif not self._types_compatible(translated_type, key_type):
                         issues.append(
                             ValidationIssue(
                                 severity=self.get_severity(config),
                                 message=(
-                                    f"Type mismatch: Operator `{operator}` expects `{operator_type}` values, "
+                                    f"Type mismatch: Operator `{operator}` expects `{translated_type}` values, "
                                     f"but condition key `{condition_key}` is type `{key_type}`."
                                 ),
                                 statement_sid=statement_sid,
@@ -154,9 +148,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                         issues.append(
                             ValidationIssue(
                                 severity=self.get_severity(config),
-                                message=(
-                                    f"Invalid value format for condition key `{condition_key}`: {error_msg}"
-                                ),
+                                message=(f"Invalid value format for condition key `{condition_key}`: {error_msg}"),
                                 statement_sid=statement_sid,
                                 statement_index=statement_idx,
                                 issue_type="invalid_value_format",
@@ -169,9 +161,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                 # Operator-specific value validation: runs when key type is unknown
                 # OR when key type doesn't match operator type (avoids duplicate findings
                 # since validate_value_for_type already covers matching types)
-                if key_type is None or key_type != translate_type(
-                    CONDITION_OPERATORS.get(base_operator, "")
-                ):
+                if key_type is None or key_type != translate_type(CONDITION_OPERATORS.get(base_operator, "")):
                     operator_issues = self._validate_operator_value_format(
                         base_operator,
                         operator,
@@ -235,10 +225,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                     action_detail = service_detail.actions[action_name]
 
                     # For action-specific keys, we need to check the service condition keys list
-                    if (
-                        action_detail.action_condition_keys
-                        and condition_key in action_detail.action_condition_keys
-                    ):
+                    if action_detail.action_condition_keys and condition_key in action_detail.action_condition_keys:
                         if condition_key in service_detail.condition_keys:
                             condition_key_obj = service_detail.condition_keys[condition_key]
                             if condition_key_obj.types:
@@ -256,9 +243,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                                 if condition_key in resource_type.condition_keys:
                                     # Resource condition keys reference service condition keys
                                     if condition_key in service_detail.condition_keys:
-                                        condition_key_obj = service_detail.condition_keys[
-                                            condition_key
-                                        ]
+                                        condition_key_obj = service_detail.condition_keys[condition_key]
                                         if condition_key_obj.types:
                                             return condition_key_obj.types[0]
 

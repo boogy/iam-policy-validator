@@ -284,7 +284,7 @@ Common `issue_type` values:
 | `trust_policy_validation.py`      | `trust_policy_validation`      | Trust policy rules + confused deputy |
 | `not_principal_validation.py`     | `not_principal_validation`     | NotPrincipal usage patterns          |
 | `not_action_not_resource.py`      | `not_action_not_resource`      | NotAction/NotResource detection      |
-| `mfa_condition_check.py`          | `mfa_condition_check`          | MFA anti-patterns                    |
+| `mfa_condition_check.py`          | `mfa_condition_antipattern`    | MFA anti-patterns                    |
 | `set_operator_validation.py`      | `set_operator_validation`      | ForAllValues usage                   |
 | `action_resource_matching.py`     | `action_resource_matching`     | Action-resource type match           |
 

@@ -153,11 +153,7 @@ class AccessAnalyzerResult:
     @property
     def warning_count(self) -> int:
         """Count of WARNING and SECURITY_WARNING findings."""
-        return sum(
-            1
-            for f in self.findings
-            if f.finding_type in (FindingType.WARNING, FindingType.SECURITY_WARNING)
-        )
+        return sum(1 for f in self.findings if f.finding_type in (FindingType.WARNING, FindingType.SECURITY_WARNING))
 
     @property
     def suggestion_count(self) -> int:
@@ -510,8 +506,7 @@ class AccessAnalyzerValidator:
                             )
                         elif "actions" not in config:
                             self.logger.warning(
-                                f"access_not_granted configuration missing 'actions' "
-                                f"for {policy_file}, skipping check"
+                                f"access_not_granted configuration missing 'actions' for {policy_file}, skipping check"
                             )
                         else:
                             check_result = self.check_access_not_granted(
@@ -529,15 +524,12 @@ class AccessAnalyzerValidator:
                         # Validate configuration structure
                         if not isinstance(no_new_access_config, dict):
                             self.logger.warning(
-                                f"Invalid no_new_access configuration for {policy_file}: "
-                                "expected dict, skipping check"
+                                f"Invalid no_new_access configuration for {policy_file}: expected dict, skipping check"
                             )
                         else:
                             existing_policies = no_new_access_config.get("existing_policies", {})
                             if policy_file in existing_policies:
-                                check_result = self.check_no_new_access(
-                                    policy_doc, existing_policies[policy_file]
-                                )
+                                check_result = self.check_no_new_access(policy_doc, existing_policies[policy_file])
                                 check_result.policy_file = policy_file
                                 custom_check_results.append(check_result)
 
@@ -563,9 +555,7 @@ class AccessAnalyzerValidator:
                                 resource_types = [resource_types]
 
                             for resource_type in resource_types:
-                                check_result = self.check_no_public_access(
-                                    policy_doc, resource_type
-                                )
+                                check_result = self.check_no_public_access(policy_doc, resource_type)
                                 check_result.policy_file = policy_file
                                 custom_check_results.append(check_result)
 
@@ -654,8 +644,7 @@ def validate_policies_with_analyzer(
     # Convert IAMPolicy models to dicts for Access Analyzer
     # Use by_alias=True to export with capitalized field names (Version, Statement, etc.)
     policy_dicts: list[tuple[str, dict[str, Any]]] = [
-        (file_path, policy.model_dump(by_alias=True, exclude_none=True))
-        for file_path, policy in loaded_policies
+        (file_path, policy.model_dump(by_alias=True, exclude_none=True)) for file_path, policy in loaded_policies
     ]
 
     # Validate with Access Analyzer

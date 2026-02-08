@@ -25,29 +25,31 @@ logger = logging.getLogger(__name__)
 # Valid severity levels for validation
 SEVERITY_LEVELS = frozenset(["error", "warning", "info", "critical", "high", "medium", "low"])
 
-# Known built-in check IDs for validation warnings
+# Known built-in check IDs for validation warnings.
+# Derived from check_id ClassVar values in iam_validator/checks/*.py
 KNOWN_CHECK_IDS = frozenset(
     [
+        "action_condition_enforcement",
+        "action_resource_matching",
         "action_validation",
         "condition_key_validation",
         "condition_type_mismatch",
-        "resource_validation",
-        "sid_uniqueness",
+        "full_wildcard",
+        "ifexists_condition_usage",
+        "mfa_condition_antipattern",
+        "not_action_not_resource",
+        "not_principal_validation",
         "policy_size",
         "policy_structure",
-        "set_operator_validation",
-        "mfa_condition_check",
         "principal_validation",
-        "policy_type_validation",
-        "action_resource_matching",
+        "resource_validation",
+        "sensitive_action",
+        "service_wildcard",
+        "set_operator_validation",
+        "sid_uniqueness",
         "trust_policy_validation",
         "wildcard_action",
         "wildcard_resource",
-        "full_wildcard",
-        "service_wildcard",
-        "sensitive_action",
-        "action_condition_enforcement",
-        "not_action_not_resource",
     ]
 )
 
@@ -99,8 +101,7 @@ class CheckConfigSchema(BaseModel):
             for severity in v:
                 if severity not in SEVERITY_LEVELS:
                     raise ValueError(
-                        f"Invalid severity in hide_severities: {severity}. "
-                        f"Must be one of: {sorted(SEVERITY_LEVELS)}"
+                        f"Invalid severity in hide_severities: {severity}. Must be one of: {sorted(SEVERITY_LEVELS)}"
                     )
         return v
 
@@ -144,8 +145,7 @@ class SettingsSchema(BaseModel):
         for severity in v:
             if severity not in SEVERITY_LEVELS:
                 raise ValueError(
-                    f"Invalid severity in fail_on_severity: {severity}. "
-                    f"Must be one of: {sorted(SEVERITY_LEVELS)}"
+                    f"Invalid severity in fail_on_severity: {severity}. Must be one of: {sorted(SEVERITY_LEVELS)}"
                 )
         return v
 
@@ -156,8 +156,7 @@ class SettingsSchema(BaseModel):
             for severity in v:
                 if severity not in SEVERITY_LEVELS:
                     raise ValueError(
-                        f"Invalid severity in hide_severities: {severity}. "
-                        f"Must be one of: {sorted(SEVERITY_LEVELS)}"
+                        f"Invalid severity in hide_severities: {severity}. Must be one of: {sorted(SEVERITY_LEVELS)}"
                     )
         return v
 
@@ -206,8 +205,7 @@ class ConfigSchema(BaseModel):
                 check_id = key.removesuffix("_check") if key.endswith("_check") else key
                 if check_id not in KNOWN_CHECK_IDS:
                     logger.warning(
-                        f"Unknown check ID '{check_id}' in configuration. "
-                        f"This may be a custom check or a typo."
+                        f"Unknown check ID '{check_id}' in configuration. This may be a custom check or a typo."
                     )
         return self
 
@@ -217,9 +215,7 @@ class ConfigValidationError(Exception):
 
     def __init__(self, errors: list[str]):
         self.errors = errors
-        super().__init__(
-            "Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
-        )
+        super().__init__("Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors))
 
 
 def validate_config(config_dict: dict[str, Any]) -> tuple[bool, list[str]]:
@@ -257,12 +253,17 @@ def deep_merge(base: dict, override: dict) -> dict:
         override: Dictionary with override values
 
     Returns:
-        Merged dictionary where override values take precedence
+        Merged dictionary where override values take precedence.
+        Lists and other mutable values are deep copied to avoid shared references.
     """
+    import copy
+
     result = base.copy()
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
             result[key] = deep_merge(result[key], value)
+        elif isinstance(value, list):
+            result[key] = copy.deepcopy(value)
         else:
             result[key] = value
     return result
@@ -359,9 +360,7 @@ class ConfigLoader:
     DEFAULT_CONFIG_NAMES = DEFAULT_CONFIG_FILENAMES
 
     @staticmethod
-    def find_config_file(
-        explicit_path: str | None = None, search_path: Path | None = None
-    ) -> Path | None:
+    def find_config_file(explicit_path: str | None = None, search_path: Path | None = None) -> Path | None:
         """
         Find configuration file.
 
@@ -542,10 +541,7 @@ class ConfigLoader:
                 # Format: "package.module.ClassName"
                 parts = module_path.rsplit(".", 1)
                 if len(parts) != 2:
-                    raise ValueError(
-                        f"Invalid module path: {module_path}. "
-                        "Expected format: 'package.module.ClassName'"
-                    )
+                    raise ValueError(f"Invalid module path: {module_path}. Expected format: 'package.module.ClassName'")
 
                 module_name, class_name = parts
 
@@ -612,10 +608,7 @@ class ConfigLoader:
         python_files = [
             f
             for f in directory.iterdir()
-            if f.is_file()
-            and f.suffix == ".py"
-            and not f.name.startswith("_")
-            and not f.name.startswith(".")
+            if f.is_file() and f.suffix == ".py" and not f.name.startswith("_") and not f.name.startswith(".")
         ]
 
         for py_file in python_files:
@@ -654,9 +647,7 @@ class ConfigLoader:
 
                             # Verify the check has required properties
                             if not hasattr(check_instance, "check_id"):
-                                logger.warning(
-                                    f"Check class {name} in {py_file} missing check_id property"
-                                )
+                                logger.warning(f"Check class {name} in {py_file} missing check_id property")
                                 continue
 
                             registry.register(check_instance)
@@ -670,29 +661,21 @@ class ConfigLoader:
                             registry.configure_check(check_instance.check_id, check_config)
 
                             loaded_checks.append(check_instance.check_id)
-                            logger.info(
-                                f"Loaded custom check '{check_instance.check_id}' from {py_file.name}"
-                            )
+                            logger.info(f"Loaded custom check '{check_instance.check_id}' from {py_file.name}")
 
                         except Exception as e:
-                            logger.warning(
-                                f"Failed to instantiate check {name} from {py_file}: {e}"
-                            )
+                            logger.warning(f"Failed to instantiate check {name} from {py_file}: {e}")
 
             except Exception as e:
                 logger.warning(f"Failed to load custom check module {py_file}: {e}")
 
         if loaded_checks:
-            logger.info(
-                f"Auto-discovered {len(loaded_checks)} custom checks: {', '.join(loaded_checks)}"
-            )
+            logger.info(f"Auto-discovered {len(loaded_checks)} custom checks: {', '.join(loaded_checks)}")
 
         return loaded_checks
 
 
-def load_validator_config(
-    config_path: str | None = None, allow_missing: bool = True
-) -> ValidatorConfig:
+def load_validator_config(config_path: str | None = None, allow_missing: bool = True) -> ValidatorConfig:
     """
     Convenience function to load validator configuration.
 

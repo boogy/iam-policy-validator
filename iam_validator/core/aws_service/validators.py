@@ -262,8 +262,7 @@ class ServiceValidator:
                 if condition_key_in_list(condition_key, list(service_detail.condition_keys.keys())):
                     # If it's RequestTag or ResourceTag, don't return valid here - check action/resource level
                     if not (
-                        condition_key.startswith("aws:RequestTag/")
-                        or condition_key.startswith("aws:ResourceTag/")
+                        condition_key.startswith("aws:RequestTag/") or condition_key.startswith("aws:ResourceTag/")
                     ):
                         return ConditionKeyValidationResult(is_valid=True)
                     # For RequestTag/ResourceTag, continue to check action/resource level
@@ -411,9 +410,7 @@ class ServiceValidator:
                 error_message=f"Failed to validate condition key: {e!s}",
             )
 
-    def get_resources_for_action(
-        self, action: str, service_detail: ServiceDetail
-    ) -> list[dict[str, Any]]:
+    def get_resources_for_action(self, action: str, service_detail: ServiceDetail) -> list[dict[str, Any]]:
         """Get resource types required for a specific action.
 
         Args:

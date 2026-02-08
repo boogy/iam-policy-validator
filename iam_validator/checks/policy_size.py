@@ -11,7 +11,6 @@ Note: AWS does not count whitespace when calculating policy size.
 """
 
 import json
-import re
 from typing import TYPE_CHECKING, ClassVar
 
 from iam_validator.core.aws_service import AWSServiceFetcher
@@ -72,12 +71,13 @@ class PolicySizeCheck(PolicyCheck):
 
         max_size = size_limits[limit_key]
 
-        # Convert policy to JSON and calculate size (excluding whitespace)
+        # Convert policy to compact JSON and calculate size
+        # Compact JSON with separators=(',', ':') already removes inter-token whitespace.
+        # We don't strip whitespace inside string values (e.g. condition values, SIDs)
+        # as AWS counts those characters.
         policy_json = policy.model_dump(by_alias=True, exclude_none=True)
         policy_string = json.dumps(policy_json, separators=(",", ":"))
-
-        # Remove all whitespace as AWS doesn't count it
-        policy_size = len(re.sub(r"\s+", "", policy_string))
+        policy_size = len(policy_string)
 
         # Check if policy exceeds the limit
         if policy_size > max_size:

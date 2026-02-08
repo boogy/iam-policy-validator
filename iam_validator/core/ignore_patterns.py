@@ -5,11 +5,14 @@ This module provides high-performance pattern matching for ignore_patterns acros
 all checks. Uses LRU caching and compiled regex patterns for optimal performance.
 """
 
+import logging
 import re
 from functools import lru_cache
 from typing import Any
 
 from iam_validator.core.models import ValidationIssue
+
+logger = logging.getLogger(__name__)
 
 
 # Global regex pattern cache (shared across all checks for maximum efficiency)
@@ -36,7 +39,8 @@ def compile_pattern(pattern: str) -> re.Pattern[str] | None:
     """
     try:
         return re.compile(str(pattern), re.IGNORECASE)
-    except re.error:
+    except re.error as e:
+        logger.warning("Invalid regex pattern '%s' in ignore_patterns: %s", pattern, e)
         return None
 
 

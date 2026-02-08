@@ -4,10 +4,13 @@ This module provides functionality to expand wildcard actions (like ec2:*, iam:D
 to their actual action names using the AWS Service Reference API.
 """
 
+import logging
 import re
 from functools import lru_cache
 
 from iam_validator.core.aws_service import AWSServiceFetcher
+
+logger = logging.getLogger(__name__)
 
 
 # Global cache for compiled wildcard patterns (shared across checks)
@@ -81,6 +84,7 @@ async def expand_wildcard_actions(actions: list[str], fetcher: AWSServiceFetcher
         except Exception:
             # If expansion fails (invalid service, etc.), keep original action
             # This ensures we don't lose actions due to API errors
+            logger.debug("Failed to expand wildcard action '%s', keeping original", action)
             expanded.append(action)
 
     return expanded

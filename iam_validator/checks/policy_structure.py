@@ -106,9 +106,7 @@ def is_trust_policy(policy: IAMPolicy) -> bool:
     # Trust policies don't have specific resource ARNs (role itself is the resource)
     for statement in policy.statement or []:
         if statement.resource:
-            resources = (
-                [statement.resource] if isinstance(statement.resource, str) else statement.resource
-            )
+            resources = [statement.resource] if isinstance(statement.resource, str) else statement.resource
             for resource in resources:
                 if isinstance(resource, str) and resource != "*" and not resource.endswith(":*"):
                     # Specific resource ARN found in ANY statement - NOT a trust policy
@@ -134,9 +132,7 @@ def is_trust_policy(policy: IAMPolicy) -> bool:
 
         # Check if any action is an assume action (O(1) set lookup)
         has_assume_action = any(
-            action in ASSUME_ROLE_ACTIONS or action in ("sts:*", "*")
-            for action in actions
-            if isinstance(action, str)
+            action in ASSUME_ROLE_ACTIONS or action in ("sts:*", "*") for action in actions if isinstance(action, str)
         )
 
         if has_assume_action:
@@ -267,20 +263,24 @@ def validate_policy_document(policy_dict: dict[str, Any]) -> list[ValidationIssu
                     "    {\n"
                     '      "Effect": "Allow",\n'
                     '      "Action": "s3:GetObject",\n'
-                    '      "Resource": "*"\n'
+                    '      "Resource": "arn:aws:s3:::S3_BUCKET_NAME/*"\n'
                     "    }\n"
                     "  ]\n"
                     "}"
                 ),
             )
         )
+    elif isinstance(policy_dict["Statement"], dict):
+        # AWS accepts a single Statement object without array wrapping.
+        # Normalize it to a list so downstream validation works uniformly.
+        policy_dict["Statement"] = [policy_dict["Statement"]]
     elif not isinstance(policy_dict["Statement"], list):
         issues.append(
             ValidationIssue(
                 severity="error",
                 statement_index=-1,
                 issue_type="invalid_statement_type",
-                message=f"`Statement` field must be an array, not `{type(policy_dict['Statement']).__name__}`",
+                message=f"`Statement` field must be an array or object, not `{type(policy_dict['Statement']).__name__}`",
                 suggestion="Wrap your statement in an array: [ {...} ]",
                 example=(
                     "{\n"
@@ -289,7 +289,7 @@ def validate_policy_document(policy_dict: dict[str, Any]) -> list[ValidationIssu
                     "    {\n"
                     '      "Effect": "Allow",\n'
                     '      "Action": "s3:GetObject",\n'
-                    '      "Resource": "*"\n'
+                    '      "Resource": "arn:aws:s3:::S3_BUCKET_NAME/*"\n'
                     "    }\n"
                     "  ]\n"
                     "}"
@@ -311,7 +311,7 @@ def validate_policy_document(policy_dict: dict[str, Any]) -> list[ValidationIssu
                     "    {\n"
                     '      "Effect": "Allow",\n'
                     '      "Action": "s3:GetObject",\n'
-                    '      "Resource": "*"\n'
+                    '      "Resource": "arn:aws:s3:::S3_BUCKET_NAME/*"\n'
                     "    }\n"
                     "  ]\n"
                     "}"

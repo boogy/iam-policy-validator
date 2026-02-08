@@ -8,9 +8,22 @@ from iam_validator.core import constants
 from iam_validator.core.formatters.base import OutputFormatter
 from iam_validator.core.models import ValidationReport
 
+_FORMULA_PREFIXES = ("=", "+", "-", "@")
+
 
 class CSVFormatter(OutputFormatter):
     """Formats validation results as CSV for spreadsheet analysis."""
+
+    @staticmethod
+    def _sanitize_cell(value: str) -> str:
+        """Sanitize a cell value to prevent CSV formula injection.
+
+        Prefixes values starting with =, +, -, @ with a tab character
+        so spreadsheet applications don't interpret them as formulas.
+        """
+        if value and value[0] in _FORMULA_PREFIXES:
+            return f"\t{value}"
+        return value
 
     @property
     def format_id(self) -> str:
@@ -55,15 +68,8 @@ class CSVFormatter(OutputFormatter):
     def _write_summary_section(self, writer: Any, report: ValidationReport) -> None:
         """Write summary statistics to CSV."""
         # Count issues by severity - support both IAM validity and security severities
-        errors = sum(
-            1
-            for r in report.results
-            for i in r.issues
-            if i.severity in constants.HIGH_SEVERITY_LEVELS
-        )
-        warnings = sum(
-            1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")
-        )
+        errors = sum(1 for r in report.results for i in r.issues if i.severity in constants.HIGH_SEVERITY_LEVELS)
+        warnings = sum(1 for r in report.results for i in r.issues if i.severity in ("warning", "medium"))
         infos = sum(1 for r in report.results for i in r.issues if i.severity in ("info", "low"))
 
         writer.writerow(["Summary Statistics"])
@@ -81,9 +87,7 @@ class CSVFormatter(OutputFormatter):
         writer.writerow(["Warnings", warnings])
         writer.writerow(["Info", infos])
 
-    def _write_issues_section(
-        self, writer: Any, report: ValidationReport, include_header: bool
-    ) -> None:
+    def _write_issues_section(self, writer: Any, report: ValidationReport, include_header: bool) -> None:
         """Write detailed issues to CSV."""
         if include_header:
             writer.writerow(
@@ -106,17 +110,17 @@ class CSVFormatter(OutputFormatter):
             for issue in policy_result.issues:
                 writer.writerow(
                     [
-                        policy_result.policy_file,
+                        self._sanitize_cell(policy_result.policy_file),
                         (issue.statement_index + 1 if issue.statement_index is not None else ""),
-                        issue.statement_sid or "",
+                        self._sanitize_cell(issue.statement_sid or ""),
                         issue.line_number or "",
                         issue.severity,
-                        issue.issue_type or "",
-                        issue.action or "",
-                        issue.resource or "",
-                        issue.condition_key or "",
-                        issue.message,
-                        issue.suggestion or "",
+                        self._sanitize_cell(issue.issue_type or ""),
+                        self._sanitize_cell(issue.action or ""),
+                        self._sanitize_cell(issue.resource or ""),
+                        self._sanitize_cell(issue.condition_key or ""),
+                        self._sanitize_cell(issue.message),
+                        self._sanitize_cell(issue.suggestion or ""),
                     ]
                 )
 
@@ -136,12 +140,13 @@ class CSVFormatter(OutputFormatter):
 
         # Write pivot rows
         for (issue_type, severity), data in sorted(pivot_data.items()):
+            files_str = "; ".join(data["files"][:5]) + ("..." if len(data["files"]) > 5 else "")
             writer.writerow(
                 [
-                    issue_type or "unknown",
+                    self._sanitize_cell(issue_type or "unknown"),
                     severity,
                     data["count"],
-                    "; ".join(data["files"][:5]) + ("..." if len(data["files"]) > 5 else ""),
+                    self._sanitize_cell(files_str),
                 ]
             )
 

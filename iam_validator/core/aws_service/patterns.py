@@ -5,6 +5,7 @@ used across the AWS service validation system for better performance.
 """
 
 import re
+import threading
 
 
 class CompiledPatterns:
@@ -16,12 +17,14 @@ class CompiledPatterns:
 
     _instance: "CompiledPatterns | None" = None
     _initialized: bool = False
+    _lock: threading.Lock = threading.Lock()
 
     def __new__(cls) -> "CompiledPatterns":
         """Create or return the singleton instance."""
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+            return cls._instance
 
     def __init__(self) -> None:
         """Initialize compiled patterns (only once due to Singleton pattern)."""
@@ -42,9 +45,7 @@ class CompiledPatterns:
         )
 
         # Action format pattern
-        self.action_pattern = re.compile(
-            r"^(?P<service>[a-zA-Z0-9_-]+):(?P<action>[a-zA-Z0-9*_-]+)$"
-        )
+        self.action_pattern = re.compile(r"^(?P<service>[a-zA-Z0-9_-]+):(?P<action>[a-zA-Z0-9*_-]+)$")
 
         # Wildcard detection patterns
         self.wildcard_pattern = re.compile(r"\*")

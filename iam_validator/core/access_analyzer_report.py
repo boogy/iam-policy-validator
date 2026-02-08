@@ -85,8 +85,7 @@ class AccessAnalyzerReportFormatter:
         status_style = "bold green" if result.is_valid else "bold red"
 
         self.console.print(
-            f"\n{status_emoji} [bold]{result.policy_file}[/bold] - "
-            f"[{status_style}]{status_text}[/{status_style}]"
+            f"\n{status_emoji} [bold]{result.policy_file}[/bold] - [{status_style}]{status_text}[/{status_style}]"
         )
 
         # Handle errors
@@ -262,9 +261,7 @@ class AccessAnalyzerReportFormatter:
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(json_content)
 
-    def generate_markdown_report(
-        self, report: AccessAnalyzerReport, max_length: int = 65000
-    ) -> str:
+    def generate_markdown_report(self, report: AccessAnalyzerReport, max_length: int = 65000) -> str:
         """Generate Markdown report.
 
         Args:
@@ -296,9 +293,7 @@ class AccessAnalyzerReportFormatter:
         lines.append(f"| **Total Policies Analyzed** | {report.total_policies} | 📋 |")
         lines.append(f"| **Valid Policies** | {report.valid_policies} | ✅ |")
         lines.append(f"| **Invalid Policies** | {report.invalid_policies} | ❌ |")
-        lines.append(
-            f"| **Total Findings** | {report.total_findings} | {'⚠️' if report.total_findings > 0 else '✨'} |"
-        )
+        lines.append(f"| **Total Findings** | {report.total_findings} | {'⚠️' if report.total_findings > 0 else '✨'} |")
 
         # Add custom checks summary if present
         total_custom_checks = sum(len(r.custom_checks) for r in report.results if r.custom_checks)
@@ -372,9 +367,7 @@ class AccessAnalyzerReportFormatter:
             policy_lines = []
             # File header with collapsible section
             policy_lines.append(f"<details {'open' if result.findings else ''}>")
-            policy_lines.append(
-                f"<summary><b>{idx}. {status_emoji} <code>{result.policy_file}</code></b>"
-            )
+            policy_lines.append(f"<summary><b>{idx}. {status_emoji} <code>{result.policy_file}</code></b>")
             if result.findings:
                 policy_lines.append(f" - {len(result.findings)} finding(s)")
             policy_lines.append("</summary>")
@@ -424,9 +417,7 @@ class AccessAnalyzerReportFormatter:
             # Group findings by type
             errors = [f for f in result.findings if f.finding_type == FindingType.ERROR]
             warnings = [
-                f
-                for f in result.findings
-                if f.finding_type in (FindingType.WARNING, FindingType.SECURITY_WARNING)
+                f for f in result.findings if f.finding_type in (FindingType.WARNING, FindingType.SECURITY_WARNING)
             ]
             suggestions = [f for f in result.findings if f.finding_type == FindingType.SUGGESTION]
 
@@ -436,9 +427,7 @@ class AccessAnalyzerReportFormatter:
                 policy_lines.append("")
                 for finding in errors:
                     finding_content = self._format_finding_markdown(finding)
-                    test_length = len("\n".join(details_lines + policy_lines)) + len(
-                        "\n".join(finding_content)
-                    )
+                    test_length = len("\n".join(details_lines + policy_lines)) + len("\n".join(finding_content))
                     if test_length > available_length:
                         truncated = True
                         break
@@ -455,9 +444,7 @@ class AccessAnalyzerReportFormatter:
                 policy_lines.append("")
                 for finding in warnings:
                     finding_content = self._format_finding_markdown(finding)
-                    test_length = len("\n".join(details_lines + policy_lines)) + len(
-                        "\n".join(finding_content)
-                    )
+                    test_length = len("\n".join(details_lines + policy_lines)) + len("\n".join(finding_content))
                     if test_length > available_length:
                         truncated = True
                         break
@@ -474,9 +461,7 @@ class AccessAnalyzerReportFormatter:
                 policy_lines.append("")
                 for finding in suggestions:
                     finding_content = self._format_finding_markdown(finding)
-                    test_length = len("\n".join(details_lines + policy_lines)) + len(
-                        "\n".join(finding_content)
-                    )
+                    test_length = len("\n".join(details_lines + policy_lines)) + len("\n".join(finding_content))
                     if test_length > available_length:
                         truncated = True
                         break
@@ -507,15 +492,9 @@ class AccessAnalyzerReportFormatter:
             details_lines.append("")
             details_lines.append("> ⚠️ **Output Truncated**")
             details_lines.append(">")
-            details_lines.append(
-                "> The report was truncated to fit within GitHub's comment size limit."
-            )
-            details_lines.append(
-                f"> **Showing:** {policies_shown} policies with {findings_shown} findings"
-            )
-            details_lines.append(
-                f"> **Remaining:** {remaining_policies} policies with {remaining_findings} findings"
-            )
+            details_lines.append("> The report was truncated to fit within GitHub's comment size limit.")
+            details_lines.append(f"> **Showing:** {policies_shown} policies with {findings_shown} findings")
+            details_lines.append(f"> **Remaining:** {remaining_policies} policies with {remaining_findings} findings")
             details_lines.append(">")
             details_lines.append(
                 "> 💡 **Tip:** Download the full report using `--output report.json` or `--format markdown --output report.md`"

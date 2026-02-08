@@ -169,7 +169,7 @@ class CodeOwnersParser:
             List of owners for the file, or empty list if no match
         """
         # Normalize path (remove leading ./ or /)
-        file_path = file_path.lstrip("./")
+        file_path = file_path.removeprefix("./").lstrip("/")
 
         # Find all matching rules, last one wins
         owners: list[str] = []

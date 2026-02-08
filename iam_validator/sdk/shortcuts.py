@@ -218,18 +218,7 @@ async def get_issues(
         >>> for issue in issues:
         ...     print(f"{issue.severity}: {issue.message}")
     """
-    # Severity ranking for filtering
-    severity_rank = {
-        "critical": 5,
-        "high": 4,
-        "medium": 3,
-        "low": 2,
-        "info": 1,
-        "warning": 3,  # Treat warning as medium
-        "error": 4,  # Treat error as high
-    }
-
-    min_rank = severity_rank.get(min_severity.lower(), 0)
+    min_rank = ValidationIssue.SEVERITY_RANK.get(min_severity.lower(), 0)
 
     # Get validation results
     if isinstance(policy, dict):
@@ -247,7 +236,7 @@ async def get_issues(
     all_issues = []
     for result in results:
         for issue in result.issues:
-            issue_rank = severity_rank.get(issue.severity.lower(), 0)
+            issue_rank = ValidationIssue.SEVERITY_RANK.get(issue.severity.lower(), 0)
             if issue_rank >= min_rank:
                 all_issues.append(issue)
 

@@ -22,9 +22,7 @@ class SetOperatorValidationCheck(PolicyCheck):
     """Check for proper usage of ForAllValues and ForAnyValue set operators."""
 
     check_id: ClassVar[str] = "set_operator_validation"
-    description: ClassVar[str] = (
-        "Validates proper usage of ForAllValues and ForAnyValue set operators"
-    )
+    description: ClassVar[str] = "Validates proper usage of ForAllValues and ForAnyValue set operators"
     default_severity: ClassVar[str] = "error"
 
     async def execute(

@@ -2,7 +2,7 @@
 
 This check validates that Statement IDs (Sids):
 1. Are unique within a policy
-2. Follow AWS naming requirements (alphanumeric, hyphens, underscores only - no spaces)
+2. Follow AWS naming requirements (alphanumeric only: A-Z, a-z, 0-9)
 
 According to AWS best practices, while not strictly required, having unique SIDs
 makes it easier to reference specific statements and improves policy maintainability.
@@ -32,9 +32,9 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
     """
     issues: list[ValidationIssue] = []
 
-    # AWS SID requirements: alphanumeric characters, hyphens, and underscores only
-    # No spaces allowed
-    sid_pattern = re.compile(r"^[a-zA-Z0-9_-]+$")
+    # AWS SID requirements: alphanumeric characters only per AWS IAM policy grammar
+    # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_grammar.html
+    sid_pattern = re.compile(r"^[a-zA-Z0-9]+$")
 
     # Handle policies with no statements
     if not policy.statement:
@@ -49,17 +49,11 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
                 # Identify the issue
                 if " " in statement.sid:
                     issue_msg = f"Statement ID `{statement.sid}` contains spaces, which are not allowed by AWS"
-                    suggestion = (
-                        f"Remove spaces from the SID. Example: `{statement.sid.replace(' ', '')}`"
-                    )
+                    suggestion = f"Remove spaces from the SID. Example: `{statement.sid.replace(' ', '')}`"
                 else:
-                    invalid_chars = "".join(
-                        set(c for c in statement.sid if not c.isalnum() and c not in "_-")
-                    )
+                    invalid_chars = "".join(set(c for c in statement.sid if not c.isalnum()))
                     issue_msg = f"Statement ID `{statement.sid}` contains invalid characters: `{invalid_chars}`"
-                    suggestion = (
-                        "SIDs must contain only alphanumeric characters, hyphens, and underscores"
-                    )
+                    suggestion = "SIDs must contain only alphanumeric characters (A-Z, a-z, 0-9)"
 
                 issues.append(
                     ValidationIssue(
@@ -116,7 +110,7 @@ class SidUniquenessCheck(PolicyCheck):
 
     check_id: ClassVar[str] = "sid_uniqueness"
     description: ClassVar[str] = (
-        "Validates that Statement IDs (Sids) are unique and follow AWS naming requirements (no spaces)"
+        "Validates that Statement IDs (Sids) are unique and follow AWS naming requirements (alphanumeric only)"
     )
     default_severity: ClassVar[str] = "warning"
 

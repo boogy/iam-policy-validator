@@ -32,9 +32,7 @@ class WildcardActionCheck(PolicyCheck):
 
         # Check for wildcard action (Action: "*")
         if "*" in actions:
-            message = config.config.get(
-                "message", 'Statement allows all actions `"*"` (wildcard action).'
-            )
+            message = config.config.get("message", 'Statement allows all actions `"*"` (wildcard action).')
             suggestion = config.config.get(
                 "suggestion",
                 "Replace wildcard with specific actions needed for your use case",

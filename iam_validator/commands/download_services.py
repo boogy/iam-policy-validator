@@ -188,9 +188,7 @@ This command is useful for:
                 TimeRemainingColumn(),
                 console=console,
             ) as progress:
-                task_id = progress.add_task(
-                    "[cyan]Downloading service definitions...", total=len(services)
-                )
+                task_id = progress.add_task("[cyan]Downloading service definitions...", total=len(services))
 
                 for item in services:
                     service_name = item.get("service")
@@ -250,6 +248,5 @@ This command is useful for:
 
             if failed > 0:
                 console.print(
-                    "\n[yellow]Warning:[/yellow] Some services failed to download. "
-                    "Check the logs for details."
+                    "\n[yellow]Warning:[/yellow] Some services failed to download. Check the logs for details."
                 )

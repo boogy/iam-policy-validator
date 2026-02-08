@@ -49,9 +49,7 @@ class PrincipalValidationCheck(PolicyCheck):
     """Validates Principal elements in resource policies."""
 
     check_id: ClassVar[str] = "principal_validation"
-    description: ClassVar[str] = (
-        "Validates Principal elements in resource policies for security best practices"
-    )
+    description: ClassVar[str] = "Validates Principal elements in resource policies for security best practices"
     default_severity: ClassVar[str] = "high"
 
     async def execute(
@@ -87,9 +85,7 @@ class PrincipalValidationCheck(PolicyCheck):
         allowed_service_principals = config.config.get("allowed_service_principals", ["aws:*"])
         # Default: block service principal wildcards ({"Service": "*"})
         # This is extremely dangerous as it allows ANY AWS service to assume the role
-        block_service_principal_wildcard = config.config.get(
-            "block_service_principal_wildcard", True
-        )
+        block_service_principal_wildcard = config.config.get("block_service_principal_wildcard", True)
         # block_wildcard_principal: Strict mode for Principal: "*"
         # false (default): Allow wildcard principal but require conditions
         # true: Block wildcard principal entirely, skip condition checks
@@ -100,9 +96,7 @@ class PrincipalValidationCheck(PolicyCheck):
         # Check for service principal wildcards FIRST (highest priority security issue)
         # If detected, return early - no conditions can make {"Service": "*"} safe
         if block_service_principal_wildcard:
-            service_wildcard_issues = self._check_service_principal_wildcards(
-                statement, statement_idx, config
-            )
+            service_wildcard_issues = self._check_service_principal_wildcards(statement, statement_idx, config)
             if service_wildcard_issues:
                 # Return early - this is unfixable, don't suggest conditions
                 return service_wildcard_issues
@@ -124,9 +118,7 @@ class PrincipalValidationCheck(PolicyCheck):
                 continue
 
             # Check if principal is blocked
-            if self._is_blocked_principal(
-                principal, blocked_principals, allowed_service_principals
-            ):
+            if self._is_blocked_principal(principal, blocked_principals, allowed_service_principals):
                 blocked_principal_values.add(principal)
                 issues.append(
                     ValidationIssue(
@@ -318,9 +310,7 @@ class PrincipalValidationCheck(PolicyCheck):
 
         return issues
 
-    def _is_blocked_principal(
-        self, principal: str, blocked_list: list[str], service_whitelist: list[str]
-    ) -> bool:
+    def _is_blocked_principal(self, principal: str, blocked_list: list[str], service_whitelist: list[str]) -> bool:
         """Check if a principal is blocked.
 
         Args:
@@ -351,9 +341,7 @@ class PrincipalValidationCheck(PolicyCheck):
 
         return False
 
-    def _is_allowed_principal(
-        self, principal: str, allowed_list: list[str], service_whitelist: list[str]
-    ) -> bool:
+    def _is_allowed_principal(self, principal: str, allowed_list: list[str], service_whitelist: list[str]) -> bool:
         """Check if a principal is in the allowed list.
 
         Args:
@@ -433,9 +421,7 @@ class PrincipalValidationCheck(PolicyCheck):
 
         return issues
 
-    def _get_matching_principals(
-        self, principals: list[str], requirement: dict[str, Any]
-    ) -> list[str]:
+    def _get_matching_principals(self, principals: list[str], requirement: dict[str, Any]) -> list[str]:
         """Get principals that match the requirement pattern.
 
         Args:
@@ -529,9 +515,7 @@ class PrincipalValidationCheck(PolicyCheck):
 
             # Validate any_of: At least ONE condition must be present
             if any_of:
-                any_present = any(
-                    self._has_condition_requirement(statement, cond_req) for cond_req in any_of
-                )
+                any_present = any(self._has_condition_requirement(statement, cond_req) for cond_req in any_of)
 
                 if not any_present:
                     # Create a combined error for any_of
@@ -570,9 +554,7 @@ class PrincipalValidationCheck(PolicyCheck):
 
         return issues
 
-    def _has_condition_requirement(
-        self, statement: Statement, condition_requirement: dict[str, Any]
-    ) -> bool:
+    def _has_condition_requirement(self, statement: Statement, condition_requirement: dict[str, Any]) -> bool:
         """Check if statement has the required condition.
 
         Args:
@@ -692,11 +674,7 @@ class PrincipalValidationCheck(PolicyCheck):
         message_prefix = "ALL required:" if requirement_type == "all_of" else "Required:"
 
         # Determine severity with precedence: condition > requirement > global
-        severity = (
-            condition_requirement.get("severity")
-            or requirement.get("severity")
-            or self.get_severity(config)
-        )
+        severity = condition_requirement.get("severity") or requirement.get("severity") or self.get_severity(config)
 
         suggestion_text, example_code = self._build_condition_suggestion(
             condition_key, description, example, expected_value, operator
@@ -746,12 +724,7 @@ class PrincipalValidationCheck(PolicyCheck):
             if isinstance(expected_value, list):
                 value_str = (
                     "["
-                    + ", ".join(
-                        [
-                            f'"{v}"' if not str(v).startswith("${") else f'"{v}"'
-                            for v in expected_value
-                        ]
-                    )
+                    + ", ".join([f'"{v}"' if not str(v).startswith("${") else f'"{v}"' for v in expected_value])
                     + "]"
                 )
             elif expected_value is not None:

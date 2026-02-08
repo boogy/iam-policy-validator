@@ -77,9 +77,7 @@ Examples:
         )
 
         # Clear subcommand
-        clear_parser = subparsers.add_parser(
-            "clear", help="Clear all cached AWS service definitions"
-        )
+        clear_parser = subparsers.add_parser("clear", help="Clear all cached AWS service definitions")
         clear_parser.add_argument(
             "--config",
             type=str,
@@ -87,9 +85,7 @@ Examples:
         )
 
         # Refresh subcommand
-        refresh_parser = subparsers.add_parser(
-            "refresh", help="Refresh all cached AWS services with fresh data"
-        )
+        refresh_parser = subparsers.add_parser("refresh", help="Refresh all cached AWS services with fresh data")
         refresh_parser.add_argument(
             "--config",
             type=str,
@@ -97,9 +93,7 @@ Examples:
         )
 
         # Prefetch subcommand
-        prefetch_parser = subparsers.add_parser(
-            "prefetch", help="Pre-fetch common AWS services (without clearing)"
-        )
+        prefetch_parser = subparsers.add_parser("prefetch", help="Pre-fetch common AWS services (without clearing)")
         prefetch_parser.add_argument(
             "--config",
             type=str,
@@ -159,9 +153,7 @@ Examples:
         table.add_column("Value", style="white")
 
         # Cache status
-        table.add_row(
-            "Status", "[green]Enabled[/green]" if cache_enabled else "[red]Disabled[/red]"
-        )
+        table.add_row("Status", "[green]Enabled[/green]" if cache_enabled else "[red]Disabled[/red]")
 
         # Cache location
         table.add_row("Location", str(cache_dir))
@@ -304,16 +296,12 @@ Examples:
         if failed == 0:
             console.print(f"[green]✓[/green] Cleared {deleted} cached service definitions")
         else:
-            console.print(
-                f"[yellow]![/yellow] Cleared {deleted} files, failed to delete {failed} files"
-            )
+            console.print(f"[yellow]![/yellow] Cleared {deleted} files, failed to delete {failed} files")
             return 1
 
         return 0
 
-    async def _refresh_cache(
-        self, cache_enabled: bool, cache_ttl_seconds: int, cache_directory: str | None
-    ) -> int:
+    async def _refresh_cache(self, cache_enabled: bool, cache_ttl_seconds: int, cache_directory: str | None) -> int:
         """Refresh all cached services with fresh data from AWS."""
         if not cache_enabled:
             console.print("[red]Error:[/red] Cache is disabled in config")
@@ -321,9 +309,7 @@ Examples:
             return 1
 
         # Get cache directory
-        cache_dir = (
-            Path(cache_directory) if cache_directory else ServiceFileStorage.get_cache_directory()
-        )
+        cache_dir = Path(cache_directory) if cache_directory else ServiceFileStorage.get_cache_directory()
 
         if not cache_dir.exists():
             console.print("[yellow]Cache directory does not exist, nothing to refresh[/yellow]")
@@ -395,9 +381,7 @@ Examples:
         console.print("[green]✓[/green] Cache refresh complete")
         return 0 if failed == 0 else 1
 
-    async def _prefetch_services(
-        self, cache_enabled: bool, cache_ttl_seconds: int, cache_directory: str | None
-    ) -> int:
+    async def _prefetch_services(self, cache_enabled: bool, cache_ttl_seconds: int, cache_directory: str | None) -> int:
         """Pre-fetch common AWS services without clearing cache."""
         if not cache_enabled:
             console.print("[red]Error:[/red] Cache is disabled in config")
@@ -416,9 +400,7 @@ Examples:
             prefetched = len(fetcher._prefetched_services)
             total = len(fetcher.COMMON_SERVICES)
 
-            console.print(
-                f"[green]✓[/green] Pre-fetched {prefetched}/{total} common services successfully"
-            )
+            console.print(f"[green]✓[/green] Pre-fetched {prefetched}/{total} common services successfully")
 
         return 0
 

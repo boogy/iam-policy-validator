@@ -40,7 +40,7 @@ class ServiceWildcardCheck(PolicyCheck):
             # Parse action and check if it's a service-level wildcard (e.g., "iam:*", "s3:*")
             parsed = parse_action(action)
             if parsed and parsed.action_name == "*":
-                service = parsed.service
+                service = parsed.service.lower()
 
                 # Check if this service is in the allowed list
                 if service not in allowed_services:
@@ -57,11 +57,7 @@ class ServiceWildcardCheck(PolicyCheck):
 
                     message = message_template.format(action=action, service=service)
                     suggestion = suggestion_template.format(action=action, service=service)
-                    example = (
-                        example_template.format(action=action, service=service)
-                        if example_template
-                        else ""
-                    )
+                    example = example_template.format(action=action, service=service) if example_template else ""
 
                     issues.append(
                         ValidationIssue(
@@ -94,5 +90,5 @@ class ServiceWildcardCheck(PolicyCheck):
         """
         allowed = config.config.get("allowed_services", [])
         if allowed and isinstance(allowed, list):
-            return set(allowed)
+            return {s.lower() for s in allowed}
         return set()

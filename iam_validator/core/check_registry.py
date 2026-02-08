@@ -470,8 +470,7 @@ class CheckRegistry:
         return [
             issue
             for issue in issues
-            if not config.should_ignore(issue, filepath)
-            and config.should_show_severity(issue.severity)
+            if not config.should_ignore(issue, filepath) and config.should_show_severity(issue.severity)
         ]
 
     async def execute_checks_parallel(
@@ -513,12 +512,14 @@ class CheckRegistry:
 
         # Execute all checks in parallel
         tasks = []
+        task_checks = []
         configs = []
         for check in enabled_checks:
             config = self.get_config(check.check_id)
             if config:
                 task = check.execute(statement, statement_idx, fetcher, config)
                 tasks.append(task)
+                task_checks.append(check)
                 configs.append(config)
 
         # Wait for all checks to complete
@@ -529,12 +530,9 @@ class CheckRegistry:
         for idx, result in enumerate(results):
             if isinstance(result, Exception):
                 # Log error but continue with other checks
-                check = enabled_checks[idx]
-                logger.warning("Check '%s' failed: %s", check.check_id, result)
+                logger.warning("Check '%s' failed: %s", task_checks[idx].check_id, result)
             elif isinstance(result, list):
-                check = enabled_checks[idx]
-                config = configs[idx]
-                all_issues.extend(self._process_issues(result, check, config, filepath))
+                all_issues.extend(self._process_issues(result, task_checks[idx], configs[idx], filepath))
 
         return all_issues
 
@@ -631,9 +629,7 @@ class CheckRegistry:
         for check in policy_level_checks:
             config = self.get_config(check.check_id)
             if config:
-                task = check.execute_policy(
-                    policy, policy_file, fetcher, config, policy_type=policy_type, **kwargs
-                )
+                task = check.execute_policy(policy, policy_file, fetcher, config, policy_type=policy_type, **kwargs)
                 tasks.append(task)
                 configs.append(config)
 
@@ -654,9 +650,7 @@ class CheckRegistry:
         return all_issues
 
 
-def create_default_registry(
-    enable_parallel: bool = True, include_builtin_checks: bool = True
-) -> CheckRegistry:
+def create_default_registry(enable_parallel: bool = True, include_builtin_checks: bool = True) -> CheckRegistry:
     """
     Create a registry with all built-in checks registered.
 
@@ -682,9 +676,7 @@ def create_default_registry(
         )  # Policy-level: Validates required fields, conflicts, valid values
 
         # 1. POLICY STRUCTURE (Checks that examine the entire policy, not individual statements)
-        registry.register(
-            checks.SidUniquenessCheck()
-        )  # Policy-level: Duplicate SID detection across statements
+        registry.register(checks.SidUniquenessCheck())  # Policy-level: Duplicate SID detection across statements
         registry.register(checks.PolicySizeCheck())  # Policy-level: Size limit validation
 
         # 2. IAM VALIDITY (AWS syntax validation - must pass before deeper checks)
@@ -698,18 +690,14 @@ def create_default_registry(
         registry.register(checks.IfExistsConditionCheck())  # IfExists usage validation
 
         # 4. RESOURCE MATCHING (Action-resource relationship validation)
-        registry.register(
-            checks.ActionResourceMatchingCheck()
-        )  # ARN type matching and resource constraints
+        registry.register(checks.ActionResourceMatchingCheck())  # ARN type matching and resource constraints
 
         # 5. SECURITY - WILDCARDS (Security best practices for wildcards)
         registry.register(checks.WildcardActionCheck())  # Wildcard action detection
         registry.register(checks.WildcardResourceCheck())  # Wildcard resource detection
         registry.register(checks.FullWildcardCheck())  # Full wildcard (*) detection
         registry.register(checks.ServiceWildcardCheck())  # Service-level wildcard detection
-        registry.register(
-            checks.NotActionNotResourceCheck()
-        )  # NotAction/NotResource pattern detection
+        registry.register(checks.NotActionNotResourceCheck())  # NotAction/NotResource pattern detection
         registry.register(checks.NotPrincipalValidationCheck())  # NotPrincipal usage detection
 
         # 6. SECURITY - ADVANCED (Sensitive actions and condition enforcement)
@@ -722,12 +710,8 @@ def create_default_registry(
         registry.register(checks.MFAConditionCheck())  # MFA anti-pattern detection
 
         # 7. PRINCIPAL VALIDATION (Resource policy specific)
-        registry.register(
-            checks.PrincipalValidationCheck()
-        )  # Principal validation (resource policies)
-        registry.register(
-            checks.TrustPolicyValidationCheck()
-        )  # Trust policy validation (role assumption policies)
+        registry.register(checks.PrincipalValidationCheck())  # Principal validation (resource policies)
+        registry.register(checks.TrustPolicyValidationCheck())  # Trust policy validation (role assumption policies)
 
         # Note: policy_type_validation is a standalone function (not a class-based check)
         # and is called separately in the validation flow

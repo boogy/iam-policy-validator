@@ -805,9 +805,7 @@ async def fix_policy_issues(
                     normalized.append(action)
 
             if normalized:
-                stmt["Action"] = (
-                    normalized[0] if (was_string and len(normalized) == 1) else normalized
-                )
+                stmt["Action"] = normalized[0] if (was_string and len(normalized) == 1) else normalized
 
     # Collect issues that require manual intervention
     # Include the example and suggestion from the validator for guidance
@@ -1687,15 +1685,11 @@ async def check_actions_batch(
     shared_fetcher = get_shared_fetcher(ctx)
     if shared_fetcher:
         # Use shared fetcher - run all checks in parallel
-        check_results = await asyncio.gather(
-            *[check_one_action(action, shared_fetcher) for action in actions]
-        )
+        check_results = await asyncio.gather(*[check_one_action(action, shared_fetcher) for action in actions])
     else:
         # Fall back to creating new fetcher
         async with AWSServiceFetcher() as fetcher:
-            check_results = await asyncio.gather(
-                *[check_one_action(action, fetcher) for action in actions]
-            )
+            check_results = await asyncio.gather(*[check_one_action(action, fetcher) for action in actions])
 
     # Aggregate results
     valid_actions: list[str] = []

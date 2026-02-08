@@ -67,9 +67,7 @@ def get_suggestion_from_requirement(requirement: dict[str, Any]) -> tuple[str, s
                             break
                         # Handle nested all_of/any_of/none_of structures
                         for nested_key in ["all_of", "any_of", "none_of"]:
-                            if nested_key in first_option and isinstance(
-                                first_option[nested_key], list
-                            ):
+                            if nested_key in first_option and isinstance(first_option[nested_key], list):
                                 for nested in first_option[nested_key]:
                                     if "example" in nested:
                                         example = nested["example"]
@@ -140,9 +138,7 @@ class SensitiveActionCheck(PolicyCheck):
 
         return covered_actions
 
-    def _get_category_specific_suggestion(
-        self, action: str, config: CheckConfig
-    ) -> tuple[str, str]:
+    def _get_category_specific_suggestion(self, action: str, config: CheckConfig) -> tuple[str, str]:
         """
         Get category-specific suggestion and example for an action using two-tier lookup.
 
@@ -207,17 +203,13 @@ class SensitiveActionCheck(PolicyCheck):
         expanded_actions = await expand_wildcard_actions(actions, fetcher)
 
         # Check if sensitive actions match using any_of/all_of logic
-        is_sensitive, matched_actions = check_sensitive_actions(
-            expanded_actions, config, DEFAULT_SENSITIVE_ACTIONS
-        )
+        is_sensitive, matched_actions = check_sensitive_actions(expanded_actions, config, DEFAULT_SENSITIVE_ACTIONS)
 
         if is_sensitive and not has_conditions:
             # Filter out actions already covered by action_condition_enforcement
             # This prevents duplicate warnings with different messages
             covered_actions = self._get_actions_covered_by_condition_enforcement(config)
-            matched_actions = [
-                action for action in matched_actions if action not in covered_actions
-            ]
+            matched_actions = [action for action in matched_actions if action not in covered_actions]
 
             # If all matched actions are covered elsewhere, skip this check
             if not matched_actions:
@@ -239,9 +231,7 @@ class SensitiveActionCheck(PolicyCheck):
 
             # Get category-specific suggestion and example (or use config defaults)
             # Use the first matched action to determine the category
-            suggestion_text, example = self._get_category_specific_suggestion(
-                matched_actions[0], config
-            )
+            suggestion_text, example = self._get_category_specific_suggestion(matched_actions[0], config)
 
             # Determine severity based on the highest severity action in the list
             severity = self.get_severity(config)  # Default
@@ -335,7 +325,7 @@ class SensitiveActionCheck(PolicyCheck):
         Returns:
             List of ValidationIssue objects found by this check
         """
-        del policy_file, fetcher  # Not used in current implementation
+        del policy_file  # Not used in current implementation
         issues = []
 
         # Handle policies with no statements
@@ -344,9 +334,7 @@ class SensitiveActionCheck(PolicyCheck):
 
         # Collect all actions from all Allow statements across the entire policy
         all_actions: set[str] = set()
-        statement_map: dict[
-            str, list[tuple[int, str | None]]
-        ] = {}  # action -> [(stmt_idx, sid), ...]
+        statement_map: dict[str, list[tuple[int, str | None]]] = {}  # action -> [(stmt_idx, sid), ...]
 
         for idx, statement in enumerate(policy.statement):
             if statement.effect == "Allow":
@@ -354,7 +342,10 @@ class SensitiveActionCheck(PolicyCheck):
                 # Filter out wildcards for privilege escalation detection
                 filtered_actions = [a for a in actions if a != "*"]
 
-                for action in filtered_actions:
+                # Expand wildcards to actual actions using AWS API
+                expanded_actions = await expand_wildcard_actions(filtered_actions, fetcher)
+
+                for action in expanded_actions:
                     all_actions.add(action)
                     if action not in statement_map:
                         statement_map[action] = []

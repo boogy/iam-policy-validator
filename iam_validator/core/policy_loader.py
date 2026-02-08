@@ -188,9 +188,7 @@ class PolicyLoader:
                     if brace_depth == 0 and statement_start_line is not None:
                         # Completed a statement object
                         # Use first field line if found, otherwise use opening brace
-                        statement_lines.append(
-                            current_statement_first_field or statement_start_line
-                        )
+                        statement_lines.append(current_statement_first_field or statement_start_line)
                         statement_start_line = None
                         current_statement_first_field = None
                 elif char == "]" and brace_depth == 0:
@@ -207,12 +205,7 @@ class PolicyLoader:
             ):
                 stripped = line.strip()
                 # Look for first JSON field (e.g., "Sid":, "Effect":, "Action":)
-                if (
-                    stripped
-                    and stripped[0] == '"'
-                    and ":" in stripped
-                    and not stripped.startswith('"{')
-                ):
+                if stripped and stripped[0] == '"' and ":" in stripped and not stripped.startswith('"{'):
                     current_statement_first_field = line_num
 
         return statement_lines
@@ -372,14 +365,10 @@ class PolicyLoader:
             return False
 
     @overload
-    def load_from_file(
-        self, file_path: str, return_raw_dict: Literal[False] = False
-    ) -> IAMPolicy | None: ...
+    def load_from_file(self, file_path: str, return_raw_dict: Literal[False] = False) -> IAMPolicy | None: ...
 
     @overload
-    def load_from_file(
-        self, file_path: str, return_raw_dict: Literal[True]
-    ) -> tuple[IAMPolicy, dict] | None: ...
+    def load_from_file(self, file_path: str, return_raw_dict: Literal[True]) -> tuple[IAMPolicy, dict] | None: ...
 
     def load_from_file(
         self, file_path: str, return_raw_dict: bool = False
@@ -480,9 +469,7 @@ class PolicyLoader:
             logger.error("Failed to load policy from %s: %s", file_path, e)
             return None
 
-    def load_from_directory(
-        self, directory_path: str, recursive: bool = True
-    ) -> list[tuple[str, IAMPolicy]]:
+    def load_from_directory(self, directory_path: str, recursive: bool = True) -> list[tuple[str, IAMPolicy]]:
         """Load all IAM policies from a directory.
 
         Args:
@@ -539,9 +526,7 @@ class PolicyLoader:
             logger.error("Path not found: %s", path)
             return []
 
-    def load_from_paths(
-        self, paths: list[str], recursive: bool = True
-    ) -> list[tuple[str, IAMPolicy]]:
+    def load_from_paths(self, paths: list[str], recursive: bool = True) -> list[tuple[str, IAMPolicy]]:
         """Load IAM policies from multiple files or directories.
 
         Args:
@@ -590,9 +575,7 @@ class PolicyLoader:
         else:
             logger.error("Path not found: %s", path)
 
-    def stream_from_path(
-        self, path: str, recursive: bool = True
-    ) -> Generator[tuple[str, IAMPolicy], None, None]:
+    def stream_from_path(self, path: str, recursive: bool = True) -> Generator[tuple[str, IAMPolicy], None, None]:
         """Stream IAM policies from a file or directory one at a time.
 
         This is a memory-efficient alternative to load_from_path that yields

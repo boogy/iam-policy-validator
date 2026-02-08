@@ -239,4 +239,4 @@ __all__ = [
 ]
 
 # SDK version (same as main package)
-from iam_validator.__version__ import __version__
+from iam_validator import __version__

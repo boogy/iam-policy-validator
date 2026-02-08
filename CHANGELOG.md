@@ -9,71 +9,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Use maximum severity across all matched actions in `sensitive_action` instead of first match ([#79])
-- Show `action_condition_enforcement` cross-statement context note only when 2+ statements share the same sensitive actions ([#79])
-- Cache PR info for the lifetime of the `PRCommenter` instance, avoiding redundant GitHub API calls ([#79])
-- Remove `PolicyValidationLimits` class from `PolicyLoader`; size validation now handled by `policy_size` and `policy_type_validation` checks ([#79])
-- Extract `_process_issues()` helper in `CheckRegistry` and migrate `print()` warnings to `logger.warning()` ([#79])
-- Extract `format_list_with_backticks()` utility to `checks/utils/formatting.py` for reuse across checks ([#79])
-- Consolidate GitHub Actions examples from 6 verbose workflow files to 2 streamlined examples (`basic.yaml`, `access-analyzer.yaml`) ([#79])
-- Extract shared test fixtures to `tests/checks/conftest.py` and `tests/core/conftest.py` ([#79])
-- Lint test files with Ruff (remove `tests/**/*.py` from `extend-exclude`) ([#79])
-- Suppress individual `NotAction`/`NotResource` findings in `not_action_not_resource` when the combined critical finding is already emitted ([#79])
-- Disable `pytest-benchmark` plugin by default in pytest configuration ([#79])
-- Remove deprecated `dependency-groups` section from `pyproject.toml` ([#79])
-- Remove 58 redundant example test policies and simplify examples directory ([#79])
+- Align SID format validation to AWS spec — alphanumeric only, no hyphens or underscores ([#79])
+- Accept single `Statement` object (dict) in addition to array in `policy_structure`, matching AWS behavior ([#79])
+- Suppress duplicate `NotAction`/`NotResource` findings when the combined critical finding is already emitted ([#79])
+- Replace MD5 with SHA-256 for cache path generation ([#79])
+- Consolidate GitHub Actions examples from 6 workflow files to 2 ([#79])
 
 ### Added
 
-- Add `not_principal_validation` check detecting dangerous `NotPrincipal` usage patterns ([#79]):
-  - Flag `NotPrincipal` with `Effect: Allow` as error (not supported by AWS)
-  - Flag `NotPrincipal` with `Effect: Deny` as warning (deprecated pattern)
-  - Suggest using `Principal: "*"` with condition operators (`ArnNotEquals`) instead
-- Add confused deputy detection in `trust_policy_validation` ([#79]):
-  - Detect service principals without `aws:SourceArn` or `aws:SourceAccount` conditions
-  - Exempt 3 compute-bound safe services (ec2, lambda, edgelambda)
-  - Provide specific remediation examples per service principal
-- Add SCP-specific size limit validation (5,120 bytes) in `policy_type_validation` ([#79])
-- Add off-diff PR comment pipeline with cascading fallback for issues on unchanged lines ([#79]):
-  - Try line-level review comment first (works for diff context lines)
-  - Fall back to file-level comment (`subject_type: "file"`) when line is outside diff
-  - Show remaining issues in a collapsible summary table
-- Protect off-diff comment fingerprints from deletion during comment cleanup ([#79])
-- Add outdated policy version warning in `policy_structure` for `Version` `2008-10-17` (missing policy variables and advanced operators) ([#79])
-- Add separate error messages for `Principal` vs `NotPrincipal` in SCP validation ([#79])
-- Add operator-specific value format validation in `condition_type_mismatch` ([#79]):
-  - Validate CIDR notation for `IpAddress`/`NotIpAddress` (IPv4/IPv6)
-  - Validate ARN format for `ArnEquals`/`ArnLike` (`arn:` prefix or template variables)
-  - Validate boolean values for `Bool` (`"true"` or `"false"` only)
-- Add implicit grant analysis in `not_action_not_resource` showing which services get access when `NotAction` is used with `Allow` ([#79])
-- Add remediation suggestions with specific alternative patterns in `not_action_not_resource` ([#79])
-- Add TypedDicts for structured SDK query results (`ActionInfo`, `ActionDetails`, `ConditionKeyInfo`, `ConditionKeyDetails`, `ArnTypeInfo`, `ArnFormatDetails`) ([#79])
-- Add `filter_issues_by_check_id` and `filter_issues_by_severity` to SDK ([#79])
-- Accept `str | dict` in SDK `validate_json()` with automatic JSON string parsing ([#79])
-- Add `repository`, `ref`, and `job_workflow_ref` condition keys to OIDC example in `trust_policy_validation` ([#79])
-- Add confused deputy protection documentation with safe services table and remediation examples ([#79])
-- Add SDK usage examples (`examples/sdk/`) and dedicated SDK test suite (`tests/sdk/`) ([#79])
-- Export `normalize_template_variables` and `has_template_variables` ARN utilities in SDK ([#79])
-- Add hierarchical `CLAUDE.md` development guides for all major directories ([#79])
-- Add `--has-condition-key` filter to `query action` and `query arn` subcommands for filtering results by condition key support (e.g., `--has-condition-key "s3:ResourceAccount"`), with prefix matching for template keys (e.g., `s3:BucketTag` matches `s3:BucketTag/${TagKey}`)
-- Add `--condition` as backward-compatible alias for `--has-condition-key` in `query action`
-- Add `--show-condition-keys`, `--show-arn-format`, `--show-resource-type` field filter flags to `query arn` subcommand for selective field output
+- Add `not_principal_validation` check — flag `NotPrincipal` with `Allow` as error, with `Deny` as warning ([#79])
+- Add confused deputy detection in `trust_policy_validation` — detect service principals without `aws:SourceArn`/`aws:SourceAccount`, exempt 3 compute-bound safe services ([#79])
+- Add off-diff PR comment pipeline — cascading fallback from inline to file-level to summary table for issues on unchanged lines ([#79])
+- Add operator-specific value format validation in `condition_type_mismatch` — CIDR for `IpAddress`, ARN format for `ArnLike`, boolean for `Bool` ([#79])
+- Add SCP-specific size limit validation (5,120 bytes) and `Principal`/`NotPrincipal` error messages ([#79])
+- Add outdated policy version warning for `Version` `2008-10-17` ([#79])
+- Add implicit grant analysis and remediation suggestions in `not_action_not_resource` ([#79])
+- Add `--has-condition-key` filter and `--show-condition-keys`/`--show-arn-format`/`--show-resource-type` flags to `query` subcommands ([#79])
+- Add SDK improvements: TypedDicts for query results, `filter_issues_by_check_id`/`filter_issues_by_severity`, `str | dict` in `validate_json()`, ARN utility exports, usage examples and test suite ([#79])
 
 ### Fixed
 
-- Fix `aws:ResourceOrgPaths` condition example in `action_condition_enforcement` to use `ForAnyValue:StringLike` instead of `StringEquals` (multivalued condition key requires set operator) ([#79])
-- Fix suggestion text for organization path boundary in `action_condition_enforcement` to reference `ForAnyValue:StringLike` ([#79])
-- Post issues on unchanged lines as off-diff comments instead of silently dropping them ([#79])
-- Replace deprecated `asyncio.get_event_loop()` with `asyncio.get_running_loop()` in AWS service client ([#79])
-- Use public `get_all_checks()` API instead of private `_checks` attribute in MCP server `_get_cached_checks()` ([#79])
-- Add severity field validator to `ValidationIssue` to reject invalid values at model construction ([#79])
-- Fix resource leak in SDK `expand_actions()` when no fetcher is provided (now uses `async with`) ([#79])
-- Fix `Literal[False] = ...` overload default in `PolicyLoader.load_from_file()` to use `= False` (CodeQL "statement has no effect") ([#79])
-- Add missing global `--log-level` and `--version` to bash and zsh shell completions
-- Add missing file completion for `--report`/`-r` (post-to-pr), `--check-no-new-access` (analyze), and directory completion for `--output-dir` (sync-services) in bash completions
-- Fix command detection in bash completions to properly skip `--log-level` value argument
-- Remove unreachable duplicate `--config` case in bash completions
-- Fix `download-services` → `sync-services` command name in CLAUDE.md documentation
+_Security:_
+
+- Fix `is_glob_match()` unbounded recursion — add memoization to bound complexity
+- Fix non-atomic disk cache writes — use temp file + `os.replace()`
+- Fix CSV formula injection — sanitize all user-controlled fields including pivot table
+- Fix thread-unsafe singletons (`CompiledPatterns`, `AWSGlobalConditions`, `SessionConfigManager`) — add `threading.Lock`
+
+_Logic errors:_
+
+- Fix `sensitive_action.execute_policy()` not expanding wildcard actions — `iam:Create*` now properly expanded before privilege escalation detection
+- Fix `Action: "*"` bypassing all condition enforcement requirements
+- Fix `sts:*` skipped in `trust_policy_validation` — now validates against all STS assume-role rules
+- Fix case-sensitive comparisons in `service_wildcard` and `IfExists` null-check suppression — normalize to lowercase
+- Fix `operator_type` variable mutation in `condition_type_mismatch` inner loop
+- Fix `policy_size` stripping whitespace inside JSON string values
+- Fix `not_action_not_resource` false positive on trust policies that validly omit `Resource`
+- Fix `lstrip("./")` stripping individual chars in `codeowners.py` — use `removeprefix()`
+
+_Bugs:_
+
+- Fix regex caching in `regex.py` — `compile_and_cache()` was creating a new LRU on every call; `_pattern_cache` was unbounded
+- Fix `LRUCache.__contains__` and `__len__` ignoring TTL on expired entries
+- Fix index mismatch in `execute_checks_parallel()` when checks without configs are skipped
+- Sync `KNOWN_CHECK_IDS` with all 21 registered check IDs
+- Fix `_delete_comments_with_identifier()` not paginating ([#79])
+- Fix `_strip_variables_from_arn()` to also handle Terraform and CloudFormation variables
+- Fix bash/zsh shell completions: missing options, unreachable cases, command detection ([#79])
+- Fix `deep_merge` sharing list references between configs
+- Add bounded cache eviction to `wildcard_resource.py` module-level caches
 
 [#79]: https://github.com/boogy/iam-policy-validator/pull/79
 

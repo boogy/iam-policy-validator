@@ -28,6 +28,7 @@ class CheckDocumentation:
 
     Attributes:
         check_id: Unique check identifier (e.g., "wildcard_action")
+        short_description: Brief human-readable label (e.g., "Wildcard Action")
         risk_explanation: Why this issue is a security risk
         documentation_url: Link to relevant AWS docs or runbook
         remediation_steps: Step-by-step fix guidance
@@ -35,6 +36,7 @@ class CheckDocumentation:
     """
 
     check_id: str
+    short_description: str
     risk_explanation: str
     documentation_url: str
     remediation_steps: list[str] = field(default_factory=list)
@@ -78,6 +80,12 @@ class CheckDocumentationRegistry:
         return doc.documentation_url if doc else None
 
     @classmethod
+    def get_short_description(cls, check_id: str) -> str | None:
+        """Get short description for a check."""
+        doc = cls.get(check_id)
+        return doc.short_description if doc else None
+
+    @classmethod
     def get_remediation_steps(cls, check_id: str) -> list[str] | None:
         """Get remediation steps for a check."""
         doc = cls.get(check_id)
@@ -93,6 +101,7 @@ class CheckDocumentationRegistry:
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="action_validation",
+        short_description="Invalid IAM Action",
         risk_explanation=(
             "Invalid `Action`s may silently fail to grant intended permissions, "
             "or indicate a typo that could expose unintended access."
@@ -110,6 +119,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="condition_key_validation",
+        short_description="Invalid Condition Key",
         risk_explanation=(
             "Invalid condition keys are silently ignored by AWS IAM, meaning your "
             "intended access restrictions may not be enforced."
@@ -127,6 +137,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="condition_type_mismatch",
+        short_description="Condition Type Mismatch",
         risk_explanation=(
             "Using the wrong condition operator type (e.g., `StringEquals` with a "
             "numeric value) may cause unexpected behavior or silent failures."
@@ -144,6 +155,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="resource_validation",
+        short_description="Invalid Resource ARN",
         risk_explanation=(
             "Invalid `Resource` ARNs may silently fail to match intended resources, "
             "leaving permissions ineffective or overly broad."
@@ -161,6 +173,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="sid_uniqueness",
+        short_description="Duplicate Statement ID",
         risk_explanation=(
             "Duplicate SIDs can cause confusion and make policy auditing difficult. "
             "Some AWS services may behave unexpectedly with duplicate SIDs."
@@ -178,6 +191,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="policy_size",
+        short_description="Policy Size Exceeded",
         risk_explanation=(
             "Policies exceeding AWS size limits cannot be attached to IAM entities. "
             "Inline policies have a 2KB limit, managed policies have a 6KB limit (for the entire policy document)."
@@ -196,6 +210,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="policy_structure",
+        short_description="Invalid Policy Structure",
         risk_explanation=(
             "Malformed policy structure will cause AWS IAM to reject the policy entirely, "
             "preventing any permissions from being granted."
@@ -213,6 +228,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="set_operator_validation",
+        short_description="Invalid Set Operator",
         risk_explanation=(
             "Invalid `ForAllValues`/`ForAnyValue` operators may cause conditions to "
             "behave unexpectedly, potentially granting or denying unintended access."
@@ -229,7 +245,8 @@ CheckDocumentationRegistry.register(
 
 CheckDocumentationRegistry.register(
     CheckDocumentation(
-        check_id="mfa_condition_check",
+        check_id="mfa_condition_antipattern",
+        short_description="Missing MFA Condition",
         risk_explanation=(
             "Sensitive operations without MFA requirements may be performed by "
             "compromised credentials, increasing the blast radius of credential theft."
@@ -247,6 +264,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="principal_validation",
+        short_description="Invalid Principal",
         risk_explanation=(
             "Invalid principals in resource policies may fail to grant access to "
             "intended entities, or may inadvertently grant access to unintended parties."
@@ -264,9 +282,9 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="policy_type_validation",
+        short_description="Policy Type Mismatch",
         risk_explanation=(
-            "Using policy elements not supported by the policy type may cause "
-            "silent failures or unexpected behavior."
+            "Using policy elements not supported by the policy type may cause silent failures or unexpected behavior."
         ),
         documentation_url=f"{CheckDocumentationRegistry.AWS_IAM_DOCS}/access_policies.html",
         remediation_steps=[
@@ -281,6 +299,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="action_resource_matching",
+        short_description="Action-Resource Mismatch",
         risk_explanation=(
             "`Action`s that don't support the specified `Resource`s will silently fail, "
             "resulting in permissions that don't work as intended."
@@ -298,6 +317,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="trust_policy_validation",
+        short_description="Trust Policy Issue",
         risk_explanation=(
             "Misconfigured trust policies can allow unauthorized principals to "
             "assume roles, potentially leading to privilege escalation."
@@ -313,12 +333,49 @@ CheckDocumentationRegistry.register(
     )
 )
 
+CheckDocumentationRegistry.register(
+    CheckDocumentation(
+        check_id="ifexists_condition_usage",
+        short_description="IfExists Condition Issue",
+        risk_explanation=(
+            "Using `...IfExists` condition operators incorrectly can silently skip "
+            "condition evaluation when the key is absent, effectively granting unconditional access."
+        ),
+        documentation_url=f"{CheckDocumentationRegistry.AWS_IAM_DOCS}/reference_policies_elements_condition_operators.html#Conditions_IfExists",
+        remediation_steps=[
+            "Verify `IfExists` is only used for keys that may legitimately be absent",
+            "Avoid `IfExists` on keys that should always be present (e.g., `aws:PrincipalArn`)",
+            "Consider using the non-IfExists operator with a `Null` condition check instead",
+        ],
+        risk_category="validation",
+    )
+)
+
+CheckDocumentationRegistry.register(
+    CheckDocumentation(
+        check_id="not_principal_validation",
+        short_description="NotPrincipal Usage",
+        risk_explanation=(
+            "`NotPrincipal` grants or denies access to all principals except those listed. "
+            "This can accidentally grant access to unintended parties, including anonymous users."
+        ),
+        documentation_url=f"{CheckDocumentationRegistry.AWS_IAM_DOCS}/reference_policies_elements_notprincipal.html",
+        remediation_steps=[
+            "Replace `NotPrincipal` with explicit `Principal` and `Deny` logic where possible",
+            "If `NotPrincipal` is required, combine with `Deny` effect only",
+            "Avoid using `NotPrincipal` with `Allow` as it grants access to nearly everyone",
+        ],
+        risk_category="resource_exposure",
+    )
+)
+
 # Security Checks
 # ---------------
 
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="wildcard_action",
+        short_description="Wildcard Action",
         risk_explanation=(
             "Wildcard actions (e.g., `s3:*`) grant all current AND future permissions "
             "for a service, violating least privilege and increasing attack surface."
@@ -336,6 +393,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="wildcard_resource",
+        short_description="Wildcard Resource",
         risk_explanation=(
             "Wildcard resources (`*`) grant access to ALL resources of a type, "
             "including resources created in the future, violating least privilege."
@@ -354,6 +412,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="full_wildcard",
+        short_description="Full Wildcard Permission",
         risk_explanation=(
             "Full wildcard access ('Action': '*', 'Resource': '*') grants complete "
             "control over all AWS resources, equivalent to administrator access."
@@ -372,6 +431,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="service_wildcard",
+        short_description="Service-Wide Wildcard",
         risk_explanation=(
             "Service-level wildcards (e.g., `iam:*`) grant all permissions for "
             "an entire service, including destructive and privilege escalation actions."
@@ -389,6 +449,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="sensitive_action",
+        short_description="Sensitive Action",
         risk_explanation=(
             "Sensitive actions (e.g., `iam:*`, `sts:AssumeRole`, `kms:Decrypt`) can lead "
             "to privilege escalation, data exfiltration, or account compromise."
@@ -406,6 +467,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="action_condition_enforcement",
+        short_description="Missing Required Condition",
         risk_explanation=(
             "Certain sensitive actions should always have conditions to prevent "
             "misuse, such as Account/Organization boundaries, VPC/VPCe restrictions, MFA requirements, or time-based access."
@@ -426,6 +488,7 @@ CheckDocumentationRegistry.register(
 CheckDocumentationRegistry.register(
     CheckDocumentation(
         check_id="not_action_not_resource",
+        short_description="Dangerous NotAction/NotResource",
         risk_explanation=(
             "`NotAction` and `NotResource` grant permissions by exclusion rather than "
             "inclusion. This can accidentally grant far more access than intended, "

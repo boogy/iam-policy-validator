@@ -36,9 +36,7 @@ async def execute_policy(
         return issues
 
     # Check if any statement has Principal
-    has_any_principal = any(
-        stmt.principal is not None or stmt.not_principal is not None for stmt in policy.statement
-    )
+    has_any_principal = any(stmt.principal is not None or stmt.not_principal is not None for stmt in policy.statement)
 
     # If policy has Principal but type is IDENTITY_POLICY (default), provide helpful info
     if has_any_principal and policy_type == "IDENTITY_POLICY":
@@ -294,9 +292,7 @@ async def execute_policy(
 
             # 3. Check for unsupported actions (actions not in supported services)
             if statement.action:
-                actions = (
-                    statement.action if isinstance(statement.action, list) else [statement.action]
-                )
+                actions = statement.action if isinstance(statement.action, list) else [statement.action]
                 unsupported_actions = []
 
                 for action in actions:

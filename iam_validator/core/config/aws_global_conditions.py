@@ -9,6 +9,7 @@ Last updated: 2025-01-17
 """
 
 import re
+import threading
 from typing import Any
 
 from iam_validator.core.constants import AWS_TAG_KEY_ALLOWED_CHARS
@@ -162,6 +163,7 @@ class AWSGlobalConditions:
 
 # Singleton instance
 _global_conditions_instance = None
+_global_conditions_lock = threading.Lock()
 
 
 def get_global_conditions() -> AWSGlobalConditions:
@@ -169,5 +171,7 @@ def get_global_conditions() -> AWSGlobalConditions:
     global _global_conditions_instance  # pylint: disable=global-statement
 
     if _global_conditions_instance is None:
-        _global_conditions_instance = AWSGlobalConditions()
+        with _global_conditions_lock:
+            if _global_conditions_instance is None:
+                _global_conditions_instance = AWSGlobalConditions()
     return _global_conditions_instance

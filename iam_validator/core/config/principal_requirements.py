@@ -61,36 +61,18 @@ PUBLIC_ACCESS_REQUIREMENT: Final[dict[str, Any]] = {
                     "Public access must be limited to a specific AWS account to prevent "
                     "unauthorized access from other accounts"
                 ),
-                "example": (
-                    '"Condition": {\n'
-                    '  "StringEquals": {\n'
-                    '    "aws:SourceAccount": "123456789012"\n'
-                    "  }\n"
-                    "}"
-                ),
+                "example": ('"Condition": {\n  "StringEquals": {\n    "aws:SourceAccount": "123456789012"\n  }\n}'),
             },
             {
                 "condition_key": "aws:SourceVpce",
-                "description": (
-                    "Or limit public access to a specific VPC endpoint for network-level isolation"
-                ),
-                "example": (
-                    '"Condition": {\n'
-                    '  "StringEquals": {\n'
-                    '    "aws:SourceVpce": "vpce-1a2b3c4d"\n'
-                    "  }\n"
-                    "}"
-                ),
+                "description": ("Or limit public access to a specific VPC endpoint for network-level isolation"),
+                "example": ('"Condition": {\n  "StringEquals": {\n    "aws:SourceVpce": "vpce-1a2b3c4d"\n  }\n}'),
             },
             {
                 "condition_key": "aws:SourceIp",
                 "description": ("Or limit public access to specific IP addresses or CIDR ranges"),
                 "example": (
-                    '"Condition": {\n'
-                    '  "IpAddress": {\n'
-                    '    "aws:SourceIp": ["10.0.0.0/8", "172.16.0.0/12"]\n'
-                    "  }\n"
-                    "}"
+                    '"Condition": {\n  "IpAddress": {\n    "aws:SourceIp": ["10.0.0.0/8", "172.16.0.0/12"]\n  }\n}'
                 ),
             },
         ]
@@ -149,22 +131,12 @@ IAM_ROLE_MFA_OR_VPC: Final[dict[str, Any]] = {
                 "condition_key": "aws:MultiFactorAuthPresent",
                 "expected_value": True,
                 "description": "Require MFA authentication for IAM role access",
-                "example": (
-                    '"Condition": {\n  "Bool": {\n    "aws:MultiFactorAuthPresent": "true"\n  }\n}'
-                ),
+                "example": ('"Condition": {\n  "Bool": {\n    "aws:MultiFactorAuthPresent": "true"\n  }\n}'),
             },
             {
                 "condition_key": "aws:SourceVpce",
-                "description": (
-                    "Or require access from a specific VPC endpoint to ensure network-level isolation"
-                ),
-                "example": (
-                    '"Condition": {\n'
-                    '  "StringEquals": {\n'
-                    '    "aws:SourceVpce": "vpce-12345678"\n'
-                    "  }\n"
-                    "}"
-                ),
+                "description": ("Or require access from a specific VPC endpoint to ensure network-level isolation"),
+                "example": ('"Condition": {\n  "StringEquals": {\n    "aws:SourceVpce": "vpce-12345678"\n  }\n}'),
             },
         ]
     },
@@ -181,20 +153,14 @@ IAM_USER_MFA_AND_IP: Final[dict[str, Any]] = {
                 "expected_value": True,
                 "severity": "high",  # Override for this specific condition
                 "description": "IAM users must have MFA enabled for security",
-                "example": (
-                    '"Condition": {\n  "Bool": {\n    "aws:MultiFactorAuthPresent": "true"\n  }\n}'
-                ),
+                "example": ('"Condition": {\n  "Bool": {\n    "aws:MultiFactorAuthPresent": "true"\n  }\n}'),
             },
             {
                 "condition_key": "aws:SourceIp",
                 "operator": "IpAddress",
                 "description": "IAM users must access from approved corporate IP ranges",
                 "example": (
-                    '"Condition": {\n'
-                    '  "IpAddress": {\n'
-                    '    "aws:SourceIp": ["10.0.0.0/8", "172.16.0.0/12"]\n'
-                    "  }\n"
-                    "}"
+                    '"Condition": {\n  "IpAddress": {\n    "aws:SourceIp": ["10.0.0.0/8", "172.16.0.0/12"]\n  }\n}'
                 ),
             },
         ]
@@ -211,20 +177,14 @@ FEDERATED_USER_ABAC: Final[dict[str, Any]] = {
                 "condition_key": "aws:PrincipalTag/Department",
                 "description": "Federated users must have Department tag for access control",
                 "example": (
-                    '"Condition": {\n'
-                    '  "StringEquals": {\n'
-                    '    "aws:PrincipalTag/Department": "Engineering"\n'
-                    "  }\n"
-                    "}"
+                    '"Condition": {\n  "StringEquals": {\n    "aws:PrincipalTag/Department": "Engineering"\n  }\n}'
                 ),
             },
             {
                 "condition_key": "aws:RequestTag/Owner",
                 "operator": "StringEquals",
                 "expected_value": "${aws:PrincipalTag/Owner}",
-                "description": (
-                    "Resource owner must match principal's owner tag (Attribute-Based Access Control)"
-                ),
+                "description": ("Resource owner must match principal's owner tag (Attribute-Based Access Control)"),
                 "example": (
                     "# ABAC: Principal tag must match resource tag\n"
                     '"Condition": {\n'
@@ -278,12 +238,9 @@ ASSUMED_ROLE_SESSION_TAGS: Final[dict[str, Any]] = {
         {
             "condition_key": "aws:PrincipalTag/SessionName",
             "description": (
-                "Assumed role sessions should be tagged with session name for audit trails "
-                "and access attribution"
+                "Assumed role sessions should be tagged with session name for audit trails and access attribution"
             ),
-            "example": (
-                '"Condition": {\n  "StringLike": {\n    "aws:PrincipalTag/SessionName": "*"\n  }\n}'
-            ),
+            "example": ('"Condition": {\n  "StringLike": {\n    "aws:PrincipalTag/SessionName": "*"\n  }\n}'),
         }
     ],
 }
@@ -340,9 +297,7 @@ def get_principal_requirements_by_names(names: list[str]) -> list[dict[str, Any]
     Returns:
         List of principal condition requirements
     """
-    return [
-        ALL_PRINCIPAL_REQUIREMENTS[name] for name in names if name in ALL_PRINCIPAL_REQUIREMENTS
-    ]
+    return [ALL_PRINCIPAL_REQUIREMENTS[name] for name in names if name in ALL_PRINCIPAL_REQUIREMENTS]
 
 
 def get_principal_requirements_by_severity(severity: str) -> list[dict[str, Any]]:

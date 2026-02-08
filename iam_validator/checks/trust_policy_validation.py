@@ -100,9 +100,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
     }
 
     check_id: ClassVar[str] = "trust_policy_validation"
-    description: ClassVar[str] = (
-        "Validates trust policies for role assumption security and action-principal coupling"
-    )
+    description: ClassVar[str] = "Validates trust policies for role assumption security and action-principal coupling"
     default_severity: ClassVar[str] = "high"
 
     async def execute(
@@ -139,8 +137,29 @@ class TrustPolicyValidationCheck(PolicyCheck):
 
         # Check each assume action
         for action in actions:
-            # Skip wildcard actions (too broad to validate specifically)
-            if action == "*" or action == "sts:*":
+            # Skip full wildcard (too broad to validate specifically)
+            if action == "*":
+                continue
+
+            # Treat sts:* as matching all STS assume actions
+            if action == "sts:*":
+                for rule_action, rule in validation_rules.items():
+                    principal_issues = self._validate_principal_type(
+                        statement, rule_action, rule, statement_idx, config
+                    )
+                    issues.extend(principal_issues)
+
+                    if "provider_pattern" in rule:
+                        provider_issues = self._validate_provider_format(
+                            statement, rule_action, rule, statement_idx, config
+                        )
+                        issues.extend(provider_issues)
+
+                    if "required_conditions" in rule:
+                        condition_issues = self._validate_required_conditions(
+                            statement, rule_action, rule, statement_idx, config
+                        )
+                        issues.extend(condition_issues)
                 continue
 
             # Find matching rule (exact matches for assume actions)
@@ -149,23 +168,17 @@ class TrustPolicyValidationCheck(PolicyCheck):
                 continue  # Not an assume action we validate
 
             # Validate principal type for this action
-            principal_issues = self._validate_principal_type(
-                statement, action, rule, statement_idx, config
-            )
+            principal_issues = self._validate_principal_type(statement, action, rule, statement_idx, config)
             issues.extend(principal_issues)
 
             # Validate provider ARN format if required
             if "provider_pattern" in rule:
-                provider_issues = self._validate_provider_format(
-                    statement, action, rule, statement_idx, config
-                )
+                provider_issues = self._validate_provider_format(statement, action, rule, statement_idx, config)
                 issues.extend(provider_issues)
 
             # Validate required conditions
             if "required_conditions" in rule:
-                condition_issues = self._validate_required_conditions(
-                    statement, action, rule, statement_idx, config
-                )
+                condition_issues = self._validate_required_conditions(statement, action, rule, statement_idx, config)
                 issues.extend(condition_issues)
 
         # Check for confused deputy vulnerability (only on Allow statements with Service principals)
@@ -282,9 +295,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
                         suggestion=f"For `{action}`, use {allowed_list} principal type instead of `{principal_type}`. "
                         f"\n\nFound principals: `{principals_list}`\n\n"
                         f"{rule.get('description', '')}",
-                        example=self._get_example_for_action(
-                            action, allowed_types[0] if allowed_types else "AWS"
-                        ),
+                        example=self._get_example_for_action(action, allowed_types[0] if allowed_types else "AWS"),
                         field_name="principal",
                     )
                 )

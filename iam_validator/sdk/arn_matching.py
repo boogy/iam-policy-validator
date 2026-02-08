@@ -167,10 +167,10 @@ def arn_strictly_valid(
 
 def is_glob_match(s1: str, s2: str) -> bool:
     """
-    Recursive glob pattern matching for two strings.
+    Glob pattern matching for two strings using memoized recursion.
 
-    Both strings can contain wildcards (*). This implements a recursive
-    algorithm that handles all combinations of wildcard positions.
+    Both strings can contain wildcards (*). Uses index-based memoization
+    to avoid exponential branching on multiple wildcards.
 
     Args:
         s1: First string (can contain *)
@@ -196,34 +196,44 @@ def is_glob_match(s1: str, s2: str) -> bool:
         This is adapted from Parliament's implementation:
         https://github.com/duo-labs/parliament/issues/36#issuecomment-574001764
     """
-    # If strings are equal, TRUE
-    if s1 == s2:
-        return True
+    memo: dict[tuple[int, int], bool] = {}
 
-    # If either string is all wildcards, TRUE
-    if (s1 and all(c == "*" for c in s1)) or (s2 and all(c == "*" for c in s2)):
-        return True
+    def _match(i: int, j: int) -> bool:
+        key = (i, j)
+        if key in memo:
+            return memo[key]
 
-    # If either string is empty, FALSE (already handled both empty above)
-    if not s1 or not s2:
-        return False
+        a = s1[i:] if i < len(s1) else ""
+        b = s2[j:] if j < len(s2) else ""
 
-    # At this point, both strings are non-empty
-    # If both start with *, TRUE if match first with remainder of second
-    # or second with remainder of first
-    if s1[0] == s2[0] == "*":
-        return is_glob_match(s1[1:], s2) or is_glob_match(s1, s2[1:])
+        # If strings are equal, TRUE
+        if a == b:
+            result = True
+        # If either string is all wildcards, TRUE
+        elif (a and all(c == "*" for c in a)) or (b and all(c == "*" for c in b)):
+            result = True
+        # If either string is empty, FALSE
+        elif not a or not b:
+            result = False
+        # Both start with *
+        elif a[0] == b[0] == "*":
+            result = _match(i + 1, j) or _match(i, j + 1)
+        # s1 starts with *
+        elif a[0] == "*":
+            result = any(_match(i + 1, j + k) for k in range(len(b) + 1))
+        # s2 starts with *
+        elif b[0] == "*":
+            result = any(_match(i + k, j + 1) for k in range(len(a) + 1))
+        # Same first character
+        elif a[0] == b[0]:
+            result = _match(i + 1, j + 1)
+        else:
+            result = False
 
-    # If s1 starts with *, TRUE if remainder of s1 matches any suffix of s2
-    if s1[0] == "*":
-        return any(is_glob_match(s1[1:], s2[i:]) for i in range(len(s2) + 1))
+        memo[key] = result
+        return result
 
-    # If s2 starts with *, TRUE if remainder of s2 matches any suffix of s1
-    if s2[0] == "*":
-        return any(is_glob_match(s1[i:], s2[1:]) for i in range(len(s1) + 1))
-
-    # TRUE if both have same first character and remainders match
-    return s1[0] == s2[0] and is_glob_match(s1[1:], s2[1:])
+    return _match(0, 0)
 
 
 def _strip_variables_from_arn(arn: str, replace_with: str = "") -> str:
@@ -241,8 +251,9 @@ def _strip_variables_from_arn(arn: str, replace_with: str = "") -> str:
     Returns:
         ARN with variables replaced
     """
-    # Match ${aws.whatever} or ${aws:whatever}
-    return re.sub(r"\$\{aws[\.:][\w\/]+\}", replace_with, arn)
+    # Match AWS policy variables ${aws:X}, Terraform ${var.X},
+    # CloudFormation ${AWS::X}, and other ${...} template variables
+    return re.sub(r"\$\{(?:aws[\.:]|var\.|AWS::)[^\}]+\}", replace_with, arn)
 
 
 def normalize_template_variables(arn: str) -> str:
@@ -296,10 +307,7 @@ def normalize_template_variables(arn: str) -> str:
         # Not a valid ARN format, restore variables with generic placeholder
         result = arn
         for var in variables:
-            if re.match(r"\$\{aws[\.:]", var, re.IGNORECASE):
-                result = result.replace(var, "placeholder", 1)
-            else:
-                result = result.replace(var, "placeholder", 1)
+            result = result.replace(var, "placeholder", 1)
         return result
 
     # Step 3: Restore variables based on their position in the ARN

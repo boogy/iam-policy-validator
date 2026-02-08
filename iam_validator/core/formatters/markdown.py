@@ -31,15 +31,8 @@ class MarkdownFormatter(OutputFormatter):
         This is a simplified formatter for the registry system.
         """
         # Count issues by severity - support both IAM validity and security severities
-        errors = sum(
-            1
-            for r in report.results
-            for i in r.issues
-            if i.severity in constants.HIGH_SEVERITY_LEVELS
-        )
-        warnings = sum(
-            1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")
-        )
+        errors = sum(1 for r in report.results for i in r.issues if i.severity in constants.HIGH_SEVERITY_LEVELS)
+        warnings = sum(1 for r in report.results for i in r.issues if i.severity in ("warning", "medium"))
         infos = sum(1 for r in report.results for i in r.issues if i.severity in ("info", "low"))
 
         output = [

@@ -56,9 +56,7 @@ class EnhancedFormatter(OutputFormatter):
         string_buffer = StringIO()
         # Get terminal width for proper text wrapping
         terminal_width = get_terminal_width()
-        console = Console(
-            file=string_buffer, force_terminal=color, width=terminal_width, legacy_windows=False
-        )
+        console = Console(file=string_buffer, force_terminal=color, width=terminal_width, legacy_windows=False)
 
         # Header with title
         title = Text(
@@ -433,11 +431,7 @@ class EnhancedFormatter(OutputFormatter):
         elif report.invalid_policies == 0:
             # Valid IAM policies but may have security findings
             # Check if there are critical/high security issues
-            has_critical = any(
-                i.severity in constants.HIGH_SEVERITY_LEVELS
-                for r in report.results
-                for i in r.issues
-            )
+            has_critical = any(i.severity in constants.HIGH_SEVERITY_LEVELS for r in report.results for i in r.issues)
 
             if has_critical:
                 status = Text("⚠️ All Policies Valid (with security issues)", style="bold red")

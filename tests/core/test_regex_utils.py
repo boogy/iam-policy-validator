@@ -143,15 +143,19 @@ class TestGetCachedPattern:
 
     def test_clear_cache(self):
         """Test cache clearing."""
-        get_cached_pattern(r"test1")
-        get_cached_pattern(r"test2")
+        from iam_validator.utils.regex import _get_cached_pattern_impl
 
-        from iam_validator.utils.regex import _pattern_cache
+        clear_pattern_cache()  # Start clean
+        get_cached_pattern(r"test_clear_1")
+        get_cached_pattern(r"test_clear_2")
 
-        assert len(_pattern_cache) == 2
+        info = _get_cached_pattern_impl.cache_info()
+        assert info.currsize >= 2
 
         clear_pattern_cache()
-        assert len(_pattern_cache) == 0
+
+        info = _get_cached_pattern_impl.cache_info()
+        assert info.currsize == 0
 
 
 class TestRealWorldPatterns:

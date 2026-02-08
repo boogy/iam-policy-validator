@@ -97,9 +97,13 @@ class LRUCache:
             self.cache.clear()
 
     def __len__(self) -> int:
-        """Return the current number of items in cache."""
-        return len(self.cache)
+        """Return the current number of non-expired items in cache."""
+        now = time.time()
+        return sum(1 for _, timestamp in self.cache.values() if now - timestamp < self.ttl)
 
     def __contains__(self, key: str) -> bool:
-        """Check if key exists in cache (does not check expiration)."""
-        return key in self.cache
+        """Check if key exists in cache and has not expired."""
+        if key not in self.cache:
+            return False
+        _, timestamp = self.cache[key]
+        return time.time() - timestamp < self.ttl

@@ -120,15 +120,11 @@ def _get_auto_conditions(actions: list[str]) -> tuple[dict[str, Any], list[str]]
                             auto_conditions[operator][condition_key] = value
 
                             # Add note
-                            note_desc = (
-                                description if description else f"Required for {condition_key}"
-                            )
+                            note_desc = description if description else f"Required for {condition_key}"
                             notes.append(f"Auto-added {condition_key} for {action}: {note_desc}")
                         else:
                             # No expected_value - add recommendation note only
-                            note_desc = (
-                                description if description else f"Consider adding {condition_key}"
-                            )
+                            note_desc = description if description else f"Consider adding {condition_key}"
                             notes.append(f"Recommendation for {action}: {note_desc}")
 
             # Handle complex conditions with any_of/none_of
@@ -410,9 +406,7 @@ async def build_minimal_policy(
                         ],
                         policy_file="generated-policy",
                     ),
-                    security_notes=[
-                        "Policy generation blocked: bare wildcard resource with write actions"
-                    ],
+                    security_notes=["Policy generation blocked: bare wildcard resource with write actions"],
                 )
 
         # Check for sensitive actions and add warnings
@@ -430,9 +424,7 @@ async def build_minimal_policy(
                             "description": category_data["description"],
                         }
                     )
-                    security_notes.append(
-                        f"Warning: '{action}' is a sensitive action ({category_data['name']})"
-                    )
+                    security_notes.append(f"Warning: '{action}' is a sensitive action ({category_data['name']})")
 
         # Auto-add required conditions based on CONDITION_REQUIREMENTS
         auto_conditions, auto_notes = _get_auto_conditions(actions)

@@ -115,7 +115,7 @@ class NotActionNotResourceCheck(PolicyCheck):
                         issue_type="not_action_allow",
                         message=(
                             "Statement uses `NotAction` with `Allow` effect. "
-                            "This grants ALL actions except the listed ones. "
+                            "This grants **ALL** actions except the listed ones. "
                             "While conditions are present, this pattern is still risky."
                             + (f" {implicit_grant_note}" if implicit_grant_note else "")
                         ),
@@ -142,7 +142,7 @@ class NotActionNotResourceCheck(PolicyCheck):
                         issue_type="not_action_allow_no_condition",
                         message=(
                             "Statement uses `NotAction` with `Allow` effect and NO conditions. "
-                            f"This grants ALL AWS actions except: {format_list_with_backticks(not_actions, 5)}. "
+                            f"This grants **ALL** AWS actions except: {format_list_with_backticks(not_actions, 5)}. "
                             "This is equivalent to granting near-administrator access."
                             + (f" {implicit_grant_note}" if implicit_grant_note else "")
                         ),
@@ -167,7 +167,12 @@ class NotActionNotResourceCheck(PolicyCheck):
             resources = statement.get_resources()
             has_wildcard_resource = "*" in resources or any("*" in r for r in resources)
 
-            if has_wildcard_resource or not resources:
+            # Trust policies validly omit Resource (the role itself is the resource).
+            # Skip the "missing Resource" warning when the statement has a Principal,
+            # which is a strong signal this is a resource/trust policy.
+            is_trust_like = statement.principal is not None or statement.not_principal is not None
+
+            if has_wildcard_resource or (not resources and not is_trust_like):
                 issues.append(
                     ValidationIssue(
                         severity=self.get_severity(config),
@@ -204,8 +209,8 @@ class NotActionNotResourceCheck(PolicyCheck):
                     issue_type="combined_not_action_not_resource",
                     message=(
                         "**CRITICAL:** Policy uses both `NotAction` AND `NotResource` with `Allow` effect. "
-                        f"This grants ALL actions except [{format_list_with_backticks(not_actions, 3)}] "
-                        f"on ALL resources except [{format_list_with_backticks(not_resources, 3)}]. "
+                        f"This grants **ALL** actions except [{format_list_with_backticks(not_actions, 3)}] "
+                        f"on **ALL** resources except [{format_list_with_backticks(not_resources, 3)}]. "
                         "This is equivalent to near-administrator access."
                     ),
                     suggestion=(

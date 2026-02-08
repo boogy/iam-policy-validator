@@ -193,11 +193,7 @@ async def query_actions(
             if condition not in condition_keys:
                 continue
 
-        description = (
-            action_detail.annotations.get("Description", "N/A")
-            if action_detail.annotations
-            else "N/A"
-        )
+        description = action_detail.annotations.get("Description", "N/A") if action_detail.annotations else "N/A"
 
         filtered_actions.append(
             {
@@ -247,9 +243,7 @@ async def query_action_details(
         raise ValueError(f"Action '{action_name}' not found in service '{service}'")
 
     access_level = _get_access_level(action_detail)
-    description = (
-        action_detail.annotations.get("Description", "N/A") if action_detail.annotations else "N/A"
-    )
+    description = action_detail.annotations.get("Description", "N/A") if action_detail.annotations else "N/A"
 
     return {
         "service": service,
@@ -352,9 +346,7 @@ async def query_arn_format(
             break
 
     if not resource_type:
-        raise ValueError(
-            f"ARN resource type '{resource_type_name}' not found in service '{service}'"
-        )
+        raise ValueError(f"ARN resource type '{resource_type_name}' not found in service '{service}'")
 
     return {
         "service": service,

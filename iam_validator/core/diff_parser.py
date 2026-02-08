@@ -112,9 +112,7 @@ class DiffParser:
                     deleted_lines=diff["deleted_lines"],
                     status=status,
                 )
-                logger.debug(
-                    f"Parsed diff for {filename}: {len(diff['changed_lines'])} changed lines"
-                )
+                logger.debug(f"Parsed diff for {filename}: {len(diff['changed_lines'])} changed lines")
             except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.warning(f"Failed to parse diff for {filename}: {e}")
                 # Track file with empty change sets on parse error

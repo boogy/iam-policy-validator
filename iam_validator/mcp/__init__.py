@@ -47,9 +47,7 @@ def create_server() -> "FastMCP":
 
         return _create_server()
     except ImportError as e:
-        raise ImportError(
-            "fastmcp is required for MCP server. Install with: uv sync --extra mcp"
-        ) from e
+        raise ImportError("fastmcp is required for MCP server. Install with: uv sync --extra mcp") from e
 
 
 def run_server() -> None:
@@ -144,9 +142,7 @@ def run_server() -> None:
 
         _run_server()
     except ImportError as e:
-        raise ImportError(
-            "fastmcp is required for MCP server. Install with: uv sync --extra mcp"
-        ) from e
+        raise ImportError("fastmcp is required for MCP server. Install with: uv sync --extra mcp") from e
 
 
 __all__ = [

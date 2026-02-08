@@ -241,16 +241,12 @@ class AWSServiceFetcher:
             return loaded_services
 
         # Not in parsed cache, check disk cache then fetch from API
-        data = await self._cache.get(
-            f"raw:{self.BASE_URL}", url=self.BASE_URL, base_url=self.BASE_URL
-        )
+        data = await self._cache.get(f"raw:{self.BASE_URL}", url=self.BASE_URL, base_url=self.BASE_URL)
         if data is None:
             try:
                 data = await self._client.fetch(self.BASE_URL)
                 # Cache the raw data (this refreshes the disk cache file)
-                await self._cache.set(
-                    f"raw:{self.BASE_URL}", data, url=self.BASE_URL, base_url=self.BASE_URL
-                )
+                await self._cache.set(f"raw:{self.BASE_URL}", data, url=self.BASE_URL, base_url=self.BASE_URL)
             except Exception as e:  # pylint: disable=broad-exception-caught
                 # API fetch failed - try stale cache as fallback
                 logger.warning(f"API fetch failed for services list: {e}")
@@ -328,9 +324,7 @@ class AWSServiceFetcher:
                             return service_detail
                         except FileNotFoundError:
                             pass
-                raise ValueError(
-                    f"Service `{service_name}` not found in {self.aws_services_dir}"
-                ) from FileNotFoundError
+                raise ValueError(f"Service `{service_name}` not found in {self.aws_services_dir}") from None
 
         # Fetch service list and find URL from API
         services = await self.fetch_services()
@@ -338,27 +332,19 @@ class AWSServiceFetcher:
         for service in services:
             if service.service.lower() == service_name_lower:
                 # Check disk cache first, then fetch from API
-                data = await self._cache.get(
-                    f"raw:{service.url}", url=service.url, base_url=self.BASE_URL
-                )
+                data = await self._cache.get(f"raw:{service.url}", url=service.url, base_url=self.BASE_URL)
                 if data is None:
                     try:
                         # Fetch service detail from API
                         data = await self._client.fetch(service.url)
                         # Cache the raw data (this refreshes the disk cache file)
-                        await self._cache.set(
-                            f"raw:{service.url}", data, url=service.url, base_url=self.BASE_URL
-                        )
+                        await self._cache.set(f"raw:{service.url}", data, url=service.url, base_url=self.BASE_URL)
                     except Exception as e:  # pylint: disable=broad-exception-caught
                         # API fetch failed - try stale cache as fallback
                         logger.warning(f"API fetch failed for {service_name}: {e}")
-                        stale_data = await self._cache.get_stale(
-                            url=service.url, base_url=self.BASE_URL
-                        )
+                        stale_data = await self._cache.get_stale(url=service.url, base_url=self.BASE_URL)
                         if stale_data is not None:
-                            logger.info(
-                                f"Using stale cache data for {service_name} due to API failure"
-                            )
+                            logger.info(f"Using stale cache data for {service_name} due to API failure")
                             data = stale_data
                         else:
                             raise
@@ -506,9 +492,7 @@ class AWSServiceFetcher:
                 # Service fetch failed
                 results[action] = (False, f"Failed to fetch service '{service_prefix}'", False)
             else:
-                results[action] = await self._validator.validate_action(
-                    action, service_detail, allow_wildcards
-                )
+                results[action] = await self._validator.validate_action(action, service_detail, allow_wildcards)
 
         return results
 
@@ -553,9 +537,7 @@ class AWSServiceFetcher:
         """
         service_prefix, _ = self._parser.parse_action(action)
         service_detail = await self.fetch_service_by_name(service_prefix)
-        return await self._validator.validate_condition_key(
-            action, condition_key, service_detail, resources
-        )
+        return await self._validator.validate_condition_key(action, condition_key, service_detail, resources)
 
     async def is_condition_key_supported(
         self,

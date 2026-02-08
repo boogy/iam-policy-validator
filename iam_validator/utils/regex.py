@@ -12,7 +12,7 @@ Performance benefits:
 
 import re
 from collections.abc import Callable
-from functools import wraps
+from functools import lru_cache, wraps
 
 
 def cached_pattern(
@@ -83,6 +83,12 @@ def cached_pattern(
     return decorator
 
 
+@lru_cache(maxsize=512)
+def _compile_cached(pattern_str: str, flags: int) -> re.Pattern:
+    """Module-level LRU-cached regex compilation."""
+    return re.compile(pattern_str, flags)
+
+
 def compile_and_cache(pattern: str, flags: int = 0, maxsize: int = 512) -> re.Pattern:
     """Compile a regex pattern with automatic caching.
 
@@ -92,7 +98,7 @@ def compile_and_cache(pattern: str, flags: int = 0, maxsize: int = 512) -> re.Pa
     Args:
         pattern: Regex pattern string
         flags: Regex compilation flags (e.g., re.IGNORECASE)
-        maxsize: Maximum cache size for LRU eviction
+        maxsize: Maximum cache size for LRU eviction (unused, kept for API compat)
 
     Returns:
         Compiled Pattern object
@@ -112,24 +118,22 @@ def compile_and_cache(pattern: str, flags: int = 0, maxsize: int = 512) -> re.Pa
         This uses a module-level cache shared across all calls. For function-specific
         caching, use the @cached_pattern decorator instead.
     """
-    from functools import lru_cache
-
-    @lru_cache(maxsize=maxsize)
-    def _compile(pattern_str: str, flags: int) -> re.Pattern:
-        return re.compile(pattern_str, flags)
-
-    return _compile(pattern, flags)
+    del maxsize  # Kept for API compatibility; cache size is set at module level
+    return _compile_cached(pattern, flags)
 
 
-# Singleton instance for shared pattern compilation
-_pattern_cache: dict[tuple[str, int], re.Pattern] = {}
+@lru_cache(maxsize=512)
+def _get_cached_pattern_impl(pattern: str, flags: int) -> re.Pattern:
+    """Module-level LRU-cached pattern compilation for get_cached_pattern."""
+    return re.compile(pattern, flags)
 
 
 def get_cached_pattern(pattern: str, flags: int = 0) -> re.Pattern:
     """Get a compiled pattern from the shared cache.
 
     This provides a simple, stateless way to get cached patterns without
-    decorators or function calls. Uses a module-level cache.
+    decorators or function calls. Uses a module-level LRU cache with
+    bounded size (512 entries).
 
     Args:
         pattern: Regex pattern string
@@ -144,31 +148,23 @@ def get_cached_pattern(pattern: str, flags: int = 0) -> re.Pattern:
         <re.Match object; ...>
 
     Thread Safety:
-        This function is NOT thread-safe. For concurrent use, use
-        compile_and_cache() which uses functools.lru_cache (thread-safe).
+        This function uses functools.lru_cache which is thread-safe.
     """
-    cache_key = (pattern, flags)
-
-    if cache_key not in _pattern_cache:
-        _pattern_cache[cache_key] = re.compile(pattern, flags)
-
-    return _pattern_cache[cache_key]
+    return _get_cached_pattern_impl(pattern, flags)
 
 
 def clear_pattern_cache() -> None:
-    """Clear the shared pattern cache.
+    """Clear all shared pattern caches.
 
+    Clears both the get_cached_pattern and compile_and_cache caches.
     Useful for testing or memory management.
 
     Example:
         >>> get_cached_pattern(r'test')
-        >>> len(_pattern_cache)
-        1
         >>> clear_pattern_cache()
-        >>> len(_pattern_cache)
-        0
     """
-    _pattern_cache.clear()
+    _get_cached_pattern_impl.cache_clear()
+    _compile_cached.cache_clear()
 
 
 # Pre-defined common patterns for IAM validation

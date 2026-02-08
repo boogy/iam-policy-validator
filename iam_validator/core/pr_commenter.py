@@ -100,6 +100,8 @@ class PRCommenter:
         self._ignored_findings: dict[str, Any] = {}
         # Cache for PolicyLineMap per file (for field-level line detection)
         self._policy_line_maps: dict[str, PolicyLineMap] = {}
+        # Track whether workspace path has been logged (avoid spam)
+        self._logged_workspace: bool = False
 
     async def post_findings_to_pr(
         self,
@@ -196,9 +198,7 @@ class PRCommenter:
             )
 
             # Post all parts using the multipart method
-            if not await self.github.post_multipart_comments(
-                comment_parts, self.SUMMARY_IDENTIFIER
-            ):
+            if not await self.github.post_multipart_comments(comment_parts, self.SUMMARY_IDENTIFIER):
                 logger.error("Failed to post summary comment(s)")
                 success = False
             else:
@@ -262,9 +262,7 @@ class PRCommenter:
         else:
             parsed_diffs = DiffParser.parse_pr_files(pr_files)
             # Use warning level for diagnostics to ensure visibility
-            logger.warning(
-                f"[DIFF] Parsed diffs for {len(parsed_diffs)} file(s): {list(parsed_diffs.keys())}"
-            )
+            logger.warning(f"[DIFF] Parsed diffs for {len(parsed_diffs)} file(s): {list(parsed_diffs.keys())}")
 
         # Collect ALL validated files (for cleanup of resolved findings)
         # This includes files with no issues - we need to track them so stale comments get deleted
@@ -287,9 +285,7 @@ class PRCommenter:
             # Convert absolute path to relative path for GitHub
             relative_path = self._make_relative_path(result.policy_file)
             if not relative_path:
-                logger.warning(
-                    f"Could not determine relative path for {result.policy_file}, skipping review comments"
-                )
+                logger.warning(f"Could not determine relative path for {result.policy_file}, skipping review comments")
                 continue
 
             # Use warning level for path diagnostics to ensure visibility
@@ -356,9 +352,7 @@ class PRCommenter:
                 line_number = self._find_issue_line(issue, result.policy_file, line_mapping)
 
                 if not line_number:
-                    logger.debug(
-                        f"Could not determine line number for issue in {relative_path}: {issue.issue_type}"
-                    )
+                    logger.debug(f"Could not determine line number for issue in {relative_path}: {issue.issue_type}")
                     continue
 
                 # SPECIAL CASE: Policy-level issues (privilege escalation, etc.)
@@ -399,9 +393,7 @@ class PRCommenter:
                             ContextIssue(relative_path, issue.statement_index, line_number, issue)
                         )
                         context_issue_count += 1
-                        logger.debug(
-                            f"Policy-level issue (no diff lines): {relative_path} - {issue.issue_type}"
-                        )
+                        logger.debug(f"Policy-level issue (no diff lines): {relative_path} - {issue.issue_type}")
                 # RELAXED FILTERING for no_patch files, STRICT for others
                 elif allow_all_lines or line_number in diff_info.changed_lines:
                     # No patch: allow all lines, or exact match with changed lines
@@ -418,18 +410,14 @@ class PRCommenter:
                     )
                 elif issue.statement_index in modified_statements:
                     # Issue in modified statement but on unchanged line - save for summary
-                    self._context_issues.append(
-                        ContextIssue(relative_path, issue.statement_index, line_number, issue)
-                    )
+                    self._context_issues.append(ContextIssue(relative_path, issue.statement_index, line_number, issue))
                     context_issue_count += 1
                     logger.debug(
                         f"Context issue: {relative_path}:{line_number} (statement {issue.statement_index} modified) - {issue.issue_type}"
                     )
                 else:
                     # Issue in completely unchanged statement - collect for off-diff posting
-                    self._context_issues.append(
-                        ContextIssue(relative_path, issue.statement_index, line_number, issue)
-                    )
+                    self._context_issues.append(ContextIssue(relative_path, issue.statement_index, line_number, issue))
                     context_issue_count += 1
                     logger.debug(
                         f"Off-diff issue (unchanged statement): {relative_path}:{line_number} - {issue.issue_type}"
@@ -444,9 +432,7 @@ class PRCommenter:
         # Post off-diff comments for context issues (line-level or file-level fallback)
         protected_fingerprints: set[str] = set()
         if self._context_issues:
-            protected_fingerprints, self._context_issues = await self._post_off_diff_comments(
-                self._context_issues
-            )
+            protected_fingerprints, self._context_issues = await self._post_off_diff_comments(self._context_issues)
 
         # Even if no inline comments, we still need to run cleanup to delete stale comments
         # from previous runs where findings have been resolved (unless cleanup is disabled)
@@ -456,9 +442,7 @@ class PRCommenter:
             # (unless skip_cleanup is set for streaming mode)
             # Use APPROVE event to dismiss any previous REQUEST_CHANGES review
             if validated_files and self.cleanup_old_comments:
-                logger.debug(
-                    "Running cleanup for stale comments and approving PR (no blocking issues)..."
-                )
+                logger.debug("Running cleanup for stale comments and approving PR (no blocking issues)...")
                 await self.github.update_or_create_review_comments(
                     comments=[],
                     body="",
@@ -474,17 +458,13 @@ class PRCommenter:
         # Exclude ignored findings from blocking issues
         has_blocking_issues = any(
             issue.severity in self.fail_on_severities
-            and not self._is_issue_ignored(
-                issue, self._make_relative_path(result.policy_file) or ""
-            )
+            and not self._is_issue_ignored(issue, self._make_relative_path(result.policy_file) or "")
             for result in report.results
             for issue in result.issues
         )
 
         event = ReviewEvent.REQUEST_CHANGES if has_blocking_issues else ReviewEvent.APPROVE
-        logger.info(
-            f"Creating PR review with {len(inline_comments)} comments, event: {event.value}"
-        )
+        logger.info(f"Creating PR review with {len(inline_comments)} comments, event: {event.value}")
 
         # Post review with smart update-or-create logic
         # Pass validated_files to ensure stale comments are deleted even for files
@@ -509,9 +489,7 @@ class PRCommenter:
 
         return success
 
-    async def _post_off_diff_comments(
-        self, off_diff_issues: list[ContextIssue]
-    ) -> tuple[set[str], list[ContextIssue]]:
+    async def _post_off_diff_comments(self, off_diff_issues: list[ContextIssue]) -> tuple[set[str], list[ContextIssue]]:
         """Post comments for issues found outside the PR diff.
 
         Attempts to post each issue as a line-level review comment first,
@@ -543,7 +521,9 @@ class PRCommenter:
 
         for ctx_issue in off_diff_issues:
             body = ctx_issue.issue.to_pr_comment(file_path=ctx_issue.file_path)
-            body += f"\n\n> **Note:** This finding is on line {ctx_issue.line_number}, which was not modified in this PR."
+            body += (
+                f"\n\n> **Note:** This finding is on line {ctx_issue.line_number}, which was not modified in this PR."
+            )
 
             # Try line-level comment first
             posted = await self.github.create_review_comment(
@@ -552,27 +532,17 @@ class PRCommenter:
 
             if not posted:
                 # Fall back to file-level comment
-                posted = await self.github.create_file_level_comment(
-                    commit_id, ctx_issue.file_path, body
-                )
+                posted = await self.github.create_file_level_comment(commit_id, ctx_issue.file_path, body)
 
             if posted:
-                fp_hash = FindingFingerprint.from_issue(
-                    ctx_issue.issue, ctx_issue.file_path
-                ).to_hash()
+                fp_hash = FindingFingerprint.from_issue(ctx_issue.issue, ctx_issue.file_path).to_hash()
                 posted_fingerprints.add(fp_hash)
-                logger.debug(
-                    f"Posted off-diff comment: {ctx_issue.file_path}:{ctx_issue.line_number}"
-                )
+                logger.debug(f"Posted off-diff comment: {ctx_issue.file_path}:{ctx_issue.line_number}")
             else:
                 remaining.append(ctx_issue)
-                logger.debug(
-                    f"Failed to post off-diff comment: {ctx_issue.file_path}:{ctx_issue.line_number}"
-                )
+                logger.debug(f"Failed to post off-diff comment: {ctx_issue.file_path}:{ctx_issue.line_number}")
 
-        logger.info(
-            f"Off-diff comments: {len(posted_fingerprints)} posted, {len(remaining)} remaining for summary"
-        )
+        logger.info(f"Off-diff comments: {len(posted_fingerprints)} posted, {len(remaining)} remaining for summary")
         return posted_fingerprints, remaining
 
     def _make_relative_path(self, policy_file: str) -> str | None:
@@ -613,9 +583,7 @@ class PRCommenter:
                     result = str(relative).replace("\\", "/")
                     return result
                 else:
-                    logger.warning(
-                        f"[PATH] File not within workspace: {abs_file_path} not in {workspace_path}"
-                    )
+                    logger.warning(f"[PATH] File not within workspace: {abs_file_path} not in {workspace_path}")
             except (ValueError, OSError) as e:
                 logger.debug(f"Could not compute relative path for {policy_file}: {e}")
 
@@ -700,9 +668,7 @@ class PRCommenter:
         if issue.field_name and issue.statement_index >= 0:
             policy_line_map = self._get_policy_line_map(policy_file)
             if policy_line_map:
-                field_line = policy_line_map.get_line_for_field(
-                    issue.statement_index, issue.field_name
-                )
+                field_line = policy_line_map.get_line_for_field(issue.statement_index, issue.field_name)
                 if field_line:
                     return field_line
 
@@ -741,9 +707,7 @@ class PRCommenter:
             logger.debug(f"Could not parse field lines for {policy_file}: {e}")
             return None
 
-    def _search_for_field_line(
-        self, policy_file: str, statement_idx: int, search_term: str
-    ) -> int | None:
+    def _search_for_field_line(self, policy_file: str, statement_idx: int, search_term: str) -> int | None:
         """Search for a specific field within a statement.
 
         Args:

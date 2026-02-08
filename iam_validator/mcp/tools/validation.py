@@ -253,9 +253,7 @@ async def validate_policy(
     )
 
 
-async def validate_policy_json(
-    policy_json: str, policy_type: str | None = None
-) -> ValidationResult:
+async def validate_policy_json(policy_json: str, policy_type: str | None = None) -> ValidationResult:
     """Validate an IAM policy from a JSON string.
 
     This tool parses a JSON string into a policy object and validates it.
