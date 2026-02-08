@@ -31,7 +31,7 @@ import re
 from collections.abc import Generator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, overload
+from typing import Literal, overload
 
 import yaml
 from pydantic import ValidationError
@@ -123,27 +123,6 @@ class PolicyLineMap:
 logger = logging.getLogger(__name__)
 
 
-class PolicyValidationLimits:
-    """Validation limits for policy loading.
-
-    These limits protect against DoS attacks via maliciously crafted policies
-    and ensure reasonable resource usage.
-    """
-
-    # Maximum file size in bytes (default: 10MB - AWS limit is 6KB for managed policies)
-    MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024
-    # Maximum JSON/YAML nesting depth
-    MAX_DEPTH: int = 50
-    # Maximum number of statements per policy (AWS limit is ~20-30 depending on size)
-    MAX_STATEMENTS: int = 100
-    # Maximum number of actions per statement
-    MAX_ACTIONS_PER_STATEMENT: int = 500
-    # Maximum number of resources per statement
-    MAX_RESOURCES_PER_STATEMENT: int = 500
-    # Maximum string length for any field
-    MAX_STRING_LENGTH: int = 10000
-
-
 class PolicyLoader:
     """Loads and parses IAM policy documents from files.
 
@@ -165,78 +144,10 @@ class PolicyLoader:
             max_file_size_mb: Maximum file size in MB to load (default: 100MB)
             enforce_limits: Whether to enforce validation limits (default: True)
         """
-        self.loaded_policies: list[tuple[str, IAMPolicy]] = []
         self.max_file_size_bytes = max_file_size_mb * 1024 * 1024
         self.enforce_limits = enforce_limits
         # Track parsing/validation errors for reporting
         self.parsing_errors: list[tuple[str, str]] = []  # (file_path, error_message)
-
-    @staticmethod
-    def check_json_depth(
-        obj: Any, max_depth: int = PolicyValidationLimits.MAX_DEPTH, current_depth: int = 0
-    ) -> bool:
-        """Check if JSON object exceeds maximum nesting depth.
-
-        Args:
-            obj: JSON object to check
-            max_depth: Maximum allowed depth
-            current_depth: Current recursion depth
-
-        Returns:
-            True if within limits, raises ValueError if exceeded
-        """
-        if current_depth > max_depth:
-            raise ValueError(f"JSON nesting depth exceeds maximum of {max_depth}")
-
-        if isinstance(obj, dict):
-            for value in obj.values():
-                PolicyLoader.check_json_depth(value, max_depth, current_depth + 1)
-        elif isinstance(obj, list):
-            for item in obj:
-                PolicyLoader.check_json_depth(item, max_depth, current_depth + 1)
-
-        return True
-
-    @staticmethod
-    def validate_policy_limits(data: dict[str, Any]) -> list[str]:
-        """Validate policy data against size limits.
-
-        Args:
-            data: Parsed policy dictionary
-
-        Returns:
-            List of validation warnings (empty if all limits passed)
-        """
-        warnings: list[str] = []
-        limits = PolicyValidationLimits
-
-        # Check statement count
-        statements = data.get("Statement", [])
-        if isinstance(statements, list) and len(statements) > limits.MAX_STATEMENTS:
-            warnings.append(
-                f"Policy has {len(statements)} statements, exceeds recommended max of {limits.MAX_STATEMENTS}"
-            )
-
-        # Check each statement
-        for i, stmt in enumerate(statements if isinstance(statements, list) else []):
-            if not isinstance(stmt, dict):
-                continue
-
-            # Check actions
-            actions = stmt.get("Action", [])
-            if isinstance(actions, list) and len(actions) > limits.MAX_ACTIONS_PER_STATEMENT:
-                warnings.append(
-                    f"Statement {i} has {len(actions)} actions, exceeds recommended max of {limits.MAX_ACTIONS_PER_STATEMENT}"
-                )
-
-            # Check resources
-            resources = stmt.get("Resource", [])
-            if isinstance(resources, list) and len(resources) > limits.MAX_RESOURCES_PER_STATEMENT:
-                warnings.append(
-                    f"Statement {i} has {len(resources)} resources, exceeds recommended max of {limits.MAX_RESOURCES_PER_STATEMENT}"
-                )
-
-        return warnings
 
     @staticmethod
     def _find_statement_line_numbers(file_content: str) -> list[int]:
@@ -461,11 +372,13 @@ class PolicyLoader:
             return False
 
     @overload
-    def load_from_file(self, file_path: str, return_raw_dict: bool = False) -> IAMPolicy | None: ...
+    def load_from_file(
+        self, file_path: str, return_raw_dict: Literal[False] = ...
+    ) -> IAMPolicy | None: ...
 
     @overload
     def load_from_file(
-        self, file_path: str, return_raw_dict: bool = True
+        self, file_path: str, return_raw_dict: Literal[True]
     ) -> tuple[IAMPolicy, dict] | None: ...
 
     def load_from_file(
@@ -493,8 +406,7 @@ class PolicyLoader:
 
         if path.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
             logger.warning(
-                f"Unsupported file extension: {path.suffix}. "
-                f"Supported: {', '.join(self.SUPPORTED_EXTENSIONS)}"
+                f"Unsupported file extension: {path.suffix}. Supported: {', '.join(self.SUPPORTED_EXTENSIONS)}"
             )
             return None
 

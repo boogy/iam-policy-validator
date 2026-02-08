@@ -38,6 +38,7 @@ Supports: any_of, all_of, none_of, and expected_value (single value or list)
 import fnmatch
 from typing import Any, ClassVar
 
+from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.config.service_principals import is_aws_service_principal
@@ -824,7 +825,7 @@ class PrincipalValidationCheck(PolicyCheck):
         description = condition_requirement.get("description", "")
         expected_value = condition_requirement.get("expected_value")
 
-        matching_principals_str = ", ".join(f"`{p}`" for p in matching_principals)
+        matching_principals_str = format_list_with_backticks(matching_principals)
         message = f"FORBIDDEN: `Principal`s `{matching_principals_str}` must NOT have `Condition` `{condition_key}`"
         if expected_value is not None:
             message += f" with value `{expected_value}`"

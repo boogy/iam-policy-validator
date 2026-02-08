@@ -166,12 +166,13 @@ async def expand_actions(
         >>> # Returns: ["s3:GetObject", "s3:GetObjectVersion", ...]
 
     Note:
-        If no fetcher is provided, a temporary one will be created.
-        For better performance when making multiple calls, create a
-        fetcher once and pass it to this function or use CheckHelper.
+        If no fetcher is provided, a temporary one will be created and
+        properly closed after use. For better performance when making
+        multiple calls, create a fetcher once and pass it to this
+        function or use CheckHelper.
     """
     if fetcher is None:
-        # Create temporary fetcher
-        fetcher = AWSServiceFetcher()
+        async with AWSServiceFetcher() as temp_fetcher:
+            return await expand_wildcard_actions(actions, temp_fetcher)
 
     return await expand_wildcard_actions(actions, fetcher)

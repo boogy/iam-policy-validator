@@ -21,6 +21,10 @@ Key Validations:
    - OIDC: Requires provider-specific audience/subject conditions
    - Cross-account: Should have ExternalId or PrincipalOrgID
 
+4. Confused Deputy Prevention
+   - Service principals should use aws:SourceArn or aws:SourceAccount conditions
+   - Prevents services from being tricked into acting on behalf of unauthorized parties
+
 Complements existing checks:
 - principal_validation: Validates which principals are allowed/blocked
 - action_condition_enforcement: Validates required conditions for actions
@@ -34,18 +38,34 @@ This check is DISABLED by default. Enable it for trust policy validation:
 """
 
 import re
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import Any, ClassVar
 
+from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
 
-if TYPE_CHECKING:
-    pass
-
 
 class TrustPolicyValidationCheck(PolicyCheck):
     """Validates trust policies for role assumption security."""
+
+    # Service principals where confused deputy protection is not applicable.
+    # ONLY compute-bound services are listed here — the role is directly attached
+    # to a resource the account owns, so there is no cross-customer pathway.
+    #
+    # We intentionally do NOT whitelist SLR-only services (GuardDuty, Inspector,
+    # etc.) because if a customer is writing a custom trust policy for such a
+    # service, the confused deputy risk applies to that custom role regardless
+    # of whether the service also offers an SLR.
+    #
+    # See: https://docs.aws.amazon.com/IAM/latest/UserGuide/confused-deputy.html
+    CONFUSED_DEPUTY_SAFE_SERVICES: frozenset[str] = frozenset(
+        {
+            "ec2.amazonaws.com",  # Instance profile bound to account-owned instance
+            "lambda.amazonaws.com",  # Execution role bound to account-owned function
+            "edgelambda.amazonaws.com",  # Lambda@Edge, same model as Lambda
+        }
+    )
 
     # Default validation rules for assume actions
     DEFAULT_RULES = {
@@ -148,6 +168,11 @@ class TrustPolicyValidationCheck(PolicyCheck):
                 )
                 issues.extend(condition_issues)
 
+        # Check for confused deputy vulnerability (only on Allow statements with Service principals)
+        if statement.effect == "Allow":
+            confused_deputy_issues = self._check_confused_deputy(statement, statement_idx, config)
+            issues.extend(confused_deputy_issues)
+
         return issues
 
     def _get_actions(self, statement: Statement) -> list[str]:
@@ -159,9 +184,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
         Returns:
             List of action strings
         """
-        if statement.action is None:
-            return []
-        return [statement.action] if isinstance(statement.action, str) else statement.action
+        return statement.get_actions()
 
     def _find_matching_rule(self, action: str, rules: dict[str, Any]) -> dict[str, Any] | None:
         """Find validation rule matching the action.
@@ -243,8 +266,8 @@ class TrustPolicyValidationCheck(PolicyCheck):
         # Check if any principal type is not allowed
         for principal_type, principals in principal_types.items():
             if principal_type not in allowed_types:
-                principals_list = ", ".join(f"`{p}`" for p in principals)
-                allowed_list = ", ".join(f"`{t}`" for t in allowed_types)
+                principals_list = format_list_with_backticks(principals)
+                allowed_list = format_list_with_backticks(allowed_types)
 
                 issues.append(
                     ValidationIssue(
@@ -365,7 +388,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
                     missing_conditions.append(required_cond)
 
         if missing_conditions:
-            missing_list = ", ".join(f"`{c}`" for c in missing_conditions)
+            missing_list = format_list_with_backticks(missing_conditions)
 
             issues.append(
                 ValidationIssue(
@@ -385,6 +408,104 @@ class TrustPolicyValidationCheck(PolicyCheck):
             )
 
         return issues
+
+    def _check_confused_deputy(
+        self,
+        statement: Statement,
+        statement_idx: int,
+        config: CheckConfig,
+    ) -> list[ValidationIssue]:
+        """Check for confused deputy vulnerability in service principal trust policies.
+
+        When a trust policy allows a service principal to assume a role without
+        aws:SourceArn or aws:SourceAccount conditions, any resource using that
+        service could assume the role, not just the intended one.
+
+        Args:
+            statement: IAM policy statement
+            statement_idx: Statement index
+            config: Check configuration
+
+        Returns:
+            List of validation issues
+        """
+        issues = []
+
+        principal_types = self._extract_principal_types(statement)
+        service_principals = principal_types.get("Service", [])
+
+        if not service_principals:
+            return issues
+
+        # Check if conditions include confused deputy protections
+        condition_keys: set[str] = set()
+        if statement.condition:
+            for _operator, keys_dict in statement.condition.items():
+                if isinstance(keys_dict, dict):
+                    condition_keys.update(k.lower() for k in keys_dict.keys())
+
+        has_source_arn = "aws:sourcearn" in condition_keys
+        has_source_account = "aws:sourceaccount" in condition_keys
+
+        if has_source_arn or has_source_account:
+            return issues
+
+        # Flag each service principal that is not in the safe list
+        for service_principal in service_principals:
+            if service_principal.lower() in {s.lower() for s in self.CONFUSED_DEPUTY_SAFE_SERVICES}:
+                continue
+
+            issues.append(
+                ValidationIssue(
+                    severity=self.get_severity(config),
+                    statement_sid=statement.sid,
+                    statement_index=statement_idx,
+                    issue_type="confused_deputy_risk",
+                    message=(
+                        f"Trust policy allows service principal `{service_principal}` "
+                        f"without `aws:SourceArn` or `aws:SourceAccount` condition. "
+                        f"This may be vulnerable to confused deputy attacks."
+                    ),
+                    suggestion=(
+                        f"Add an `aws:SourceArn` or `aws:SourceAccount` condition to restrict "
+                        f"which resources can assume this role via `{service_principal}`. "
+                        f"This prevents the confused deputy problem where a service could "
+                        f"be tricked into assuming the role on behalf of an unauthorized party."
+                    ),
+                    example=self._get_confused_deputy_example(service_principal),
+                    line_number=statement.line_number,
+                    field_name="principal",
+                )
+            )
+
+        return issues
+
+    def _get_confused_deputy_example(self, service_principal: str) -> str:
+        """Get example showing how to add confused deputy protection.
+
+        Args:
+            service_principal: The service principal to include in the example
+
+        Returns:
+            JSON example string
+        """
+        return (
+            "{\n"
+            '  "Effect": "Allow",\n'
+            '  "Principal": {\n'
+            f'    "Service": "{service_principal}"\n'
+            "  },\n"
+            '  "Action": "sts:AssumeRole",\n'
+            '  "Condition": {\n'
+            '    "ArnLike": {\n'
+            '      "aws:SourceArn": "arn:aws:service::123456789012:resource/*"\n'
+            "    },\n"
+            '    "StringEquals": {\n'
+            '      "aws:SourceAccount": "123456789012"\n'
+            "    }\n"
+            "  }\n"
+            "}"
+        )
 
     def _get_example_for_action(self, action: str, principal_type: str) -> str:
         """Generate example JSON for an assume action.
@@ -439,7 +560,10 @@ class TrustPolicyValidationCheck(PolicyCheck):
       "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
     },
     "StringLike": {
-      "token.actions.githubusercontent.com:sub": "repo:myorg/myrepo:*"
+      "token.actions.githubusercontent.com:sub": "repo:myorg/myrepo:*",
+      "token.actions.githubusercontent.com:repository": "myorg/myrepo",
+      "token.actions.githubusercontent.com:ref": "refs/heads/main",
+      "token.actions.githubusercontent.com:job_workflow_ref": "myorg/myrepo/.github/workflows/deploy.yml@refs/heads/main"
     }
   }
 }""",

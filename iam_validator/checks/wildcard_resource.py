@@ -13,6 +13,7 @@ import asyncio
 import logging
 from typing import ClassVar
 
+from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.checks.utils.action_parser import get_action_case_insensitive, parse_action
 from iam_validator.checks.utils.wildcard_expansion import expand_wildcard_actions
 from iam_validator.core.aws_service import AWSServiceFetcher
@@ -229,10 +230,8 @@ class WildcardResourceCheck(PolicyCheck):
                 # Note: actions_requiring_specific_resources is guaranteed non-empty here
                 # because we return early above if it's empty
                 sorted_actions = sorted(actions_requiring_specific_resources)
-                if len(sorted_actions) <= 5:
-                    action_list = ", ".join(f"`{a}`" for a in sorted_actions)
-                else:
-                    action_list = ", ".join(f"`{a}`" for a in sorted_actions[:5])
+                action_list = format_list_with_backticks(sorted_actions, max_items=5)
+                if len(sorted_actions) > 5:
                     action_list += f" (+{len(sorted_actions) - 5} more)"
                 message = f'Statement applies to all resources (`"*"`) with actions that typically require specific resources: {action_list}'
 

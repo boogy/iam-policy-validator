@@ -183,11 +183,7 @@ class SensitiveActionCheck(PolicyCheck):
             "• Match organization principal tags to resource tags (`aws:PrincipalOrgID` = `aws:ResourceOrgID`)\n"
             "• Require MFA (`aws:MultiFactorAuthPresent` = `true`)\n"
             "• Restrict by IP (`aws:SourceIp`) or VPC (`aws:SourceVpc`)",
-            '"Condition": {\n'
-            '  "StringEquals": {\n'
-            '    "aws:PrincipalTag/owner": "${aws:ResourceTag/owner}"\n'
-            "  }\n"
-            "}",
+            '"Condition": {\n  "StringEquals": {\n    "aws:PrincipalTag/owner": "${aws:ResourceTag/owner}"\n  }\n}',
         )
 
     async def execute(
@@ -248,12 +244,12 @@ class SensitiveActionCheck(PolicyCheck):
             )
 
             # Determine severity based on the highest severity action in the list
-            # If single action, use its category severity
-            # If multiple actions, use the highest severity among them
             severity = self.get_severity(config)  # Default
             if matched_actions:
-                # Get severity for first action (or highest if we want to be more sophisticated)
-                severity = self._get_severity_for_action(matched_actions[0], config)
+                severity = max(
+                    (self._get_severity_for_action(a, config) for a in matched_actions),
+                    key=lambda s: ValidationIssue.SEVERITY_RANK.get(s, 0),
+                )
 
             issues.append(
                 ValidationIssue(

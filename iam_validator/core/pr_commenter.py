@@ -17,7 +17,7 @@ from iam_validator.core.diff_parser import DiffParser
 from iam_validator.core.label_manager import LabelManager
 from iam_validator.core.models import ValidationIssue, ValidationReport
 from iam_validator.core.policy_loader import PolicyLineMap, PolicyLoader
-from iam_validator.core.report import IgnoredFindingInfo, ReportGenerator
+from iam_validator.core.report import ContextIssueInfo, IgnoredFindingInfo, ReportGenerator
 from iam_validator.integrations.github_integration import GitHubIntegration, ReviewEvent
 
 logger = logging.getLogger(__name__)
@@ -174,11 +174,25 @@ class PRCommenter:
             # Determine if all blocking issues are ignored
             all_blocking_ignored = self._are_all_blocking_issues_ignored(report)
 
+            # Convert remaining context issues to ContextIssueInfo for summary display
+            context_issues_info: list[ContextIssueInfo] = []
+            for ctx in self._context_issues:
+                context_issues_info.append(
+                    ContextIssueInfo(
+                        file_path=ctx.file_path,
+                        line_number=ctx.line_number,
+                        severity=ctx.issue.severity,
+                        issue_type=ctx.issue.issue_type,
+                        message=ctx.issue.message,
+                    )
+                )
+
             comment_parts = generator.generate_github_comment_parts(
                 report,
                 ignored_count=ignored_count,
                 ignored_findings=ignored_findings_info if ignored_findings_info else None,
                 all_blocking_ignored=all_blocking_ignored,
+                context_issues=context_issues_info if context_issues_info else None,
             )
 
             # Post all parts using the multipart method
@@ -287,8 +301,7 @@ class PRCommenter:
                 # Log ALL available paths to help diagnose path mismatches
                 all_paths = list(parsed_diffs.keys())
                 logger.warning(
-                    f"'{relative_path}' not found in PR diff. "
-                    f"Available paths ({len(all_paths)}): {all_paths}"
+                    f"'{relative_path}' not found in PR diff. Available paths ({len(all_paths)}): {all_paths}"
                 )
                 # Check for partial matches to help diagnose
                 for avail_path in all_paths:
@@ -413,9 +426,13 @@ class PRCommenter:
                         f"Context issue: {relative_path}:{line_number} (statement {issue.statement_index} modified) - {issue.issue_type}"
                     )
                 else:
-                    # Issue in completely unchanged statement - ignore for inline and summary
+                    # Issue in completely unchanged statement - collect for off-diff posting
+                    self._context_issues.append(
+                        ContextIssue(relative_path, issue.statement_index, line_number, issue)
+                    )
+                    context_issue_count += 1
                     logger.debug(
-                        f"Skipped issue in unchanged statement: {relative_path}:{line_number} - {issue.issue_type}"
+                        f"Off-diff issue (unchanged statement): {relative_path}:{line_number} - {issue.issue_type}"
                     )
 
         # Log filtering results
@@ -423,6 +440,13 @@ class PRCommenter:
             f"Diff filtering results: {len(inline_comments)} inline comments, "
             f"{context_issue_count} context issues for summary"
         )
+
+        # Post off-diff comments for context issues (line-level or file-level fallback)
+        protected_fingerprints: set[str] = set()
+        if self._context_issues:
+            protected_fingerprints, self._context_issues = await self._post_off_diff_comments(
+                self._context_issues
+            )
 
         # Even if no inline comments, we still need to run cleanup to delete stale comments
         # from previous runs where findings have been resolved (unless cleanup is disabled)
@@ -442,6 +466,7 @@ class PRCommenter:
                     identifier=self.REVIEW_IDENTIFIER,
                     validated_files=validated_files,
                     skip_cleanup=False,  # Explicitly run cleanup
+                    protected_fingerprints=protected_fingerprints,
                 )
             return True
 
@@ -474,6 +499,7 @@ class PRCommenter:
             identifier=self.REVIEW_IDENTIFIER,
             validated_files=validated_files,
             skip_cleanup=not self.cleanup_old_comments,  # Skip cleanup in streaming mode
+            protected_fingerprints=protected_fingerprints,
         )
 
         if success:
@@ -482,6 +508,72 @@ class PRCommenter:
             logger.error("Failed to manage PR review comments")
 
         return success
+
+    async def _post_off_diff_comments(
+        self, off_diff_issues: list[ContextIssue]
+    ) -> tuple[set[str], list[ContextIssue]]:
+        """Post comments for issues found outside the PR diff.
+
+        Attempts to post each issue as a line-level review comment first,
+        then falls back to a file-level comment if that fails. Issues that
+        cannot be posted at all are returned for inclusion in the summary.
+
+        Args:
+            off_diff_issues: List of context issues to post
+
+        Returns:
+            Tuple of (set of posted fingerprint hashes, list of remaining issues)
+        """
+        if not self.github or not off_diff_issues:
+            return set(), off_diff_issues
+
+        from iam_validator.core.finding_fingerprint import (  # pylint: disable=import-outside-toplevel
+            FindingFingerprint,
+        )
+
+        # Get commit SHA for review comments
+        pr_info = await self.github.get_pr_info()
+        if not pr_info:
+            logger.warning("Could not fetch PR info for off-diff comments")
+            return set(), off_diff_issues
+
+        commit_id = pr_info["head"]["sha"]
+        posted_fingerprints: set[str] = set()
+        remaining: list[ContextIssue] = []
+
+        for ctx_issue in off_diff_issues:
+            body = ctx_issue.issue.to_pr_comment(file_path=ctx_issue.file_path)
+            body += f"\n\n> **Note:** This finding is on line {ctx_issue.line_number}, which was not modified in this PR."
+
+            # Try line-level comment first
+            posted = await self.github.create_review_comment(
+                commit_id, ctx_issue.file_path, ctx_issue.line_number, body
+            )
+
+            if not posted:
+                # Fall back to file-level comment
+                posted = await self.github.create_file_level_comment(
+                    commit_id, ctx_issue.file_path, body
+                )
+
+            if posted:
+                fp_hash = FindingFingerprint.from_issue(
+                    ctx_issue.issue, ctx_issue.file_path
+                ).to_hash()
+                posted_fingerprints.add(fp_hash)
+                logger.debug(
+                    f"Posted off-diff comment: {ctx_issue.file_path}:{ctx_issue.line_number}"
+                )
+            else:
+                remaining.append(ctx_issue)
+                logger.debug(
+                    f"Failed to post off-diff comment: {ctx_issue.file_path}:{ctx_issue.line_number}"
+                )
+
+        logger.info(
+            f"Off-diff comments: {len(posted_fingerprints)} posted, {len(remaining)} remaining for summary"
+        )
+        return posted_fingerprints, remaining
 
     def _make_relative_path(self, policy_file: str) -> str | None:
         """Convert absolute path to relative path for GitHub.

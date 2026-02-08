@@ -3,11 +3,13 @@
 Validates that condition operators match the expected types for condition keys and values.
 """
 
+import ipaddress
 from typing import ClassVar
 
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.condition_validators import (
+    CONDITION_OPERATORS,
     has_if_exists_suffix,
     normalize_operator,
     translate_type,
@@ -106,66 +108,81 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                     fetcher, condition_key, actions, resources
                 )
 
-                if key_type is None:
-                    # Unknown condition key - will be caught by condition_key_validation check
-                    continue
+                if key_type is not None:
+                    # Normalize the key type
+                    key_type = translate_type(key_type)
+                    operator_type = translate_type(operator_type)
 
-                # Normalize the key type
-                key_type = translate_type(key_type)
-                operator_type = translate_type(operator_type)
+                    # Special case: String operators with ARN types (usable but not recommended)
+                    if operator_type == "String" and key_type == "ARN":
+                        issues.append(
+                            ValidationIssue(
+                                severity="warning",
+                                message=(
+                                    f"Type mismatch (usable but not recommended): Operator `{operator}` expects "
+                                    f"`{operator_type}` values, but condition key `{condition_key}` is type `{key_type}`. "
+                                    f"Consider using an ARN-specific operator like `ArnEquals` or `ArnLike` instead."
+                                ),
+                                statement_sid=statement_sid,
+                                statement_index=statement_idx,
+                                issue_type="type_mismatch_usable",
+                                line_number=line_number,
+                                field_name="condition",
+                            )
+                        )
+                    # Check if operator type matches key type
+                    elif not self._types_compatible(operator_type, key_type):
+                        issues.append(
+                            ValidationIssue(
+                                severity=self.get_severity(config),
+                                message=(
+                                    f"Type mismatch: Operator `{operator}` expects `{operator_type}` values, "
+                                    f"but condition key `{condition_key}` is type `{key_type}`."
+                                ),
+                                statement_sid=statement_sid,
+                                statement_index=statement_idx,
+                                issue_type="type_mismatch",
+                                condition_key=condition_key,
+                                line_number=line_number,
+                                field_name="condition",
+                            )
+                        )
 
-                # Special case: String operators with ARN types (usable but not recommended)
-                if operator_type == "String" and key_type == "ARN":
-                    issues.append(
-                        ValidationIssue(
-                            severity="warning",
-                            message=(
-                                f"Type mismatch (usable but not recommended): Operator `{operator}` expects "
-                                f"`{operator_type}` values, but condition key `{condition_key}` is type `{key_type}`. "
-                                f"Consider using an ARN-specific operator like `ArnEquals` or `ArnLike` instead."
-                            ),
-                            statement_sid=statement_sid,
-                            statement_index=statement_idx,
-                            issue_type="type_mismatch_usable",
-                            line_number=line_number,
-                            field_name="condition",
+                    # Validate that the values match the expected type format
+                    is_valid, error_msg = validate_value_for_type(key_type, values)
+                    if not is_valid:
+                        issues.append(
+                            ValidationIssue(
+                                severity=self.get_severity(config),
+                                message=(
+                                    f"Invalid value format for condition key `{condition_key}`: {error_msg}"
+                                ),
+                                statement_sid=statement_sid,
+                                statement_index=statement_idx,
+                                issue_type="invalid_value_format",
+                                condition_key=condition_key,
+                                line_number=line_number,
+                                field_name="condition",
+                            )
                         )
-                    )
-                # Check if operator type matches key type
-                elif not self._types_compatible(operator_type, key_type):
-                    issues.append(
-                        ValidationIssue(
-                            severity=self.get_severity(config),
-                            message=(
-                                f"Type mismatch: Operator `{operator}` expects `{operator_type}` values, "
-                                f"but condition key `{condition_key}` is type `{key_type}`."
-                            ),
-                            statement_sid=statement_sid,
-                            statement_index=statement_idx,
-                            issue_type="type_mismatch",
-                            condition_key=condition_key,
-                            line_number=line_number,
-                            field_name="condition",
-                        )
-                    )
 
-                # Validate that the values match the expected type format
-                is_valid, error_msg = validate_value_for_type(key_type, values)
-                if not is_valid:
-                    issues.append(
-                        ValidationIssue(
-                            severity=self.get_severity(config),
-                            message=(
-                                f"Invalid value format for condition key `{condition_key}`: {error_msg}"
-                            ),
-                            statement_sid=statement_sid,
-                            statement_index=statement_idx,
-                            issue_type="invalid_value_format",
-                            condition_key=condition_key,
-                            line_number=line_number,
-                            field_name="condition",
-                        )
+                # Operator-specific value validation: runs when key type is unknown
+                # OR when key type doesn't match operator type (avoids duplicate findings
+                # since validate_value_for_type already covers matching types)
+                if key_type is None or key_type != translate_type(
+                    CONDITION_OPERATORS.get(base_operator, "")
+                ):
+                    operator_issues = self._validate_operator_value_format(
+                        base_operator,
+                        operator,
+                        condition_key,
+                        values,
+                        statement_sid,
+                        statement_idx,
+                        line_number,
+                        config,
                     )
+                    issues.extend(operator_issues)
 
         return issues
 
@@ -250,6 +267,145 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                 continue
 
         return None
+
+    def _validate_operator_value_format(
+        self,
+        base_operator: str,
+        raw_operator: str,
+        condition_key: str,
+        values: list,
+        statement_sid: str | None,
+        statement_idx: int,
+        line_number: int | None,
+        config: CheckConfig,
+    ) -> list[ValidationIssue]:
+        """Validate values against operator-specific format expectations.
+
+        This catches format issues based on the operator used, even if the key type
+        is unknown. For example, IpAddress operator should always have CIDR values.
+
+        Args:
+            base_operator: Normalized operator name (e.g., "IpAddress")
+            raw_operator: Original operator from policy (e.g., "IpAddressIfExists")
+            condition_key: The condition key
+            values: List of values to validate
+            statement_sid: Statement SID
+            statement_idx: Statement index
+            line_number: Line number
+            config: Check configuration
+
+        Returns:
+            List of validation issues
+        """
+        issues: list[ValidationIssue] = []
+
+        # IpAddress / NotIpAddress: values must be valid CIDR notation
+        if base_operator in ("IpAddress", "NotIpAddress"):
+            for value in values:
+                value_str = str(value)
+                if not self._is_valid_cidr(value_str):
+                    issues.append(
+                        ValidationIssue(
+                            severity=self.get_severity(config),
+                            message=(
+                                f"Operator `{raw_operator}` expects CIDR notation but "
+                                f"condition key `{condition_key}` has value `{value_str}` "
+                                f"which is not valid CIDR (e.g., `203.0.113.0/24` or `2001:db8::/32`)."
+                            ),
+                            statement_sid=statement_sid,
+                            statement_index=statement_idx,
+                            issue_type="invalid_ip_cidr_format",
+                            condition_key=condition_key,
+                            line_number=line_number,
+                            field_name="condition",
+                        )
+                    )
+
+        # ArnEquals / ArnNotEquals / ArnLike / ArnNotLike: values must look like ARNs
+        elif base_operator in ("ArnEquals", "ArnNotEquals", "ArnLike", "ArnNotLike"):
+            for value in values:
+                value_str = str(value)
+                if not self._is_valid_arn_value(value_str):
+                    issues.append(
+                        ValidationIssue(
+                            severity=self.get_severity(config),
+                            message=(
+                                f"Operator `{raw_operator}` expects ARN values but "
+                                f"condition key `{condition_key}` has value `{value_str}` "
+                                f"which does not start with `arn:` or contain a template variable `${{...}}`."
+                            ),
+                            statement_sid=statement_sid,
+                            statement_index=statement_idx,
+                            issue_type="invalid_arn_format_for_operator",
+                            condition_key=condition_key,
+                            line_number=line_number,
+                            field_name="condition",
+                        )
+                    )
+
+        # Bool: values must be "true" or "false"
+        elif base_operator == "Bool":
+            for value in values:
+                value_str = str(value).lower() if isinstance(value, bool) else str(value)
+                if value_str.lower() not in ("true", "false"):
+                    issues.append(
+                        ValidationIssue(
+                            severity=self.get_severity(config),
+                            message=(
+                                f"Operator `{raw_operator}` expects boolean values but "
+                                f"condition key `{condition_key}` has value `{value}` "
+                                f"which is not `true` or `false`."
+                            ),
+                            statement_sid=statement_sid,
+                            statement_index=statement_idx,
+                            issue_type="invalid_bool_value_for_operator",
+                            condition_key=condition_key,
+                            line_number=line_number,
+                            field_name="condition",
+                        )
+                    )
+
+        return issues
+
+    @staticmethod
+    def _is_valid_cidr(value: str) -> bool:
+        """Check if a value is valid CIDR notation (IPv4 or IPv6).
+
+        Args:
+            value: String to validate
+
+        Returns:
+            True if valid CIDR or IP address
+        """
+        try:
+            ipaddress.ip_network(value, strict=False)
+            return True
+        except ValueError:
+            pass
+        try:
+            ipaddress.ip_address(value)
+            return True
+        except ValueError:
+            return False
+
+    @staticmethod
+    def _is_valid_arn_value(value: str) -> bool:
+        """Check if a value looks like a valid ARN or template variable.
+
+        Args:
+            value: String to validate
+
+        Returns:
+            True if starts with 'arn:' or contains '${' (template variable)
+                 or is a wildcard '*'
+        """
+        if value == "*":
+            return True
+        if value.startswith("arn:"):
+            return True
+        if "${" in value:
+            return True
+        return False
 
     def _types_compatible(self, operator_type: str, key_type: str) -> bool:
         """

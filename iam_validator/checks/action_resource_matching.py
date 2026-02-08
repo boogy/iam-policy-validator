@@ -24,6 +24,7 @@ Example:
 import re
 from typing import ClassVar
 
+from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.checks.utils.action_parser import get_action_case_insensitive, parse_action
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
@@ -229,7 +230,7 @@ class ActionResourceMatchingCheck(PolicyCheck):
         if reason:
             message = reason
         elif all_required_formats and len(all_required_formats) > 1:
-            types = ", ".join(f"`{f['type']}`" for f in all_required_formats)
+            types = format_list_with_backticks(f["type"] for f in all_required_formats)
             message = (
                 f"No resources match for action `{action}`. This action requires one of: {types}"
             )

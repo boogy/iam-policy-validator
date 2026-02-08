@@ -48,6 +48,25 @@ class IgnoredFindingInfo:
     reason: str | None = None
 
 
+@dataclass
+class ContextIssueInfo:
+    """Information about an issue found on unchanged lines (outside the PR diff).
+
+    Attributes:
+        file_path: Path to the policy file
+        line_number: Line number in the file
+        severity: Severity level of the issue
+        issue_type: Type of issue (e.g., "wildcard_action")
+        message: Description of the issue
+    """
+
+    file_path: str
+    line_number: int
+    severity: str
+    issue_type: str
+    message: str
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -260,6 +279,7 @@ class ReportGenerator:
         ignored_count: int = 0,
         ignored_findings: list[IgnoredFindingInfo] | None = None,
         all_blocking_ignored: bool = False,
+        context_issues: list[ContextIssueInfo] | None = None,
     ) -> list[str]:
         """Generate GitHub PR comment(s), splitting into multiple parts if needed.
 
@@ -269,6 +289,7 @@ class ReportGenerator:
             ignored_count: Number of findings that were ignored (will be shown in summary)
             ignored_findings: List of ignored finding details for display in summary
             all_blocking_ignored: True if all blocking issues were ignored (shows "Passed" status)
+            context_issues: List of issues found on unchanged lines (outside PR diff)
 
         Returns:
             List of comment parts (each under max_length_per_part)
@@ -285,13 +306,19 @@ class ReportGenerator:
                 ignored_count=ignored_count,
                 ignored_findings=ignored_findings,
                 all_blocking_ignored=all_blocking_ignored,
+                context_issues=context_issues,
             )
             if len(single_comment) <= max_length_per_part:
                 return [single_comment]
 
         # Need to split into multiple parts
         return self._generate_split_comments(
-            report, max_length_per_part, ignored_count, ignored_findings, all_blocking_ignored
+            report,
+            max_length_per_part,
+            ignored_count,
+            ignored_findings,
+            all_blocking_ignored,
+            context_issues,
         )
 
     def _estimate_report_size(self, report: ValidationReport) -> int:
@@ -315,6 +342,7 @@ class ReportGenerator:
         ignored_count: int = 0,
         ignored_findings: list[IgnoredFindingInfo] | None = None,
         all_blocking_ignored: bool = False,
+        context_issues: list[ContextIssueInfo] | None = None,
     ) -> list[str]:
         """Split a large report into multiple comment parts.
 
@@ -324,6 +352,7 @@ class ReportGenerator:
             ignored_count: Number of ignored findings to show in summary
             ignored_findings: List of ignored finding details for display
             all_blocking_ignored: True if all blocking issues were ignored
+            context_issues: List of issues found on unchanged lines (outside PR diff)
 
         Returns:
             List of comment parts
@@ -332,7 +361,7 @@ class ReportGenerator:
 
         # Generate header (will be in first part only)
         header_lines = self._generate_header(
-            report, ignored_count, ignored_findings, all_blocking_ignored
+            report, ignored_count, ignored_findings, all_blocking_ignored, context_issues
         )
         header_content = "\n".join(header_lines)
 
@@ -432,6 +461,7 @@ class ReportGenerator:
         ignored_count: int = 0,
         ignored_findings: list[IgnoredFindingInfo] | None = None,
         all_blocking_ignored: bool = False,
+        context_issues: list[ContextIssueInfo] | None = None,
     ) -> list[str]:
         """Generate the comment header with summary.
 
@@ -440,6 +470,7 @@ class ReportGenerator:
             ignored_count: Number of findings that were ignored
             ignored_findings: List of ignored finding details for display
             all_blocking_ignored: True if all blocking issues were ignored (shows "Passed" status)
+            context_issues: List of issues found on unchanged lines (outside PR diff)
         """
         lines = []
 
@@ -513,6 +544,10 @@ class ReportGenerator:
         if ignored_findings:
             lines.extend(self._generate_ignored_findings_section(ignored_findings))
 
+        # Context issues section (findings on unchanged lines)
+        if context_issues:
+            lines.extend(self._generate_context_issues_section(context_issues))
+
         return lines
 
     def _generate_ignored_findings_section(
@@ -553,6 +588,57 @@ class ReportGenerator:
 
             lines.append(
                 f"| `{file_display}` | `{finding.issue_type}` | @{finding.ignored_by} | {reason_display} |"
+            )
+
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
+
+        return lines
+
+    def _generate_context_issues_section(self, context_issues: list[ContextIssueInfo]) -> list[str]:
+        """Generate the context issues section for findings on unchanged lines.
+
+        Args:
+            context_issues: List of issues found outside the PR diff
+
+        Returns:
+            List of markdown lines for the section
+        """
+        lines = []
+        lines.append("### Additional Findings (Unchanged Lines)")
+        lines.append("")
+        lines.append(
+            "> The following issues were found on lines not changed in this PR"
+            " and could not be posted as inline comments."
+        )
+        lines.append("")
+
+        lines.append("<details>")
+        lines.append(f"<summary>View {len(context_issues)} additional finding(s)</summary>")
+        lines.append("")
+
+        lines.append("| File | Line | Severity | Type | Message |")
+        lines.append("|------|-----:|----------|------|---------|")
+
+        for issue in context_issues:
+            # Truncate file path if too long
+            file_display = issue.file_path
+            if len(file_display) > 50:
+                file_display = "..." + file_display[-47:]
+
+            # Get severity emoji from constants
+            severity_info = constants.SEVERITY_CONFIG.get(issue.severity, {})
+            severity_emoji = severity_info.get("emoji", "")
+            severity_display = f"{severity_emoji} {issue.severity}"
+
+            # Truncate message to 80 chars
+            message_display = issue.message
+            if len(message_display) > 80:
+                message_display = message_display[:77] + "..."
+
+            lines.append(
+                f"| `{file_display}` | {issue.line_number} | {severity_display} | `{issue.issue_type}` | {message_display} |"
             )
 
         lines.append("")
@@ -661,6 +747,7 @@ class ReportGenerator:
         ignored_count: int = 0,
         ignored_findings: list[IgnoredFindingInfo] | None = None,
         all_blocking_ignored: bool = False,
+        context_issues: list[ContextIssueInfo] | None = None,
     ) -> str:
         """Generate a GitHub-flavored markdown comment for PR reviews.
 
@@ -670,6 +757,7 @@ class ReportGenerator:
             ignored_count: Number of findings that were ignored (will be shown in summary)
             ignored_findings: List of ignored finding details for display in summary
             all_blocking_ignored: True if all blocking issues were ignored (shows "Passed" status)
+            context_issues: List of issues found on unchanged lines (outside PR diff)
 
         Returns:
             Markdown formatted string
@@ -748,6 +836,10 @@ class ReportGenerator:
         # Ignored findings section
         if ignored_findings:
             lines.extend(self._generate_ignored_findings_section(ignored_findings))
+
+        # Context issues section (findings on unchanged lines)
+        if context_issues:
+            lines.extend(self._generate_context_issues_section(context_issues))
 
         # Parsing errors section (if any)
         if report.parsing_errors:

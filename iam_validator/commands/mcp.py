@@ -63,7 +63,7 @@ Config File (YAML) - same format as CLI validator:
 Features:
   - Policy generation from natural language descriptions
   - Template-based policy generation (15 built-in templates)
-  - Policy validation with 19 security checks
+  - Policy validation with 20 security checks
   - AWS service queries (actions, resources, condition keys)
   - Security enforcement (auto-adds required conditions)
   - Session-wide configuration management

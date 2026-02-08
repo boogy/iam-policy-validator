@@ -106,6 +106,9 @@ class GitHubIntegration:
         # Cache for CODEOWNERS content (fetched once per instance)
         self._codeowners_cache: str | None = None
         self._codeowners_loaded: bool = False
+        # Cache for PR info (fetched once per instance, immutable within a run)
+        self._pr_info_cache: dict[str, Any] | None = None
+        self._pr_info_loaded: bool = False
 
     def _validate_token(self, token: str | None) -> str | None:
         """Validate and sanitize GitHub token.
@@ -180,8 +183,7 @@ class GitHubIntegration:
         valid_pattern = re.compile(r"^[a-zA-Z0-9._-]+$")
         if not valid_pattern.match(owner) or not valid_pattern.match(repo):
             logger.warning(
-                f"Invalid characters in repository: {repository} "
-                "(only alphanumeric, ., -, _ allowed)"
+                f"Invalid characters in repository: {repository} (only alphanumeric, ., -, _ allowed)"
             )
             return None
 
@@ -488,8 +490,7 @@ class GitHubIntegration:
                 if isinstance(items, list):
                     all_items.extend(items)
                     logger.debug(
-                        f"Fetched page {page_count} with {len(items)} items "
-                        f"(total: {len(all_items)})"
+                        f"Fetched page {page_count} with {len(items)} items (total: {len(all_items)})"
                     )
                 else:
                     # Not a list response, shouldn't happen for list endpoints
@@ -959,6 +960,41 @@ class GitHubIntegration:
             return True
         return False
 
+    async def create_file_level_comment(
+        self,
+        commit_id: str,
+        file_path: str,
+        body: str,
+    ) -> bool:
+        """Create a file-level review comment (not attached to a specific line).
+
+        This is used for findings that cannot be pinned to a specific diff line,
+        such as context-only issues detected outside the PR diff.
+
+        Args:
+            commit_id: The SHA of the commit to comment on
+            file_path: The relative path to the file in the repo
+            body: The comment text (markdown supported)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        result = await self._make_request(
+            "POST",
+            f"pulls/{self.pr_number}/comments",
+            json={
+                "commit_id": commit_id,
+                "path": file_path,
+                "subject_type": "file",
+                "body": body,
+            },
+        )
+
+        if result:
+            logger.info(f"Successfully posted file-level comment on {file_path}")
+            return True
+        return False
+
     async def create_review_with_comments(
         self,
         comments: list[dict[str, Any]],
@@ -1040,6 +1076,7 @@ class GitHubIntegration:
         identifier: str = constants.REVIEW_IDENTIFIER,
         validated_files: set[str] | None = None,
         skip_cleanup: bool = False,
+        protected_fingerprints: set[str] | None = None,
     ) -> bool:
         """Smart comment management using fingerprint-based matching.
 
@@ -1069,6 +1106,9 @@ class GitHubIntegration:
             skip_cleanup: If True, skip the cleanup phase (deleting resolved comments).
                          Use this in streaming mode where files are processed one at a time
                          to avoid deleting comments from files processed earlier.
+            protected_fingerprints: Set of fingerprints that should NOT be deleted during
+                         cleanup. Used to preserve file-level context comments that are
+                         managed by a separate pipeline.
 
         Returns:
             True if successful, False otherwise
@@ -1236,6 +1276,10 @@ class GitHubIntegration:
                 comment_id = existing["id"]
                 # Skip if this comment was matched/updated via location fallback
                 if comment_id in matched_comment_ids:
+                    continue
+                # Skip if this fingerprint is protected (managed by another pipeline)
+                if protected_fingerprints and fingerprint in protected_fingerprints:
+                    logger.debug(f"Skipping protected comment {fingerprint[:8]}...")
                     continue
                 if fingerprint not in seen_fingerprints and should_delete_comment(existing["path"]):
                     comment_ids_to_delete.append(comment_id)
@@ -1418,10 +1462,19 @@ class GitHubIntegration:
     async def get_pr_info(self) -> dict[str, Any] | None:
         """Get detailed information about the PR.
 
+        Results are cached for the lifetime of this instance since PR metadata
+        (head SHA, base branch, etc.) does not change within a single run.
+
         Returns:
             PR information dict or None on error
         """
-        return await self._make_request("GET", f"pulls/{self.pr_number}")
+        if self._pr_info_loaded:
+            return self._pr_info_cache
+
+        result = await self._make_request("GET", f"pulls/{self.pr_number}")
+        self._pr_info_cache = result
+        self._pr_info_loaded = True
+        return result
 
     async def get_pr_files(self) -> list[dict[str, Any]]:
         """Get list of files changed in the PR.

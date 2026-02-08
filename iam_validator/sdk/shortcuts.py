@@ -5,6 +5,7 @@ This module provides high-level, easy-to-use functions for common IAM policy
 validation tasks without requiring deep knowledge of the internal API.
 """
 
+import json
 from pathlib import Path
 
 from iam_validator.core.models import PolicyValidationResult, ValidationIssue
@@ -90,20 +91,24 @@ async def validate_directory(
 
 
 async def validate_json(
-    policy_json: dict,
+    policy_json: dict | str,
     policy_name: str = "inline-policy",
     config_path: str | None = None,
 ) -> PolicyValidationResult:
     """
-    Validate an IAM policy from a Python dictionary.
+    Validate an IAM policy from a Python dictionary or JSON string.
 
     Args:
-        policy_json: IAM policy as a Python dict
+        policy_json: IAM policy as a Python dict or JSON string
         policy_name: Name to identify this policy in results
         config_path: Optional path to configuration file
 
     Returns:
         PolicyValidationResult for the policy
+
+    Raises:
+        json.JSONDecodeError: If a string is provided that is not valid JSON
+        TypeError: If policy_json is not a dict or str
 
     Example:
         >>> policy = {
@@ -116,8 +121,19 @@ async def validate_json(
         ... }
         >>> result = await validate_json(policy)
         >>> print(f"Valid: {result.is_valid}")
+
+        >>> # Also accepts JSON strings:
+        >>> result = await validate_json('{"Version": "2012-10-17", ...}')
     """
     from iam_validator.core.models import IAMPolicy
+
+    # Parse string input to dict
+    if isinstance(policy_json, str):
+        parsed = json.loads(policy_json)
+        if not isinstance(parsed, dict):
+            msg = f"Expected JSON object, got {type(parsed).__name__}"
+            raise TypeError(msg)
+        policy_json = parsed
 
     # Parse the dict into an IAMPolicy
     policy = IAMPolicy(**policy_json)
@@ -236,6 +252,52 @@ async def get_issues(
                 all_issues.append(issue)
 
     return all_issues
+
+
+def filter_issues_by_check_id(
+    result: PolicyValidationResult,
+    check_id: str,
+) -> list[ValidationIssue]:
+    """Filter validation issues by check ID.
+
+    Args:
+        result: PolicyValidationResult to filter
+        check_id: Check ID to filter by (e.g., "wildcard_action", "sensitive_action")
+
+    Returns:
+        List of ValidationIssues matching the check ID
+
+    Example:
+        >>> result = await validate_file("policy.json")
+        >>> wildcard_issues = filter_issues_by_check_id(result, "wildcard_action")
+        >>> print(f"Found {len(wildcard_issues)} wildcard action issues")
+    """
+    return [issue for issue in result.issues if issue.check_id == check_id]
+
+
+def filter_issues_by_severity(
+    result: PolicyValidationResult,
+    min_severity: str = "medium",
+) -> list[ValidationIssue]:
+    """Filter validation issues by minimum severity threshold.
+
+    Uses the severity ranking from :class:`ValidationIssue.SEVERITY_RANK`.
+
+    Args:
+        result: PolicyValidationResult to filter
+        min_severity: Minimum severity to include. Valid values:
+            "error", "critical", "high", "warning", "medium", "low", "info"
+
+    Returns:
+        List of ValidationIssues at or above the severity threshold
+
+    Example:
+        >>> result = await validate_file("policy.json")
+        >>> high_issues = filter_issues_by_severity(result, "high")
+        >>> print(f"Found {len(high_issues)} high+ severity issues")
+    """
+    min_rank = ValidationIssue.SEVERITY_RANK.get(min_severity, 0)
+    return [issue for issue in result.issues if issue.get_severity_rank() >= min_rank]
 
 
 async def count_issues_by_severity(

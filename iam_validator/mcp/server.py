@@ -92,11 +92,11 @@ def _get_cached_checks() -> tuple[dict[str, Any], ...]:
         sorted(
             [
                 {
-                    "check_id": check_id,
+                    "check_id": check_instance.check_id,
                     "description": check_instance.description,
                     "default_severity": check_instance.default_severity,
                 }
-                for check_id, check_instance in registry._checks.items()
+                for check_instance in registry.get_all_checks()
             ],
             key=lambda x: x["check_id"],
         )

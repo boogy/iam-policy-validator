@@ -21,6 +21,7 @@ For full documentation, see: docs/condition-requirements.md
 import re
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.ignore_patterns import IgnorePatternMatcher
@@ -629,7 +630,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         severity = requirement.get("severity", self.get_severity(config))
 
         for stmt_idx, stmt, actions in statements_with_forbidden:
-            actions_formatted = ", ".join(f"`{a}`" for a in actions)
+            actions_formatted = format_list_with_backticks(actions)
             statement_refs = [
                 f"Statement #{idx + 1}{' (SID: ' + s.sid + ')' if s.sid else ''}"
                 for idx, s, _ in statements_with_forbidden
@@ -667,7 +668,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         if not required_conditions_config:
             # No conditions specified, just report that actions were found
-            all_actions_formatted = ", ".join(f"`{a}`" for a in sorted(set(found_actions)))
+            all_actions_formatted = format_list_with_backticks(sorted(set(found_actions)))
             statement_refs = [
                 f"Statement #{idx + 1}{' (SID: ' + stmt.sid + ')' if stmt.sid else ''}"
                 for idx, stmt, _ in statements_with_actions
@@ -700,12 +701,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 requirement,
             )
 
-            # Add context
-            for issue in condition_issues:
-                issue.suggestion = (
-                    f"{issue.suggestion}\n\n"
-                    f"Note: Found {len(statements_with_actions)} statement(s) with these actions in the policy ({operator_type})."
-                )
+            # Add cross-statement context when multiple statements share these actions
+            if len(statements_with_actions) > 1:
+                for issue in condition_issues:
+                    issue.suggestion = (
+                        f"{issue.suggestion}\n\n"
+                        f"Note: {len(statements_with_actions)} statements in this policy use these actions — each needs this condition."
+                    )
 
             issues.extend(condition_issues)
 
@@ -762,7 +764,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
             # Use the first matching statement's index for the issue
             first_idx, first_stmt, _ = matching_statements[0]
-            all_actions_formatted = ", ".join(f"`{a}`" for a in sorted(all_actions))
+            all_actions_formatted = format_list_with_backticks(sorted(all_actions))
 
             issues.append(
                 ValidationIssue(
@@ -790,12 +792,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 requirement,
             )
 
-            # Add context to each issue
-            for issue in condition_issues:
-                issue.suggestion = (
-                    f"{issue.suggestion}\n\n"
-                    f"Note: Found {len(matching_statements)} statement(s) with these actions in the policy."
-                )
+            # Add cross-statement context when multiple statements share these actions
+            if len(matching_statements) > 1:
+                for issue in condition_issues:
+                    issue.suggestion = (
+                        f"{issue.suggestion}\n\n"
+                        f"Note: {len(matching_statements)} statements in this policy use these actions — each needs this condition."
+                    )
 
             issues.extend(condition_issues)
 
@@ -1111,7 +1114,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                                 # Simple condition
                                 condition_keys.append(f"`{cond.get('condition_key', 'unknown')}`")
                         condition_keys_formatted = " OR ".join(condition_keys)
-                        matching_actions_formatted = ", ".join(f"`{a}`" for a in matching_actions)
+                        matching_actions_formatted = format_list_with_backticks(matching_actions)
 
                         message = (
                             f"Actions {matching_actions_formatted} require at least ONE of these conditions: "
@@ -1265,7 +1268,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             condition_key, description, example, expected_value, operator
         )
 
-        matching_actions_str = ", ".join(f"`{a}`" for a in matching_actions)
+        matching_actions_str = format_list_with_backticks(matching_actions)
         return ValidationIssue(
             severity=severity,
             statement_sid=statement.sid,
@@ -1354,7 +1357,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 # Nested all_of - show all required conditions together
                 all_of_list = cond["all_of"]
                 condition_keys = [c.get("condition_key", "unknown") for c in all_of_list]
-                condition_keys_formatted = " + ".join(f"`{k}`" for k in condition_keys)
+                condition_keys_formatted = format_list_with_backticks(
+                    condition_keys, separator=" + "
+                )
 
                 # Check for custom message first
                 custom_message = cond.get("message")
@@ -1419,8 +1424,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         description = condition_requirement.get("description", "")
         expected_value = condition_requirement.get("expected_value")
 
-        matching_actions_str = ", ".join(f"`{a}`" for a in matching_actions)
-        message = f"FORBIDDEN: Action(s) `{matching_actions_str}` must NOT have condition `{condition_key}`"
+        matching_actions_str = format_list_with_backticks(matching_actions)
+        message = (
+            f"FORBIDDEN: Action(s) {matching_actions_str} must NOT have condition `{condition_key}`"
+        )
         if expected_value is not None:
             message += f" with value `{expected_value}`"
 

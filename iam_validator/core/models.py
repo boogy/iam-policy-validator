@@ -6,7 +6,7 @@ IAM policies, and validation results.
 
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from iam_validator.core import constants
 
@@ -167,6 +167,15 @@ class ValidationIssue(BaseModel):
     """
 
     severity: str  # "error", "warning", "info" OR "critical", "high", "medium", "low"
+
+    @field_validator("severity")
+    @classmethod
+    def validate_severity(cls, v: str) -> str:
+        valid = {"error", "warning", "info", "critical", "high", "medium", "low"}
+        if v not in valid:
+            raise ValueError(f"Invalid severity '{v}'. Must be one of: {', '.join(sorted(valid))}")
+        return v
+
     statement_sid: str | None = None
     statement_index: int
     issue_type: str  # "invalid_action", "invalid_condition_key", "invalid_resource", etc.

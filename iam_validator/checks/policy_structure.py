@@ -237,6 +237,19 @@ def validate_policy_document(policy_dict: dict[str, Any]) -> list[ValidationIssu
                 example=('{\n  "Version": "2012-10-17",\n  "Statement": [...]\n}'),
             )
         )
+    elif policy_dict["Version"] == "2008-10-17":
+        issues.append(
+            ValidationIssue(
+                severity="warning",
+                statement_index=-1,
+                issue_type="outdated_version",
+                message="Policy uses outdated `Version` `2008-10-17`. This version has limited "
+                "features and does not support policy variables (`${aws:username}`), "
+                "advanced condition operators, or some newer IAM features.",
+                suggestion="Update `Version` to `2012-10-17` to access the full IAM policy grammar",
+                example=('{\n  "Version": "2012-10-17",\n  "Statement": [...]\n}'),
+            )
+        )
 
     # Validate Statement field
     if "Statement" not in policy_dict:
