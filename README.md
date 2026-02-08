@@ -320,9 +320,9 @@ iam-validator validate --path policies/ --aws-services-dir ./aws-services
 - uses: boogy/iam-policy-validator@v1
   with:
     path: policies/
-    github-review: true # Inline PR comments
+    create-review: true # Inline PR comments
     github-summary: true # Actions summary tab
-    fail-on-severity: high # Block merge on high/critical
+    fail-on-warnings: true # Block merge on warnings too
 ```
 
 ---

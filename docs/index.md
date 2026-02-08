@@ -154,7 +154,7 @@ Issues (1)
 - uses: boogy/iam-policy-validator@v1
   with:
     path: ./policies/
-    fail-on-severity: error,critical,high
+    fail-on-warnings: true
 ```
 
 [:octicons-arrow-right-24: Full GitHub Actions Guide](integrations/github-actions.md)
