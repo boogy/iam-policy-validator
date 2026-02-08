@@ -86,7 +86,7 @@ disallow_untyped_defs = false
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-extend-exclude = ["examples/**/*.py", "tests/**/*.py"]  # Don't lint examples and tests
+extend-exclude = ["examples/**/*.py"]  # Don't lint examples
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
@@ -104,6 +104,7 @@ addopts = [
     "-v",
     "--strict-markers",
     "--tb=short",
+    "-p no:benchmark",
 ]
 markers = [
     "benchmark: marks tests as benchmarks (deselect with '-m \"not benchmark\"')",
@@ -111,11 +112,3 @@ markers = [
     "integration: marks tests as integration tests",
 ]
 asyncio_mode = "auto"
-
-[dependency-groups]
-dev = [
-    "pytest",
-    "pytest-asyncio",
-    "pytest-benchmark",
-    "pytest-cov",
-]
