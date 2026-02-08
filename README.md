@@ -167,18 +167,6 @@ Issues (1)
 
 </details>
 
-### In GitHub PRs
-
-```yaml
-# .github/workflows/iam-validator.yml
-- uses: boogy/iam-policy-validator@v1
-  with:
-    path: policies/
-    github-review: true
-```
-
-**Result:** Line-specific comments on policy files showing what's wrong and how to fix it.
-
 ---
 
 ## What Makes This Different
