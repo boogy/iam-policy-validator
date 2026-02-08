@@ -92,7 +92,7 @@ async def validate_policies(
         checks_dir_path = Path(checks_dir).resolve()
         discovered_checks = ConfigLoader.discover_checks_in_directory(checks_dir_path, registry)
         if discovered_checks:
-            logger.info(f"Auto-discovered {len(discovered_checks)} custom checks from {checks_dir_path}")
+            logger.info("Auto-discovered %d custom checks from configured directory", len(discovered_checks))
 
     # Apply configuration again to include custom checks
     # This allows configuring auto-discovered checks via the config file
