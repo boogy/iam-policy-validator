@@ -21,7 +21,7 @@ Security teams need to **enforce organization-specific IAM requirements** and **
 2. **Broken automation** - Syntactically valid but functionally wrong policies (`s3:GetObject` on bucket ARN)
 3. **Missing security controls** - No IAM conditions for sensitive AWS API actions
 4. **Overly permissive access** - Wildcard actions and resources that violate least privilege
-5. **Trust policy vulnerabilities** - Incorrect principals, missing OIDC audience, SAML misconfiguration
+5. **Trust policy vulnerabilities** - Confused deputy risks, incorrect principals, missing OIDC audience, SAML misconfiguration
 6. **Typos and invalid syntax** - Invalid actions (`s3:GetObjekt`), condition keys, or ARN formats before deployment
 7. **Your own detection** - Set custom configuration file for custom detections
 
@@ -96,7 +96,7 @@ iam-validator validate --path examples/quick-start/ --format enhanced
 ```
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
 │                                                                                                  │
-│                              IAM Policy Validation Report (v1.14.1)                              │
+│                              IAM Policy Validation Report (v1.16.0)                              │
 │                                                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ───────────────────────────────────────── Detailed Results ─────────────────────────────────────────
@@ -106,11 +106,9 @@ iam-validator validate --path examples/quick-start/ --format enhanced
 Issues (2)
 ├── 🔴 High
 │   └── [Statement 2 @L10] missing_required_condition
-│       └── Required: Action(s) ``iam:PassRole`` require condition `iam:PassedToService`
+│       └── Required: Action(s) `iam:PassRole` require condition `iam:PassedToService`
 │           ├── Action: iam:PassRole • Condition: iam:PassedToService
 │           └── 💡 Restrict which AWS services can assume the passed role to prevent privilege escalation
-│
-│               Note: Found 1 statement(s) with these actions in the policy.
 │               Example:
 │               "Condition": {
 │                 "StringEquals": {
@@ -137,17 +135,21 @@ Issues (1)
             `aws:SourceVpc` OR `aws:SourceVpce` OR `aws:ResourceAccount`
             ├── Action: s3:GetObject
             └── 💡 Add at least ONE of these conditions:
-                - **Option 1**: `aws:ResourceOrgID` - Restrict S3 operations to resources within your AWS Organization (value:
-                `${aws:PrincipalOrgID}`)
-                - **Option 2**: `aws:ResourceOrgPaths` - Restrict S3 operations to resources within your AWS Organization path (value:
-                `${aws:PrincipalOrgPaths}`)
-                - **Option 3**: `aws:SourceIp` - Restrict S3 operations by source IP address and same account
-                - **Option 4**: `aws:SourceVpc` - Restrict S3 operations by source VPC and same account
-                - **Option 5**: `aws:SourceVpce` - Restrict S3 operations by VPC endpoint and same account
-                - **Option 6**: `aws:ResourceAccount` - Restrict S3 operations to resources within the same AWS account (value:
-                `${aws:PrincipalAccount}`)
-
-                Note: Found 1 statement(s) with these actions in the policy.
+                - `aws:ResourceOrgID` - Restrict S3 operations to resources within your AWS Organization
+                - `aws:ResourceOrgPaths` - Restrict S3 operations to resources within your AWS Organization path
+                - `aws:SourceIp` - Restrict S3 operations by source IP address and same account
+                - `aws:SourceVpc` - Restrict S3 operations by source VPC and same account
+                - `aws:SourceVpce` - Restrict S3 operations by VPC endpoint and same account
+                - `aws:ResourceAccount` - Restrict S3 operations to resources within the same AWS account
+                Example:
+                {
+                  "Condition": {
+                    "StringEquals": {
+                      "aws:ResourceOrgID": "${aws:PrincipalOrgID}"
+                    }
+                  }
+                }
+                [edited...]
 
 ✅ [3/3] examples/quick-start/lambda-policy.json • VALID
      No issues detected
@@ -348,13 +350,6 @@ iam-validator sync-services --output-dir ./aws-services
 iam-validator validate --path policies/ --aws-services-dir ./aws-services
 ```
 
-**Comparison:**
-
-- **This tool**: Official AWS API, auto-updates, offline mode
-- **Policy Sentry**: Official AWS API, excellent query capabilities
-- **IAM Lens**: Uses actual AWS account data (runtime analysis)
-- **IAMSpy**: Static database, may lag behind AWS updates
-
 ---
 
 ### 🎨 **5. Built for CI/CD and Developer Workflows**
@@ -390,37 +385,40 @@ iam-validator validate --path policies/ --aws-services-dir ./aws-services
 
 ## What Does It Check?
 
-### ✅ **AWS Correctness (12 checks)**
+### ✅ **AWS Correctness (14 checks)**
 
 Validates against official AWS IAM requirements:
 
-| Check                        | What It Does                                                                        |
-| ---------------------------- | ----------------------------------------------------------------------------------- |
-| **Policy Structure**         | Required fields (Version, Statement, Effect), valid JSON/YAML                       |
-| **Action Validation**        | Actions exist in AWS services (detects typos: `s3:GetObjekt`)                       |
-| **Condition Keys**           | Valid condition keys for actions (e.g., `s3:prefix` valid for `s3:ListBucket`)      |
-| **Condition Types**          | Values match expected types (IP for `aws:SourceIp`, Bool for `aws:SecureTransport`) |
-| **Resource ARNs**            | Correct ARN format and patterns                                                     |
-| **Principal Validation**     | Valid principals in resource/trust policies                                         |
-| **Policy Size**              | AWS limits (6144 bytes managed, 10240 inline, 20480 resource)                       |
-| **SID Uniqueness**           | Statement IDs unique within policy                                                  |
-| **Set Operators**            | Correct `ForAllValues`/`ForAnyValue` usage with arrays                              |
-| **MFA Conditions**           | Detect insecure MFA patterns (`!= false` instead of `== true`)                      |
-| **Policy Type**              | RCP/SCP-specific requirements                                                       |
-| **Action-Resource Matching** | Actions compatible with resources (catches functional errors)                       |
+| Check                        | What It Does                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------------ |
+| **Policy Structure**         | Required fields (Version, Statement, Effect), valid JSON/YAML, outdated version warnings   |
+| **Action Validation**        | Actions exist in AWS services (detects typos: `s3:GetObjekt`)                              |
+| **Condition Keys**           | Valid condition keys for actions (e.g., `s3:prefix` valid for `s3:ListBucket`)             |
+| **Condition Types**          | Operator-value type matching (IP/CIDR format, ARN format, Bool values, type compatibility) |
+| **IfExists Validation**      | Validates proper usage of `IfExists` suffix on condition operators                         |
+| **Resource ARNs**            | Correct ARN format and patterns                                                            |
+| **Principal Validation**     | Valid principals in resource/trust policies                                                |
+| **NotPrincipal Validation**  | Detects unsupported `NotPrincipal`+`Allow` and deprecated `NotPrincipal` usage patterns    |
+| **Policy Size**              | AWS limits (6144 bytes managed, 10240 inline, 20480 resource, 5120 SCP)                    |
+| **SID Uniqueness**           | Statement IDs unique within policy                                                         |
+| **Set Operators**            | Correct `ForAllValues`/`ForAnyValue` usage with arrays                                     |
+| **MFA Conditions**           | Detect insecure MFA patterns (`!= false` instead of `== true`)                             |
+| **Policy Type**              | RCP/SCP-specific requirements (size limits, Principal/NotPrincipal restrictions)           |
+| **Action-Resource Matching** | Actions compatible with resources (catches functional errors)                              |
 
-### 🔒 **Security Best Practices (6 checks)**
+### 🔒 **Security Best Practices (7 checks)**
 
 Identifies overly permissive configurations:
 
-| Check                     | What It Catches                                          |
-| ------------------------- | -------------------------------------------------------- |
-| **Wildcard Action**       | `Action: "*"` grants all AWS permissions                 |
-| **Wildcard Resource**     | `Resource: "*"` applies to all resources                 |
-| **Full Wildcard**         | Both `Action: "*"` AND `Resource: "*"` (admin access)    |
-| **Service Wildcards**     | `s3:*`, `iam:*`, `ec2:*` (overly broad)                  |
-| **Sensitive Actions**     | 490+ privilege escalation patterns and dangerous actions |
-| **Condition Enforcement** | Organization-specific condition requirements             |
+| Check                     | What It Catches                                                   |
+| ------------------------- | ----------------------------------------------------------------- |
+| **Wildcard Action**       | `Action: "*"` grants all AWS permissions                          |
+| **Wildcard Resource**     | `Resource: "*"` applies to all resources                          |
+| **Full Wildcard**         | Both `Action: "*"` AND `Resource: "*"` (admin access)             |
+| **Service Wildcards**     | `s3:*`, `iam:*`, `ec2:*` (overly broad)                           |
+| **NotAction/NotResource** | Dangerous `NotAction`/`NotResource` patterns with implicit grants |
+| **Sensitive Actions**     | 490+ privilege escalation patterns and dangerous actions          |
+| **Condition Enforcement** | Organization-specific condition requirements                      |
 
 **Note on Sensitive Actions:** This check has two modes:
 
@@ -431,6 +429,7 @@ Identifies overly permissive configurations:
 
 Specialized checks for role assumption:
 
+- **Confused deputy detection** — flags service principals (e.g., `sns.amazonaws.com`) without `aws:SourceArn`/`aws:SourceAccount` conditions, with a curated safe-service list verified against AWS documentation
 - Correct principal types (`AssumeRoleWithSAML` needs `Federated` principal)
 - SAML/OIDC provider ARN validation
 - Required conditions (`SAML:aud`, OIDC audience)

@@ -259,6 +259,6 @@ iam-validator validate --path user-policy.json --format json
 Now that you understand the basics:
 
 - [:octicons-arrow-right-24: Configuration Guide](../user-guide/configuration.md) — Advanced configuration options
-- [:octicons-arrow-right-24: Check Reference](../user-guide/checks/index.md) — All 19 built-in checks explained
+- [:octicons-arrow-right-24: Check Reference](../user-guide/checks/index.md) — All 21 built-in checks explained
 - [:octicons-arrow-right-24: GitHub Actions](../integrations/github-actions.md) — Automate validation in CI/CD
 - [:octicons-arrow-right-24: Custom Checks](../developer-guide/custom-checks/index.md) — Write organization-specific rules

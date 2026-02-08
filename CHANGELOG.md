@@ -2,14 +2,65 @@
 
 All notable changes to IAM Policy Validator are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+The format is based on [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.17.0] - 2026-02-08
 
-### Planned
+### Changed
 
-- Enhanced PR comment management with configurable limits
+- Use maximum severity across all matched actions in `sensitive_action` instead of first match
+- Show `action_condition_enforcement` cross-statement context note only when 2+ statements share the same sensitive actions
+- Cache PR info for the lifetime of the `PRCommenter` instance, avoiding redundant GitHub API calls
+- Remove `PolicyValidationLimits` class from `PolicyLoader`; size validation now handled by `policy_size` and `policy_type_validation` checks
+- Extract `_process_issues()` helper in `CheckRegistry` and migrate `print()` warnings to `logger.warning()`
+- Extract `format_list_with_backticks()` utility to `checks/utils/formatting.py` for reuse across checks
+- Consolidate GitHub Actions examples from 6 verbose workflow files to 2 streamlined examples (`basic.yaml`, `access-analyzer.yaml`)
+- Extract shared test fixtures to `tests/checks/conftest.py` and `tests/core/conftest.py`
+- Lint test files with Ruff (remove `tests/**/*.py` from `extend-exclude`)
+- Suppress individual `NotAction`/`NotResource` findings in `not_action_not_resource` when the combined critical finding is already emitted
+
+### Added
+
+- Add `not_principal_validation` check detecting dangerous `NotPrincipal` usage patterns:
+  - Flag `NotPrincipal` with `Effect: Allow` as error (not supported by AWS)
+  - Flag `NotPrincipal` with `Effect: Deny` as warning (deprecated pattern)
+  - Suggest using `Principal: "*"` with condition operators (`ArnNotEquals`) instead
+- Add confused deputy detection in `trust_policy_validation`:
+  - Detect service principals without `aws:SourceArn` or `aws:SourceAccount` conditions
+  - Exempt 3 compute-bound safe services (ec2, lambda, edgelambda)
+  - Provide specific remediation examples per service principal
+- Add SCP-specific size limit validation (5,120 bytes) in `policy_type_validation`
+- Add off-diff PR comment pipeline with cascading fallback for issues on unchanged lines:
+  - Try line-level review comment first (works for diff context lines)
+  - Fall back to file-level comment (`subject_type: "file"`) when line is outside diff
+  - Show remaining issues in a collapsible summary table
+- Protect off-diff comment fingerprints from deletion during comment cleanup
+- Add outdated policy version warning in `policy_structure` for `Version` `2008-10-17` (missing policy variables and advanced operators)
+- Add separate error messages for `Principal` vs `NotPrincipal` in SCP validation
+- Add operator-specific value format validation in `condition_type_mismatch`:
+  - Validate CIDR notation for `IpAddress`/`NotIpAddress` (IPv4/IPv6)
+  - Validate ARN format for `ArnEquals`/`ArnLike` (`arn:` prefix or template variables)
+  - Validate boolean values for `Bool` (`"true"` or `"false"` only)
+- Add implicit grant analysis in `not_action_not_resource` showing which services get access when `NotAction` is used with `Allow`
+- Add remediation suggestions with specific alternative patterns in `not_action_not_resource`
+- Add TypedDicts for structured SDK query results (`ActionInfo`, `ActionDetails`, `ConditionKeyInfo`, `ConditionKeyDetails`, `ArnTypeInfo`, `ArnFormatDetails`)
+- Add `filter_issues_by_check_id` and `filter_issues_by_severity` to SDK
+- Accept `str | dict` in SDK `validate_json()` with automatic JSON string parsing
+- Add `repository`, `ref`, and `job_workflow_ref` condition keys to OIDC example in `trust_policy_validation`
+- Add confused deputy protection documentation with safe services table and remediation examples
+- Add SDK usage examples (`examples/sdk/`) and dedicated SDK test suite (`tests/sdk/`)
+- Export `normalize_template_variables` and `has_template_variables` ARN utilities in SDK
+
+### Fixed
+
+- Fix `aws:ResourceOrgPaths` condition example in `action_condition_enforcement` to use `ForAnyValue:StringLike` instead of `StringEquals` (multivalued condition key requires set operator)
+- Fix suggestion text for organization path boundary in `action_condition_enforcement` to reference `ForAnyValue:StringLike`
+- Post issues on unchanged lines as off-diff comments instead of silently dropping them
+- Replace deprecated `asyncio.get_event_loop()` with `asyncio.get_running_loop()` in AWS service client
+- Use public `get_all_checks()` API instead of private `_checks` attribute in MCP server `_get_cached_checks()`
+- Add severity field validator to `ValidationIssue` to reject invalid values at model construction
+- Fix resource leak in SDK `expand_actions()` when no fetcher is provided (now uses `async with`)
 
 ---
 
@@ -17,18 +68,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- New `ifexists_condition_usage` check validating proper usage of the `IfExists` suffix on condition operators:
-  - Detects `IfExists` on security-sensitive keys in Allow statements (may bypass controls)
-  - Warns about non-negated `IfExists` weakening Deny statements
-  - Flags redundant `IfExists` on always-present keys (e.g., `aws:SecureTransport`)
-  - Optionally suggests `IfExists` for negated operators in Deny statements
-- Security-sensitive and always-present condition key constants in `condition_validators` module
+- Add `ifexists_condition_usage` check validating proper usage of the `IfExists` suffix on condition operators ([#77])
+  - Detect `IfExists` on security-sensitive keys in Allow statements (may bypass controls)
+  - Warn about non-negated `IfExists` weakening Deny statements
+  - Flag redundant `IfExists` on always-present keys (e.g., `aws:SecureTransport`)
+  - Optionally suggest `IfExists` for negated operators in Deny statements
+- Add security-sensitive and always-present condition key constants in `condition_validators` module ([#77])
+- Suppress false positive errors in `condition_key_validation` when `IfExists` is used with keys valid for some but not all actions ([#77])
+- Detect `NullIfExists` as invalid syntax in `condition_type_mismatch` (the `Null` operator already checks for key existence) ([#77])
+- Warn about compound `ForAllValues` + `IfExists` pattern in `set_operator_validation` (doubly permissive) ([#77])
 
-### Improved
-
-- `condition_key_validation`: Suppress false positive errors when `IfExists` is used with keys valid for some but not all actions in the statement
-- `condition_type_mismatch`: Detect `NullIfExists` as invalid syntax (the `Null` operator already checks for key existence)
-- `set_operator_validation`: Compound warning when `ForAllValues` is combined with `IfExists` (doubly permissive pattern)
+[#77]: https://github.com/boogy/iam-policy-validator/pull/77
 
 ---
 
@@ -36,30 +86,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-**Shell Completions**
+- Remove `--instructions` and `--instructions-file` from `iam-validator mcp` subcommand completions; these options only exist in the standalone `iam-validator-mcp` command ([#73])
+- Fix `validator()` and `validator_from_config()` to properly initialize and cleanup `AWSServiceFetcher` using `async with` for correct HTTP client lifecycle management ([#73])
+- Remove unused `config` parameter from SDK validation functions (`validate_file`, `validate_directory`, `validate_json`, `quick_validate`, `get_issues`, `count_issues_by_severity`) ([#73])
+- Fix `recursive` parameter in `validate_directory()` to actually pass through to `PolicyLoader.load_from_path()` ([#73])
+- Expand SDK API reference with ARN utilities, query utilities, and policy utilities ([#72])
 
-- Remove `--instructions` and `--instructions-file` from `iam-validator mcp` subcommand completions
-  - These options only exist in the standalone `iam-validator-mcp` command, not the subcommand
-
-**SDK Context Manager**
-
-- Fix `validator()` and `validator_from_config()` to properly initialize and cleanup `AWSServiceFetcher`
-  - Now uses `async with` for correct HTTP client lifecycle management
-  - Ensures connections are properly closed when context exits
-
-**SDK Shortcuts**
-
-- Remove unused `config` parameter from validation functions (`validate_file`, `validate_directory`, `validate_json`, `quick_validate`, `get_issues`, `count_issues_by_severity`)
-- Fix `recursive` parameter in `validate_directory()` to actually be passed to `PolicyLoader.load_from_path()`
-
-### Documentation
-
-- Update MCP tool count from "25+" to "35" and document 7 missing tools
-- Expand SDK API reference with ARN utilities, query utilities, and policy utilities
-- Add all 17 `ValidationIssue` fields to documentation
-- Add SDK installation extras (`[mcp]`, `[dev]`, `[docs]`)
-- Add output format examples with sample outputs for JSON, SARIF, Markdown, HTML, CSV
-- Expand configuration reference with global settings, check options, environment variables
+[#73]: https://github.com/boogy/iam-policy-validator/pull/73
+[#72]: https://github.com/boogy/iam-policy-validator/pull/72
 
 ---
 
@@ -67,11 +101,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-**Code Quality Improvements**
+- Remove duplicate `asyncio` import in query command (CodeQL: py/repeated-import) ([#71])
+- Fix unused `action_list` variable in wildcard resource check; now include the action list in error messages for better context (CodeQL: py/unused-local-variable) ([#71])
 
-- Remove duplicate `asyncio` import in query command (CodeQL: py/repeated-import)
-- Fix unused `action_list` variable in wildcard resource check (CodeQL: py/unused-local-variable)
-  - Now includes the action list in error messages for better context
+[#71]: https://github.com/boogy/iam-policy-validator/pull/71
 
 ---
 
@@ -79,52 +112,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-**Enhanced NotAction/NotResource Detection**
+- Add **critical** severity check for combined `NotAction` + `NotResource` with `Allow` effect, detecting near-administrator access patterns ([#69])
+- Detect `BoolIfExists` with `aws:MultiFactorAuthPresent = false` as **high** severity (matches when key is missing entirely, more dangerous than `Bool`) ([#69])
+- Detect `Null` with `aws:MultiFactorAuthPresent = true` as warning (checks if key doesn't exist, meaning no MFA) ([#69])
+- Improve message formatting with markdown backticks for better GitHub PR comment rendering ([#69])
 
-- New **critical** severity check for combined `NotAction` + `NotResource` with `Allow` effect
-  - Detects near-administrator access patterns that grant all actions except a few on all resources except a few
-  - Example: `{"Effect": "Allow", "NotAction": ["iam:DeleteUser"], "NotResource": ["arn:aws:s3:::bucket/*"]}`
-- Improved message formatting with markdown backticks for better GitHub PR comment rendering
-
-**MFA Condition Anti-Pattern Detection**
-
-- Detect `BoolIfExists` with `aws:MultiFactorAuthPresent = false` (**high** severity)
-  - More dangerous than `Bool` because it also matches when the key is missing entirely
-- Detect `Null` with `aws:MultiFactorAuthPresent = true` (warning)
-  - Checks if key doesn't exist, meaning no MFA was provided in the request context
+[#69]: https://github.com/boogy/iam-policy-validator/pull/69
 
 ---
 
 ## [1.15.2] - 2025-01-26
 
-### Added
-
-**Confused Deputy Protection**
-
-- Service principal wildcard detection (`{"Service": "*"}`) - critical severity
-  - Detects dangerous patterns allowing any AWS service to access resources or assume roles
-  - Enabled by default via `block_service_principal_wildcard: true`
-  - Only checks `Principal` field (not `NotPrincipal`, which is an exclusion)
-- New configuration options for `principal_validation`:
-  - `block_wildcard_principal` - strict mode to block `*` entirely (default: false)
-  - `block_service_principal_wildcard` - block `{"Service": "*"}` patterns (default: true)
-- Improved handling of `Principal: "*"` with conditions for confused deputy prevention
-  - Default requires source verification (`aws:SourceArn`, `aws:SourceAccount`, `aws:SourceVpce`, or `aws:SourceIp`)
-
-**Condition Type Validation Improvements**
-
-- Enhanced ISO 8601 date validation with semantic checks:
-  - Validates month range (1-12)
-  - Validates day range based on month (1-28/29/30/31)
-  - Validates hour (0-23), minute (0-59), second (0-59)
-  - Leap year detection for February 29
-  - Timezone offset validation
-
 ### Changed
 
-- `principal_validation` default behavior now allows `*` with conditions
-  - Use `block_wildcard_principal: true` to restore strict blocking
-- Duplicate findings avoided when service principal wildcard is detected
+- Change `principal_validation` default behavior to allow `*` with conditions; use `block_wildcard_principal: true` to restore strict blocking ([#66])
+- Avoid duplicate findings when service principal wildcard is detected ([#66])
+
+### Added
+
+- Detect service principal wildcard (`{"Service": "*"}`) as critical severity in `principal_validation` ([#66])
+- Add `block_wildcard_principal` and `block_service_principal_wildcard` configuration options for `principal_validation` ([#66])
+- Require source verification conditions (`aws:SourceArn`, `aws:SourceAccount`, `aws:SourceVpce`, or `aws:SourceIp`) for `Principal: "*"` by default ([#66])
+- Enhance ISO 8601 date validation with month/day range checks, leap year detection, and timezone offset validation ([#66])
+
+[#66]: https://github.com/boogy/iam-policy-validator/pull/66
 
 ---
 
@@ -132,85 +143,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-**Condition Key Validation for aws:RequestTag and aws:ResourceTag**
+- Validate `aws:RequestTag/${TagKey}` and `aws:ResourceTag/${TagKey}` as action/resource-specific condition keys, not global ([#65])
+- Flag invalid usage of tag condition keys with descriptive error messages explaining the key is only for tagging operations ([#65])
 
-- `aws:RequestTag/${TagKey}` and `aws:ResourceTag/${TagKey}` now correctly validated as action/resource-specific condition keys (not global)
-- These keys are only valid for actions that create/modify tagged resources (e.g., `iam:CreatePolicy`, `iam:CreateRole`)
-- Invalid usage now flagged with descriptive error messages explaining the key is only for tagging operations
-- Example: `iam:SetDefaultPolicyVersion` with `aws:RequestTag/owner` now correctly fails validation
+[#65]: https://github.com/boogy/iam-policy-validator/pull/65
 
 ---
 
 ## [1.15.0] - 2025-01-22
 
-### Added
-
-**MCP Server Integration**
-
-- Full FastMCP server with 25+ tools for AI assistants (`iam-validator mcp` command)
-- Standalone `iam-validator-mcp` entry point for easy integration
-- Policy validation, generation, and AWS service querying tools
-- 15 built-in secure policy templates for common use cases
-- Session-wide organization configuration management
-- MCP Prompts for guided workflows (generate_secure_policy, fix_policy_issues_workflow, review_policy_security)
-- Custom instructions support via YAML config, environment variable, CLI, or MCP tools
-- Comprehensive MCP documentation with usage examples
-
-**New Security Check**
-
-- `not_action_not_resource` check for detecting dangerous NotAction/NotResource patterns (high severity)
-
-**Query Command Enhancements**
-
-- Support multiple actions in single query (`--name s3:GetObject dynamodb:Query`)
-- Wildcard pattern expansion (`--name "iam:Get*"` or `--name "s3:*Object*"`)
-- Field filter options: `--show-condition-keys`, `--show-resource-types`, `--show-access-level`
-- Allow service prefix in `--name`, making `--service` optional (`--name s3:GetObject`)
-- Deduplicate results when querying overlapping patterns
-
-**Validation Improvements**
-
-- `action_validation` now validates wildcard patterns (e.g., `s3:Get*`) to ensure they match real AWS actions
-- `action_validation` now validates NotAction field
-- `resource_validation` now validates NotResource field
-- `wildcard_resource` check has condition-aware severity adjustment:
-  - MEDIUM → LOW when global resource-scoping conditions present (aws:ResourceAccount, aws:ResourceOrgID, aws:ResourceOrgPaths)
-  - MEDIUM → LOW when aws:ResourceTag/\* conditions are used AND all actions support the condition key
-
-**Configuration**
-
-- Add `hide_severities` option for severity-based finding filtering (global and per-check)
-- Add `iam-policy-validator` CLI alias matching PyPI package name
-
-**Cache Improvements**
-
-- Cache refresh now updates all cached services (not just common ones)
-- Expired cache files are kept for refresh instead of deleted
-- Stale cache fallback when AWS API fails for graceful degradation
-
-**SDK**
-
-- Export `extract_condition_keys_from_statement()` in public API
-- Add `is_condition_key_supported()` to AWSServiceFetcher
-
 ### Changed
 
-- Development status upgraded to Production/Stable
-- Batch operations use `asyncio.gather()` for parallel execution
-- Template listing includes full variable metadata (name, description, required)
-- Simplified condition key pattern matching for tag-key placeholders (forward-compatible)
-- Test suite consolidated using `@pytest.mark.parametrize` (919 → 850 tests)
+- Upgrade development status to Production/Stable ([#61])
+- Use `asyncio.gather()` for parallel batch operations ([#61])
+- Include full variable metadata (name, description, required) in template listing ([#61])
+- Simplify condition key pattern matching for tag-key placeholders (forward-compatible) ([#61])
+- Consolidate test suite using `@pytest.mark.parametrize` (919 → 850 tests) ([#61])
+- Add fastmcp as optional dependency (install with `[mcp]` extra) ([#61])
+
+### Added
+
+- Add FastMCP server with 25+ tools for AI assistants (`iam-validator mcp` command and standalone `iam-validator-mcp` entry point) ([#61])
+- Add 15 built-in secure policy templates for common use cases ([#61])
+- Add session-wide organization configuration management ([#61])
+- Add MCP Prompts for guided workflows (generate_secure_policy, fix_policy_issues_workflow, review_policy_security) ([#61])
+- Add custom instructions support via YAML config, environment variable, CLI, or MCP tools ([#61])
+- Add `not_action_not_resource` check for detecting dangerous NotAction/NotResource patterns (high severity) ([#61])
+- Support multiple actions in single query (`--name s3:GetObject dynamodb:Query`) ([#61])
+- Add wildcard pattern expansion in query command (`--name "iam:Get*"`) ([#61])
+- Add field filter options: `--show-condition-keys`, `--show-resource-types`, `--show-access-level` ([#61])
+- Validate wildcard patterns in `action_validation` to ensure they match real AWS actions ([#61])
+- Validate NotAction and NotResource fields in `action_validation` and `resource_validation` ([#61])
+- Add condition-aware severity adjustment in `wildcard_resource` (MEDIUM → LOW with global resource-scoping conditions) ([#61])
+- Add `hide_severities` option for severity-based finding filtering (global and per-check) ([#61])
+- Add `iam-policy-validator` CLI alias matching PyPI package name ([#61])
+- Add cache refresh for all cached services, stale cache fallback when AWS API fails ([#61])
+- Export `extract_condition_keys_from_statement()` and add `is_condition_key_supported()` to SDK ([#61])
 
 ### Fixed
 
-- Support parameterized condition key patterns like `s3:RequestObjectTag/<key>`
-- MCP tests skip properly when fastmcp is not installed
-- Improved loop prevention guidance for LLM clients
+- Support parameterized condition key patterns like `s3:RequestObjectTag/<key>` ([#61])
+- Skip MCP tests properly when fastmcp is not installed ([#61])
+- Improve loop prevention guidance for LLM clients ([#61])
 
-### Dependencies
-
-- fastmcp as optional dependency (install with `[mcp]` extra)
-- Updated CI dependencies (actions/cache, codeql-action, setup-uv, upload-pages-artifact)
+[#61]: https://github.com/boogy/iam-policy-validator/pull/61
 
 ---
 
@@ -218,14 +194,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- MkDocs documentation site deployed to GitHub Pages
-- Comprehensive SDK API reference documentation
+- Deploy MkDocs documentation site to GitHub Pages ([#56])
 
 ### Fixed
 
-- Correct repository name in all documentation links (iam-policy-auditor → iam-policy-validator)
-- Fix SDK docstring formatting for proper mkdocstrings rendering
-- Update PyPI metadata with correct documentation and changelog URLs
+- Correct repository name in all documentation links (iam-policy-auditor → iam-policy-validator) ([#57])
+- Fix SDK docstring formatting for proper mkdocstrings rendering ([#57])
+- Update PyPI metadata with correct documentation and changelog URLs ([#57])
+
+[#57]: https://github.com/boogy/iam-policy-validator/pull/57
+[#56]: https://github.com/boogy/iam-policy-validator/pull/56
 
 ---
 
@@ -233,8 +211,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Separate security findings from validity errors in PR comments
-- Respect ignored findings when managing PR labels and review state
+- Separate security findings from validity errors in PR comments ([#51])
+- Respect ignored findings when managing PR labels and review state ([#51])
+
+[#51]: https://github.com/boogy/iam-policy-validator/pull/51
 
 ---
 
@@ -242,7 +222,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Respect ignored findings when managing PR labels and review state
+- Respect ignored findings when managing PR labels and review state ([#50])
+
+[#50]: https://github.com/boogy/iam-policy-validator/pull/50
 
 ---
 
@@ -250,7 +232,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Show pass status and list ignored findings in summary when all blocking issues are ignored
+- Show pass status and list ignored findings in summary when all blocking issues are ignored ([#48])
+
+[#48]: https://github.com/boogy/iam-policy-validator/pull/48
 
 ---
 
@@ -258,7 +242,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Add pattern matching for service-specific condition keys with tag validation
+- Add pattern matching for service-specific condition keys with tag validation ([#47])
+
+[#47]: https://github.com/boogy/iam-policy-validator/pull/47
 
 ---
 
@@ -266,34 +252,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Use APPROVE review event when validation passes to dismiss REQUEST_CHANGES
+- Use APPROVE review event when validation passes to dismiss REQUEST_CHANGES ([#46])
+
+[#46]: https://github.com/boogy/iam-policy-validator/pull/46
 
 ---
 
 ## [1.14.1] - 2025-12-11
 
-### Fixed
-
-- Enhanced SARIF formatter with dynamic rules and rich context
-- Improved finding fingerprints for better PR comment deduplication
-
 ### Changed
 
-- Updated dependencies (setup-uv, actions/checkout, codeql-action)
+- Update dependencies (setup-uv, actions/checkout, codeql-action)
+
+### Fixed
+
+- Enhance SARIF formatter with dynamic rules and rich context
+- Improve finding fingerprints for better PR comment deduplication
 
 ---
 
 ## [1.14.0] - 2024-12-10
 
-### Added
-
-- Enhanced PR comments with fingerprint-based matching
-- Finding ignore system via PR comment replies
-- Improved review comment deduplication
-
 ### Changed
 
-- Better production readiness for GitHub Action integration
+- Improve production readiness for GitHub Action integration
+
+### Added
+
+- Add PR comments with fingerprint-based matching
+- Add finding ignore system via PR comment replies
+- Improve review comment deduplication
 
 ---
 
@@ -301,7 +289,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Bug fixes and stability improvements
+- Fix typo in action condition enforcement message ([#39])
+
+[#39]: https://github.com/boogy/iam-policy-validator/pull/39
 
 ---
 
@@ -309,47 +299,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Query command for exploring AWS service definitions
-- Shell completion support (bash, zsh, fish)
+- Add query command for exploring AWS service definitions
+- Add shell completion support (bash, zsh, fish)
 
 ---
 
 ## [1.12.0] - 2024-11
 
-### Added
-
-- Trust policy validation check
-- Enhanced condition type mismatch detection
-
 ### Changed
 
-- Improved AWS service fetcher performance
+- Improve AWS service fetcher performance
+
+### Added
+
+- Add trust policy validation check
+- Enhance condition type mismatch detection
 
 ---
 
 ## [1.11.0] - 2024-11
 
-### Added
-
-- Action-resource matching validation
-- Set operator validation for conditions (ForAllValues/ForAnyValue)
-
 ### Changed
 
-- Expanded sensitive actions database (490+ actions)
+- Expand sensitive actions database (490+ actions)
+
+### Added
+
+- Add action-resource matching validation
+- Add set operator validation for conditions (ForAllValues/ForAnyValue)
 
 ---
 
 ## [1.10.0] - 2024-10
 
-### Added
-
-- MFA condition check for sensitive operations
-- Condition key validation improvements
-
 ### Changed
 
-- Better error messages for validation failures
+- Improve error messages for validation failures
+
+### Added
+
+- Add MFA condition check for sensitive operations
+- Improve condition key validation
 
 ---
 
@@ -357,8 +347,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- GitHub PR review comments (inline comments on changed lines)
-- Multiple output formats (JSON, SARIF, CSV, HTML, Markdown)
+- Add GitHub PR review comments (inline comments on changed lines)
+- Add multiple output formats (JSON, SARIF, CSV, HTML, Markdown)
 
 ---
 
@@ -366,21 +356,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- AWS Access Analyzer integration
-- Offline validation mode with pre-downloaded service definitions
+- Add AWS Access Analyzer integration
+- Add offline validation mode with pre-downloaded service definitions
 
 ---
 
 ## [1.7.0] - 2024-09
 
-### Added
-
-- Custom checks support via `--custom-checks-dir`
-- Configuration file support (`iam-validator.yaml`)
-
 ### Changed
 
-- Modular check architecture
+- Adopt modular check architecture
+
+### Added
+
+- Add custom checks support via `--custom-checks-dir`
+- Add configuration file support (`iam-validator.yaml`)
 
 ---
 
@@ -388,28 +378,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Service Control Policy (SCP) validation
-- Principal validation for resource policies
+- Add Service Control Policy (SCP) validation
+- Add principal validation for resource policies
 
 ---
 
 ## [1.5.0] - 2024-08
 
+### Changed
+
+- Overhaul documentation
+
 ### Added
 
-- Modular Python configuration system (5-10x faster startup)
+- Add modular Python configuration system (5-10x faster startup)
 - Split security checks into individual modules:
   - `wildcard_action` - Wildcard actions (Action: "\*")
   - `wildcard_resource` - Wildcard resources (Resource: "\*")
   - `service_wildcard` - Service-level wildcards (e.g., "s3:\*")
   - `sensitive_action` - Sensitive actions without conditions
-  - `full_wildcard` - Action:_ + Resource:_ (critical)
-- GitHub Action RESOURCE_CONTROL_POLICY support
-- GitHub Actions job summary output
-
-### Changed
-
-- Comprehensive documentation overhaul
+  - `full_wildcard` - Action:\* + Resource:\* (critical)
+- Add GitHub Action RESOURCE_CONTROL_POLICY support
+- Add GitHub Actions job summary output
 
 ---
 
@@ -417,14 +407,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Resource Control Policy (RCP) support with 8 validation checks
-- Enhanced principal validation:
+- Add Resource Control Policy (RCP) support with 8 validation checks
+- Enhance principal validation:
   - Blocked principals (e.g., public access "\*")
   - Allowed principals whitelist
   - Required conditions for specific principals
   - Service principal validation
-- SID format validation
-- Policy type validation for all 4 policy types
+- Add SID format validation
+- Add policy type validation for all 4 policy types
 
 ---
 
@@ -432,9 +422,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Modular Python configuration system
-- Condition requirement templates
-- Action condition enforcement check
+- Add modular Python configuration system
+- Add condition requirement templates
+- Add action condition enforcement check
 
 ---
 
@@ -442,9 +432,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Smart IAM policy detection and filtering
-- YAML policy support
-- Streaming mode for large policy sets
+- Add smart IAM policy detection and filtering
+- Add YAML policy support
+- Add streaming mode for large policy sets
 
 ---
 
@@ -453,85 +443,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Split security checks into individual modules
-- Configurable check system
-- Per-check severity overrides
+- Add configurable check system
+- Add per-check severity overrides
 
 ---
 
 ## [1.0.0] - 2024-03
 
+_First release._
+
 ### Added
 
-- Initial release
-- Core IAM policy validation engine
-- AWS service definition fetching with caching
-- GitHub Action for CI/CD integration
-- CLI tool with rich console output
-- Python library API
+- Add core IAM policy validation engine
+- Add AWS service definition fetching with caching
+- Add GitHub Action for CI/CD integration
+- Add CLI tool with rich console output
+- Add Python library API
 
 ---
 
-## Versioning Policy
-
-This project follows [Semantic Versioning](https://semver.org/):
-
-- **MAJOR** (X.0.0): Breaking changes to CLI, configuration, or library API
-- **MINOR** (0.X.0): New features, new checks, backwards-compatible enhancements
-- **PATCH** (0.0.X): Bug fixes, documentation updates, dependency updates
-
-### Supported Versions
-
-| Version | Support Status        |
-| ------- | --------------------- |
-| 1.15.x  | ✅ Active development |
-| < 1.15  | ❌ End of life        |
-
-### Deprecation Policy
-
-- Deprecated features are announced at least one minor version before removal
-- Deprecated features emit warnings when used
-- Breaking changes are documented in the MAJOR version release notes
-
----
-
-## Migration Guides
-
-### Migrating to v1.5.0+
-
-The modular configuration system introduced in v1.5.0 changed how checks are configured:
-
-**Before (v1.4.x):**
-
-```yaml
-checks:
-  wildcard: high
-  sensitive_actions: medium
-```
-
-**After (v1.5.0+):**
-
-```yaml
-wildcard_action:
-  enabled: true
-  severity: high
-
-sensitive_action:
-  enabled: true
-  severity: medium
-```
-
-### Migrating to v1.4.0+
-
-Resource Control Policy (RCP) support requires specifying policy type:
-
-```bash
-# Explicit policy type for RCPs
-iam-validator validate --policy-type RESOURCE_CONTROL_POLICY policies/
-```
-
----
-
-[Unreleased]: https://github.com/boogy/iam-policy-validator/compare/v1.15.2...HEAD
+[1.17.0]: https://github.com/boogy/iam-policy-validator/compare/v1.16.0...v1.17.0
+[1.16.0]: https://github.com/boogy/iam-policy-validator/compare/v1.15.5...v1.16.0
+[1.15.5]: https://github.com/boogy/iam-policy-validator/compare/v1.15.4...v1.15.5
+[1.15.4]: https://github.com/boogy/iam-policy-validator/compare/v1.15.3...v1.15.4
+[1.15.3]: https://github.com/boogy/iam-policy-validator/compare/v1.15.2...v1.15.3
 [1.15.2]: https://github.com/boogy/iam-policy-validator/compare/v1.15.1...v1.15.2
 [1.15.1]: https://github.com/boogy/iam-policy-validator/compare/v1.15.0...v1.15.1
 [1.15.0]: https://github.com/boogy/iam-policy-validator/compare/v1.14.7...v1.15.0

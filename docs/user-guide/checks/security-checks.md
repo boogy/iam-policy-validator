@@ -438,9 +438,21 @@ This makes it easy to accidentally grant more access than intended, especially a
 
 ### Patterns Detected
 
-1. **NotAction with Allow (no conditions)** - Critical: Near-administrator access
+1. **NotAction with Allow (no conditions)** - High: Near-administrator access
 2. **NotAction with Allow (with conditions)** - Medium: Still risky
 3. **NotResource with broad Resource** - High: Access to all resources except listed
+4. **Combined NotAction AND NotResource** - Critical: Near-administrator on nearly all resources
+5. **NotAction with Deny** - Low: Valid pattern but should be reviewed
+
+When both NotAction **and** NotResource are present in an Allow statement, only the combined critical finding is reported. The individual NotAction and NotResource warnings are suppressed to reduce noise.
+
+### Implicit Grant Analysis
+
+When `NotAction` is used with `Allow`, the check analyzes which service prefixes are excluded and explains what's implicitly granted. For example:
+
+> All AWS services EXCEPT `iam`, `sts` are implicitly granted access.
+
+This helps you understand the actual blast radius of `NotAction` patterns.
 
 ### Fail Example
 
@@ -452,7 +464,7 @@ This makes it easy to accidentally grant more access than intended, especially a
 }
 ```
 
-This grants ALL AWS actions **except** IAM and STS - equivalent to near-administrator access.
+This grants ALL AWS actions **except** IAM and STS. All AWS services EXCEPT `iam`, `sts` are implicitly granted access - equivalent to near-administrator access.
 
 ### How to Fix
 

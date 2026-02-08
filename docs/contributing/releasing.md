@@ -38,13 +38,16 @@ Add release notes to `CHANGELOG.md`:
 ## [1.2.0] - 2024-01-15
 
 ### Added
+
 - New feature X
 - Support for Y
 
 ### Changed
+
 - Improved Z performance
 
 ### Fixed
+
 - Bug in A
 ```
 

@@ -53,7 +53,7 @@ Validates that condition keys exist and are valid for the actions used.
 
 - Condition key exists in AWS
 - Key is valid for the specified service
-- Global condition keys (aws:*) are used correctly
+- Global condition keys (aws:\*) are used correctly
 
 ### Pass Example
 
@@ -125,13 +125,16 @@ Validates resource ARN formats are correct.
 
 Validates required policy elements are present and valid.
 
-**Severity:** `error`
+**Severity:** `error` / `warning`
 
 ### What It Checks
 
 - `Version` field is present and valid (2012-10-17 or 2008-10-17)
+- Outdated version `2008-10-17` warning (missing policy variables, advanced operators)
 - `Statement` array is present
 - Required statement fields (Effect, Action/NotAction)
+- Mutual exclusivity (Action vs NotAction, Resource vs NotResource, Principal vs NotPrincipal)
+- Unknown/unexpected fields in statements
 
 ### Pass Example
 
@@ -166,6 +169,17 @@ Validates required policy elements are present and valid.
 - Missing `Version` field
 - Missing `Effect` field
 
+### Outdated Version Warning
+
+```json
+{
+  "Version": "2008-10-17",
+  "Statement": [...]
+}
+```
+
+**Warning:** Policy uses outdated `Version` `2008-10-17`. This version does not support policy variables (`${aws:username}`), advanced condition operators, or some newer IAM features. Update to `2012-10-17`.
+
 ---
 
 ## policy_size
@@ -176,12 +190,16 @@ Checks policy doesn't exceed AWS size limits.
 
 ### Size Limits
 
-| Policy Type        | Limit             |
-| ------------------ | ----------------- |
-| Managed policy     | 6,144 characters  |
-| Inline user policy | 2,048 characters  |
-| Inline role policy | 10,240 characters |
-| Trust policy       | 2,048 characters  |
+| Policy Type                  | Limit             |
+| ---------------------------- | ----------------- |
+| Managed policy               | 6,144 characters  |
+| Inline user policy           | 2,048 characters  |
+| Inline role policy           | 10,240 characters |
+| Trust policy                 | 2,048 characters  |
+| Service Control Policy (SCP) | 5,120 characters  |
+
+!!! note "SCP Size Validation"
+SCP size is validated separately when using `--policy-type SERVICE_CONTROL_POLICY`. The SCP limit (5,120 characters) is stricter than the managed policy limit (6,144 characters).
 
 ---
 
@@ -217,7 +235,7 @@ Validates Statement IDs (SIDs) are unique within a policy.
 
 ## condition_type_mismatch
 
-Validates condition operators match value types.
+Validates condition operators match value types and formats.
 
 **Severity:** `error`
 
@@ -225,8 +243,82 @@ Validates condition operators match value types.
 
 - String operators use string values
 - Numeric operators use numeric values
-- Date operators use valid date formats
-- Bool operators use boolean values
+- Date operators use valid date formats (ISO 8601 with semantic validation)
+- Bool operators use boolean values (`"true"` or `"false"`)
+- `IpAddress`/`NotIpAddress` values are valid CIDR notation
+- `ArnEquals`/`ArnLike` values start with `arn:` or contain template variables
+- `Null` operator doesn't use `IfExists` suffix (`NullIfExists` is invalid)
+
+### Operator-Specific Format Validation
+
+Even when the condition key type is unknown, the check validates values based on the operator:
+
+| Operator                       | Expected Format                | Example Invalid Value |
+| ------------------------------ | ------------------------------ | --------------------- |
+| `IpAddress` / `NotIpAddress`   | CIDR notation (IPv4 or IPv6)   | `"not-an-ip"`         |
+| `ArnEquals` / `ArnLike` / etc. | Must start with `arn:` or `${` | `"just-a-string"`     |
+| `Bool`                         | `"true"` or `"false"`          | `"yes"`, `"1"`, `""`  |
+
+---
+
+## not_principal_validation
+
+Detects dangerous `NotPrincipal` usage patterns.
+
+**Severity:** `warning` / `error`
+
+### What It Checks
+
+- `NotPrincipal` with `Effect: Allow` is **not supported** by AWS (error)
+- `NotPrincipal` in `Deny` statements is valid but deprecated (warning)
+- Suggests using `Principal` with condition operators as a safer alternative
+
+### Fail Example (Error)
+
+```json
+{
+  "Effect": "Allow",
+  "NotPrincipal": { "AWS": "arn:aws:iam::123456789012:root" },
+  "Action": "s3:GetObject",
+  "Resource": "arn:aws:s3:::bucket/*"
+}
+```
+
+**Error:** `NotPrincipal` with `Effect: Allow` is not supported by AWS. The policy will be rejected or will not behave as expected.
+
+### Warning Example
+
+```json
+{
+  "Effect": "Deny",
+  "NotPrincipal": { "AWS": "arn:aws:iam::123456789012:role/AdminRole" },
+  "Action": "s3:*",
+  "Resource": "arn:aws:s3:::bucket/*"
+}
+```
+
+**Warning:** AWS recommends using `Principal` with condition operators instead of `NotPrincipal`.
+
+### How to Fix
+
+Replace `NotPrincipal` with `Principal: "*"` and a `Condition` using `ArnNotEquals`:
+
+```json
+{
+  "Effect": "Deny",
+  "Principal": "*",
+  "Action": "s3:*",
+  "Resource": "arn:aws:s3:::bucket/*",
+  "Condition": {
+    "ArnNotEquals": {
+      "aws:PrincipalArn": [
+        "arn:aws:iam::123456789012:role/AdminRole",
+        "arn:aws:iam::123456789012:root"
+      ]
+    }
+  }
+}
+```
 
 ---
 

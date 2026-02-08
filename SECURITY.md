@@ -183,7 +183,7 @@ When contributing to the project:
 
 The validator includes security features to help users:
 
-1. **19 Built-in Security Checks**: Detect overly permissive policies, privilege escalation paths, and security anti-patterns
+1. **21 Built-in Security Checks**: Detect overly permissive policies, privilege escalation paths, and security anti-patterns
 2. **AWS Access Analyzer Integration**: Leverage AWS's official policy validation service
 3. **Privilege Escalation Detection**: Identify dangerous action combinations
 4. **Public Access Detection**: Check 29+ AWS resource types for public exposure

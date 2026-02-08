@@ -1,39 +1,39 @@
 ---
 title: Validation Checks
-description: All 19 built-in validation checks
+description: All 21 built-in validation checks
 ---
 
 # Validation Checks
 
-IAM Policy Validator includes 19 built-in checks across three categories.
+IAM Policy Validator includes 21 built-in checks across three categories.
 
 ## Check Categories
 
 <div class="grid cards" markdown>
 
--   :material-aws:{ .lg .middle } **AWS Validation (10)**
+- :material-aws:{ .lg .middle } **AWS Validation (10)**
 
-    ---
+  ***
 
-    Ensure policies comply with AWS IAM rules
+  Ensure policies comply with AWS IAM rules
 
-    [:octicons-arrow-right-24: AWS Checks](aws-validation.md)
+  [:octicons-arrow-right-24: AWS Checks](aws-validation.md)
 
--   :material-shield-lock:{ .lg .middle } **Security Checks (6)**
+- :material-shield-lock:{ .lg .middle } **Security Checks (8)**
 
-    ---
+  ***
 
-    Detect security risks and best practice violations
+  Detect security risks and best practice violations
 
-    [:octicons-arrow-right-24: Security Checks](security-checks.md)
+  [:octicons-arrow-right-24: Security Checks](security-checks.md)
 
--   :material-cog-outline:{ .lg .middle } **Advanced Checks (3)**
+- :material-cog-outline:{ .lg .middle } **Advanced Checks (3)**
 
-    ---
+  ***
 
-    Condition enforcement and trust policy validation
+  Condition enforcement, trust policy, and policy type validation
 
-    [:octicons-arrow-right-24: Advanced Checks](advanced-checks.md)
+  [:octicons-arrow-right-24: Advanced Checks](advanced-checks.md)
 
 </div>
 
@@ -41,37 +41,39 @@ IAM Policy Validator includes 19 built-in checks across three categories.
 
 ### AWS Validation Checks
 
-| Check ID                    | Severity | Description                          |
-| --------------------------- | -------- | ------------------------------------ |
-| `action_validation`         | error    | Actions exist in AWS                 |
-| `condition_key_validation`  | error    | Condition keys are valid             |
-| `condition_type_mismatch`   | error    | Operator-value type match            |
-| `resource_validation`       | error    | Resource ARN format                  |
-| `policy_structure`          | error    | Required fields present              |
-| `policy_size`               | error    | Character size limits                |
-| `sid_uniqueness`            | warning  | Unique SIDs                          |
-| `set_operator_validation`   | error    | ForAllValues/ForAnyValue usage       |
-| `principal_validation`      | high     | Principal validation & confused deputy protection |
-| `mfa_condition_antipattern` | warning  | MFA anti-patterns                    |
+| Check ID                   | Severity | Description                                   |
+| -------------------------- | -------- | --------------------------------------------- |
+| `action_validation`        | error    | Actions exist in AWS                          |
+| `condition_key_validation` | error    | Condition keys are valid                      |
+| `condition_type_mismatch`  | error    | Operator-value type match + format validation |
+| `resource_validation`      | error    | Resource ARN format                           |
+| `policy_structure`         | error    | Required fields, valid values, version check  |
+| `policy_size`              | error    | Character size limits (including SCP)         |
+| `sid_uniqueness`           | warning  | Unique SIDs                                   |
+| `set_operator_validation`  | error    | ForAllValues/ForAnyValue usage                |
+| `ifexists_condition_usage` | warning  | IfExists condition validation                 |
+| `not_principal_validation` | warning  | NotPrincipal usage patterns                   |
 
 ### Security Checks
 
-| Check ID                  | Severity | Description                              |
-| ------------------------- | -------- | ---------------------------------------- |
-| `wildcard_action`         | medium   | `Action: "*"` detection                  |
-| `wildcard_resource`       | medium   | `Resource: "*"` detection                |
-| `full_wildcard`           | critical | Both Action and Resource wildcards       |
-| `service_wildcard`        | high     | `s3:*` style wildcards                   |
-| `sensitive_action`        | medium   | Privilege escalation actions             |
-| `not_action_not_resource` | high     | Dangerous NotAction/NotResource patterns |
+| Check ID                    | Severity | Description                              |
+| --------------------------- | -------- | ---------------------------------------- |
+| `wildcard_action`           | medium   | `Action: "*"` detection                  |
+| `wildcard_resource`         | medium   | `Resource: "*"` detection                |
+| `full_wildcard`             | critical | Both Action and Resource wildcards       |
+| `service_wildcard`          | high     | `s3:*` style wildcards                   |
+| `sensitive_action`          | medium   | Privilege escalation actions             |
+| `not_action_not_resource`   | high     | Dangerous NotAction/NotResource patterns |
+| `principal_validation`      | high     | Principal format validation              |
+| `mfa_condition_antipattern` | warning  | MFA anti-patterns                        |
 
 ### Advanced Checks
 
-| Check ID                       | Severity | Description                   |
-| ------------------------------ | -------- | ----------------------------- |
-| `action_condition_enforcement` | error    | Required conditions           |
-| `action_resource_matching`     | medium   | Action-resource compatibility |
-| `trust_policy_validation`      | high     | Trust policy structure        |
+| Check ID                       | Severity | Description                              |
+| ------------------------------ | -------- | ---------------------------------------- |
+| `action_condition_enforcement` | error    | Required conditions                      |
+| `action_resource_matching`     | medium   | Action-resource compatibility            |
+| `trust_policy_validation`      | high     | Trust policy structure + confused deputy |
 
 ## Severity Levels
 

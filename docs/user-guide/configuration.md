@@ -231,12 +231,12 @@ checks:
 
 The validator supports environment variables for configuration:
 
-| Variable                         | Description                              | Example                          |
-| -------------------------------- | ---------------------------------------- | -------------------------------- |
-| `IAM_VALIDATOR_CONFIG`           | Path to configuration file               | `/etc/iam-validator/config.yaml` |
-| `IAM_VALIDATOR_MCP_INSTRUCTIONS` | Custom instructions for MCP server       | `"Require MFA for all actions"`  |
-| `AWS_REGION`                     | AWS region for Access Analyzer           | `us-east-1`                      |
-| `AWS_PROFILE`                    | AWS profile for credentials              | `production`                     |
+| Variable                         | Description                        | Example                          |
+| -------------------------------- | ---------------------------------- | -------------------------------- |
+| `IAM_VALIDATOR_CONFIG`           | Path to configuration file         | `/etc/iam-validator/config.yaml` |
+| `IAM_VALIDATOR_MCP_INSTRUCTIONS` | Custom instructions for MCP server | `"Require MFA for all actions"`  |
+| `AWS_REGION`                     | AWS region for Access Analyzer     | `us-east-1`                      |
+| `AWS_PROFILE`                    | AWS profile for credentials        | `production`                     |
 
 ## Configuration Precedence
 
@@ -256,49 +256,50 @@ All settings under the `settings` key:
 ```yaml
 settings:
   # Validation behavior
-  fail_fast: false              # Stop on first error (default: false)
-  parallel: true                # Enable parallel execution (default: true)
-  max_workers: null             # Max concurrent workers (default: auto)
+  fail_fast: false # Stop on first error (default: false)
+  parallel: true # Enable parallel execution (default: true)
+  max_workers: null # Max concurrent workers (default: auto)
 
   # Failure criteria
-  fail_on_severity:             # Severities that cause exit code 1
-    - error                     # IAM validity errors
-    - critical                  # Critical security issues
-    - high                      # High severity security issues
+  fail_on_severity: # Severities that cause exit code 1
+    - error # IAM validity errors
+    - critical # Critical security issues
+    - high # High severity security issues
     # - medium                  # Uncomment to fail on medium
     # - warning                 # Uncomment to fail on warnings
 
   # Output filtering
-  hide_severities: null         # Hide these severities from output
-                                # Example: [low, info]
+  hide_severities:
+    null # Hide these severities from output
+    # Example: [low, info]
 
   # AWS service definitions
-  aws_services_dir: null        # Path to offline service definitions
-  cache_enabled: true           # Cache AWS definitions (default: true)
-  cache_ttl_hours: 168          # Cache TTL in hours (default: 7 days)
+  aws_services_dir: null # Path to offline service definitions
+  cache_enabled: true # Cache AWS definitions (default: true)
+  cache_ttl_hours: 168 # Cache TTL in hours (default: 7 days)
 
   # Template variable support
-  allow_template_variables: true  # Support ${var.name} in ARNs
+  allow_template_variables: true # Support ${var.name} in ARNs
 
   # GitHub integration
-  severity_labels:              # Map severities to PR labels
+  severity_labels: # Map severities to PR labels
     error: "iam-validity-error"
     critical: "iam-security-critical"
     high: "iam-security-high"
 
   # Custom checks
-  custom_checks_dir: null       # Auto-discover checks from directory
+  custom_checks_dir: null # Auto-discover checks from directory
 
   # Ignore settings
   ignore_settings:
     enabled: true
-    allowed_users: []           # Users allowed to add ignore comments
+    allowed_users: [] # Users allowed to add ignore comments
     post_denial_feedback: false # Post feedback on denied ignores
 
   # Documentation
   documentation:
-    base_url: null              # Custom docs base URL
-    include_aws_docs: true      # Include links to AWS docs
+    base_url: null # Custom docs base URL
+    include_aws_docs: true # Include links to AWS docs
 ```
 
 ### Check Configuration
@@ -308,12 +309,12 @@ Each check can be configured at the top level using its `check_id`:
 ```yaml
 # Common options for all checks
 <check_id>:
-  enabled: true                 # Enable/disable check (default: true)
-  severity: medium              # Override default severity
-  description: "Custom desc"    # Override description
-  message: "Custom message"     # Override issue message
-  suggestion: "How to fix"      # Override suggestion text
-  hide_severities: [low]        # Per-check severity filtering
+  enabled: true # Enable/disable check (default: true)
+  severity: medium # Override default severity
+  description: "Custom desc" # Override description
+  message: "Custom message" # Override issue message
+  suggestion: "How to fix" # Override suggestion text
+  hide_severities: [low] # Per-check severity filtering
 
   # Ignore patterns (available for ALL checks)
   ignore_patterns:
@@ -341,37 +342,38 @@ Each check can be configured at the top level using its `check_id`:
 
 ### Built-in Checks
 
-All 19 built-in checks with their default settings:
+All 21 built-in checks with their default settings:
 
 #### AWS Validation Checks
 
-| Check ID                  | Default Severity | Description                                  |
-| ------------------------- | ---------------- | -------------------------------------------- |
-| `action_validation`       | error            | Actions exist in AWS services                |
-| `condition_key_validation`| error            | Condition keys are valid for actions         |
-| `condition_type_mismatch` | error            | Operator types match key types               |
-| `resource_validation`     | error            | ARN format is valid                          |
-| `principal_validation`    | high             | Principal format (resource policies)         |
-| `policy_structure`        | error            | Required fields present, valid values        |
-| `policy_size`             | error            | Policy doesn't exceed AWS size limits        |
-| `sid_uniqueness`          | error            | SIDs are unique across statements            |
-| `set_operator_validation` | error            | ForAllValues/ForAnyValue used correctly      |
-| `mfa_condition_antipattern`| warning         | MFA anti-patterns detected                   |
-| `trust_policy_validation` | high             | Trust policy validation                      |
-| `action_resource_matching`| medium           | Actions match resource types                 |
-| `policy_type_validation`  | error            | Policy matches declared type                 |
+| Check ID                    | Default Severity | Description                                   |
+| --------------------------- | ---------------- | --------------------------------------------- |
+| `action_validation`         | error            | Actions exist in AWS services                 |
+| `condition_key_validation`  | error            | Condition keys are valid for actions          |
+| `condition_type_mismatch`   | error            | Operator-value type match + format validation |
+| `resource_validation`       | error            | ARN format is valid                           |
+| `principal_validation`      | high             | Principal format (resource policies)          |
+| `policy_structure`          | error            | Required fields, valid values, version check  |
+| `policy_size`               | error            | Policy size limits (including SCP-specific)   |
+| `sid_uniqueness`            | error            | SIDs are unique across statements             |
+| `set_operator_validation`   | error            | ForAllValues/ForAnyValue used correctly       |
+| `mfa_condition_antipattern` | warning          | MFA anti-patterns detected                    |
+| `trust_policy_validation`   | high             | Trust policy structure + confused deputy      |
+| `not_principal_validation`  | warning          | NotPrincipal usage patterns                   |
+| `action_resource_matching`  | medium           | Actions match resource types                  |
+| `policy_type_validation`    | error            | Policy matches declared type                  |
 
 #### Security Best Practices Checks
 
-| Check ID                     | Default Severity | Description                            |
-| ---------------------------- | ---------------- | -------------------------------------- |
-| `wildcard_action`            | medium           | `Action: "*"` detection                |
-| `wildcard_resource`          | medium           | `Resource: "*"` detection              |
-| `full_wildcard`              | critical         | `Action + Resource: "*"` (admin access)|
-| `service_wildcard`           | high             | `s3:*` style wildcards                 |
-| `sensitive_action`           | medium           | 490+ privilege escalation actions      |
-| `action_condition_enforcement`| high            | Sensitive actions require conditions   |
-| `not_action_not_resource`    | high             | Dangerous NotAction/NotResource        |
+| Check ID                       | Default Severity | Description                             |
+| ------------------------------ | ---------------- | --------------------------------------- |
+| `wildcard_action`              | medium           | `Action: "*"` detection                 |
+| `wildcard_resource`            | medium           | `Resource: "*"` detection               |
+| `full_wildcard`                | critical         | `Action + Resource: "*"` (admin access) |
+| `service_wildcard`             | high             | `s3:*` style wildcards                  |
+| `sensitive_action`             | medium           | 490+ privilege escalation actions       |
+| `action_condition_enforcement` | high             | Sensitive actions require conditions    |
+| `not_action_not_resource`      | high             | Dangerous NotAction/NotResource         |
 
 ### Check-Specific Options
 
@@ -455,13 +457,36 @@ principal_validation:
           - condition_key: "aws:SourceAccount"
 ```
 
+#### trust_policy_validation
+
+```yaml
+trust_policy_validation:
+  enabled: true
+  severity: high
+```
+
+The confused deputy detection is built-in and automatically checks service principals in trust policies for missing `aws:SourceArn` or `aws:SourceAccount` conditions. Only compute-bound services (`ec2`, `lambda`, `edgelambda`) are automatically excluded.
+
+!!! note "Opt-in Check"
+Trust policy validation is enabled when using `--policy-type TRUST_POLICY`. The validator auto-detects trust policies and suggests using this flag.
+
+#### not_principal_validation
+
+```yaml
+not_principal_validation:
+  enabled: true
+  severity: warning
+```
+
+Detects `NotPrincipal` usage patterns: `NotPrincipal` with `Effect: Allow` is flagged as an error (not supported by AWS), while `NotPrincipal` with `Effect: Deny` is flagged as a warning (valid but deprecated).
+
 #### policy_size
 
 ```yaml
 policy_size:
   enabled: true
   severity: error
-  policy_type: "managed"  # managed, inline_user, inline_group, inline_role
+  policy_type: "managed" # managed, inline_user, inline_group, inline_role
   # Override default size limits
   size_limits:
     managed: 6144
@@ -469,6 +494,9 @@ policy_size:
     inline_group: 5120
     inline_role: 10240
 ```
+
+!!! note "SCP Size Validation"
+When using `--policy-type SERVICE_CONTROL_POLICY`, the SCP-specific size limit of 5,120 characters is enforced separately, which is stricter than the managed policy limit of 6,144 characters.
 
 ## Full Reference
 

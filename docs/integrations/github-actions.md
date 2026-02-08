@@ -35,67 +35,67 @@ jobs:
 
 ### Core Inputs
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `path` | Path(s) to IAM policy files or directories. Use newline-separated values for multiple paths | Required |
-| `config-file` | Path to custom configuration file (iam-validator.yaml) | Auto-detect |
-| `policy-type` | Policy type: `IDENTITY_POLICY`, `RESOURCE_POLICY`, `TRUST_POLICY`, `SERVICE_CONTROL_POLICY`, `RESOURCE_CONTROL_POLICY` | `IDENTITY_POLICY` |
-| `recursive` | Recursively search directories for policy files | `true` |
-| `fail-on-warnings` | Fail validation if warnings are found (default: only fail on errors) | `false` |
+| Input              | Description                                                                                                            | Default           |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `path`             | Path(s) to IAM policy files or directories. Use newline-separated values for multiple paths                            | Required          |
+| `config-file`      | Path to custom configuration file (iam-validator.yaml)                                                                 | Auto-detect       |
+| `policy-type`      | Policy type: `IDENTITY_POLICY`, `RESOURCE_POLICY`, `TRUST_POLICY`, `SERVICE_CONTROL_POLICY`, `RESOURCE_CONTROL_POLICY` | `IDENTITY_POLICY` |
+| `recursive`        | Recursively search directories for policy files                                                                        | `true`            |
+| `fail-on-warnings` | Fail validation if warnings are found (default: only fail on errors)                                                   | `false`           |
 
 ### GitHub Integration
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `post-comment` | Post validation results as PR comment | `true` |
-| `create-review` | Create line-specific review comments on PR files | `true` |
-| `allow-owner-ignore` | Allow CODEOWNERS to ignore findings by replying 'ignore' | `true` |
-| `github-summary` | Write summary to GitHub Actions job summary | `false` |
-| `github-token` | GitHub token for posting comments and reviews | `${{ github.token }}` |
+| Input                | Description                                              | Default               |
+| -------------------- | -------------------------------------------------------- | --------------------- |
+| `post-comment`       | Post validation results as PR comment                    | `true`                |
+| `create-review`      | Create line-specific review comments on PR files         | `true`                |
+| `allow-owner-ignore` | Allow CODEOWNERS to ignore findings by replying 'ignore' | `true`                |
+| `github-summary`     | Write summary to GitHub Actions job summary              | `false`               |
+| `github-token`       | GitHub token for posting comments and reviews            | `${{ github.token }}` |
 
 ### Output Options
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `format` | Output format: `console`, `enhanced`, `json`, `markdown`, `sarif`, `csv`, `html` | `console` |
-| `output-file` | Path to save output file (for json, markdown, sarif, csv, html formats) | - |
-| `upload-sarif` | Upload SARIF results to GitHub Code Scanning | `false` |
-| `show-console-output` | Show enhanced validation results in job logs | `true` |
-| `summary` | Show Executive Summary section in enhanced output | `false` |
-| `severity-breakdown` | Show Issue Severity Breakdown section in enhanced output | `false` |
+| Input                 | Description                                                                      | Default   |
+| --------------------- | -------------------------------------------------------------------------------- | --------- |
+| `format`              | Output format: `console`, `enhanced`, `json`, `markdown`, `sarif`, `csv`, `html` | `console` |
+| `output-file`         | Path to save output file (for json, markdown, sarif, csv, html formats)          | -         |
+| `upload-sarif`        | Upload SARIF results to GitHub Code Scanning                                     | `false`   |
+| `show-console-output` | Show enhanced validation results in job logs                                     | `true`    |
+| `summary`             | Show Executive Summary section in enhanced output                                | `false`   |
+| `severity-breakdown`  | Show Issue Severity Breakdown section in enhanced output                         | `false`   |
 
 ### Performance Options
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `stream` | Process files one-by-one (memory efficient for large repos) | `false` |
-| `batch-size` | Number of policies to process per batch when streaming | `10` |
-| `aws-services-dir` | Path to pre-downloaded AWS service definitions (offline mode) | - |
-| `custom-checks-dir` | Path to directory containing custom validation checks | - |
-| `log-level` | Logging level: `debug`, `info`, `warning`, `error`, `critical` | `warning` |
+| Input               | Description                                                    | Default   |
+| ------------------- | -------------------------------------------------------------- | --------- |
+| `stream`            | Process files one-by-one (memory efficient for large repos)    | `false`   |
+| `batch-size`        | Number of policies to process per batch when streaming         | `10`      |
+| `aws-services-dir`  | Path to pre-downloaded AWS service definitions (offline mode)  | -         |
+| `custom-checks-dir` | Path to directory containing custom validation checks          | -         |
+| `log-level`         | Logging level: `debug`, `info`, `warning`, `error`, `critical` | `warning` |
 
 ### AWS Access Analyzer
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `use-access-analyzer` | Use AWS IAM Access Analyzer for validation | `false` |
-| `access-analyzer-region` | AWS region for Access Analyzer | `us-east-1` |
-| `run-all-checks` | Run custom checks after Access Analyzer passes | `false` |
-| `check-access-not-granted` | Actions that should NOT be granted (space-separated) | - |
-| `check-access-resources` | Resources to check with check-access-not-granted | - |
-| `check-no-new-access` | Path to baseline policy for new access comparison | - |
-| `check-no-public-access` | Check that resource policies don't allow public access | `false` |
-| `public-access-resource-type` | Resource type(s) for public access check | `AWS::S3::Bucket` |
+| Input                         | Description                                            | Default           |
+| ----------------------------- | ------------------------------------------------------ | ----------------- |
+| `use-access-analyzer`         | Use AWS IAM Access Analyzer for validation             | `false`           |
+| `access-analyzer-region`      | AWS region for Access Analyzer                         | `us-east-1`       |
+| `run-all-checks`              | Run custom checks after Access Analyzer passes         | `false`           |
+| `check-access-not-granted`    | Actions that should NOT be granted (space-separated)   | -                 |
+| `check-access-resources`      | Resources to check with check-access-not-granted       | -                 |
+| `check-no-new-access`         | Path to baseline policy for new access comparison      | -                 |
+| `check-no-public-access`      | Check that resource policies don't allow public access | `false`           |
+| `public-access-resource-type` | Resource type(s) for public access check               | `AWS::S3::Bucket` |
 
 ## Action Outputs
 
-| Output | Description |
-|--------|-------------|
+| Output              | Description                                |
+| ------------------- | ------------------------------------------ |
 | `validation-result` | Validation result (`success` or `failure`) |
-| `total-policies` | Total number of policies validated |
-| `valid-policies` | Number of valid policies |
-| `invalid-policies` | Number of invalid policies |
-| `total-issues` | Total number of issues found |
+| `total-policies`    | Total number of policies validated         |
+| `valid-policies`    | Number of valid policies                   |
+| `invalid-policies`  | Number of invalid policies                 |
+| `total-issues`      | Total number of issues found               |
 
 ---
 
@@ -147,7 +147,7 @@ on:
 
 permissions:
   contents: read
-  security-events: write  # Required for SARIF upload
+  security-events: write # Required for SARIF upload
 
 jobs:
   security-scan:
@@ -181,7 +181,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  id-token: write  # For OIDC authentication
+  id-token: write # For OIDC authentication
 
 jobs:
   analyze:
@@ -201,7 +201,7 @@ jobs:
           path: ./policies/
           use-access-analyzer: true
           access-analyzer-region: us-east-1
-          run-all-checks: true  # Also run built-in checks
+          run-all-checks: true # Also run built-in checks
 ```
 
 ### Check for Prohibited Actions
@@ -295,7 +295,7 @@ For repositories with many policy files, use streaming mode to reduce memory usa
   with:
     path: ./policies/
     stream: true
-    batch-size: 20  # Process 20 policies at a time
+    batch-size: 20 # Process 20 policies at a time
 ```
 
 ### Custom Checks
@@ -455,7 +455,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  security-events: write  # Required for SARIF upload
+  security-events: write # Required for SARIF upload
 
 jobs:
   validate:
@@ -480,7 +480,7 @@ jobs:
           severity-breakdown: true
           format: sarif
           output-file: iam-results.sarif
-          upload-sarif: true  # Uploads to GitHub Code Scanning
+          upload-sarif: true # Uploads to GitHub Code Scanning
 ```
 
 ---
