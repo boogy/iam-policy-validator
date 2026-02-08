@@ -55,6 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add SDK usage examples (`examples/sdk/`) and dedicated SDK test suite (`tests/sdk/`) ([#79])
 - Export `normalize_template_variables` and `has_template_variables` ARN utilities in SDK ([#79])
 - Add hierarchical `CLAUDE.md` development guides for all major directories ([#79])
+- Add `--has-condition-key` filter to `query action` and `query arn` subcommands for filtering results by condition key support (e.g., `--has-condition-key "s3:ResourceAccount"`), with prefix matching for template keys (e.g., `s3:BucketTag` matches `s3:BucketTag/${TagKey}`)
+- Add `--condition` as backward-compatible alias for `--has-condition-key` in `query action`
+- Add `--show-condition-keys`, `--show-arn-format`, `--show-resource-type` field filter flags to `query arn` subcommand for selective field output
 
 ### Fixed
 
@@ -66,6 +69,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add severity field validator to `ValidationIssue` to reject invalid values at model construction ([#79])
 - Fix resource leak in SDK `expand_actions()` when no fetcher is provided (now uses `async with`) ([#79])
 - Fix `Literal[False] = ...` overload default in `PolicyLoader.load_from_file()` to use `= False` (CodeQL "statement has no effect") ([#79])
+- Add missing global `--log-level` and `--version` to bash and zsh shell completions
+- Add missing file completion for `--report`/`-r` (post-to-pr), `--check-no-new-access` (analyze), and directory completion for `--output-dir` (sync-services) in bash completions
+- Fix command detection in bash completions to properly skip `--log-level` value argument
+- Remove unreachable duplicate `--config` case in bash completions
+- Fix `download-services` → `sync-services` command name in CLAUDE.md documentation
 
 [#79]: https://github.com/boogy/iam-policy-validator/pull/79
 

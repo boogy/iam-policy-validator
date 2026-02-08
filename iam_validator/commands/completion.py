@@ -138,19 +138,27 @@ _iam_validator_completion() {{
 
     # Main commands
     local commands="validate post-to-pr analyze cache sync-services query completion mcp"
+    local global_opts="--version --log-level"
 
-    # Get the command (first non-option argument)
+    # Get the command (first non-option argument, skipping global option values)
     local cmd=""
+    local skip_next=0
     for ((i=1; i<COMP_CWORD; i++)); do
-        if [[ ${{COMP_WORDS[i]}} != -* ]]; then
-            cmd=${{COMP_WORDS[i]}}
-            break
+        if [[ $skip_next -eq 1 ]]; then
+            skip_next=0
+            continue
         fi
+        case "${{COMP_WORDS[i]}}" in
+            --log-level) skip_next=1; continue ;;
+            --version) continue ;;
+            -*) continue ;;
+            *) cmd=${{COMP_WORDS[i]}}; break ;;
+        esac
     done
 
-    # Complete main command if we're at the first argument
-    if [[ $COMP_CWORD -eq 1 ]]; then
-        COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
+    # Complete main command or global options if no command yet
+    if [[ -z "$cmd" ]]; then
+        COMPREPLY=( $(compgen -W "$commands $global_opts" -- "$cur") )
         return 0
     fi
 
@@ -164,6 +172,10 @@ _iam_validator_completion() {{
             ;;
         --access-level)
             COMPREPLY=( $(compgen -W "read write list tagging permissions-management" -- "$cur") )
+            return 0
+            ;;
+        --log-level)
+            COMPREPLY=( $(compgen -W "debug info warning error critical" -- "$cur") )
             return 0
             ;;
         --format|-f)
@@ -183,12 +195,17 @@ _iam_validator_completion() {{
             fi
             return 0
             ;;
-        --path|-p|--config|-c|--custom-checks-dir|--aws-services-dir)
+        --path|-p|--config|-c|--custom-checks-dir|--aws-services-dir|--report|-r|--check-no-new-access)
             # File/directory completion
             COMPREPLY=( $(compgen -f -- "$cur") )
             return 0
             ;;
-        --resource-type|--condition|--name|--batch-size|--host|--port)
+        --output-dir)
+            # Directory completion
+            COMPREPLY=( $(compgen -d -- "$cur") )
+            return 0
+            ;;
+        --resource-type|--condition|--has-condition-key|--name|--batch-size|--host|--port)
             # Allow any input
             return 0
             ;;
@@ -198,11 +215,6 @@ _iam_validator_completion() {{
             ;;
         --transport)
             COMPREPLY=( $(compgen -W "stdio sse" -- "$cur") )
-            return 0
-            ;;
-        --config)
-            # File completion for config
-            COMPREPLY=( $(compgen -f -- "$cur") )
             return 0
             ;;
     esac
@@ -237,10 +249,10 @@ _iam_validator_completion() {{
             local opts=""
             case "$query_subcmd" in
                 action)
-                    opts="--service --name --access-level --resource-type --condition --output --show-condition-keys --show-resource-types --show-access-level"
+                    opts="--service --name --access-level --resource-type --has-condition-key --condition --output --show-condition-keys --show-resource-types --show-access-level"
                     ;;
                 arn)
-                    opts="--service --name --list-arn-types --output"
+                    opts="--service --name --has-condition-key --list-arn-types --output --show-condition-keys --show-arn-format --show-resource-type"
                     ;;
                 condition)
                     opts="--service --name --output"
@@ -349,6 +361,8 @@ _iam_validator() {{
     aws_services=({services_list})
 
     _arguments -C \\
+        '--version[Show version information and exit]' \\
+        '--log-level[Set logging level]:log level:(debug info warning error critical)' \\
         '1: :_iam_validator_commands' \\
         '*::arg:->args'
 
@@ -370,7 +384,8 @@ _iam_validator() {{
                                         '*--name[Action name(s) - supports multiple values and wildcards]:action name:' \\
                                         '--access-level[Filter by access level]:access level:(read write list tagging permissions-management)' \\
                                         '--resource-type[Filter by resource type]:resource type:' \\
-                                        '--condition[Filter by condition key]:condition key:' \\
+                                        '--has-condition-key[Filter actions that support a specific condition key]:condition key:' \\
+                                        '--condition[Filter by condition key (alias for --has-condition-key)]:condition key:' \\
                                         '--output[Output format]:format:(json yaml text)' \\
                                         '--show-condition-keys[Show only condition keys for each action]' \\
                                         '--show-resource-types[Show only resource types for each action]' \\
@@ -380,8 +395,12 @@ _iam_validator() {{
                                     _arguments \\
                                         '--service[AWS service (optional if --name has prefix)]:service:($aws_services)' \\
                                         '--name[ARN type (e.g., bucket or s3:bucket)]:arn type:' \\
+                                        '--has-condition-key[Filter ARN types that support a specific condition key]:condition key:' \\
                                         '--list-arn-types[List all ARN types]' \\
-                                        '--output[Output format]:format:(json yaml text)'
+                                        '--output[Output format]:format:(json yaml text)' \\
+                                        '--show-condition-keys[Show condition keys for each resource type]' \\
+                                        '--show-arn-format[Show ARN format patterns]' \\
+                                        '--show-resource-type[Show resource type name]'
                                     ;;
                                 condition)
                                     _arguments \\

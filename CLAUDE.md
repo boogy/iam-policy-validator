@@ -73,12 +73,12 @@ Subdirectories contain specialized CLAUDE.md files that extend these rules.
 
 ### Skills (reasoning frameworks)
 
-| Skill                 | Purpose                                          |
-| --------------------- | ------------------------------------------------ |
-| `/add-check`          | Check patterns, architecture, and templates      |
-| `/review`             | Code review evaluation criteria and checklists   |
-| `/fix-issue`          | Analyze and plan fixes for GitHub issues         |
-| `/update-claude-md`   | CLAUDE.md quality and structure reasoning         |
+| Skill               | Purpose                                        |
+| ------------------- | ---------------------------------------------- |
+| `/add-check`        | Check patterns, architecture, and templates    |
+| `/review`           | Code review evaluation criteria and checklists |
+| `/fix-issue`        | Analyze and plan fixes for GitHub issues       |
+| `/update-claude-md` | CLAUDE.md quality and structure reasoning      |
 
 ---
 
@@ -319,16 +319,16 @@ rg -n "@mcp.tool" iam_validator/mcp/server.py
 
 ## CLI Commands (8)
 
-| Command             | Purpose                            |
-| ------------------- | ---------------------------------- |
-| `validate`          | Validate IAM policies              |
-| `analyze`           | AWS Access Analyzer integration    |
-| `post-to-pr`        | Post results to GitHub PR          |
-| `cache`             | Manage AWS service cache           |
-| `download-services` | Download AWS definitions offline   |
-| `query`             | Query AWS service definitions      |
-| `completion`        | Shell completion scripts           |
-| `mcp`               | Start MCP server for AI assistants |
+| Command         | Purpose                            |
+| --------------- | ---------------------------------- |
+| `validate`      | Validate IAM policies              |
+| `analyze`       | AWS Access Analyzer integration    |
+| `post-to-pr`    | Post results to GitHub PR          |
+| `cache`         | Manage AWS service cache           |
+| `sync-services` | Download AWS definitions offline   |
+| `query`         | Query AWS service definitions      |
+| `completion`    | Shell completion scripts           |
+| `mcp`           | Start MCP server for AI assistants |
 
 ---
 
