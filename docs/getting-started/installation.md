@@ -65,7 +65,7 @@ iam-validator --version
 You should see output like:
 
 ```
-iam-validator 1.14.1
+iam-validator 1.17.0
 ```
 
 ## Shell Completion

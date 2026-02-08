@@ -32,14 +32,57 @@ iam-validator validate [OPTIONS]
 
 ### Options
 
-| Option               | Description                      | Default           |
-| -------------------- | -------------------------------- | ----------------- |
-| `--path`, `-p`       | Path to policy file or directory | Required          |
-| `--config`, `-c`     | Path to configuration file       | Auto-detect       |
-| `--format`, `-f`     | Output format                    | `console`         |
-| `--policy-type`      | Policy type                      | `IDENTITY_POLICY` |
-| `--fail-on-warnings` | Fail on warnings                 | `false`           |
-| `--verbose`, `-v`    | Verbose output                   | `false`           |
+**Input:**
+
+| Option         | Description                                                        | Default  |
+| -------------- | ------------------------------------------------------------------ | -------- |
+| `--path`, `-p` | Path to policy file or directory (can be specified multiple times) | Required |
+| `--stdin`      | Read policy from stdin (JSON format)                               |          |
+
+**Output:**
+
+| Option                 | Description                                                         | Default   |
+| ---------------------- | ------------------------------------------------------------------- | --------- |
+| `--format`, `-f`       | Output format (console, enhanced, json, markdown, html, csv, sarif) | `console` |
+| `--output`, `-o`       | Output file path (for json/markdown/html/csv/sarif)                 |           |
+| `--summary`            | Show Executive Summary section in enhanced output                   | `false`   |
+| `--severity-breakdown` | Show Issue Severity Breakdown in enhanced output                    | `false`   |
+| `--verbose`, `-v`      | Enable verbose logging                                              | `false`   |
+
+**Validation:**
+
+| Option                | Description                                                                                                   | Default           |
+| --------------------- | ------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `--config`, `-c`      | Path to configuration file                                                                                    | Auto-detect       |
+| `--policy-type`, `-t` | Policy type (IDENTITY_POLICY, RESOURCE_POLICY, TRUST_POLICY, SERVICE_CONTROL_POLICY, RESOURCE_CONTROL_POLICY) | `IDENTITY_POLICY` |
+| `--fail-on-warnings`  | Fail validation if warnings are found                                                                         | `false`           |
+| `--no-recursive`      | Don't recursively search directories                                                                          | `false`           |
+| `--custom-checks-dir` | Path to directory containing custom checks                                                                    |                   |
+| `--aws-services-dir`  | Path to pre-downloaded AWS service definitions (offline mode)                                                 |                   |
+
+**Performance:**
+
+| Option         | Description                                       | Default |
+| -------------- | ------------------------------------------------- | ------- |
+| `--stream`     | Process files one-by-one (memory efficient)       | `false` |
+| `--batch-size` | Number of policies per batch (only with --stream) | `10`    |
+
+**GitHub Integration:**
+
+| Option                 | Description                                              | Default |
+| ---------------------- | -------------------------------------------------------- | ------- |
+| `--github-comment`     | Post summary comment to PR conversation                  | `false` |
+| `--github-review`      | Create line-specific review comments on PR files         | `false` |
+| `--github-summary`     | Write summary to GitHub Actions job summary              | `false` |
+| `--allow-owner-ignore` | Allow CODEOWNERS to ignore findings by replying 'ignore' | `true`  |
+| `--no-owner-ignore`    | Disable CODEOWNERS ignore feature                        | `false` |
+
+**CI Mode:**
+
+| Option        | Description                                            | Default                  |
+| ------------- | ------------------------------------------------------ | ------------------------ |
+| `--ci`        | CI mode: enhanced console output + JSON report to file |                          |
+| `--ci-output` | Output file for JSON report in CI mode                 | `validation-report.json` |
 
 ### Examples
 
