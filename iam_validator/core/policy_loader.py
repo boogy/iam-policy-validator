@@ -373,7 +373,7 @@ class PolicyLoader:
 
     @overload
     def load_from_file(
-        self, file_path: str, return_raw_dict: Literal[False] = ...
+        self, file_path: str, return_raw_dict: Literal[False] = False
     ) -> IAMPolicy | None: ...
 
     @overload
