@@ -56,9 +56,7 @@ class TestGitHubPagination:
         # Page 1 response
         page1_response = MagicMock()
         page1_response.status_code = 200
-        page1_response.json.return_value = [
-            {"id": i, "body": f"comment {i}"} for i in range(1, 101)
-        ]
+        page1_response.json.return_value = [{"id": i, "body": f"comment {i}"} for i in range(1, 101)]
         page1_response.headers = {
             "Link": '<https://api.github.com/repos/owner/repo/pulls/123/comments?page=2&per_page=100>; rel="next", <https://api.github.com/repos/owner/repo/pulls/123/comments?page=2&per_page=100>; rel="last"'
         }
@@ -67,9 +65,7 @@ class TestGitHubPagination:
         # Page 2 response (last page)
         page2_response = MagicMock()
         page2_response.status_code = 200
-        page2_response.json.return_value = [
-            {"id": i, "body": f"comment {i}"} for i in range(101, 153)
-        ]
+        page2_response.json.return_value = [{"id": i, "body": f"comment {i}"} for i in range(101, 153)]
         page2_response.headers = {}  # No next link
         page2_response.raise_for_status = MagicMock()
 
@@ -97,9 +93,7 @@ class TestGitHubPagination:
             response = MagicMock()
             response.status_code = 200
             response.json.return_value = [{"id": page_num, "body": f"page {page_num}"}]
-            response.headers = {
-                "Link": f'<https://api.github.com/next?page={page_num + 1}>; rel="next"'
-            }
+            response.headers = {"Link": f'<https://api.github.com/next?page={page_num + 1}>; rel="next"'}
             response.raise_for_status = MagicMock()
             return response
 
@@ -108,14 +102,10 @@ class TestGitHubPagination:
                 mock_client = MagicMock()
                 mock_client.__aenter__ = AsyncMock(return_value=mock_client)
                 mock_client.__aexit__ = AsyncMock(return_value=None)
-                mock_client.request = AsyncMock(
-                    side_effect=[make_response(i) for i in range(1, 10)]
-                )
+                mock_client.request = AsyncMock(side_effect=[make_response(i) for i in range(1, 10)])
                 mock_client_class.return_value = mock_client
 
-                result = await github_integration._make_paginated_request(
-                    "pulls/123/comments", max_pages=3
-                )
+                result = await github_integration._make_paginated_request("pulls/123/comments", max_pages=3)
 
         assert len(result) == 3  # Should stop at 3 pages
 
@@ -282,9 +272,7 @@ class TestParallelDeletion:
             "delete_review_comment",
             side_effect=mock_delete,
         ):
-            successful, failed = await github_integration._delete_comments_parallel(
-                comment_ids, max_concurrent=5
-            )
+            successful, failed = await github_integration._delete_comments_parallel(comment_ids, max_concurrent=5)
 
         assert successful == 20
         assert failed == 0

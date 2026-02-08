@@ -33,9 +33,7 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_no_conditions(self, check, fetcher, config):
         """Test statement with no conditions."""
-        statement = Statement(
-            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
         fetcher.validate_condition_key.assert_not_called()
@@ -156,9 +154,7 @@ class TestConditionKeyPatternMatching:
         from iam_validator.core.aws_service.validators import condition_key_in_list
 
         # S3 uses /<key> placeholder - any pattern with "/" should work
-        assert condition_key_in_list(
-            "s3:RequestObjectTag/Environment", ["s3:RequestObjectTag/<key>"]
-        )
+        assert condition_key_in_list("s3:RequestObjectTag/Environment", ["s3:RequestObjectTag/<key>"])
         assert condition_key_in_list("s3:ExistingObjectTag/Team", ["s3:ExistingObjectTag/<key>"])
 
     def test_generic_pattern_matching(self):
@@ -295,9 +291,7 @@ class TestIfExistsFalsePositiveSuppression:
         return CheckConfig(check_id="condition_key_validation")
 
     @pytest.mark.asyncio
-    async def test_ifexists_suppresses_error_when_key_valid_for_some_actions(
-        self, check, fetcher, config
-    ):
+    async def test_ifexists_suppresses_error_when_key_valid_for_some_actions(self, check, fetcher, config):
         """IfExists with key valid for some actions should not produce error."""
 
         # CreateBucket supports RequestTag, ListBucket does not
@@ -315,9 +309,7 @@ class TestIfExistsFalsePositiveSuppression:
             Effect="Allow",
             Action=["s3:CreateBucket", "s3:ListBucket"],
             Resource=["*"],
-            Condition={
-                "StringEqualsIfExists": {"aws:RequestTag/owner": "${aws:PrincipalTag/owner}"}
-            },
+            Condition={"StringEqualsIfExists": {"aws:RequestTag/owner": "${aws:PrincipalTag/owner}"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
         # Should not have error - IfExists handles ListBucket
@@ -348,9 +340,7 @@ class TestIfExistsFalsePositiveSuppression:
         assert any(i.issue_type == "invalid_condition_key" for i in issues)
 
     @pytest.mark.asyncio
-    async def test_ifexists_still_reports_error_when_key_invalid_for_all_actions(
-        self, check, fetcher, config
-    ):
+    async def test_ifexists_still_reports_error_when_key_invalid_for_all_actions(self, check, fetcher, config):
         """IfExists does not help if key is invalid for ALL actions."""
         fetcher.validate_condition_key.return_value = ConditionKeyValidationResult(
             is_valid=False,

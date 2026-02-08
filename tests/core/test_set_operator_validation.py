@@ -100,9 +100,7 @@ class TestSetOperatorValidationCheck:
         assert "forallvalues_allow_without_null_check" in issue_types
 
         # Check the single-valued key error
-        single_valued_issue = [
-            i for i in issues if i.issue_type == "set_operator_on_single_valued_key"
-        ][0]
+        single_valued_issue = [i for i in issues if i.issue_type == "set_operator_on_single_valued_key"][0]
         assert single_valued_issue.severity == "error"
         assert "single-valued" in single_valued_issue.message.lower()
         assert "aws:SourceIp" in single_valued_issue.message
@@ -396,9 +394,7 @@ class TestForAllValuesIfExistsCompound:
             },
         )
         issues = await check.execute(statement, 0, None, config)
-        forallvalues_issues = [
-            i for i in issues if i.issue_type == "forallvalues_allow_without_null_check"
-        ]
+        forallvalues_issues = [i for i in issues if i.issue_type == "forallvalues_allow_without_null_check"]
         assert len(forallvalues_issues) == 1
         assert "Compounded" in forallvalues_issues[0].message
         assert "doubly permissive" in forallvalues_issues[0].message
@@ -419,9 +415,7 @@ class TestForAllValuesIfExistsCompound:
             },
         )
         issues = await check.execute(statement, 0, None, config)
-        forallvalues_issues = [
-            i for i in issues if i.issue_type == "forallvalues_allow_without_null_check"
-        ]
+        forallvalues_issues = [i for i in issues if i.issue_type == "forallvalues_allow_without_null_check"]
         assert len(forallvalues_issues) == 1
         assert "Compounded" not in forallvalues_issues[0].message
         assert "Security risk" in forallvalues_issues[0].message

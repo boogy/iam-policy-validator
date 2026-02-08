@@ -252,9 +252,7 @@ class TestPolicyLevelEnforcement:
                     {
                         "actions": {"any_of": ["s3:PutObject"]},
                         "scope": "policy",
-                        "required_conditions": [
-                            {"condition_key": "s3:x-amz-server-side-encryption"}
-                        ],
+                        "required_conditions": [{"condition_key": "s3:x-amz-server-side-encryption"}],
                         "severity": "medium",
                     },
                 ]

@@ -481,9 +481,7 @@ class TestActionConditionEnforcement:
         assert any("iam:PassedToService" in i.message for i in issues)
 
         # Test 2: iam-openid file - only PassRole requirement should trigger
-        issues = await check.execute_policy(
-            policy, "modules/iam-openid/main.tf", mock_fetcher, config
-        )
+        issues = await check.execute_policy(policy, "modules/iam-openid/main.tf", mock_fetcher, config)
         assert len(issues) == 1
         assert "iam:PassedToService" in issues[0].message
         assert "iam:PermissionsBoundary" not in issues[0].message

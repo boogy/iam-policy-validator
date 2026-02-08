@@ -43,9 +43,7 @@ async def fetcher():
         ("iam:CreateRole", "arn:aws:iam::123456789012:role/*", True, "IAM role action"),
     ],
 )
-async def test_action_resource_matching(
-    check, check_config, fetcher, action, resource, should_pass, desc
-):
+async def test_action_resource_matching(check, check_config, fetcher, action, resource, should_pass, desc):
     """Test action-resource matching for various combinations."""
     statement = Statement(Effect="Allow", Action=action, Resource=resource)
     issues = await check.execute(statement, 0, fetcher, check_config)

@@ -21,9 +21,7 @@ def validator():
         mock_client = MagicMock()
         mock_session.return_value.client.return_value = mock_client
 
-        validator = AccessAnalyzerValidator(
-            region="us-east-1", policy_type=PolicyType.IDENTITY_POLICY
-        )
+        validator = AccessAnalyzerValidator(region="us-east-1", policy_type=PolicyType.IDENTITY_POLICY)
         validator.client = mock_client
         yield validator
 
@@ -318,9 +316,7 @@ class TestValidatePoliciesWithCustomChecks:
             }
         }
 
-        results = validator.validate_policies(
-            [("test-policy.json", sample_policy)], custom_checks=custom_checks
-        )
+        results = validator.validate_policies([("test-policy.json", sample_policy)], custom_checks=custom_checks)
 
         assert len(results) == 1
         result = results[0]
@@ -341,9 +337,7 @@ class TestValidatePoliciesWithCustomChecks:
 
         custom_checks = {"no_public_access": {"resource_types": [ResourceType.AWS_S3_BUCKET]}}
 
-        results = validator.validate_policies(
-            [("bucket-policy.json", sample_policy)], custom_checks=custom_checks
-        )
+        results = validator.validate_policies([("bucket-policy.json", sample_policy)], custom_checks=custom_checks)
 
         assert len(results) == 1
         result = results[0]

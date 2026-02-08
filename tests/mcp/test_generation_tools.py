@@ -70,9 +70,7 @@ class TestBuildMinimalPolicy:
 
         assert result.validation.is_valid is False
         assert len(result.validation.issues) > 0
-        assert any(
-            "bare_wildcard_not_allowed" in issue.issue_type for issue in result.validation.issues
-        )
+        assert any("bare_wildcard_not_allowed" in issue.issue_type for issue in result.validation.issues)
         assert "Policy generation blocked" in result.security_notes[0]
 
     @pytest.mark.asyncio
@@ -85,9 +83,7 @@ class TestBuildMinimalPolicy:
 
         assert result.validation.is_valid is False
         assert len(result.validation.issues) > 0
-        assert any(
-            "bare_wildcard_resource" in issue.issue_type for issue in result.validation.issues
-        )
+        assert any("bare_wildcard_resource" in issue.issue_type for issue in result.validation.issues)
 
     @pytest.mark.asyncio
     async def test_allows_wildcard_resource_with_readonly_actions(self):
@@ -134,10 +130,7 @@ class TestBuildMinimalPolicy:
 
         # Should have security notes about sensitive action
         assert len(result.security_notes) > 0
-        assert any(
-            "sensitive action" in note.lower() or "warning" in note.lower()
-            for note in result.security_notes
-        )
+        assert any("sensitive action" in note.lower() or "warning" in note.lower() for note in result.security_notes)
 
     @pytest.mark.asyncio
     async def test_adds_conditions_when_provided(self):

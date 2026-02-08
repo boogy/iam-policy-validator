@@ -74,20 +74,12 @@ def test_truncation_prioritizes_errors():
     # Add policies with errors
     for i in range(10):
         issues = [create_test_issue("error", j) for j in range(5)]
-        results.append(
-            PolicyValidationResult(
-                policy_file=f"error-policy-{i}.json", is_valid=False, issues=issues
-            )
-        )
+        results.append(PolicyValidationResult(policy_file=f"error-policy-{i}.json", is_valid=False, issues=issues))
 
     # Add policies with only warnings
     for i in range(10):
         issues = [create_test_issue("warning", j) for j in range(5)]
-        results.append(
-            PolicyValidationResult(
-                policy_file=f"warning-policy-{i}.json", is_valid=False, issues=issues
-            )
-        )
+        results.append(PolicyValidationResult(policy_file=f"warning-policy-{i}.json", is_valid=False, issues=issues))
 
     report = generator.generate_report(results)
 

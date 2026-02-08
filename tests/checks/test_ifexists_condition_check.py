@@ -130,9 +130,7 @@ class TestIfExistsSecuritySensitiveAllow:
             Effect="Allow",
             Action=["s3:GetObject"],
             Resource=["*"],
-            Condition={
-                "ForAllValues:StringEqualsIfExists": {"aws:PrincipalOrgPaths": ["o-123/r-abc/"]}
-            },
+            Condition={"ForAllValues:StringEqualsIfExists": {"aws:PrincipalOrgPaths": ["o-123/r-abc/"]}},
         )
         issues = await check.execute(statement, 0, None, config)
         assert any(i.issue_type == "ifexists_weakens_security_condition" for i in issues)

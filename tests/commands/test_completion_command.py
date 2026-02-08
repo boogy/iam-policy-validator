@@ -70,9 +70,7 @@ class TestCompletionCommand:
             assert "_iam_validator()" in output
 
     @pytest.mark.asyncio
-    async def test_bash_completion_includes_commands(
-        self, completion_cmd: CompletionCommand
-    ) -> None:
+    async def test_bash_completion_includes_commands(self, completion_cmd: CompletionCommand) -> None:
         """Test bash completion includes all commands."""
         args = argparse.Namespace(shell="bash")
 
@@ -86,9 +84,7 @@ class TestCompletionCommand:
             assert "completion" in output
 
     @pytest.mark.asyncio
-    async def test_zsh_completion_includes_commands(
-        self, completion_cmd: CompletionCommand
-    ) -> None:
+    async def test_zsh_completion_includes_commands(self, completion_cmd: CompletionCommand) -> None:
         """Test zsh completion includes all commands."""
         args = argparse.Namespace(shell="zsh")
 
@@ -102,9 +98,7 @@ class TestCompletionCommand:
             assert "completion" in output
 
     @pytest.mark.asyncio
-    async def test_bash_completion_includes_query_subcommands(
-        self, completion_cmd: CompletionCommand
-    ) -> None:
+    async def test_bash_completion_includes_query_subcommands(self, completion_cmd: CompletionCommand) -> None:
         """Test bash completion includes query subcommands."""
         args = argparse.Namespace(shell="bash")
 
@@ -118,9 +112,7 @@ class TestCompletionCommand:
             assert "condition" in output
 
     @pytest.mark.asyncio
-    async def test_bash_completion_includes_access_levels(
-        self, completion_cmd: CompletionCommand
-    ) -> None:
+    async def test_bash_completion_includes_access_levels(self, completion_cmd: CompletionCommand) -> None:
         """Test bash completion includes access levels."""
         args = argparse.Namespace(shell="bash")
 
@@ -143,9 +135,7 @@ class TestCompletionCommand:
             assert services == []
 
     @pytest.mark.asyncio
-    async def test_get_cached_services_with_cache(
-        self, completion_cmd: CompletionCommand, tmp_path
-    ) -> None:
+    async def test_get_cached_services_with_cache(self, completion_cmd: CompletionCommand, tmp_path) -> None:
         """Test getting cached services when cache has files."""
         # Create fake cache files
         cache_dir = tmp_path / "cache"
@@ -164,13 +154,9 @@ class TestCompletionCommand:
             assert sorted(services) == ["ec2", "iam", "s3"]
 
     @pytest.mark.asyncio
-    async def test_bash_completion_includes_cached_services(
-        self, completion_cmd: CompletionCommand
-    ) -> None:
+    async def test_bash_completion_includes_cached_services(self, completion_cmd: CompletionCommand) -> None:
         """Test bash completion includes cached services."""
-        with patch.object(
-            completion_cmd, "_get_cached_services", return_value=["s3", "iam", "ec2"]
-        ):
+        with patch.object(completion_cmd, "_get_cached_services", return_value=["s3", "iam", "ec2"]):
             args = argparse.Namespace(shell="bash")
 
             with patch("builtins.print") as mock_print:
@@ -181,13 +167,9 @@ class TestCompletionCommand:
                 assert "s3 iam ec2" in output
 
     @pytest.mark.asyncio
-    async def test_zsh_completion_includes_cached_services(
-        self, completion_cmd: CompletionCommand
-    ) -> None:
+    async def test_zsh_completion_includes_cached_services(self, completion_cmd: CompletionCommand) -> None:
         """Test zsh completion includes cached services."""
-        with patch.object(
-            completion_cmd, "_get_cached_services", return_value=["s3", "iam", "ec2"]
-        ):
+        with patch.object(completion_cmd, "_get_cached_services", return_value=["s3", "iam", "ec2"]):
             args = argparse.Namespace(shell="zsh")
 
             with patch("builtins.print") as mock_print:
@@ -202,8 +184,6 @@ class TestCompletionCommand:
         """Test that execute handles exceptions gracefully."""
         args = argparse.Namespace(shell="bash")
 
-        with patch.object(
-            completion_cmd, "_generate_bash_completion", side_effect=Exception("Test error")
-        ):
+        with patch.object(completion_cmd, "_generate_bash_completion", side_effect=Exception("Test error")):
             result = await completion_cmd.execute(args)
             assert result == 1

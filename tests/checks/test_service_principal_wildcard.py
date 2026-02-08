@@ -117,8 +117,7 @@ class TestServicePrincipalWildcard:
         # Should have issues - dynamodb is not in the allowed_principals whitelist
         assert len(issues) > 0
         assert any(
-            "not in allowed list" in issue.message.lower()
-            or "unauthorized" in issue.message.lower()
+            "not in allowed list" in issue.message.lower() or "unauthorized" in issue.message.lower()
             for issue in issues
         )
 

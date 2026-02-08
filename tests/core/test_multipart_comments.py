@@ -135,11 +135,7 @@ def test_errors_prioritized_across_parts():
             )
             for _ in range(10)
         ]
-        results.append(
-            PolicyValidationResult(
-                policy_file=f"warning-policy-{i}.json", is_valid=False, issues=issues
-            )
-        )
+        results.append(PolicyValidationResult(policy_file=f"warning-policy-{i}.json", is_valid=False, issues=issues))
 
     # Policies with errors (should appear first)
     for i in range(20):
@@ -152,11 +148,7 @@ def test_errors_prioritized_across_parts():
             )
             for _ in range(10)
         ]
-        results.append(
-            PolicyValidationResult(
-                policy_file=f"error-policy-{i}.json", is_valid=False, issues=issues
-            )
-        )
+        results.append(PolicyValidationResult(policy_file=f"error-policy-{i}.json", is_valid=False, issues=issues))
 
     report = generator.generate_report(results)
     parts = generator.generate_github_comment_parts(report, max_length_per_part=15000)
@@ -188,9 +180,7 @@ def test_part_limit_enforced():
 
     for idx, part in enumerate(parts):
         # Allow 5% buffer for calculation differences
-        assert len(part) <= max_length * 1.05, (
-            f"Part {idx + 1} length {len(part)} exceeds limit {max_length}"
-        )
+        assert len(part) <= max_length * 1.05, f"Part {idx + 1} length {len(part)} exceeds limit {max_length}"
 
 
 def test_no_lost_policies():
@@ -213,19 +203,14 @@ def test_no_lost_policies():
             found_policies.add(policy_name)
 
     # All policies should be present
-    assert len(found_policies) == num_policies, (
-        f"Only found {len(found_policies)} policies out of {num_policies}"
-    )
+    assert len(found_policies) == num_policies, f"Only found {len(found_policies)} policies out of {num_policies}"
 
 
 def test_empty_report_single_part():
     """Test that empty reports (all valid) generate a single part."""
     generator = ReportGenerator()
 
-    results = [
-        PolicyValidationResult(policy_file=f"valid-{i}.json", is_valid=True, issues=[])
-        for i in range(10)
-    ]
+    results = [PolicyValidationResult(policy_file=f"valid-{i}.json", is_valid=True, issues=[]) for i in range(10)]
     report = generator.generate_report(results)
 
     parts = generator.generate_github_comment_parts(report)
@@ -257,9 +242,7 @@ def test_ignored_findings_displayed_in_summary():
         ),
     ]
 
-    parts = generator.generate_github_comment_parts(
-        report, ignored_count=2, ignored_findings=ignored_findings
-    )
+    parts = generator.generate_github_comment_parts(report, ignored_count=2, ignored_findings=ignored_findings)
 
     assert len(parts) == 1
     # Check ignored findings section exists
@@ -299,9 +282,7 @@ def test_all_blocking_ignored_shows_passed():
     assert "Validation Failed" in parts_failed[0]
 
     # With all_blocking_ignored=True, it should show Passed
-    parts_passed = generator.generate_github_comment_parts(
-        report, ignored_count=1, all_blocking_ignored=True
-    )
+    parts_passed = generator.generate_github_comment_parts(report, ignored_count=1, all_blocking_ignored=True)
     assert "Validation Passed" in parts_passed[0]
 
 
@@ -338,9 +319,7 @@ def test_ignored_findings_with_long_paths_truncated():
     results = [create_large_result("policy-1.json", 1)]
     report = generator.generate_report(results)
 
-    long_path = (
-        "very/long/path/that/exceeds/the/maximum/allowed/length/for/display/purposes/policy.json"
-    )
+    long_path = "very/long/path/that/exceeds/the/maximum/allowed/length/for/display/purposes/policy.json"
     ignored_findings = [
         IgnoredFindingInfo(
             file_path=long_path,
@@ -350,9 +329,7 @@ def test_ignored_findings_with_long_paths_truncated():
         )
     ]
 
-    parts = generator.generate_github_comment_parts(
-        report, ignored_count=1, ignored_findings=ignored_findings
-    )
+    parts = generator.generate_github_comment_parts(report, ignored_count=1, ignored_findings=ignored_findings)
 
     # Path should be truncated with ellipsis
     assert "..." in parts[0]

@@ -225,9 +225,7 @@ class TestSCPValidationEnhancements:
         issues_not_principal = await execute_policy(
             policy_with_not_principal, "test.json", policy_type="SERVICE_CONTROL_POLICY"
         )
-        not_principal_issues = [
-            i for i in issues_not_principal if i.issue_type == "invalid_not_principal"
-        ]
+        not_principal_issues = [i for i in issues_not_principal if i.issue_type == "invalid_not_principal"]
         assert len(not_principal_issues) == 1
 
 

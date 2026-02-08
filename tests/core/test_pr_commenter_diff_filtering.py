@@ -115,9 +115,7 @@ class TestPRCommenterDiffFiltering:
         )
 
     @pytest.mark.asyncio
-    async def test_no_diff_filtering_when_pr_files_empty(
-        self, mock_github, validation_report_with_issues
-    ):
+    async def test_no_diff_filtering_when_pr_files_empty(self, mock_github, validation_report_with_issues):
         """Test that when PR files can't be fetched, filtering falls back gracefully."""
         mock_github.get_pr_files.return_value = []
 
@@ -133,9 +131,7 @@ class TestPRCommenterDiffFiltering:
         mock_github.update_or_create_review_comments.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_no_diff_filtering_with_cleanup_enabled(
-        self, mock_github, validation_report_with_issues
-    ):
+    async def test_no_diff_filtering_with_cleanup_enabled(self, mock_github, validation_report_with_issues):
         """Test that when cleanup is enabled and no inline comments, cleanup still runs."""
         mock_github.get_pr_files.return_value = []
 
@@ -150,9 +146,7 @@ class TestPRCommenterDiffFiltering:
         mock_github.update_or_create_review_comments.assert_called_once()
         call_args = mock_github.update_or_create_review_comments.call_args
         assert call_args.kwargs["comments"] == []  # No inline comments (diff filtering)
-        assert (
-            call_args.kwargs["validated_files"] is not None
-        )  # But validated_files passed for cleanup
+        assert call_args.kwargs["validated_files"] is not None  # But validated_files passed for cleanup
 
     @pytest.mark.asyncio
     async def test_strict_filtering_inline_comments_only_changed_lines(
@@ -178,9 +172,7 @@ class TestPRCommenterDiffFiltering:
 
         commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
 
-        with mock.patch.dict(
-            os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}
-        ):
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             success = await commenter._post_review_comments(validation_report_with_issues)
 
         assert success is True
@@ -216,9 +208,7 @@ class TestPRCommenterDiffFiltering:
 
         commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
 
-        with mock.patch.dict(
-            os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}
-        ):
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             await commenter._post_review_comments(validation_report_with_issues)
 
         # Line 7 (changed) - inline comment
@@ -258,9 +248,7 @@ class TestPRCommenterDiffFiltering:
 
         commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
 
-        with mock.patch.dict(
-            os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}
-        ):
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             await commenter._post_review_comments(validation_report_with_issues)
 
         # Both line 8 (modified statement, unchanged line) and line 14 (unchanged statement)
@@ -271,9 +259,7 @@ class TestPRCommenterDiffFiltering:
         assert len(commenter._context_issues) == 2
 
     @pytest.mark.asyncio
-    async def test_multiple_statements_modified(
-        self, mock_github, validation_report_with_issues, sample_policy_file
-    ):
+    async def test_multiple_statements_modified(self, mock_github, validation_report_with_issues, sample_policy_file):
         """Test filtering when multiple statements are modified."""
         # Mock PR diff: changes in both Statement 0 and Statement 1
         mock_github.get_pr_files.return_value = [
@@ -302,9 +288,7 @@ class TestPRCommenterDiffFiltering:
 
         commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
 
-        with mock.patch.dict(
-            os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}
-        ):
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             await commenter._post_review_comments(validation_report_with_issues)
 
         call_args = mock_github.update_or_create_review_comments.call_args
@@ -320,9 +304,7 @@ class TestPRCommenterDiffFiltering:
         assert 8 in context_issue_lines
 
     @pytest.mark.asyncio
-    async def test_new_file_all_lines_commented(
-        self, mock_github, validation_report_with_issues, sample_policy_file
-    ):
+    async def test_new_file_all_lines_commented(self, mock_github, validation_report_with_issues, sample_policy_file):
         """Test that all issues get inline comments for completely new files."""
         # Mock PR diff: entire file is new (status: added)
         with open(sample_policy_file, encoding="utf-8") as f:
@@ -345,9 +327,7 @@ class TestPRCommenterDiffFiltering:
 
         commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
 
-        with mock.patch.dict(
-            os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}
-        ):
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             await commenter._post_review_comments(validation_report_with_issues)
 
         call_args = mock_github.update_or_create_review_comments.call_args
@@ -362,9 +342,7 @@ class TestPRCommenterDiffFiltering:
 
     @pytest.mark.skip(reason="Logging test needs caplog setup")
     @pytest.mark.asyncio
-    async def test_logging_output(
-        self, mock_github, validation_report_with_issues, sample_policy_file, caplog
-    ):
+    async def test_logging_output(self, mock_github, validation_report_with_issues, sample_policy_file, caplog):
         """Test that appropriate logging messages are generated."""
         mock_github.get_pr_files.return_value = [
             {
@@ -376,9 +354,7 @@ class TestPRCommenterDiffFiltering:
 
         commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
 
-        with mock.patch.dict(
-            os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}
-        ):
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             await commenter._post_review_comments(validation_report_with_issues)
 
         # Check for expected log messages
@@ -476,9 +452,7 @@ class TestPRCommenterOffDiffPipeline:
 
         commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
 
-        with mock.patch.dict(
-            os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}
-        ):
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             await commenter._post_review_comments(report)
 
         # Line-level should have been attempted first
@@ -538,9 +512,7 @@ class TestPRCommenterOffDiffPipeline:
 
         commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
 
-        with mock.patch.dict(
-            os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}
-        ):
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             await commenter._post_review_comments(report)
 
         # Both methods failed, so issue remains in context_issues for summary
@@ -589,9 +561,7 @@ class TestPRCommenterOffDiffPipeline:
 
         commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
 
-        with mock.patch.dict(
-            os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}
-        ):
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             await commenter._post_review_comments(report)
 
         # After _post_review_comments, context_issues should be non-empty

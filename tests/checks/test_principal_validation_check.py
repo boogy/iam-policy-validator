@@ -345,9 +345,7 @@ class TestServicePrincipalWildcardDetection:
         )
         issues = await check.execute(statement, 0, fetcher, config)
         # Should have no service_principal_wildcard issues for NotPrincipal
-        service_wildcard_issues = [
-            i for i in issues if i.issue_type == "service_principal_wildcard"
-        ]
+        service_wildcard_issues = [i for i in issues if i.issue_type == "service_principal_wildcard"]
         assert len(service_wildcard_issues) == 0
 
     @pytest.mark.asyncio
@@ -452,7 +450,5 @@ class TestServicePrincipalWildcardDetection:
         )
         issues = await check.execute(statement, 0, fetcher, config)
         # Should have no service_principal_wildcard issues
-        service_wildcard_issues = [
-            i for i in issues if i.issue_type == "service_principal_wildcard"
-        ]
+        service_wildcard_issues = [i for i in issues if i.issue_type == "service_principal_wildcard"]
         assert len(service_wildcard_issues) == 0

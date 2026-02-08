@@ -63,9 +63,7 @@ class TestSessionConfigManager:
 
     def test_set_and_get_config(self):
         """Test setting and getting configuration."""
-        SessionConfigManager.set_config(
-            {"settings": {"fail_on_severity": ["error"]}}, source="test"
-        )
+        SessionConfigManager.set_config({"settings": {"fail_on_severity": ["error"]}}, source="test")
 
         retrieved = SessionConfigManager.get_config()
         assert retrieved is not None

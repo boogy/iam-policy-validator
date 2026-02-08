@@ -41,9 +41,7 @@ class TestWildcardResourceCheck:
     @pytest.mark.asyncio
     async def test_specific_resources_not_flagged(self, check, fetcher, config):
         """Test that specific resources are not flagged."""
-        statement = Statement(
-            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
 
@@ -86,9 +84,7 @@ class TestWildcardResourceCheck:
     @pytest.mark.asyncio
     async def test_mixed_list_and_write_actions(self, check, fetcher, config):
         """Test that mixed list and write actions flag the write action."""
-        statement = Statement(
-            Effect="Allow", Action=["s3:ListAllMyBuckets", "s3:PutObject"], Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:ListAllMyBuckets", "s3:PutObject"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
 
@@ -141,9 +137,7 @@ class TestConditionAwareSeverity:
         assert "aws:ResourceOrgID" in issues[0].message
 
     @pytest.mark.asyncio
-    async def test_global_condition_lowers_severity_resource_org_paths(
-        self, check, fetcher, config
-    ):
+    async def test_global_condition_lowers_severity_resource_org_paths(self, check, fetcher, config):
         """Test aws:ResourceOrgPaths condition lowers severity to LOW."""
         statement = Statement(
             Effect="Allow",
@@ -157,9 +151,7 @@ class TestConditionAwareSeverity:
         assert "aws:ResourceOrgPaths" in issues[0].message
 
     @pytest.mark.asyncio
-    async def test_resource_tag_with_action_level_support_lowers_severity_ssm(
-        self, check, fetcher, config
-    ):
+    async def test_resource_tag_with_action_level_support_lowers_severity_ssm(self, check, fetcher, config):
         """Test 3: SSM actions with aws:ResourceTag in ActionConditionKeys lower severity."""
         statement = Statement(
             Effect="Allow",
@@ -173,9 +165,7 @@ class TestConditionAwareSeverity:
         assert "aws:ResourceTag" in issues[0].message
 
     @pytest.mark.asyncio
-    async def test_resource_tag_with_resource_level_support_lowers_severity_s3(
-        self, check, fetcher, config
-    ):
+    async def test_resource_tag_with_resource_level_support_lowers_severity_s3(self, check, fetcher, config):
         """Test 4: S3 GetObject with aws:ResourceTag (via object resource) lowers severity."""
         statement = Statement(
             Effect="Allow",
@@ -228,9 +218,7 @@ class TestConditionAwareSeverity:
         assert issues[0].severity == "medium"
 
     @pytest.mark.asyncio
-    async def test_mixed_actions_resource_tag_partial_support_keeps_severity(
-        self, check, fetcher, config
-    ):
+    async def test_mixed_actions_resource_tag_partial_support_keeps_severity(self, check, fetcher, config):
         """Test 8: Mixed actions where one doesn't support ResourceTag keeps MEDIUM."""
         statement = Statement(
             Effect="Allow",
@@ -265,9 +253,7 @@ class TestConditionAwareSeverity:
         assert "aws:ResourceOrgID" in issues[0].message
 
     @pytest.mark.asyncio
-    async def test_all_actions_support_resource_tag_via_different_paths(
-        self, check, fetcher, config
-    ):
+    async def test_all_actions_support_resource_tag_via_different_paths(self, check, fetcher, config):
         """Test 10: Actions supporting ResourceTag via different paths (action/resource level)."""
         # s3:GetObject supports via resource-level, ssm:StartSession via action-level
         statement = Statement(

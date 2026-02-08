@@ -94,9 +94,7 @@ class TestNotPrincipalValidationCheck:
             "*",  # Wildcard
         ],
     )
-    async def test_not_principal_alternative_formats(
-        self, not_principal, check, config, mock_fetcher
-    ):
+    async def test_not_principal_alternative_formats(self, not_principal, check, config, mock_fetcher):
         """Test NotPrincipal with string and wildcard formats."""
         statement = Statement(
             effect="Deny",

@@ -137,9 +137,7 @@ class TestLabelManager:
         """Test removing labels when severities are not found."""
         manager = LabelManager(mock_github, severity_labels)
         # Current labels on PR
-        mock_github.get_labels = AsyncMock(
-            return_value=["security-critical", "security-high", "security-medium"]
-        )
+        mock_github.get_labels = AsyncMock(return_value=["security-critical", "security-high", "security-medium"])
 
         # No issues in results
         empty_results = [
@@ -174,15 +172,11 @@ class TestLabelManager:
         mock_github.remove_label.assert_called_once_with("security-medium")
 
     @pytest.mark.asyncio
-    async def test_manage_labels_no_changes_needed(
-        self, mock_github, severity_labels, sample_results
-    ):
+    async def test_manage_labels_no_changes_needed(self, mock_github, severity_labels, sample_results):
         """Test when labels are already correct."""
         manager = LabelManager(mock_github, severity_labels)
         # Current labels match exactly what should be there
-        mock_github.get_labels = AsyncMock(
-            return_value=["iam-validity-error", "security-critical", "security-high"]
-        )
+        mock_github.get_labels = AsyncMock(return_value=["iam-validity-error", "security-critical", "security-high"])
 
         success, added, removed = await manager.manage_labels_from_results(sample_results)
 
@@ -225,9 +219,7 @@ class TestLabelManager:
         mock_github.remove_label.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_manage_labels_api_failure_add(
-        self, mock_github, severity_labels, sample_results
-    ):
+    async def test_manage_labels_api_failure_add(self, mock_github, severity_labels, sample_results):
         """Test handling API failure when adding labels."""
         manager = LabelManager(mock_github, severity_labels)
         mock_github.get_labels = AsyncMock(return_value=[])
@@ -340,9 +332,7 @@ class TestLabelManager:
         }
 
     @pytest.mark.asyncio
-    async def test_manage_labels_with_lists(
-        self, mock_github, severity_labels_with_lists, sample_results
-    ):
+    async def test_manage_labels_with_lists(self, mock_github, severity_labels_with_lists, sample_results):
         """Test managing labels when config uses lists."""
         manager = LabelManager(mock_github, severity_labels_with_lists)
         mock_github.get_labels = AsyncMock(return_value=[])
@@ -404,9 +394,7 @@ class TestLabelManager:
     # ========== Tests for ignored findings filter ==========
 
     @pytest.mark.asyncio
-    async def test_manage_labels_with_ignored_filter_excludes_issues(
-        self, mock_github, severity_labels
-    ):
+    async def test_manage_labels_with_ignored_filter_excludes_issues(self, mock_github, severity_labels):
         """Test that ignored issues are excluded from label determination."""
         manager = LabelManager(mock_github, severity_labels)
         mock_github.get_labels = AsyncMock(return_value=[])
@@ -437,9 +425,7 @@ class TestLabelManager:
         def is_ignored(issue, file_path):
             return issue.issue_type == "full_wildcard"
 
-        success, added, removed = await manager.manage_labels_from_results(
-            results, is_issue_ignored=is_ignored
-        )
+        success, added, removed = await manager.manage_labels_from_results(results, is_issue_ignored=is_ignored)
 
         assert success is True
         # Only error label should be added (critical is ignored)
@@ -449,9 +435,7 @@ class TestLabelManager:
         assert set(added_labels) == {"iam-validity-error"}
 
     @pytest.mark.asyncio
-    async def test_manage_labels_all_issues_ignored_removes_labels(
-        self, mock_github, severity_labels
-    ):
+    async def test_manage_labels_all_issues_ignored_removes_labels(self, mock_github, severity_labels):
         """Test that when all issues are ignored, corresponding labels are removed."""
         manager = LabelManager(mock_github, severity_labels)
         # Current PR has labels from previous run
@@ -483,9 +467,7 @@ class TestLabelManager:
         def is_ignored(issue, file_path):
             return True
 
-        success, added, removed = await manager.manage_labels_from_results(
-            results, is_issue_ignored=is_ignored
-        )
+        success, added, removed = await manager.manage_labels_from_results(results, is_issue_ignored=is_ignored)
 
         assert success is True
         assert added == 0
@@ -495,9 +477,7 @@ class TestLabelManager:
         assert mock_github.remove_label.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_manage_labels_from_report_with_ignored_filter(
-        self, mock_github, severity_labels, sample_results
-    ):
+    async def test_manage_labels_from_report_with_ignored_filter(self, mock_github, severity_labels, sample_results):
         """Test manage_labels_from_report passes the filter to manage_labels_from_results."""
         manager = LabelManager(mock_github, severity_labels)
         mock_github.get_labels = AsyncMock(return_value=[])
@@ -514,9 +494,7 @@ class TestLabelManager:
         def is_ignored(issue, file_path):
             return issue.severity in ["critical", "high"]
 
-        success, added, removed = await manager.manage_labels_from_report(
-            report, is_issue_ignored=is_ignored
-        )
+        success, added, removed = await manager.manage_labels_from_report(report, is_issue_ignored=is_ignored)
 
         assert success is True
         # Only error label should be added (critical and high are ignored)
@@ -525,9 +503,7 @@ class TestLabelManager:
         added_labels = mock_github.add_labels.call_args[0][0]
         assert set(added_labels) == {"iam-validity-error"}
 
-    def test_get_severities_with_filter_excludes_ignored(
-        self, mock_github, severity_labels, sample_results
-    ):
+    def test_get_severities_with_filter_excludes_ignored(self, mock_github, severity_labels, sample_results):
         """Test _get_severities_in_results respects the filter."""
         manager = LabelManager(mock_github, severity_labels)
 

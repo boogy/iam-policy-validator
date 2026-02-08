@@ -143,9 +143,7 @@ class TestGetPolicySummary:
     """Tests for get_policy_summary function."""
 
     @pytest.mark.asyncio
-    async def test_summarizes_policy(
-        self, simple_policy_dict, wildcard_policy_dict, policy_with_condition_dict
-    ):
+    async def test_summarizes_policy(self, simple_policy_dict, wildcard_policy_dict, policy_with_condition_dict):
         """Should correctly summarize policy attributes."""
         # Test simple policy
         summary = await get_policy_summary(simple_policy_dict)

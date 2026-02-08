@@ -136,9 +136,7 @@ async def test_tier2_category_default_suggestion(fetcher):
         enabled=True,
         config={
             **default_config["sensitive_action"],
-            "sensitive_actions": [
-                "cognito-identity:GetCredentialsForIdentity"
-            ],  # Add it explicitly
+            "sensitive_actions": ["cognito-identity:GetCredentialsForIdentity"],  # Add it explicitly
             "category_suggestions": DEFAULT_CATEGORY_SUGGESTIONS,
         },
     )

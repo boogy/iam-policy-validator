@@ -415,9 +415,7 @@ class TestCheckRegistry:
         registry.register(check2)
 
         # Disable check2 and set custom severity
-        registry.configure_check(
-            "check2", CheckConfig(check_id="check2", enabled=False, severity="error")
-        )
+        registry.configure_check("check2", CheckConfig(check_id="check2", enabled=False, severity="error"))
 
         checks_list = registry.list_checks()
 
@@ -433,9 +431,7 @@ class TestCheckRegistry:
         assert issues == []
 
     @pytest.mark.asyncio
-    async def test_execute_checks_parallel_with_issues(
-        self, registry, mock_statement, mock_fetcher
-    ):
+    async def test_execute_checks_parallel_with_issues(self, registry, mock_statement, mock_fetcher):
         """Test parallel execution that generates issues."""
         check = IssueGeneratingCheck(num_issues=2)
         registry.register(check)
@@ -446,9 +442,7 @@ class TestCheckRegistry:
         assert all(isinstance(i, ValidationIssue) for i in issues)
 
     @pytest.mark.asyncio
-    async def test_execute_checks_parallel_with_failing_check(
-        self, registry, mock_statement, mock_fetcher
-    ):
+    async def test_execute_checks_parallel_with_failing_check(self, registry, mock_statement, mock_fetcher):
         """Test parallel execution handles failing checks gracefully."""
         failing = FailingCheck()
         working = IssueGeneratingCheck(num_issues=1)
@@ -463,9 +457,7 @@ class TestCheckRegistry:
         assert len(issues) == 1
 
     @pytest.mark.asyncio
-    async def test_execute_checks_parallel_disabled_checks_skipped(
-        self, registry, mock_statement, mock_fetcher
-    ):
+    async def test_execute_checks_parallel_disabled_checks_skipped(self, registry, mock_statement, mock_fetcher):
         """Test that disabled checks are not executed."""
         check1 = IssueGeneratingCheck(num_issues=1, check_id="issue_check")
         check2 = IssueGeneratingCheck(num_issues=1, check_id="issue_check2")
@@ -492,9 +484,7 @@ class TestCheckRegistry:
         assert len(issues) == 2
 
     @pytest.mark.asyncio
-    async def test_execute_checks_sequential_handles_failures(
-        self, registry, mock_statement, mock_fetcher
-    ):
+    async def test_execute_checks_sequential_handles_failures(self, registry, mock_statement, mock_fetcher):
         """Test sequential execution handles failures gracefully."""
         failing = FailingCheck()
         working = IssueGeneratingCheck(num_issues=1)

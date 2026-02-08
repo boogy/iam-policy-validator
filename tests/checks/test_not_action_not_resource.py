@@ -96,10 +96,7 @@ class TestNotActionNotResourceCheck:
         assert len(issues) == 1
         assert issues[0].severity == "high"
         assert issues[0].issue_type == "not_resource_broad"
-        assert (
-            "future resources" in issues[0].suggestion.lower()
-            or "new resources" in issues[0].suggestion.lower()
-        )
+        assert "future resources" in issues[0].suggestion.lower() or "new resources" in issues[0].suggestion.lower()
 
     @pytest.mark.asyncio
     async def test_not_action_deny(self, check, config, mock_fetcher) -> None:

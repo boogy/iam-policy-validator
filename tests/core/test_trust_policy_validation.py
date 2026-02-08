@@ -119,9 +119,7 @@ class TestTrustPolicyValidationCheck:
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) > 0
-        assert any(
-            issue.issue_type == "missing_required_condition_for_assume_action" for issue in issues
-        )
+        assert any(issue.issue_type == "missing_required_condition_for_assume_action" for issue in issues)
         assert any("SAML:aud" in issue.message for issue in issues)
 
     # ========================================================================
@@ -133,13 +131,9 @@ class TestTrustPolicyValidationCheck:
         """Test that AssumeRoleWithWebIdentity with Federated OIDC principal is valid."""
         statement = Statement(
             Effect="Allow",
-            Principal={
-                "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
-            },
+            Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
             Action=["sts:AssumeRoleWithWebIdentity"],
-            Condition={
-                "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"}
-            },
+            Condition={"StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
@@ -157,9 +151,7 @@ class TestTrustPolicyValidationCheck:
         assert issues[0].issue_type == "invalid_principal_type_for_assume_action"
 
     @pytest.mark.asyncio
-    async def test_assume_role_with_web_identity_saml_provider_invalid(
-        self, check, fetcher, config
-    ):
+    async def test_assume_role_with_web_identity_saml_provider_invalid(self, check, fetcher, config):
         """Test that AssumeRoleWithWebIdentity with SAML provider is invalid."""
         statement = Statement(
             Effect="Allow",
@@ -328,9 +320,7 @@ class TestTrustPolicyValidationCheck:
         """Test realistic GitHub Actions OIDC trust policy."""
         statement = Statement(
             Effect="Allow",
-            Principal={
-                "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
-            },
+            Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
             Action=["sts:AssumeRoleWithWebIdentity"],
             Condition={
                 "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},

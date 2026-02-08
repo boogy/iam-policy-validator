@@ -83,17 +83,13 @@ def mock_service_detail() -> ServiceDetail:
             ),
             ResourceType(
                 Name="index",
-                ARNFormats=[
-                    "arn:${Partition}:test:${Region}:${Account}:table/${TableName}/index/${IndexName}"
-                ],
+                ARNFormats=["arn:${Partition}:test:${Region}:${Account}:table/${TableName}/index/${IndexName}"],
                 ConditionKeys=["test:IndexArn"],
             ),
         ],
         ConditionKeys=[
             ConditionKey(Name="test:condition1", Description="Test condition 1", Types=["String"]),
-            ConditionKey(
-                Name="test:condition2", Description="Test condition 2", Types=["String", "ARN"]
-            ),
+            ConditionKey(Name="test:condition2", Description="Test condition 2", Types=["String", "ARN"]),
         ],
     )
 
@@ -351,9 +347,7 @@ class TestQueryCommand:
                 assert result_list[0]["action"] == "test:ListTables"
 
     @pytest.mark.asyncio
-    async def test_query_arn_table_all(
-        self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
-    ) -> None:
+    async def test_query_arn_table_all(self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail) -> None:
         """Test querying all ARN formats."""
         with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
@@ -411,9 +405,7 @@ class TestQueryCommand:
         """Test querying non-existent service."""
         with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
-            mock_fetcher.fetch_service_by_name = AsyncMock(
-                side_effect=ValueError("Service not found")
-            )
+            mock_fetcher.fetch_service_by_name = AsyncMock(side_effect=ValueError("Service not found"))
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
             mock_fetcher_class.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -431,9 +423,7 @@ class TestQueryCommand:
             assert result == 1
 
     @pytest.mark.asyncio
-    async def test_query_action_text_format(
-        self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
-    ) -> None:
+    async def test_query_action_text_format(self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail) -> None:
         """Test text format output for actions."""
         with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
@@ -587,9 +577,7 @@ class TestQueryCommand:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
             # expand_wildcard_action returns the same action as the exact query
-            mock_fetcher.expand_wildcard_action = AsyncMock(
-                return_value=["test:GetItem", "test:GetBucketInfo"]
-            )
+            mock_fetcher.expand_wildcard_action = AsyncMock(return_value=["test:GetItem", "test:GetBucketInfo"])
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
             mock_fetcher_class.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -618,9 +606,7 @@ class TestQueryCommand:
         with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
-            mock_fetcher.expand_wildcard_action = AsyncMock(
-                return_value=["test:GetItem", "test:GetBucketInfo"]
-            )
+            mock_fetcher.expand_wildcard_action = AsyncMock(return_value=["test:GetItem", "test:GetBucketInfo"])
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
             mock_fetcher_class.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -680,9 +666,7 @@ class TestQueryCommand:
         with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
-            mock_fetcher.expand_wildcard_action = AsyncMock(
-                return_value=["test:GetItem", "test:PutItem"]
-            )
+            mock_fetcher.expand_wildcard_action = AsyncMock(return_value=["test:GetItem", "test:PutItem"])
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
             mock_fetcher_class.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -875,9 +859,7 @@ class TestQueryCommand:
         with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
-            mock_fetcher.expand_wildcard_action = AsyncMock(
-                return_value=["test:GetItem", "test:PutItem"]
-            )
+            mock_fetcher.expand_wildcard_action = AsyncMock(return_value=["test:GetItem", "test:PutItem"])
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
             mock_fetcher_class.return_value.__aexit__ = AsyncMock(return_value=None)
 
@@ -981,9 +963,7 @@ class TestQueryCommand:
         args = parser.parse_args(["action", "--service", "s3", "--condition", "s3:ResourceAccount"])
         assert args.has_condition_key == "s3:ResourceAccount"
 
-        args = parser.parse_args(
-            ["action", "--service", "s3", "--has-condition-key", "s3:ResourceAccount"]
-        )
+        args = parser.parse_args(["action", "--service", "s3", "--has-condition-key", "s3:ResourceAccount"])
         assert args.has_condition_key == "s3:ResourceAccount"
 
     @pytest.mark.asyncio
@@ -1023,9 +1003,7 @@ class TestQueryCommand:
                     assert "arn_formats" not in item
 
     @pytest.mark.asyncio
-    async def test_query_arn_show_arn_format(
-        self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
-    ) -> None:
+    async def test_query_arn_show_arn_format(self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail) -> None:
         """Test --show-arn-format filter on ARN queries."""
         with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()

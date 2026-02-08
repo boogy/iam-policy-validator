@@ -249,11 +249,7 @@ class TestPolicyValidationResult:
         result_invalid = PolicyValidationResult(
             policy_file="policy.json",
             is_valid=False,
-            issues=[
-                ValidationIssue(
-                    severity="error", statement_index=0, issue_type="test", message="Test"
-                )
-            ],
+            issues=[ValidationIssue(severity="error", statement_index=0, issue_type="test", message="Test")],
         )
         assert not result_invalid.is_valid
         assert len(result_invalid.issues) == 1
@@ -283,11 +279,7 @@ class TestValidationReport:
             PolicyValidationResult(
                 policy_file="policy2.json",
                 is_valid=False,
-                issues=[
-                    ValidationIssue(
-                        severity="error", statement_index=0, issue_type="test", message="Test"
-                    )
-                ],
+                issues=[ValidationIssue(severity="error", statement_index=0, issue_type="test", message="Test")],
             ),
         ]
         report = ValidationReport(

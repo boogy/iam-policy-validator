@@ -13,9 +13,7 @@ class TestOutdatedVersionWarning:
             "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}],
         }
         issues = validate_policy_document(policy_dict)
-        version_issues = [
-            i for i in issues if i.issue_type in ("outdated_version", "invalid_version")
-        ]
+        version_issues = [i for i in issues if i.issue_type in ("outdated_version", "invalid_version")]
         assert len(version_issues) == 0
 
     def test_outdated_version_warning_with_suggestion(self):

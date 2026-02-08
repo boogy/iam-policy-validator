@@ -85,9 +85,7 @@ class TestArnMatches:
         assert arn_matches("arn:*:s3:::*", "arn:aws:ec2:us-east-1:123:instance/i-123") is False
 
     def test_bucket_resource_type_no_slash(self):
-        assert (
-            arn_matches("arn:*:s3:::*", "arn:aws:s3:::bucket/key", resource_type="bucket") is False
-        )
+        assert arn_matches("arn:*:s3:::*", "arn:aws:s3:::bucket/key", resource_type="bucket") is False
 
     def test_bucket_resource_type_valid(self):
         assert arn_matches("arn:*:s3:::*", "arn:aws:s3:::mybucket", resource_type="bucket") is True
@@ -96,10 +94,7 @@ class TestArnMatches:
         assert arn_matches("arn:aws", "arn:aws:s3:::bucket") is False
 
     def test_region_wildcard(self):
-        assert (
-            arn_matches("arn:*:ec2:*:*:instance/*", "arn:aws:ec2:us-east-1:123:instance/i-1")
-            is True
-        )
+        assert arn_matches("arn:*:ec2:*:*:instance/*", "arn:aws:ec2:us-east-1:123:instance/i-1") is True
 
     def test_account_mismatch(self):
         pattern = "arn:aws:iam::111111111111:role/*"
@@ -119,10 +114,7 @@ class TestArnStrictlyValid:
     """Tests for strict ARN validation."""
 
     def test_valid_user_arn(self):
-        assert (
-            arn_strictly_valid("arn:*:iam::*:user/*", "arn:aws:iam::123456789012:user/alice")
-            is True
-        )
+        assert arn_strictly_valid("arn:*:iam::*:user/*", "arn:aws:iam::123456789012:user/alice") is True
 
     def test_invalid_missing_resource_type(self):
         assert arn_strictly_valid("arn:*:iam::*:user/*", "arn:aws:iam::123456789012:u*") is False
@@ -157,21 +149,15 @@ class TestConvertAWSPatternToWildcard:
         assert result == "arn:*:s3:::*"
 
     def test_s3_object(self):
-        result = convert_aws_pattern_to_wildcard(
-            "arn:${Partition}:s3:::${BucketName}/${ObjectName}"
-        )
+        result = convert_aws_pattern_to_wildcard("arn:${Partition}:s3:::${BucketName}/${ObjectName}")
         assert result == "arn:*:s3:::*/*"
 
     def test_iam_user(self):
-        result = convert_aws_pattern_to_wildcard(
-            "arn:${Partition}:iam::${Account}:user/${UserNameWithPath}"
-        )
+        result = convert_aws_pattern_to_wildcard("arn:${Partition}:iam::${Account}:user/${UserNameWithPath}")
         assert result == "arn:*:iam::*:user/*"
 
     def test_ec2_instance(self):
-        result = convert_aws_pattern_to_wildcard(
-            "arn:${Partition}:ec2:${Region}:${Account}:instance/${InstanceId}"
-        )
+        result = convert_aws_pattern_to_wildcard("arn:${Partition}:ec2:${Region}:${Account}:instance/${InstanceId}")
         assert result == "arn:*:ec2:*:*:instance/*"
 
     def test_no_placeholders(self):

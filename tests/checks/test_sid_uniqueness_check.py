@@ -42,12 +42,8 @@ class TestSidUniquenessCheck:
         policy = IAMPolicy(
             Version="2012-10-17",
             Statement=[
-                Statement(
-                    Sid="DuplicateSid", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]
-                ),
-                Statement(
-                    Sid="DuplicateSid", Effect="Allow", Action=["s3:PutObject"], Resource=["*"]
-                ),
+                Statement(Sid="DuplicateSid", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]),
+                Statement(Sid="DuplicateSid", Effect="Allow", Action=["s3:PutObject"], Resource=["*"]),
             ],
         )
         issues = await check.execute_policy(policy, "test.json", fetcher, config)

@@ -122,9 +122,7 @@ class TestCustomInstructionsManager:
         assert CustomInstructionsManager.get_source() == "cli"
 
 
-@pytest.mark.skipif(
-    not HAS_FASTMCP, reason="MCP tests require 'pip install iam-policy-validator[mcp]'"
-)
+@pytest.mark.skipif(not HAS_FASTMCP, reason="MCP tests require 'pip install iam-policy-validator[mcp]'")
 class TestGetInstructions:
     """Test suite for get_instructions function."""
 

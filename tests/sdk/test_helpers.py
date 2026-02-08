@@ -23,27 +23,16 @@ class TestCheckHelper:
         assert helper.arn_matches("arn:*:s3:::*/*", "arn:aws:s3:::bucket/key") is True
 
     def test_arn_matches_no_match(self, helper):
-        assert (
-            helper.arn_matches("arn:*:s3:::*/*", "arn:aws:ec2:us-east-1:123:instance/i-1") is False
-        )
+        assert helper.arn_matches("arn:*:s3:::*/*", "arn:aws:ec2:us-east-1:123:instance/i-1") is False
 
     def test_arn_matches_with_resource_type(self, helper):
-        assert (
-            helper.arn_matches("arn:*:s3:::*", "arn:aws:s3:::bucket/key", resource_type="bucket")
-            is False
-        )
+        assert helper.arn_matches("arn:*:s3:::*", "arn:aws:s3:::bucket/key", resource_type="bucket") is False
 
     def test_arn_strictly_valid(self, helper):
-        assert (
-            helper.arn_strictly_valid("arn:*:iam::*:user/*", "arn:aws:iam::123456789012:user/alice")
-            is True
-        )
+        assert helper.arn_strictly_valid("arn:*:iam::*:user/*", "arn:aws:iam::123456789012:user/alice") is True
 
     def test_arn_strictly_valid_fails(self, helper):
-        assert (
-            helper.arn_strictly_valid("arn:*:iam::*:user/*", "arn:aws:iam::123456789012:u*")
-            is False
-        )
+        assert helper.arn_strictly_valid("arn:*:iam::*:user/*", "arn:aws:iam::123456789012:u*") is False
 
     def test_create_issue_basic(self, helper):
         issue = helper.create_issue(
@@ -81,9 +70,7 @@ class TestCheckHelper:
         assert issue.line_number == 42
 
     async def test_expand_actions(self, helper, mock_fetcher):
-        mock_fetcher.expand_wildcard_action = AsyncMock(
-            return_value=["s3:GetObject", "s3:GetObjectAcl"]
-        )
+        mock_fetcher.expand_wildcard_action = AsyncMock(return_value=["s3:GetObject", "s3:GetObjectAcl"])
         # expand_actions on helper calls expand_wildcard_actions internally
         # which uses fetcher.expand_wildcard_action
         # We need to mock the underlying function

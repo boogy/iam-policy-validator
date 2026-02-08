@@ -41,9 +41,7 @@ class TestConditionTypeMismatchCheck:
     @pytest.mark.asyncio
     async def test_no_conditions(self, check, fetcher, config):
         """Test statement with no conditions."""
-        statement = Statement(
-            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
 
@@ -72,9 +70,7 @@ class TestConditionTypeMismatchCheck:
     @pytest.mark.asyncio
     async def test_type_mismatch_string_with_arn_warning(self, check, fetcher, config):
         """Test String operator with ARN key generates warning."""
-        statement = _make_statement(
-            {"StringEquals": {"aws:SourceArn": "arn:aws:iam::123456789012:user/test"}}
-        )
+        statement = _make_statement({"StringEquals": {"aws:SourceArn": "arn:aws:iam::123456789012:user/test"}})
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
         assert issues[0].severity == "warning"

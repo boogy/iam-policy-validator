@@ -33,9 +33,7 @@ class TestTrustPolicyDetection:
             Statement=[
                 Statement(
                     Effect="Allow",
-                    Principal={
-                        "Federated": "arn:aws:iam::123:oidc-provider/token.actions.githubusercontent.com"
-                    },
+                    Principal={"Federated": "arn:aws:iam::123:oidc-provider/token.actions.githubusercontent.com"},
                     Action="sts:AssumeRoleWithWebIdentity",
                 )
             ],
