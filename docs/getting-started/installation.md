@@ -86,13 +86,6 @@ Enable shell completion for a better CLI experience:
     eval "$(iam-validator completion zsh)"
     ```
 
-=== "Fish"
-
-    ```bash
-    # Add to ~/.config/fish/config.fish
-    iam-validator completion fish | source
-    ```
-
 ## Upgrading
 
 To upgrade to the latest version:

@@ -111,7 +111,7 @@ Add the server to your Claude Desktop configuration:
       "mcpServers": {
         "iam-policy-validator": {
           "command": "uvx",
-          "args": ["--from", "iam-policy-validator[mcp]==1.15.2", "iam-validator-mcp"]
+          "args": ["--from", "iam-policy-validator[mcp]", "iam-validator-mcp"]
         }
       }
     }
@@ -1626,7 +1626,7 @@ uvx --from 'iam-policy-validator[mcp]' iam-validator-mcp
 uvx --from 'iam-policy-validator[mcp]' iam-validator-mcp --config ./config.yaml
 
 # Pin to a specific version
-uvx --from 'iam-policy-validator[mcp]==1.15.2' iam-validator-mcp
+uvx --from 'iam-policy-validator[mcp]==1.17.0' iam-validator-mcp
 
 # Run with custom instructions
 uvx --from 'iam-policy-validator[mcp]' iam-validator-mcp --instructions "Require MFA for all sensitive actions"
