@@ -1,7 +1,7 @@
 # Documentation - MkDocs Site
 
 **Purpose**: Public documentation site built with MkDocs Material
-**Parent Context**: Extends [../CLAUDE.md](../CLAUDE.md)
+**Parent Context**: Extends root `CLAUDE.md`
 **Live site**: https://boogy.github.io/iam-policy-validator/
 
 ---
