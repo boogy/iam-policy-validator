@@ -408,7 +408,7 @@ principal_validation:
 
 ---
 
-## mfa_condition_check
+## mfa_condition_antipattern
 
 Detects MFA condition anti-patterns that may not work as expected.
 
