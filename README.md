@@ -322,7 +322,7 @@ iam-validator validate --path policies/ --aws-services-dir ./aws-services
     path: policies/
     create-review: true # Inline PR comments
     github-summary: true # Actions summary tab
-    fail-on-warnings: true # Block merge on warnings too
+    config-file: .iam-validator.yaml # fail_on_severity set in config
 ```
 
 ---
