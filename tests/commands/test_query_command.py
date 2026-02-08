@@ -1199,14 +1199,16 @@ class TestQueryCommand:
         parser = argparse.ArgumentParser()
         query_cmd.add_arguments(parser)
 
-        args = parser.parse_args([
-            "arn",
-            "--service",
-            "s3",
-            "--show-condition-keys",
-            "--show-arn-format",
-            "--show-resource-type",
-        ])
+        args = parser.parse_args(
+            [
+                "arn",
+                "--service",
+                "s3",
+                "--show-condition-keys",
+                "--show-arn-format",
+                "--show-resource-type",
+            ]
+        )
         assert args.show_condition_keys is True
         assert args.show_arn_format is True
         assert args.show_resource_type is True
