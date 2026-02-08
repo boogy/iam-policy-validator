@@ -215,7 +215,7 @@ class ServiceFileStorage:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2)
                 os.replace(tmp_path, cache_path)
-            except BaseException:
+            except Exception:
                 # Clean up temp file on any failure
                 with contextlib.suppress(OSError):
                     os.unlink(tmp_path)
