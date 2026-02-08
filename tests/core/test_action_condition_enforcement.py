@@ -6,7 +6,7 @@ from iam_validator.checks.action_condition_enforcement import (
     ActionConditionEnforcementCheck,
 )
 from iam_validator.core.check_registry import CheckConfig
-from iam_validator.core.models import Statement, IAMPolicy
+from iam_validator.core.models import IAMPolicy, Statement
 
 
 class TestActionConditionEnforcement:
@@ -452,19 +452,13 @@ class TestActionConditionEnforcement:
                     # Requirement 1: Permissions boundary (with ignore_patterns)
                     {
                         "actions": ["iam:CreateRole", "iam:PutRolePolicy"],
-                        "required_conditions": [
-                            {"condition_key": "iam:PermissionsBoundary"}
-                        ],
-                        "ignore_patterns": [
-                            {"filepath_regex": ".*iam-openid.*"}
-                        ],
+                        "required_conditions": [{"condition_key": "iam:PermissionsBoundary"}],
+                        "ignore_patterns": [{"filepath_regex": ".*iam-openid.*"}],
                     },
                     # Requirement 2: PassRole (no ignore_patterns)
                     {
                         "actions": ["iam:PassRole"],
-                        "required_conditions": [
-                            {"condition_key": "iam:PassedToService"}
-                        ],
+                        "required_conditions": [{"condition_key": "iam:PassedToService"}],
                     },
                 ]
             },
@@ -505,18 +499,14 @@ class TestActionConditionEnforcement:
                 "requirements": [
                     # Requirement with any_of and ignore_patterns
                     {
-                        "actions": {
-                            "any_of": ["iam:CreateUser", "iam:AttachUserPolicy"]
-                        },
+                        "actions": {"any_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
                         "required_conditions": [
                             {
                                 "condition_key": "aws:MultiFactorAuthPresent",
                                 "expected_value": True,
                             }
                         ],
-                        "ignore_patterns": [
-                            {"filepath_regex": ".*test.*"}
-                        ],
+                        "ignore_patterns": [{"filepath_regex": ".*test.*"}],
                     },
                 ]
             },

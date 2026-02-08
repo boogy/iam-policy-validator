@@ -1,7 +1,7 @@
 """Tests for completion command."""
 
 import argparse
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -202,6 +202,8 @@ class TestCompletionCommand:
         """Test that execute handles exceptions gracefully."""
         args = argparse.Namespace(shell="bash")
 
-        with patch.object(completion_cmd, "_generate_bash_completion", side_effect=Exception("Test error")):
+        with patch.object(
+            completion_cmd, "_generate_bash_completion", side_effect=Exception("Test error")
+        ):
             result = await completion_cmd.execute(args)
             assert result == 1

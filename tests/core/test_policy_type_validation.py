@@ -116,6 +116,121 @@ class TestPolicyTypeValidation:
         assert issues[0].severity == "error"
 
 
+class TestSCPValidationEnhancements:
+    """Tests for SCP-specific validation improvements."""
+
+    @pytest.mark.asyncio
+    async def test_scp_size_limit_under_limit(self):
+        """SCP under 5120 bytes should not trigger size error."""
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Deny",
+                    action=["ec2:*"],
+                    resource=["*"],
+                )
+            ],
+        )
+        raw_dict = {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Deny", "Action": "ec2:*", "Resource": "*"}],
+        }
+        issues = await execute_policy(
+            policy, "test.json", policy_type="SERVICE_CONTROL_POLICY", raw_policy_dict=raw_dict
+        )
+        size_issues = [i for i in issues if i.issue_type == "scp_size_exceeded"]
+        assert len(size_issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_scp_size_limit_exceeded(self):
+        """SCP over 5120 bytes should trigger size error."""
+        # Create a large policy that exceeds 5120 bytes (need >5120 chars minified)
+        large_actions = [f"service{i}:Action{j}" for i in range(60) for j in range(5)]
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Deny",
+                    action=large_actions,
+                    resource=["*"],
+                )
+            ],
+        )
+        raw_dict = {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Deny", "Action": large_actions, "Resource": "*"}],
+        }
+        issues = await execute_policy(
+            policy, "test.json", policy_type="SERVICE_CONTROL_POLICY", raw_policy_dict=raw_dict
+        )
+        size_issues = [i for i in issues if i.issue_type == "scp_size_exceeded"]
+        assert len(size_issues) == 1
+        assert size_issues[0].severity == "error"
+        assert "5,120" in size_issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_scp_with_not_principal_error(self):
+        """SCPs with NotPrincipal should generate separate error."""
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Deny",
+                    not_principal={"AWS": "arn:aws:iam::123456789012:root"},
+                    action=["ec2:*"],
+                    resource=["*"],
+                )
+            ],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="SERVICE_CONTROL_POLICY")
+        not_principal_issues = [i for i in issues if i.issue_type == "invalid_not_principal"]
+        assert len(not_principal_issues) == 1
+        assert not_principal_issues[0].severity == "error"
+        assert "NotPrincipal" in not_principal_issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_scp_principal_and_not_principal_separate_errors(self):
+        """SCPs should give separate errors for Principal vs NotPrincipal."""
+        # Test Principal error
+        policy_with_principal = IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Deny",
+                    principal="*",
+                    action=["ec2:*"],
+                    resource=["*"],
+                )
+            ],
+        )
+        issues_principal = await execute_policy(
+            policy_with_principal, "test.json", policy_type="SERVICE_CONTROL_POLICY"
+        )
+        principal_issues = [i for i in issues_principal if i.issue_type == "invalid_principal"]
+        assert len(principal_issues) == 1
+
+        # Test NotPrincipal error
+        policy_with_not_principal = IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Deny",
+                    not_principal="*",
+                    action=["ec2:*"],
+                    resource=["*"],
+                )
+            ],
+        )
+        issues_not_principal = await execute_policy(
+            policy_with_not_principal, "test.json", policy_type="SERVICE_CONTROL_POLICY"
+        )
+        not_principal_issues = [
+            i for i in issues_not_principal if i.issue_type == "invalid_not_principal"
+        ]
+        assert len(not_principal_issues) == 1
+
+
 class TestRCPValidation:
     """Test suite for Resource Control Policy validation."""
 

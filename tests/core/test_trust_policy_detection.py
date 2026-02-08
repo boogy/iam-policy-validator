@@ -1,7 +1,5 @@
 """Tests for trust policy detection logic."""
 
-import pytest
-
 from iam_validator.checks.policy_structure import detect_policy_type, is_trust_policy
 from iam_validator.core.models import IAMPolicy, Statement
 

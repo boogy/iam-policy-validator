@@ -116,7 +116,11 @@ class TestServicePrincipalWildcard:
 
         # Should have issues - dynamodb is not in the allowed_principals whitelist
         assert len(issues) > 0
-        assert any("not in allowed list" in issue.message.lower() or "unauthorized" in issue.message.lower() for issue in issues)
+        assert any(
+            "not in allowed list" in issue.message.lower()
+            or "unauthorized" in issue.message.lower()
+            for issue in issues
+        )
 
     @pytest.mark.asyncio
     async def test_wildcard_does_not_allow_non_service_principals(self, check, fetcher):

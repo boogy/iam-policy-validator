@@ -14,16 +14,18 @@ import json
 import pytest
 
 # Skip all tests in this module if fastmcp is not installed
-fastmcp = pytest.importorskip("fastmcp", reason="MCP tests require 'pip install iam-policy-validator[mcp]'")
+fastmcp = pytest.importorskip(
+    "fastmcp", reason="MCP tests require 'pip install iam-policy-validator[mcp]'"
+)
 
-from iam_validator.mcp.server import _get_cached_checks, mcp
+from iam_validator.mcp.server import _get_cached_checks, mcp  # noqa: E402
 
 
 class TestCachedChecks:
     """Test the cached check registry."""
 
     def test_cached_checks_returns_all_checks(self):
-        """Cached checks should return all 19 validation checks."""
+        """Cached checks should return all 20 validation checks."""
         checks = _get_cached_checks()
         assert len(checks) >= 15  # At least 15 checks exist
         assert all("check_id" in c for c in checks)

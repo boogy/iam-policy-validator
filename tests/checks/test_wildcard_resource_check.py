@@ -113,9 +113,7 @@ class TestConditionAwareSeverity:
             yield f
 
     @pytest.mark.asyncio
-    async def test_global_condition_lowers_severity_resource_account(
-        self, check, fetcher, config
-    ):
+    async def test_global_condition_lowers_severity_resource_account(self, check, fetcher, config):
         """Test 1: aws:ResourceAccount condition lowers severity to LOW."""
         statement = Statement(
             Effect="Allow",
@@ -129,9 +127,7 @@ class TestConditionAwareSeverity:
         assert "aws:ResourceAccount" in issues[0].message
 
     @pytest.mark.asyncio
-    async def test_global_condition_lowers_severity_resource_org_id(
-        self, check, fetcher, config
-    ):
+    async def test_global_condition_lowers_severity_resource_org_id(self, check, fetcher, config):
         """Test aws:ResourceOrgID condition lowers severity to LOW."""
         statement = Statement(
             Effect="Allow",
@@ -193,9 +189,7 @@ class TestConditionAwareSeverity:
         assert "aws:ResourceTag" in issues[0].message
 
     @pytest.mark.asyncio
-    async def test_resource_tag_no_support_keeps_severity_route53(
-        self, check, fetcher, config
-    ):
+    async def test_resource_tag_no_support_keeps_severity_route53(self, check, fetcher, config):
         """Test 5: Route53 action without ResourceTag support keeps MEDIUM severity."""
         statement = Statement(
             Effect="Allow",
@@ -209,9 +203,7 @@ class TestConditionAwareSeverity:
         assert "don't support resource tags" in issues[0].message
 
     @pytest.mark.asyncio
-    async def test_non_resource_scoping_condition_keeps_severity(
-        self, check, fetcher, config
-    ):
+    async def test_non_resource_scoping_condition_keeps_severity(self, check, fetcher, config):
         """Test 6: Non-resource-scoping condition (aws:SourceIp) keeps MEDIUM severity."""
         statement = Statement(
             Effect="Allow",
@@ -252,9 +244,7 @@ class TestConditionAwareSeverity:
         assert "don't support resource tags" in issues[0].message
 
     @pytest.mark.asyncio
-    async def test_multiple_global_conditions_lowers_severity(
-        self, check, fetcher, config
-    ):
+    async def test_multiple_global_conditions_lowers_severity(self, check, fetcher, config):
         """Test 9: Multiple global conditions together lower severity."""
         statement = Statement(
             Effect="Allow",

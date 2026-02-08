@@ -1,7 +1,5 @@
 """Tests for check_id injection and display in PR comments."""
 
-import pytest
-
 from iam_validator.core.models import ValidationIssue
 
 

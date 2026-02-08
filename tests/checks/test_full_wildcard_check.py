@@ -40,9 +40,7 @@ class TestFullWildcardCheck:
     @pytest.mark.asyncio
     async def test_only_action_wildcard_no_issue(self, check, fetcher, config):
         """Test that only Action:* without Resource:* is not flagged."""
-        statement = Statement(
-            Effect="Allow", Action=["*"], Resource=["arn:aws:s3:::my-bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["*"], Resource=["arn:aws:s3:::my-bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
 

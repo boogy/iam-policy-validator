@@ -1,7 +1,5 @@
 """Tests for trust policy detection with multiple statements."""
 
-import pytest
-
 from iam_validator.checks.policy_structure import is_trust_policy
 from iam_validator.core.models import IAMPolicy, Statement
 

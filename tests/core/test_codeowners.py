@@ -227,7 +227,9 @@ class TestNormalizePath:
 
     def test_normalize_mixed(self):
         """Test normalizing mixed path format."""
-        assert normalize_path("./policies/../policies/admin.json") == "policies/../policies/admin.json"
+        assert (
+            normalize_path("./policies/../policies/admin.json") == "policies/../policies/admin.json"
+        )
 
 
 class TestCodeOwnerRule:

@@ -4,9 +4,9 @@ import re
 
 from iam_validator.utils.regex import (
     cached_pattern,
+    clear_pattern_cache,
     compile_and_cache,
     get_cached_pattern,
-    clear_pattern_cache,
 )
 
 
@@ -147,6 +147,7 @@ class TestGetCachedPattern:
         get_cached_pattern(r"test2")
 
         from iam_validator.utils.regex import _pattern_cache
+
         assert len(_pattern_cache) == 2
 
         clear_pattern_cache()

@@ -7,12 +7,13 @@ This module tests the validation tools provided by the MCP server:
 """
 
 import json
+
 import pytest
 
 from iam_validator.mcp.tools.validation import (
+    quick_validate,
     validate_policy,
     validate_policy_json,
-    quick_validate,
 )
 
 

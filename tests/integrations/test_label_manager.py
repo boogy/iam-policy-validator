@@ -1,7 +1,8 @@
 """Unit tests for Label Manager."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from iam_validator.core.label_manager import LabelManager
 from iam_validator.core.models import (
@@ -173,7 +174,9 @@ class TestLabelManager:
         mock_github.remove_label.assert_called_once_with("security-medium")
 
     @pytest.mark.asyncio
-    async def test_manage_labels_no_changes_needed(self, mock_github, severity_labels, sample_results):
+    async def test_manage_labels_no_changes_needed(
+        self, mock_github, severity_labels, sample_results
+    ):
         """Test when labels are already correct."""
         manager = LabelManager(mock_github, severity_labels)
         # Current labels match exactly what should be there
@@ -222,7 +225,9 @@ class TestLabelManager:
         mock_github.remove_label.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_manage_labels_api_failure_add(self, mock_github, severity_labels, sample_results):
+    async def test_manage_labels_api_failure_add(
+        self, mock_github, severity_labels, sample_results
+    ):
         """Test handling API failure when adding labels."""
         manager = LabelManager(mock_github, severity_labels)
         mock_github.get_labels = AsyncMock(return_value=[])
@@ -311,9 +316,7 @@ class TestLabelManager:
             "high": "security-high",  # Mixed: single label
         }
 
-    def test_determine_labels_to_apply_with_lists(
-        self, mock_github, severity_labels_with_lists
-    ):
+    def test_determine_labels_to_apply_with_lists(self, mock_github, severity_labels_with_lists):
         """Test determining labels when config uses lists."""
         manager = LabelManager(mock_github, severity_labels_with_lists)
         found_severities = {"error", "critical"}
@@ -325,9 +328,7 @@ class TestLabelManager:
             "needs-security-review",
         }
 
-    def test_determine_labels_to_remove_with_lists(
-        self, mock_github, severity_labels_with_lists
-    ):
+    def test_determine_labels_to_remove_with_lists(self, mock_github, severity_labels_with_lists):
         """Test determining labels to remove when config uses lists."""
         manager = LabelManager(mock_github, severity_labels_with_lists)
         found_severities = {"error"}  # critical and high not found
@@ -454,9 +455,7 @@ class TestLabelManager:
         """Test that when all issues are ignored, corresponding labels are removed."""
         manager = LabelManager(mock_github, severity_labels)
         # Current PR has labels from previous run
-        mock_github.get_labels = AsyncMock(
-            return_value=["iam-validity-error", "security-critical"]
-        )
+        mock_github.get_labels = AsyncMock(return_value=["iam-validity-error", "security-critical"])
 
         results = [
             PolicyValidationResult(
@@ -536,9 +535,7 @@ class TestLabelManager:
         def is_ignored(issue, file_path):
             return issue.severity == "critical"
 
-        severities = manager._get_severities_in_results(
-            sample_results, is_issue_ignored=is_ignored
-        )
+        severities = manager._get_severities_in_results(sample_results, is_issue_ignored=is_ignored)
         # critical should be excluded
         assert severities == {"error", "high"}
 
@@ -579,8 +576,6 @@ class TestLabelManager:
         def is_ignored(issue, file_path):
             return "admin.json" in file_path
 
-        severities = manager._get_severities_in_results(
-            results, is_issue_ignored=is_ignored
-        )
+        severities = manager._get_severities_in_results(results, is_issue_ignored=is_ignored)
         # critical from admin.json should be excluded
         assert severities == {"error"}

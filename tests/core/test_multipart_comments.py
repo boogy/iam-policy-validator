@@ -326,9 +326,7 @@ def test_no_ignored_findings_section_when_empty():
     results = [create_large_result("policy-1.json", 1)]
     report = generator.generate_report(results)
 
-    parts = generator.generate_github_comment_parts(
-        report, ignored_count=0, ignored_findings=None
-    )
+    parts = generator.generate_github_comment_parts(report, ignored_count=0, ignored_findings=None)
 
     assert "### 🔕 Ignored Findings" not in parts[0]
 
@@ -340,7 +338,9 @@ def test_ignored_findings_with_long_paths_truncated():
     results = [create_large_result("policy-1.json", 1)]
     report = generator.generate_report(results)
 
-    long_path = "very/long/path/that/exceeds/the/maximum/allowed/length/for/display/purposes/policy.json"
+    long_path = (
+        "very/long/path/that/exceeds/the/maximum/allowed/length/for/display/purposes/policy.json"
+    )
     ignored_findings = [
         IgnoredFindingInfo(
             file_path=long_path,

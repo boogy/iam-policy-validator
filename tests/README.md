@@ -20,21 +20,25 @@ Comprehensive tests for the `ActionConditionEnforcementCheck` class, covering:
 ## Running Tests
 
 ### Run All Tests
+
 ```bash
 uv run pytest tests/ -v
 ```
 
 ### Run Specific Test File
+
 ```bash
 uv run pytest tests/test_action_condition_enforcement.py -v
 ```
 
 ### Run Specific Test
+
 ```bash
 uv run pytest tests/test_action_condition_enforcement.py::TestActionConditionEnforcement::test_none_of_actions_forbidden -v
 ```
 
 ### Run with Coverage
+
 ```bash
 uv run pytest tests/ --cov=iam_validator --cov-report=html
 ```

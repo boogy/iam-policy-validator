@@ -138,13 +138,23 @@ class TestStatement:
         "action,resource,expected_actions,expected_resources",
         [
             (["s3:GetObject", "s3:PutObject"], "*", ["s3:GetObject", "s3:PutObject"], ["*"]),
-            ("s3:GetObject", ["arn:aws:s3:::bucket1/*", "arn:aws:s3:::bucket2/*"], ["s3:GetObject"], ["arn:aws:s3:::bucket1/*", "arn:aws:s3:::bucket2/*"]),
+            (
+                "s3:GetObject",
+                ["arn:aws:s3:::bucket1/*", "arn:aws:s3:::bucket2/*"],
+                ["s3:GetObject"],
+                ["arn:aws:s3:::bucket1/*", "arn:aws:s3:::bucket2/*"],
+            ),
             (None, "*", [], ["*"]),  # NotAction case
         ],
     )
     def test_statement_get_methods(self, action, resource, expected_actions, expected_resources):
         """Test get_actions() and get_resources() methods."""
-        stmt = Statement(Effect="Allow", Action=action, Resource=resource, NotAction=["s3:*"] if action is None else None)
+        stmt = Statement(
+            Effect="Allow",
+            Action=action,
+            Resource=resource,
+            NotAction=["s3:*"] if action is None else None,
+        )
         assert stmt.get_actions() == expected_actions
         assert stmt.get_resources() == expected_resources
 
@@ -239,7 +249,11 @@ class TestPolicyValidationResult:
         result_invalid = PolicyValidationResult(
             policy_file="policy.json",
             is_valid=False,
-            issues=[ValidationIssue(severity="error", statement_index=0, issue_type="test", message="Test")],
+            issues=[
+                ValidationIssue(
+                    severity="error", statement_index=0, issue_type="test", message="Test"
+                )
+            ],
         )
         assert not result_invalid.is_valid
         assert len(result_invalid.issues) == 1
@@ -266,9 +280,15 @@ class TestValidationReport:
         """Test report with validation results."""
         results = [
             PolicyValidationResult(policy_file="policy1.json", is_valid=True, issues=[]),
-            PolicyValidationResult(policy_file="policy2.json", is_valid=False, issues=[
-                ValidationIssue(severity="error", statement_index=0, issue_type="test", message="Test")
-            ]),
+            PolicyValidationResult(
+                policy_file="policy2.json",
+                is_valid=False,
+                issues=[
+                    ValidationIssue(
+                        severity="error", statement_index=0, issue_type="test", message="Test"
+                    )
+                ],
+            ),
         ]
         report = ValidationReport(
             total_policies=2, valid_policies=1, invalid_policies=1, total_issues=1, results=results

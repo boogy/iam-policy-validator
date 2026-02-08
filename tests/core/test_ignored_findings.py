@@ -205,10 +205,11 @@ class TestIgnoredFindingsStoreOperations:
     @pytest.mark.asyncio
     async def test_load_with_existing_comment(self, mock_github):
         """Test loading from existing storage comment."""
-        mock_github.get_issue_comments = AsyncMock(return_value=[
-            {
-                "id": 12345,
-                "body": """<!-- iam-policy-validator-ignored-findings -->
+        mock_github.get_issue_comments = AsyncMock(
+            return_value=[
+                {
+                    "id": 12345,
+                    "body": """<!-- iam-policy-validator-ignored-findings -->
 ```json
 {
   "version": 1,
@@ -217,9 +218,10 @@ class TestIgnoredFindingsStoreOperations:
   ]
 }
 ```
-"""
-            }
-        ])
+""",
+                }
+            ]
+        )
 
         store = IgnoredFindingsStore(mock_github)
         findings = await store.load()
@@ -231,10 +233,11 @@ class TestIgnoredFindingsStoreOperations:
     @pytest.mark.asyncio
     async def test_is_ignored(self, mock_github):
         """Test checking if finding is ignored."""
-        mock_github.get_issue_comments = AsyncMock(return_value=[
-            {
-                "id": 1,
-                "body": """<!-- iam-policy-validator-ignored-findings -->
+        mock_github.get_issue_comments = AsyncMock(
+            return_value=[
+                {
+                    "id": 1,
+                    "body": """<!-- iam-policy-validator-ignored-findings -->
 ```json
 {
   "version": 1,
@@ -243,9 +246,10 @@ class TestIgnoredFindingsStoreOperations:
   ]
 }
 ```
-"""
-            }
-        ])
+""",
+                }
+            ]
+        )
 
         store = IgnoredFindingsStore(mock_github)
 
@@ -255,10 +259,11 @@ class TestIgnoredFindingsStoreOperations:
     @pytest.mark.asyncio
     async def test_get_ignored_ids(self, mock_github):
         """Test getting all ignored IDs as frozenset."""
-        mock_github.get_issue_comments = AsyncMock(return_value=[
-            {
-                "id": 1,
-                "body": """<!-- iam-policy-validator-ignored-findings -->
+        mock_github.get_issue_comments = AsyncMock(
+            return_value=[
+                {
+                    "id": 1,
+                    "body": """<!-- iam-policy-validator-ignored-findings -->
 ```json
 {
   "version": 1,
@@ -268,9 +273,10 @@ class TestIgnoredFindingsStoreOperations:
   ]
 }
 ```
-"""
-            }
-        ])
+""",
+                }
+            ]
+        )
 
         store = IgnoredFindingsStore(mock_github)
         ignored_ids = await store.get_ignored_ids()
@@ -302,10 +308,11 @@ class TestIgnoredFindingsStoreOperations:
     @pytest.mark.asyncio
     async def test_add_ignored_updates_existing(self, mock_github):
         """Test adding to existing findings updates comment."""
-        mock_github.get_issue_comments = AsyncMock(return_value=[
-            {
-                "id": 12345,
-                "body": """<!-- iam-policy-validator-ignored-findings -->
+        mock_github.get_issue_comments = AsyncMock(
+            return_value=[
+                {
+                    "id": 12345,
+                    "body": """<!-- iam-policy-validator-ignored-findings -->
 ```json
 {
   "version": 1,
@@ -314,9 +321,10 @@ class TestIgnoredFindingsStoreOperations:
   ]
 }
 ```
-"""
-            }
-        ])
+""",
+                }
+            ]
+        )
 
         store = IgnoredFindingsStore(mock_github)
         await store.load()  # Load existing
@@ -350,10 +358,11 @@ class TestIgnoredFindingsStoreOperations:
     @pytest.mark.asyncio
     async def test_remove_ignored(self, mock_github):
         """Test removing an ignored finding."""
-        mock_github.get_issue_comments = AsyncMock(return_value=[
-            {
-                "id": 12345,
-                "body": """<!-- iam-policy-validator-ignored-findings -->
+        mock_github.get_issue_comments = AsyncMock(
+            return_value=[
+                {
+                    "id": 12345,
+                    "body": """<!-- iam-policy-validator-ignored-findings -->
 ```json
 {
   "version": 1,
@@ -363,9 +372,10 @@ class TestIgnoredFindingsStoreOperations:
   ]
 }
 ```
-"""
-            }
-        ])
+""",
+                }
+            ]
+        )
 
         store = IgnoredFindingsStore(mock_github)
         result = await store.remove_ignored("to_remove")

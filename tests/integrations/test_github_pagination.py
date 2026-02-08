@@ -1,9 +1,9 @@
 """Tests for GitHub API pagination."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
 
 from iam_validator.integrations.github_integration import GitHubIntegration
 
@@ -36,9 +36,7 @@ class TestGitHubPagination:
         mock_response.headers = {}  # No Link header = single page
         mock_response.raise_for_status = MagicMock()
 
-        with patch.object(
-            github_integration, "_client", None
-        ):
+        with patch.object(github_integration, "_client", None):
             with patch("httpx.AsyncClient") as mock_client_class:
                 mock_client = MagicMock()
                 mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -46,9 +44,7 @@ class TestGitHubPagination:
                 mock_client.request = AsyncMock(return_value=mock_response)
                 mock_client_class.return_value = mock_client
 
-                result = await github_integration._make_paginated_request(
-                    "pulls/123/comments"
-                )
+                result = await github_integration._make_paginated_request("pulls/123/comments")
 
         assert len(result) == 2
         assert result[0]["id"] == 1
@@ -60,7 +56,9 @@ class TestGitHubPagination:
         # Page 1 response
         page1_response = MagicMock()
         page1_response.status_code = 200
-        page1_response.json.return_value = [{"id": i, "body": f"comment {i}"} for i in range(1, 101)]
+        page1_response.json.return_value = [
+            {"id": i, "body": f"comment {i}"} for i in range(1, 101)
+        ]
         page1_response.headers = {
             "Link": '<https://api.github.com/repos/owner/repo/pulls/123/comments?page=2&per_page=100>; rel="next", <https://api.github.com/repos/owner/repo/pulls/123/comments?page=2&per_page=100>; rel="last"'
         }
@@ -69,7 +67,9 @@ class TestGitHubPagination:
         # Page 2 response (last page)
         page2_response = MagicMock()
         page2_response.status_code = 200
-        page2_response.json.return_value = [{"id": i, "body": f"comment {i}"} for i in range(101, 153)]
+        page2_response.json.return_value = [
+            {"id": i, "body": f"comment {i}"} for i in range(101, 153)
+        ]
         page2_response.headers = {}  # No next link
         page2_response.raise_for_status = MagicMock()
 
@@ -81,9 +81,7 @@ class TestGitHubPagination:
                 mock_client.request = AsyncMock(side_effect=[page1_response, page2_response])
                 mock_client_class.return_value = mock_client
 
-                result = await github_integration._make_paginated_request(
-                    "pulls/123/comments"
-                )
+                result = await github_integration._make_paginated_request("pulls/123/comments")
 
         assert len(result) == 152  # 100 + 52
         assert result[0]["id"] == 1
@@ -93,6 +91,7 @@ class TestGitHubPagination:
     @pytest.mark.asyncio
     async def test_paginated_request_respects_max_pages(self, github_integration):
         """Test that pagination respects max_pages limit."""
+
         # Create responses that always have a next page
         def make_response(page_num):
             response = MagicMock()
@@ -109,7 +108,9 @@ class TestGitHubPagination:
                 mock_client = MagicMock()
                 mock_client.__aenter__ = AsyncMock(return_value=mock_client)
                 mock_client.__aexit__ = AsyncMock(return_value=None)
-                mock_client.request = AsyncMock(side_effect=[make_response(i) for i in range(1, 10)])
+                mock_client.request = AsyncMock(
+                    side_effect=[make_response(i) for i in range(1, 10)]
+                )
                 mock_client_class.return_value = mock_client
 
                 result = await github_integration._make_paginated_request(
@@ -163,9 +164,7 @@ class TestGitHubPagination:
                 mock_client.request = AsyncMock(return_value=mock_response)
                 mock_client_class.return_value = mock_client
 
-                result = await github_integration._make_paginated_request(
-                    "pulls/123/comments"
-                )
+                result = await github_integration._make_paginated_request("pulls/123/comments")
 
         assert result == []  # Should return empty list on error
 

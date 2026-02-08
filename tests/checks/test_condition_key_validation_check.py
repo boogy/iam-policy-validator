@@ -33,7 +33,9 @@ class TestConditionKeyValidationCheck:
     @pytest.mark.asyncio
     async def test_no_conditions(self, check, fetcher, config):
         """Test statement with no conditions."""
-        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"])
+        statement = Statement(
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"]
+        )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
         fetcher.validate_condition_key.assert_not_called()
@@ -154,7 +156,9 @@ class TestConditionKeyPatternMatching:
         from iam_validator.core.aws_service.validators import condition_key_in_list
 
         # S3 uses /<key> placeholder - any pattern with "/" should work
-        assert condition_key_in_list("s3:RequestObjectTag/Environment", ["s3:RequestObjectTag/<key>"])
+        assert condition_key_in_list(
+            "s3:RequestObjectTag/Environment", ["s3:RequestObjectTag/<key>"]
+        )
         assert condition_key_in_list("s3:ExistingObjectTag/Team", ["s3:ExistingObjectTag/<key>"])
 
     def test_generic_pattern_matching(self):
@@ -312,9 +316,7 @@ class TestIfExistsFalsePositiveSuppression:
             Action=["s3:CreateBucket", "s3:ListBucket"],
             Resource=["*"],
             Condition={
-                "StringEqualsIfExists": {
-                    "aws:RequestTag/owner": "${aws:PrincipalTag/owner}"
-                }
+                "StringEqualsIfExists": {"aws:RequestTag/owner": "${aws:PrincipalTag/owner}"}
             },
         )
         issues = await check.execute(statement, 0, fetcher, config)
@@ -322,9 +324,7 @@ class TestIfExistsFalsePositiveSuppression:
         assert not any(i.issue_type == "invalid_condition_key" for i in issues)
 
     @pytest.mark.asyncio
-    async def test_without_ifexists_reports_error_for_invalid_actions(
-        self, check, fetcher, config
-    ):
+    async def test_without_ifexists_reports_error_for_invalid_actions(self, check, fetcher, config):
         """Without IfExists, key invalid for any action should produce error."""
 
         async def mock_validate(action, key, resources):
@@ -341,11 +341,7 @@ class TestIfExistsFalsePositiveSuppression:
             Effect="Allow",
             Action=["s3:CreateBucket", "s3:ListBucket"],
             Resource=["*"],
-            Condition={
-                "StringEquals": {
-                    "aws:RequestTag/owner": "${aws:PrincipalTag/owner}"
-                }
-            },
+            Condition={"StringEquals": {"aws:RequestTag/owner": "${aws:PrincipalTag/owner}"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
         # Should report error because without IfExists, key must be valid for all actions
@@ -372,9 +368,7 @@ class TestIfExistsFalsePositiveSuppression:
         assert any(i.issue_type == "invalid_condition_key" for i in issues)
 
     @pytest.mark.asyncio
-    async def test_ifexists_preserves_global_key_warnings(
-        self, check, fetcher, config
-    ):
+    async def test_ifexists_preserves_global_key_warnings(self, check, fetcher, config):
         """IfExists suppression should still report global key warnings."""
 
         async def mock_validate(action, key, resources):
@@ -394,13 +388,9 @@ class TestIfExistsFalsePositiveSuppression:
             Effect="Allow",
             Action=["s3:CreateBucket", "s3:ListBucket"],
             Resource=["*"],
-            Condition={
-                "StringEqualsIfExists": {"aws:PrincipalOrgID": "o-123456789"}
-            },
+            Condition={"StringEqualsIfExists": {"aws:PrincipalOrgID": "o-123456789"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
         # Should suppress invalid_condition_key but report warning
         assert not any(i.issue_type == "invalid_condition_key" for i in issues)
-        assert any(
-            i.issue_type == "global_condition_key_with_action_specific" for i in issues
-        )
+        assert any(i.issue_type == "global_condition_key_with_action_specific" for i in issues)

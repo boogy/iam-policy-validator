@@ -33,19 +33,14 @@ class TestOIDCAudienceRequired:
             Effect="Allow",
             Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/accounts.google.com"},
             Action=["sts:AssumeRoleWithWebIdentity"],
-            Condition={
-                "StringEquals": {
-                    "accounts.google.com:aud": "my-app-client-id"
-                }
-            },
+            Condition={"StringEquals": {"accounts.google.com:aud": "my-app-client-id"}},
         )
 
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Should not have missing condition issues
         assert not any(
-            issue.issue_type == "missing_required_condition_for_assume_action"
-            for issue in issues
+            issue.issue_type == "missing_required_condition_for_assume_action" for issue in issues
         )
 
     @pytest.mark.asyncio
@@ -62,8 +57,7 @@ class TestOIDCAudienceRequired:
 
         assert len(issues) > 0
         assert any(
-            issue.issue_type == "missing_required_condition_for_assume_action"
-            for issue in issues
+            issue.issue_type == "missing_required_condition_for_assume_action" for issue in issues
         )
         assert any(":aud" in issue.message for issue in issues)
 
@@ -72,12 +66,14 @@ class TestOIDCAudienceRequired:
         """Test GitHub Actions OIDC with aud passes."""
         statement = Statement(
             Effect="Allow",
-            Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+            Principal={
+                "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+            },
             Action=["sts:AssumeRoleWithWebIdentity"],
             Condition={
                 "StringEquals": {
                     "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-                    "token.actions.githubusercontent.com:sub": "repo:org/repo:*"
+                    "token.actions.githubusercontent.com:sub": "repo:org/repo:*",
                 }
             },
         )
@@ -86,8 +82,7 @@ class TestOIDCAudienceRequired:
 
         # Should not have missing condition issues
         assert not any(
-            issue.issue_type == "missing_required_condition_for_assume_action"
-            for issue in issues
+            issue.issue_type == "missing_required_condition_for_assume_action" for issue in issues
         )
 
     @pytest.mark.asyncio
@@ -95,7 +90,9 @@ class TestOIDCAudienceRequired:
         """Test Amazon Cognito OIDC with aud passes."""
         statement = Statement(
             Effect="Allow",
-            Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/cognito-identity.amazonaws.com"},
+            Principal={
+                "Federated": "arn:aws:iam::123456789012:oidc-provider/cognito-identity.amazonaws.com"
+            },
             Action=["sts:AssumeRoleWithWebIdentity"],
             Condition={
                 "StringEquals": {
@@ -108,8 +105,7 @@ class TestOIDCAudienceRequired:
 
         # Should not have missing condition issues
         assert not any(
-            issue.issue_type == "missing_required_condition_for_assume_action"
-            for issue in issues
+            issue.issue_type == "missing_required_condition_for_assume_action" for issue in issues
         )
 
     @pytest.mark.asyncio
@@ -117,7 +113,9 @@ class TestOIDCAudienceRequired:
         """Test that having sub condition but no aud still fails."""
         statement = Statement(
             Effect="Allow",
-            Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+            Principal={
+                "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+            },
             Action=["sts:AssumeRoleWithWebIdentity"],
             Condition={
                 "StringLike": {
@@ -131,7 +129,6 @@ class TestOIDCAudienceRequired:
 
         assert len(issues) > 0
         assert any(
-            issue.issue_type == "missing_required_condition_for_assume_action"
-            for issue in issues
+            issue.issue_type == "missing_required_condition_for_assume_action" for issue in issues
         )
         assert any(":aud" in issue.message for issue in issues)

@@ -121,9 +121,7 @@ async def test_invalid_actions_skipped(check, check_config, fetcher, action):
 @pytest.mark.asyncio
 async def test_error_message_quality(check, check_config, fetcher):
     """Error messages should include action, resource type, and suggestion."""
-    statement = Statement(
-        Effect="Allow", Action="s3:GetObject", Resource="arn:aws:s3:::my-bucket"
-    )
+    statement = Statement(Effect="Allow", Action="s3:GetObject", Resource="arn:aws:s3:::my-bucket")
     issues = await check.execute(statement, 0, fetcher, check_config)
     assert len(issues) == 1
     assert "s3:GetObject" in issues[0].message
@@ -140,7 +138,10 @@ async def test_error_message_quality(check, check_config, fetcher):
         ("iam:GetRole", "arn:aws:iam::${AWS::AccountId}:role/CloudFormationRole"),
         ("s3:GetObject", "arn:aws:s3:::${bucket_name}/*"),
         ("s3:GetObject", "arn:aws:s3:::my-bucket/${aws:username}/*"),
-        ("secretsmanager:GetSecretValue", "arn:aws:secretsmanager:us-east-1:${aws_account_id}:secret:my-secret-*"),
+        (
+            "secretsmanager:GetSecretValue",
+            "arn:aws:secretsmanager:us-east-1:${aws_account_id}:secret:my-secret-*",
+        ),
         ("iam:GetRole", "arn:aws:iam::${aws_account_id}:role/${environment}-*"),
         ("iam:GetRole", "arn:aws:iam::${var.my_custom_account}:role/MyRole"),
         ("s3:GetObject", "arn:aws:s3:::${data.s3_bucket.name}/*"),

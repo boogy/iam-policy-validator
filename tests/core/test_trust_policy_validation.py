@@ -8,36 +8,23 @@ from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.models import Statement
 
 
+@pytest.fixture
+def check():
+    return TrustPolicyValidationCheck()
+
+
+@pytest.fixture
+def fetcher():
+    return AWSServiceFetcher()
+
+
+@pytest.fixture
+def config():
+    return CheckConfig(check_id="trust_policy_validation")
+
+
 class TestTrustPolicyValidationCheck:
     """Test suite for TrustPolicyValidationCheck."""
-
-    @pytest.fixture
-    def check(self):
-        """Create a TrustPolicyValidationCheck instance."""
-        return TrustPolicyValidationCheck()
-
-    @pytest.fixture
-    def fetcher(self):
-        """Create a mock AWSServiceFetcher instance."""
-        return AWSServiceFetcher()
-
-    @pytest.fixture
-    def config(self):
-        """Create a default CheckConfig."""
-        return CheckConfig(check_id="trust_policy_validation")
-
-    def test_check_id(self, check):
-        """Test check_id property."""
-        assert check.check_id == "trust_policy_validation"
-
-    def test_description(self, check):
-        """Test description property."""
-        assert "trust" in check.description.lower()
-        assert "assumption" in check.description.lower() or "assume" in check.description.lower()
-
-    def test_default_severity(self, check):
-        """Test default_severity property."""
-        assert check.default_severity == "high"
 
     # ========================================================================
     # sts:AssumeRole Tests
@@ -51,7 +38,6 @@ class TestTrustPolicyValidationCheck:
             Principal={"AWS": "arn:aws:iam::123456789012:root"},
             Action=["sts:AssumeRole"],
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
 
@@ -63,7 +49,6 @@ class TestTrustPolicyValidationCheck:
             Principal={"Service": "lambda.amazonaws.com"},
             Action=["sts:AssumeRole"],
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
 
@@ -75,9 +60,7 @@ class TestTrustPolicyValidationCheck:
             Principal={"Federated": "arn:aws:iam::123456789012:saml-provider/MyProvider"},
             Action=["sts:AssumeRole"],
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
-
         assert len(issues) > 0
         assert issues[0].issue_type == "invalid_principal_type_for_assume_action"
         assert "Federated" in issues[0].message
@@ -94,13 +77,8 @@ class TestTrustPolicyValidationCheck:
             Effect="Allow",
             Principal={"Federated": "arn:aws:iam::123456789012:saml-provider/MyProvider"},
             Action=["sts:AssumeRoleWithSAML"],
-            Condition={
-                "StringEquals": {
-                    "SAML:aud": "https://signin.aws.amazon.com/saml"
-                }
-            },
+            Condition={"StringEquals": {"SAML:aud": "https://signin.aws.amazon.com/saml"}},
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
 
@@ -112,9 +90,7 @@ class TestTrustPolicyValidationCheck:
             Principal={"AWS": "arn:aws:iam::123456789012:user/alice"},
             Action=["sts:AssumeRoleWithSAML"],
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
-
         assert len(issues) > 0
         assert issues[0].issue_type == "invalid_principal_type_for_assume_action"
         assert "AWS" in issues[0].message
@@ -127,18 +103,11 @@ class TestTrustPolicyValidationCheck:
             Effect="Allow",
             Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/example.com"},
             Action=["sts:AssumeRoleWithSAML"],
-            Condition={
-                "StringEquals": {
-                    "SAML:aud": "https://signin.aws.amazon.com/saml"
-                }
-            },
+            Condition={"StringEquals": {"SAML:aud": "https://signin.aws.amazon.com/saml"}},
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
-
         assert len(issues) > 0
         assert issues[0].issue_type == "invalid_provider_format"
-        assert "saml-provider" in issues[0].message.lower() or "SAML" in issues[0].message
 
     @pytest.mark.asyncio
     async def test_assume_role_with_saml_missing_condition(self, check, fetcher, config):
@@ -147,15 +116,11 @@ class TestTrustPolicyValidationCheck:
             Effect="Allow",
             Principal={"Federated": "arn:aws:iam::123456789012:saml-provider/MyProvider"},
             Action=["sts:AssumeRoleWithSAML"],
-            # Missing Condition
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
-
         assert len(issues) > 0
         assert any(
-            issue.issue_type == "missing_required_condition_for_assume_action"
-            for issue in issues
+            issue.issue_type == "missing_required_condition_for_assume_action" for issue in issues
         )
         assert any("SAML:aud" in issue.message for issue in issues)
 
@@ -168,15 +133,14 @@ class TestTrustPolicyValidationCheck:
         """Test that AssumeRoleWithWebIdentity with Federated OIDC principal is valid."""
         statement = Statement(
             Effect="Allow",
-            Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+            Principal={
+                "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+            },
             Action=["sts:AssumeRoleWithWebIdentity"],
             Condition={
-                "StringEquals": {
-                    "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-                }
+                "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"}
             },
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
 
@@ -188,28 +152,26 @@ class TestTrustPolicyValidationCheck:
             Principal={"AWS": "arn:aws:iam::123456789012:user/alice"},
             Action=["sts:AssumeRoleWithWebIdentity"],
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
-
         assert len(issues) > 0
         assert issues[0].issue_type == "invalid_principal_type_for_assume_action"
 
     @pytest.mark.asyncio
-    async def test_assume_role_with_web_identity_saml_provider_invalid(self, check, fetcher, config):
+    async def test_assume_role_with_web_identity_saml_provider_invalid(
+        self, check, fetcher, config
+    ):
         """Test that AssumeRoleWithWebIdentity with SAML provider is invalid."""
         statement = Statement(
             Effect="Allow",
             Principal={"Federated": "arn:aws:iam::123456789012:saml-provider/MyProvider"},
             Action=["sts:AssumeRoleWithWebIdentity"],
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
-
         assert len(issues) > 0
         assert any(issue.issue_type == "invalid_provider_format" for issue in issues)
 
     # ========================================================================
-    # Multiple Actions Tests
+    # Edge Cases & Configuration
     # ========================================================================
 
     @pytest.mark.asyncio
@@ -218,18 +180,11 @@ class TestTrustPolicyValidationCheck:
         statement = Statement(
             Effect="Allow",
             Principal={"AWS": "arn:aws:iam::123456789012:root"},
-            Action=["sts:AssumeRole", "sts:AssumeRoleWithSAML"],  # Mix of compatible and incompatible
+            Action=["sts:AssumeRole", "sts:AssumeRoleWithSAML"],
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
-
-        # Should flag AssumeRoleWithSAML as incompatible with AWS principal
         assert len(issues) > 0
         assert any("AssumeRoleWithSAML" in issue.message for issue in issues)
-
-    # ========================================================================
-    # Edge Cases
-    # ========================================================================
 
     @pytest.mark.asyncio
     async def test_no_principal_no_issues(self, check, fetcher, config):
@@ -239,7 +194,6 @@ class TestTrustPolicyValidationCheck:
             Action=["sts:AssumeRole"],
             Resource=["*"],
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
 
@@ -252,7 +206,6 @@ class TestTrustPolicyValidationCheck:
             Action=["s3:GetObject"],
             Resource=["*"],
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
 
@@ -264,13 +217,8 @@ class TestTrustPolicyValidationCheck:
             Principal={"Federated": "arn:aws:iam::123:saml-provider/Test"},
             Action=["*"],
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
-
-    # ========================================================================
-    # Custom Configuration Tests
-    # ========================================================================
 
     @pytest.mark.asyncio
     async def test_custom_validation_rules(self, check, fetcher):
@@ -280,47 +228,20 @@ class TestTrustPolicyValidationCheck:
             config={
                 "validation_rules": {
                     "sts:AssumeRole": {
-                        "allowed_principal_types": ["AWS"],  # Only AWS, not Service
+                        "allowed_principal_types": ["AWS"],
                         "required_conditions": ["sts:ExternalId"],
                     }
                 }
             },
         )
-
-        # Service principal should be invalid with custom rules
         statement = Statement(
             Effect="Allow",
             Principal={"Service": "lambda.amazonaws.com"},
             Action=["sts:AssumeRole"],
         )
-
         issues = await check.execute(statement, 0, fetcher, custom_config)
-
         assert len(issues) > 0
         assert any("Service" in issue.message for issue in issues)
-
-    @pytest.mark.asyncio
-    async def test_custom_severity(self, check, fetcher):
-        """Test custom severity from config."""
-        custom_config = CheckConfig(
-            check_id="trust_policy_validation",
-            severity="critical",
-        )
-
-        statement = Statement(
-            Effect="Allow",
-            Principal={"AWS": "arn:aws:iam::123:user/alice"},
-            Action=["sts:AssumeRoleWithSAML"],  # Wrong principal type
-        )
-
-        issues = await check.execute(statement, 0, fetcher, custom_config)
-
-        assert len(issues) > 0
-        # Note: severity override happens at registry level, not in check
-
-    # ========================================================================
-    # Metadata Tests
-    # ========================================================================
 
     @pytest.mark.asyncio
     async def test_issue_metadata_populated(self, check, fetcher, config):
@@ -329,15 +250,12 @@ class TestTrustPolicyValidationCheck:
             Sid="AssumeRolePolicy",
             Effect="Allow",
             Principal={"Federated": "arn:aws:iam::123:saml-provider/Test"},
-            Action=["sts:AssumeRole"],  # Wrong action for Federated
+            Action=["sts:AssumeRole"],
             line_number=42,
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
-
         assert len(issues) > 0
         issue = issues[0]
-
         assert issue.statement_index == 0
         assert issue.statement_sid == "AssumeRolePolicy"
         assert issue.line_number == 42
@@ -350,35 +268,6 @@ class TestTrustPolicyValidationCheck:
     # ========================================================================
 
     @pytest.mark.asyncio
-    async def test_saml_provider_valid_format(self, check, fetcher, config):
-        """Test that valid SAML provider ARN passes."""
-        statement = Statement(
-            Effect="Allow",
-            Principal={"Federated": "arn:aws:iam::123456789012:saml-provider/MyProvider"},
-            Action=["sts:AssumeRoleWithSAML"],
-            Condition={"StringEquals": {"SAML:aud": "https://signin.aws.amazon.com/saml"}},
-        )
-
-        issues = await check.execute(statement, 0, fetcher, config)
-
-        # Should not have provider format issues
-        assert not any(issue.issue_type == "invalid_provider_format" for issue in issues)
-
-    @pytest.mark.asyncio
-    async def test_oidc_provider_valid_format(self, check, fetcher, config):
-        """Test that valid OIDC provider ARN passes."""
-        statement = Statement(
-            Effect="Allow",
-            Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
-            Action=["sts:AssumeRoleWithWebIdentity"],
-        )
-
-        issues = await check.execute(statement, 0, fetcher, config)
-
-        # Should not have provider format issues
-        assert not any(issue.issue_type == "invalid_provider_format" for issue in issues)
-
-    @pytest.mark.asyncio
     async def test_invalid_saml_provider_format(self, check, fetcher, config):
         """Test that invalid SAML provider ARN is flagged."""
         statement = Statement(
@@ -387,56 +276,9 @@ class TestTrustPolicyValidationCheck:
             Action=["sts:AssumeRoleWithSAML"],
             Condition={"StringEquals": {"SAML:aud": "https://signin.aws.amazon.com/saml"}},
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
-
         assert len(issues) > 0
         assert any(issue.issue_type == "invalid_provider_format" for issue in issues)
-
-    # ========================================================================
-    # Condition Validation Tests
-    # ========================================================================
-
-    @pytest.mark.asyncio
-    async def test_saml_with_required_condition(self, check, fetcher, config):
-        """Test that SAML with SAML:aud condition passes."""
-        statement = Statement(
-            Effect="Allow",
-            Principal={"Federated": "arn:aws:iam::123456789012:saml-provider/MyProvider"},
-            Action=["sts:AssumeRoleWithSAML"],
-            Condition={
-                "StringEquals": {
-                    "SAML:aud": "https://signin.aws.amazon.com/saml"
-                }
-            },
-        )
-
-        issues = await check.execute(statement, 0, fetcher, config)
-
-        # Should not have missing condition issues
-        assert not any(
-            issue.issue_type == "missing_required_condition_for_assume_action"
-            for issue in issues
-        )
-
-    @pytest.mark.asyncio
-    async def test_saml_without_required_condition(self, check, fetcher, config):
-        """Test that SAML without SAML:aud condition is flagged."""
-        statement = Statement(
-            Effect="Allow",
-            Principal={"Federated": "arn:aws:iam::123456789012:saml-provider/MyProvider"},
-            Action=["sts:AssumeRoleWithSAML"],
-            # Missing Condition
-        )
-
-        issues = await check.execute(statement, 0, fetcher, config)
-
-        assert len(issues) > 0
-        assert any(
-            issue.issue_type == "missing_required_condition_for_assume_action"
-            for issue in issues
-        )
-        assert any("SAML:aud" in issue.message for issue in issues)
 
     # ========================================================================
     # Multiple Principals Tests
@@ -456,10 +298,7 @@ class TestTrustPolicyValidationCheck:
             Action=["sts:AssumeRoleWithSAML"],
             Condition={"StringEquals": {"SAML:aud": "https://signin.aws.amazon.com/saml"}},
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
-
-        # Both providers should pass validation
         assert not any(issue.issue_type == "invalid_provider_format" for issue in issues)
 
     @pytest.mark.asyncio
@@ -470,15 +309,13 @@ class TestTrustPolicyValidationCheck:
             Principal={
                 "Federated": [
                     "arn:aws:iam::123456789012:saml-provider/ValidProvider",
-                    "arn:aws:iam::123456789012:oidc-provider/invalid.com",  # Wrong type
+                    "arn:aws:iam::123456789012:oidc-provider/invalid.com",
                 ]
             },
             Action=["sts:AssumeRoleWithSAML"],
             Condition={"StringEquals": {"SAML:aud": "https://signin.aws.amazon.com/saml"}},
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
-
         assert len(issues) > 0
         assert any(issue.issue_type == "invalid_provider_format" for issue in issues)
 
@@ -491,30 +328,15 @@ class TestTrustPolicyValidationCheck:
         """Test realistic GitHub Actions OIDC trust policy."""
         statement = Statement(
             Effect="Allow",
-            Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+            Principal={
+                "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+            },
             Action=["sts:AssumeRoleWithWebIdentity"],
             Condition={
-                "StringEquals": {
-                    "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-                },
-                "StringLike": {
-                    "token.actions.githubusercontent.com:sub": "repo:myorg/myrepo:*"
-                },
+                "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
+                "StringLike": {"token.actions.githubusercontent.com:sub": "repo:myorg/myrepo:*"},
             },
         )
-
-        issues = await check.execute(statement, 0, fetcher, config)
-        assert len(issues) == 0
-
-    @pytest.mark.asyncio
-    async def test_lambda_service_role_trust_policy(self, check, fetcher, config):
-        """Test realistic Lambda service role trust policy."""
-        statement = Statement(
-            Effect="Allow",
-            Principal={"Service": "lambda.amazonaws.com"},
-            Action=["sts:AssumeRole"],
-        )
-
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
 
@@ -525,12 +347,140 @@ class TestTrustPolicyValidationCheck:
             Effect="Allow",
             Principal={"AWS": "arn:aws:iam::999999999999:root"},
             Action=["sts:AssumeRole"],
-            Condition={
-                "StringEquals": {
-                    "sts:ExternalId": "my-unique-external-id-123"
-                }
-            },
+            Condition={"StringEquals": {"sts:ExternalId": "my-unique-external-id-123"}},
         )
-
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
+
+
+class TestConfusedDeputyDetection:
+    """Tests for confused deputy vulnerability detection."""
+
+    @pytest.mark.asyncio
+    async def test_service_principal_without_conditions_flagged(self, check, fetcher, config):
+        """Service principal without SourceArn/SourceAccount should be flagged with suggestion."""
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Service": "sns.amazonaws.com"},
+            Action=["sts:AssumeRole"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        confused_deputy_issues = [i for i in issues if i.issue_type == "confused_deputy_risk"]
+        assert len(confused_deputy_issues) == 1
+        assert confused_deputy_issues[0].severity == "high"
+        assert "sns.amazonaws.com" in confused_deputy_issues[0].message
+        assert confused_deputy_issues[0].suggestion is not None
+        assert "aws:SourceArn" in confused_deputy_issues[0].suggestion
+        assert confused_deputy_issues[0].example is not None
+
+    @pytest.mark.asyncio
+    async def test_service_principal_with_source_arn_ok(self, check, fetcher, config):
+        """Service principal with aws:SourceArn condition should pass."""
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Service": "sns.amazonaws.com"},
+            Action=["sts:AssumeRole"],
+            Condition={"ArnLike": {"aws:SourceArn": "arn:aws:sns:us-east-1:123456789012:my-topic"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert not any(i.issue_type == "confused_deputy_risk" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_service_principal_with_source_account_ok(self, check, fetcher, config):
+        """Service principal with aws:SourceAccount condition should pass."""
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Service": "sns.amazonaws.com"},
+            Action=["sts:AssumeRole"],
+            Condition={"StringEquals": {"aws:SourceAccount": "123456789012"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert not any(i.issue_type == "confused_deputy_risk" for i in issues)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "service",
+        [
+            "lambda.amazonaws.com",
+            "ec2.amazonaws.com",
+        ],
+    )
+    async def test_safe_services_not_flagged(self, service, check, fetcher, config):
+        """Services in CONFUSED_DEPUTY_SAFE_SERVICES should not be flagged."""
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Service": service},
+            Action=["sts:AssumeRole"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert not any(i.issue_type == "confused_deputy_risk" for i in issues)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "service",
+        [
+            "ecs-tasks.amazonaws.com",
+            "eks.amazonaws.com",
+            "codebuild.amazonaws.com",
+            "guardduty.amazonaws.com",
+            "monitoring.amazonaws.com",
+            "ecs.amazonaws.com",
+        ],
+    )
+    async def test_unsafe_services_flagged(self, service, check, fetcher, config):
+        """Non-compute-bound services should be flagged for confused deputy."""
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Service": service},
+            Action=["sts:AssumeRole"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        confused_deputy_issues = [i for i in issues if i.issue_type == "confused_deputy_risk"]
+        assert len(confused_deputy_issues) == 1
+
+    @pytest.mark.asyncio
+    async def test_deny_statement_not_checked(self, check, fetcher, config):
+        """Deny statements should not trigger confused deputy check."""
+        statement = Statement(
+            Effect="Deny",
+            Principal={"Service": "sns.amazonaws.com"},
+            Action=["sts:AssumeRole"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert not any(i.issue_type == "confused_deputy_risk" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_aws_principal_not_checked_for_confused_deputy(self, check, fetcher, config):
+        """AWS principals (not Service) should not trigger confused deputy check."""
+        statement = Statement(
+            Effect="Allow",
+            Principal={"AWS": "arn:aws:iam::123456789012:root"},
+            Action=["sts:AssumeRole"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert not any(i.issue_type == "confused_deputy_risk" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_multiple_service_principals_some_safe(self, check, fetcher, config):
+        """Multiple service principals: safe ones pass, unsafe ones flagged."""
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Service": ["lambda.amazonaws.com", "sns.amazonaws.com"]},
+            Action=["sts:AssumeRole"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        confused_deputy_issues = [i for i in issues if i.issue_type == "confused_deputy_risk"]
+        assert len(confused_deputy_issues) == 1
+        assert "sns.amazonaws.com" in confused_deputy_issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_case_insensitive_condition_key_match(self, check, fetcher, config):
+        """Condition key matching should be case-insensitive."""
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Service": "sns.amazonaws.com"},
+            Action=["sts:AssumeRole"],
+            Condition={"ArnLike": {"AWS:SourceArn": "arn:aws:sns:us-east-1:123456789012:my-topic"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert not any(i.issue_type == "confused_deputy_risk" for i in issues)

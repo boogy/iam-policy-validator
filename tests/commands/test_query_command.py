@@ -200,9 +200,7 @@ class TestQueryCommand:
         self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
     ) -> None:
         """Test querying all actions for a service."""
-        with patch(
-            "iam_validator.commands.query.AWSServiceFetcher"
-        ) as mock_fetcher_class:
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
@@ -226,9 +224,7 @@ class TestQueryCommand:
         self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
     ) -> None:
         """Test querying specific action details."""
-        with patch(
-            "iam_validator.commands.query.AWSServiceFetcher"
-        ) as mock_fetcher_class:
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
@@ -262,9 +258,7 @@ class TestQueryCommand:
         self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
     ) -> None:
         """Test filtering actions by access level."""
-        with patch(
-            "iam_validator.commands.query.AWSServiceFetcher"
-        ) as mock_fetcher_class:
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
@@ -295,9 +289,7 @@ class TestQueryCommand:
         self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
     ) -> None:
         """Test filtering actions that support wildcard resource."""
-        with patch(
-            "iam_validator.commands.query.AWSServiceFetcher"
-        ) as mock_fetcher_class:
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
@@ -328,9 +320,7 @@ class TestQueryCommand:
         self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
     ) -> None:
         """Test querying all ARN formats."""
-        with patch(
-            "iam_validator.commands.query.AWSServiceFetcher"
-        ) as mock_fetcher_class:
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
@@ -358,9 +348,7 @@ class TestQueryCommand:
         self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
     ) -> None:
         """Test querying specific condition key."""
-        with patch(
-            "iam_validator.commands.query.AWSServiceFetcher"
-        ) as mock_fetcher_class:
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
@@ -386,9 +374,7 @@ class TestQueryCommand:
     @pytest.mark.asyncio
     async def test_query_invalid_service(self, query_cmd: QueryCommand) -> None:
         """Test querying non-existent service."""
-        with patch(
-            "iam_validator.commands.query.AWSServiceFetcher"
-        ) as mock_fetcher_class:
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(
                 side_effect=ValueError("Service not found")
@@ -408,14 +394,13 @@ class TestQueryCommand:
 
             result = await query_cmd.execute(args)
             assert result == 1
+
     @pytest.mark.asyncio
     async def test_query_action_text_format(
         self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
     ) -> None:
         """Test text format output for actions."""
-        with patch(
-            "iam_validator.commands.query.AWSServiceFetcher"
-        ) as mock_fetcher_class:
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
@@ -446,9 +431,7 @@ class TestQueryCommand:
         self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
     ) -> None:
         """Test text format output for specific action."""
-        with patch(
-            "iam_validator.commands.query.AWSServiceFetcher"
-        ) as mock_fetcher_class:
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
@@ -479,9 +462,7 @@ class TestQueryCommand:
         self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
     ) -> None:
         """Test --show-condition-keys filter."""
-        with patch(
-            "iam_validator.commands.query.AWSServiceFetcher"
-        ) as mock_fetcher_class:
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
@@ -508,9 +489,7 @@ class TestQueryCommand:
         self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
     ) -> None:
         """Test --show-resource-types filter."""
-        with patch(
-            "iam_validator.commands.query.AWSServiceFetcher"
-        ) as mock_fetcher_class:
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
@@ -537,9 +516,7 @@ class TestQueryCommand:
         self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
     ) -> None:
         """Test field filters with text output format."""
-        with patch(
-            "iam_validator.commands.query.AWSServiceFetcher"
-        ) as mock_fetcher_class:
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
             mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=mock_fetcher)
@@ -571,9 +548,7 @@ class TestQueryCommand:
         self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
     ) -> None:
         """Test that duplicate actions are deduplicated in results."""
-        with patch(
-            "iam_validator.commands.query.AWSServiceFetcher"
-        ) as mock_fetcher_class:
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
             # expand_wildcard_action returns the same action as the exact query
@@ -605,9 +580,7 @@ class TestQueryCommand:
         self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
     ) -> None:
         """Test that identical wildcard patterns don't produce duplicates."""
-        with patch(
-            "iam_validator.commands.query.AWSServiceFetcher"
-        ) as mock_fetcher_class:
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
             mock_fetcher = AsyncMock()
             mock_fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
             mock_fetcher.expand_wildcard_action = AsyncMock(

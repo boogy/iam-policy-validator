@@ -61,9 +61,7 @@ class TestSetOperatorValidationCheck:
         assert len(issues) == 0
 
     @pytest.mark.asyncio
-    async def test_valid_forallvalues_with_multivalued_key_and_null_check(
-        self, check, config
-    ):
+    async def test_valid_forallvalues_with_multivalued_key_and_null_check(self, check, config):
         """Test valid ForAllValues usage with multivalued key and Null check."""
         statement = Statement(
             effect="Allow",
@@ -102,7 +100,9 @@ class TestSetOperatorValidationCheck:
         assert "forallvalues_allow_without_null_check" in issue_types
 
         # Check the single-valued key error
-        single_valued_issue = [i for i in issues if i.issue_type == "set_operator_on_single_valued_key"][0]
+        single_valued_issue = [
+            i for i in issues if i.issue_type == "set_operator_on_single_valued_key"
+        ][0]
         assert single_valued_issue.severity == "error"
         assert "single-valued" in single_valued_issue.message.lower()
         assert "aws:SourceIp" in single_valued_issue.message
@@ -161,10 +161,7 @@ class TestSetOperatorValidationCheck:
         issues = await check.execute(statement, 0, None, config)
         # Should only warn about single-valued key usage if applicable
         # ForAllValues with Deny doesn't need Null check warning
-        assert all(
-            issue.issue_type != "forallvalues_allow_without_null_check"
-            for issue in issues
-        )
+        assert all(issue.issue_type != "forallvalues_allow_without_null_check" for issue in issues)
 
     @pytest.mark.asyncio
     async def test_foranyvalue_deny_without_null_check(self, check, config):
@@ -201,9 +198,7 @@ class TestSetOperatorValidationCheck:
         )
         issues = await check.execute(statement, 0, None, config)
         # Should not warn about Null check for ForAnyValue with Allow
-        assert all(
-            issue.issue_type != "foranyvalue_deny_without_null_check" for issue in issues
-        )
+        assert all(issue.issue_type != "foranyvalue_deny_without_null_check" for issue in issues)
 
     @pytest.mark.asyncio
     async def test_multiple_set_operators_multiple_issues(self, check, config):
@@ -262,9 +257,7 @@ class TestSetOperatorValidationCheck:
         )
         issues = await check.execute(statement, 0, None, config)
         # Should not generate set_operator_on_single_valued_key error
-        assert all(
-            issue.issue_type != "set_operator_on_single_valued_key" for issue in issues
-        )
+        assert all(issue.issue_type != "set_operator_on_single_valued_key" for issue in issues)
 
     @pytest.mark.asyncio
     async def test_statement_with_sid(self, check, config):
@@ -322,9 +315,7 @@ class TestSetOperatorValidationCheck:
     @pytest.mark.asyncio
     async def test_custom_severity(self, check):
         """Test custom severity from config."""
-        config = CheckConfig(
-            check_id="set_operator_validation", enabled=True, severity="warning"
-        )
+        config = CheckConfig(check_id="set_operator_validation", enabled=True, severity="warning")
         statement = Statement(
             effect="Allow",
             action=["s3:GetObject"],
@@ -360,10 +351,7 @@ class TestSetOperatorValidationCheck:
         # Null check tracks presence of key, not value
         # Current implementation just checks if Null condition exists for the key
         # So this should NOT warn (limitation of current implementation)
-        assert all(
-            issue.issue_type != "forallvalues_allow_without_null_check"
-            for issue in issues
-        )
+        assert all(issue.issue_type != "forallvalues_allow_without_null_check" for issue in issues)
 
     @pytest.mark.asyncio
     async def test_condition_key_in_issue(self, check, config):
@@ -455,6 +443,4 @@ class TestForAllValuesIfExistsCompound:
             },
         )
         issues = await check.execute(statement, 0, None, config)
-        assert not any(
-            i.issue_type == "forallvalues_allow_without_null_check" for i in issues
-        )
+        assert not any(i.issue_type == "forallvalues_allow_without_null_check" for i in issues)
