@@ -240,9 +240,7 @@ class TestValidatorWildcardUnit:
         }
 
         validator = ServiceValidator()
-        result = await validator.validate_condition_key(
-            "s3:Get*", "s3:prefix", service
-        )
+        result = await validator.validate_condition_key("s3:Get*", "s3:prefix", service)
         assert result.is_valid is True
 
     @pytest.mark.asyncio
@@ -266,9 +264,7 @@ class TestValidatorWildcardUnit:
         service.actions = {"TagRole": action_detail}
 
         validator = ServiceValidator()
-        result = await validator.validate_condition_key(
-            "iam:Tag*", "aws:ResourceTag/owner", service
-        )
+        result = await validator.validate_condition_key("iam:Tag*", "aws:ResourceTag/owner", service)
         assert result.is_valid is True
 
     @pytest.mark.asyncio
@@ -284,7 +280,5 @@ class TestValidatorWildcardUnit:
         service.resources = {}
 
         validator = ServiceValidator()
-        result = await validator.validate_condition_key(
-            "iam:Zzzzz*", "some:key", service
-        )
+        result = await validator.validate_condition_key("iam:Zzzzz*", "some:key", service)
         assert result.is_valid is False
