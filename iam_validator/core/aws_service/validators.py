@@ -267,141 +267,42 @@ class ServiceValidator:
                         return ConditionKeyValidationResult(is_valid=True)
                     # For RequestTag/ResourceTag, continue to check action/resource level
 
-            # Check action-specific condition keys
-            if action_name in service_detail.actions:
-                action_detail = service_detail.actions[action_name]
-                if action_detail.action_condition_keys and condition_key_in_list(
-                    condition_key, action_detail.action_condition_keys
-                ):
+            # Resolve actions to check: expand wildcards, or use exact action
+            if self._parser.is_wildcard_action(action_name):
+                available_actions = list(service_detail.actions.keys())
+                has_matches, matched_actions = self._parser.match_wildcard_action(action_name, available_actions)
+                actions_to_check = matched_actions if has_matches else []
+            elif action_name in service_detail.actions:
+                actions_to_check = [action_name]
+            else:
+                actions_to_check = []
+
+            # Check condition key against all resolved actions
+            any_has_condition_keys = False
+            for check_action_name in actions_to_check:
+                action_detail = service_detail.actions[check_action_name]
+
+                if action_detail.action_condition_keys is not None:
+                    any_has_condition_keys = True
+
+                if self._action_supports_condition_key(action_detail, condition_key, service_detail):
                     return ConditionKeyValidationResult(is_valid=True)
 
-                # Check resource-specific condition keys
-                # Get resource types required by this action
-                if action_detail.resources:
-                    for res_req in action_detail.resources:
-                        resource_name = res_req.get("Name", "")
-                        if not resource_name:
-                            continue
-
-                        # Look up resource type definition
-                        resource_type = service_detail.resources.get(resource_name)
-                        if resource_type and resource_type.condition_keys:
-                            if condition_key_in_list(condition_key, resource_type.condition_keys):
-                                return ConditionKeyValidationResult(is_valid=True)
-
-                # If it's a global key but the action has specific condition keys defined,
-                # AWS allows it but the key may not be available in every request context
-                if is_global_key and action_detail.action_condition_keys is not None:
-                    warning_msg = (
-                        f"Global condition key `{condition_key}` is used with action `{action}`. "
-                        f"While global condition keys can be used across all AWS services, "
-                        f"the key may not be available in every request context. "
-                        f"Verify that `{condition_key}` is available for this specific action's request context. "
-                        f"Consider using `*IfExists` operators (e.g., `StringEqualsIfExists`) if the key might be missing."
-                    )
-                    return ConditionKeyValidationResult(is_valid=True, warning_message=warning_msg)
-
-            # If it's a global key and action doesn't define specific keys, allow it
+            # Handle global keys
             if is_global_key:
+                if any_has_condition_keys:
+                    return ConditionKeyValidationResult(
+                        is_valid=True,
+                        warning_message=self._global_key_warning(condition_key, action),
+                    )
                 return ConditionKeyValidationResult(is_valid=True)
 
-            # If we reach here, the condition key was not found in any valid location
-            # Check if it's an aws: prefixed key that's not global - provide specific error
-            if condition_key.startswith("aws:"):
-                # Special handling for aws:RequestTag and aws:ResourceTag patterns
-                if condition_key.startswith("aws:RequestTag/"):
-                    error_msg = (
-                        f"Condition key `{condition_key}` is not supported by action `{action}`. "
-                        f"The `aws:RequestTag/${{TagKey}}` condition is only supported by actions that "
-                        f"create or modify resources with tags. This action does not support tag operations."
-                    )
-                elif condition_key.startswith("aws:ResourceTag/"):
-                    error_msg = (
-                        f"Condition key `{condition_key}` is not supported by the resources used by action `{action}`. "
-                        f"The `aws:ResourceTag/${{TagKey}}` condition is only supported by resources that have tags."
-                    )
-                else:
-                    error_msg = f"Invalid AWS condition key: `{condition_key}`. This key is not a valid global condition key and is not supported by action `{action}`."
-            else:
-                # Short error message for non-aws: keys
-                error_msg = f"Condition key `{condition_key}` is not valid for action `{action}`"
+            # Condition key not valid for any resolved action
+            if actions_to_check:
+                return self._build_condition_key_error(action, condition_key, actions_to_check, service_detail)
 
-            # Collect valid condition keys for this action
-            valid_keys: set[str] = set()
-
-            # Add service-level condition keys
-            if service_detail.condition_keys:
-                if isinstance(service_detail.condition_keys, dict):
-                    valid_keys.update(service_detail.condition_keys.keys())
-                elif isinstance(service_detail.condition_keys, list):
-                    valid_keys.update(service_detail.condition_keys)
-
-            # Add action-specific condition keys
-            if action_name in service_detail.actions:
-                action_detail = service_detail.actions[action_name]
-                if action_detail.action_condition_keys:
-                    if isinstance(action_detail.action_condition_keys, dict):
-                        valid_keys.update(action_detail.action_condition_keys.keys())
-                    elif isinstance(action_detail.action_condition_keys, list):
-                        valid_keys.update(action_detail.action_condition_keys)
-
-                # Add resource-specific condition keys
-                if action_detail.resources:
-                    for res_req in action_detail.resources:
-                        resource_name = res_req.get("Name", "")
-                        if resource_name:
-                            resource_type = service_detail.resources.get(resource_name)
-                            if resource_type and resource_type.condition_keys:
-                                if isinstance(resource_type.condition_keys, dict):
-                                    valid_keys.update(resource_type.condition_keys.keys())
-                                elif isinstance(resource_type.condition_keys, list):
-                                    valid_keys.update(resource_type.condition_keys)
-
-            # Build detailed suggestion with valid keys (goes in collapsible section)
-            suggestion_parts = []
-
-            if valid_keys:
-                # Sort and limit to first 10 keys for readability
-                sorted_keys = sorted(valid_keys)
-                suggestion_parts.append("**Valid condition keys for this action:**")
-                if len(sorted_keys) <= 10:
-                    for key in sorted_keys:
-                        suggestion_parts.append(f"- `{key}`")
-                else:
-                    for key in sorted_keys[:10]:
-                        suggestion_parts.append(f"- `{key}`")
-                    suggestion_parts.append(f"- ... and {len(sorted_keys) - 10} more")
-
-                suggestion_parts.append("")
-                suggestion_parts.append(
-                    "**Global condition keys** (e.g., `aws:ResourceOrgID`, `aws:RequestedRegion`, `aws:SourceIp`, `aws:SourceVpce`) "
-                    "can also be used with any AWS action"
-                )
-            else:
-                # No action-specific keys - mention global keys
-                suggestion_parts.append(
-                    "This action does not have specific condition keys defined.\n\n"
-                    "However, you can use **global condition keys** such as:\n"
-                    "- `aws:RequestedRegion`\n"
-                    "- `aws:SourceIp`\n"
-                    "- `aws:SourceVpce`\n"
-                    "- `aws:ResourceOrgID`\n"
-                    "- `aws:PrincipalOrgID`\n"
-                    "- `aws:SourceAccount`\n"
-                    "- `aws:PrincipalAccount`\n"
-                    "- `aws:CurrentTime`\n"
-                    "- `aws:ResourceAccount`\n"
-                    "- `aws:PrincipalArn`\n"
-                    "- And many others"
-                )
-
-            suggestion = "\n".join(suggestion_parts)
-
-            return ConditionKeyValidationResult(
-                is_valid=False,
-                error_message=error_msg,
-                suggestion=suggestion,
-            )
+            # No actions resolved (unknown exact action or wildcard matched nothing)
+            return self._build_condition_key_error(action, condition_key, [action_name], service_detail)
 
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error(f"Error validating condition key {condition_key} for {action}: {e}")
@@ -409,6 +310,149 @@ class ServiceValidator:
                 is_valid=False,
                 error_message=f"Failed to validate condition key: {e!s}",
             )
+
+    @staticmethod
+    def _action_supports_condition_key(
+        action_detail: Any,
+        condition_key: str,
+        service_detail: ServiceDetail,
+    ) -> bool:
+        """Check if a single action supports a condition key (action-level or resource-level)."""
+        if action_detail.action_condition_keys and condition_key_in_list(
+            condition_key, action_detail.action_condition_keys
+        ):
+            return True
+
+        if action_detail.resources:
+            for res_req in action_detail.resources:
+                resource_name = res_req.get("Name", "")
+                if resource_name:
+                    resource_type = service_detail.resources.get(resource_name)
+                    if resource_type and resource_type.condition_keys:
+                        if condition_key_in_list(condition_key, resource_type.condition_keys):
+                            return True
+
+        return False
+
+    @staticmethod
+    def _global_key_warning(condition_key: str, action: str) -> str:
+        """Build warning message for global condition key usage with action-specific context."""
+        return (
+            f"Global condition key `{condition_key}` is used with action `{action}`. "
+            f"While global condition keys can be used across all AWS services, "
+            f"the key may not be available in every request context. "
+            f"Verify that `{condition_key}` is available for this specific action's request context. "
+            f"Consider using `*IfExists` operators (e.g., `StringEqualsIfExists`) if the key might be missing."
+        )
+
+    def _build_condition_key_error(
+        self,
+        action: str,
+        condition_key: str,
+        action_names: list[str],
+        service_detail: ServiceDetail,
+    ) -> ConditionKeyValidationResult:
+        """Build error result for an invalid condition key."""
+        if condition_key.startswith("aws:RequestTag/"):
+            error_msg = (
+                f"Condition key `{condition_key}` is not supported by action `{action}`. "
+                f"The `aws:RequestTag/${{TagKey}}` condition is only supported by actions that "
+                f"create or modify resources with tags. This action does not support tag operations."
+            )
+        elif condition_key.startswith("aws:ResourceTag/"):
+            error_msg = (
+                f"Condition key `{condition_key}` is not supported by the resources used by action `{action}`. "
+                f"The `aws:ResourceTag/${{TagKey}}` condition is only supported by resources that have tags."
+            )
+        elif condition_key.startswith("aws:"):
+            error_msg = (
+                f"Invalid AWS condition key: `{condition_key}`. This key is not a valid global "
+                f"condition key and is not supported by action `{action}`."
+            )
+        else:
+            error_msg = f"Condition key `{condition_key}` is not valid for action `{action}`"
+
+        valid_keys = self._collect_valid_keys(action_names, service_detail)
+        suggestion = self._build_suggestion(valid_keys)
+
+        return ConditionKeyValidationResult(
+            is_valid=False,
+            error_message=error_msg,
+            suggestion=suggestion,
+        )
+
+    @staticmethod
+    def _collect_valid_keys(
+        action_names: list[str],
+        service_detail: ServiceDetail,
+    ) -> set[str]:
+        """Collect union of valid condition keys from service-level + action-level + resource-level."""
+        valid_keys: set[str] = set()
+
+        if service_detail.condition_keys:
+            if isinstance(service_detail.condition_keys, dict):
+                valid_keys.update(service_detail.condition_keys.keys())
+            elif isinstance(service_detail.condition_keys, list):
+                valid_keys.update(service_detail.condition_keys)
+
+        for act_name in action_names:
+            action_detail = service_detail.actions.get(act_name)
+            if not action_detail:
+                continue
+
+            if action_detail.action_condition_keys:
+                if isinstance(action_detail.action_condition_keys, dict):
+                    valid_keys.update(action_detail.action_condition_keys.keys())
+                elif isinstance(action_detail.action_condition_keys, list):
+                    valid_keys.update(action_detail.action_condition_keys)
+
+            if action_detail.resources:
+                for res_req in action_detail.resources:
+                    resource_name = res_req.get("Name", "")
+                    if resource_name:
+                        resource_type = service_detail.resources.get(resource_name)
+                        if resource_type and resource_type.condition_keys:
+                            if isinstance(resource_type.condition_keys, dict):
+                                valid_keys.update(resource_type.condition_keys.keys())
+                            elif isinstance(resource_type.condition_keys, list):
+                                valid_keys.update(resource_type.condition_keys)
+
+        return valid_keys
+
+    @staticmethod
+    def _build_suggestion(valid_keys: set[str]) -> str:
+        """Build suggestion string listing valid condition keys."""
+        if not valid_keys:
+            return (
+                "This action does not have specific condition keys defined.\n\n"
+                "However, you can use **global condition keys** such as:\n"
+                "- `aws:RequestedRegion`\n"
+                "- `aws:SourceIp`\n"
+                "- `aws:SourceVpce`\n"
+                "- `aws:ResourceOrgID`\n"
+                "- `aws:PrincipalOrgID`\n"
+                "- `aws:SourceAccount`\n"
+                "- `aws:PrincipalAccount`\n"
+                "- `aws:CurrentTime`\n"
+                "- `aws:ResourceAccount`\n"
+                "- `aws:PrincipalArn`\n"
+                "- And many others"
+            )
+
+        sorted_keys = sorted(valid_keys)
+        parts = ["**Valid condition keys for this action:**"]
+        display_keys = sorted_keys[:10]
+        for key in display_keys:
+            parts.append(f"- `{key}`")
+        if len(sorted_keys) > 10:
+            parts.append(f"- ... and {len(sorted_keys) - 10} more")
+
+        parts.append("")
+        parts.append(
+            "**Global condition keys** (e.g., `aws:ResourceOrgID`, `aws:RequestedRegion`, "
+            "`aws:SourceIp`, `aws:SourceVpce`) can also be used with any AWS action"
+        )
+        return "\n".join(parts)
 
     def get_resources_for_action(self, action: str, service_detail: ServiceDetail) -> list[dict[str, Any]]:
         """Get resource types required for a specific action.

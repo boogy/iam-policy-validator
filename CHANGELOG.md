@@ -38,6 +38,7 @@ _Security:_
 
 _Logic errors:_
 
+- Fix `condition_key_validation` false positives for wildcard actions — `iam:Tag*`, `s3:Get*`, etc. now expand to matching actions before validating condition keys
 - Fix `sensitive_action.execute_policy()` not expanding wildcard actions — `iam:Create*` now properly expanded before privilege escalation detection
 - Fix `Action: "*"` bypassing all condition enforcement requirements
 - Fix `sts:*` skipped in `trust_policy_validation` — now validates against all STS assume-role rules
