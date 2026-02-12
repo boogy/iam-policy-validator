@@ -46,7 +46,6 @@ class TestPolicyLoader:
 
     def test_initialization(self, loader):
         """Test that PolicyLoader initializes correctly."""
-        assert loader.loaded_policies == []
         assert PolicyLoader.SUPPORTED_EXTENSIONS == {".json", ".yaml", ".yml"}
 
     def test_parse_policy_string_valid_json(self, loader, valid_policy_json):

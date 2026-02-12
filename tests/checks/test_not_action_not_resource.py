@@ -40,23 +40,27 @@ class TestNotActionNotResourceCheck:
 
     @pytest.mark.asyncio
     async def test_not_action_allow_no_condition(self, check, config, mock_fetcher) -> None:
-        """Test that NotAction with Allow and no conditions is flagged as high severity."""
+        """Test that NotAction with Allow and no conditions is flagged with implicit grant info."""
         statement = Statement(
             effect="Allow",
-            not_action=["iam:*", "organizations:*"],
+            not_action=["iam:*", "s3:*"],
             resource="*",
         )
         issues = await check.execute(statement, 0, mock_fetcher, config)
         assert len(issues) == 1
         assert issues[0].severity == "high"
         assert issues[0].issue_type == "not_action_allow_no_condition"
+        # Message should describe what's implicitly granted
+        msg = issues[0].message.lower()
+        assert "except" in msg
+        assert "`iam`" in issues[0].message or "`s3`" in issues[0].message
 
     @pytest.mark.asyncio
     async def test_not_action_allow_with_condition(self, check, config, mock_fetcher) -> None:
-        """Test that NotAction with Allow and conditions is flagged as medium severity."""
+        """Test that NotAction with Allow and conditions is flagged as medium with grant info."""
         statement = Statement(
             effect="Allow",
-            not_action=["iam:*"],
+            not_action=["organizations:*"],
             resource="*",
             condition={"Bool": {"aws:MultiFactorAuthPresent": "true"}},
         )
@@ -64,10 +68,24 @@ class TestNotActionNotResourceCheck:
         assert len(issues) == 1
         assert issues[0].severity == "medium"
         assert issues[0].issue_type == "not_action_allow"
+        assert "organizations" in issues[0].message.lower()
+
+    @pytest.mark.asyncio
+    async def test_not_action_with_specific_actions(self, check, config, mock_fetcher) -> None:
+        """Test NotAction with specific (non-wildcard) actions."""
+        statement = Statement(
+            effect="Allow",
+            not_action=["iam:CreateUser", "iam:DeleteUser"],
+            resource="*",
+        )
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        not_action_issues = [i for i in issues if i.issue_type == "not_action_allow_no_condition"]
+        assert len(not_action_issues) == 1
+        assert "iam" in not_action_issues[0].message.lower()
 
     @pytest.mark.asyncio
     async def test_not_resource_broad_detected(self, check, config, mock_fetcher) -> None:
-        """Test that NotResource with broad Resource is flagged."""
+        """Test that NotResource with broad Resource is flagged with future resource warning."""
         statement = Statement(
             effect="Allow",
             action=["s3:*"],
@@ -78,9 +96,10 @@ class TestNotActionNotResourceCheck:
         assert len(issues) == 1
         assert issues[0].severity == "high"
         assert issues[0].issue_type == "not_resource_broad"
+        assert "future resources" in issues[0].suggestion.lower() or "new resources" in issues[0].suggestion.lower()
 
     @pytest.mark.asyncio
-    async def test_not_action_deny_low_severity(self, check, config, mock_fetcher) -> None:
+    async def test_not_action_deny(self, check, config, mock_fetcher) -> None:
         """Test that NotAction with Deny and wildcard Resource is informational."""
         statement = Statement(
             effect="Deny",
@@ -91,10 +110,15 @@ class TestNotActionNotResourceCheck:
         assert len(issues) == 1
         assert issues[0].severity == "low"
         assert issues[0].issue_type == "not_action_deny_review"
+        assert "denies everything except" in issues[0].message.lower()
 
     @pytest.mark.asyncio
     async def test_both_not_action_and_not_resource(self, check, config, mock_fetcher) -> None:
-        """Test statement with both NotAction and NotResource."""
+        """Test statement with both NotAction and NotResource.
+
+        When both are present, only the combined critical finding is emitted
+        to avoid redundant noise from the individual checks.
+        """
         statement = Statement(
             effect="Allow",
             not_action=["iam:*"],
@@ -102,13 +126,7 @@ class TestNotActionNotResourceCheck:
             resource="*",
         )
         issues = await check.execute(statement, 0, mock_fetcher, config)
-        # Expect 3 issues: NotAction alone, NotResource alone, AND combined critical
-        assert len(issues) == 3
-        issue_types = {i.issue_type for i in issues}
-        assert "not_action_allow_no_condition" in issue_types
-        assert "not_resource_broad" in issue_types
-        assert "combined_not_action_not_resource" in issue_types
-
-        # The combined check should be critical severity
-        combined_issue = next(i for i in issues if i.issue_type == "combined_not_action_not_resource")
-        assert combined_issue.severity == "critical"
+        # Only the combined critical finding, individual checks are suppressed
+        assert len(issues) == 1
+        assert issues[0].issue_type == "combined_not_action_not_resource"
+        assert issues[0].severity == "critical"

@@ -76,6 +76,7 @@ test:
 # Linting and formatting
 lint:
 	@uv run ruff check iam_validator/
+	@prettier --write "**/*.md" --prose-wrap preserve
 
 format:
 	@uv run ruff format iam_validator/
@@ -115,10 +116,10 @@ publish: build
 
 # Example validation
 validate-example:
-	uv run iam-validator validate --path examples/iam-test-policies/sample_policy.json --config examples/configs/basic-config.yaml
+	uv run iam-validator validate --path examples/iam-test-policies/sample_policy.json
 
 validate-invalid:
-	uv run iam-validator validate --path examples/iam-test-policies/insecure_policy.json --config examples/configs/basic-config.yaml || true
+	uv run iam-validator validate --path examples/iam-test-policies/insecure_policy.json || true
 
 # Download AWS service definitions for backup
 download-aws-services:

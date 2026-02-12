@@ -21,6 +21,7 @@ For full documentation, see: docs/condition-requirements.md
 import re
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.ignore_patterns import IgnorePatternMatcher
@@ -100,9 +101,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 issues.extend(policy_issues)
             else:
                 # Per-statement check (simple list)
-                statement_issues = await self._check_per_statement(
-                    policy, requirement, fetcher, config
-                )
+                statement_issues = await self._check_per_statement(policy, requirement, fetcher, config)
                 # Filter by requirement-level ignore_patterns
                 statement_issues = self._filter_requirement_issues(
                     statement_issues, requirement.get("ignore_patterns", []), policy_file
@@ -148,9 +147,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # Filter user requirements by ignore_patterns BEFORE merging
         # For append and defaults_only: ignore_patterns on user requirements still apply
         if user_requirements:
-            active_user_requirements = self._filter_requirements_by_filepath(
-                user_requirements, policy_file
-            )
+            active_user_requirements = self._filter_requirements_by_filepath(user_requirements, policy_file)
         else:
             active_user_requirements = []
 
@@ -343,9 +340,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             return issues
 
         return [
-            issue
-            for issue in issues
-            if not IgnorePatternMatcher.should_ignore_issue(issue, filepath, ignore_patterns)
+            issue for issue in issues if not IgnorePatternMatcher.should_ignore_issue(issue, filepath, ignore_patterns)
         ]
 
     async def _check_policy_wide(
@@ -571,9 +566,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                                 if policy_action not in existing[2]:
                                     existing[2].append(policy_action)
                             else:
-                                statements_with_required_actions.append(
-                                    (stmt_idx, stmt, [policy_action])
-                                )
+                                statements_with_required_actions.append((stmt_idx, stmt, [policy_action]))
 
         # If no actions found, no issue
         if not found_actions:
@@ -612,9 +605,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     # Track statements with forbidden actions
                     if policy_action in statements_by_action:
                         for stmt_idx, stmt in statements_by_action[policy_action]:
-                            existing = next(
-                                (s for s in statements_with_forbidden if s[0] == stmt_idx), None
-                            )
+                            existing = next((s for s in statements_with_forbidden if s[0] == stmt_idx), None)
                             if existing:
                                 if policy_action not in existing[2]:
                                     existing[2].append(policy_action)
@@ -629,7 +620,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         severity = requirement.get("severity", self.get_severity(config))
 
         for stmt_idx, stmt, actions in statements_with_forbidden:
-            actions_formatted = ", ".join(f"`{a}`" for a in actions)
+            actions_formatted = format_list_with_backticks(actions)
             statement_refs = [
                 f"Statement #{idx + 1}{' (SID: ' + s.sid + ')' if s.sid else ''}"
                 for idx, s, _ in statements_with_forbidden
@@ -667,7 +658,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         if not required_conditions_config:
             # No conditions specified, just report that actions were found
-            all_actions_formatted = ", ".join(f"`{a}`" for a in sorted(set(found_actions)))
+            all_actions_formatted = format_list_with_backticks(sorted(set(found_actions)))
             statement_refs = [
                 f"Statement #{idx + 1}{' (SID: ' + stmt.sid + ')' if stmt.sid else ''}"
                 for idx, stmt, _ in statements_with_actions
@@ -700,12 +691,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 requirement,
             )
 
-            # Add context
-            for issue in condition_issues:
-                issue.suggestion = (
-                    f"{issue.suggestion}\n\n"
-                    f"Note: Found {len(statements_with_actions)} statement(s) with these actions in the policy ({operator_type})."
-                )
+            # Add cross-statement context when multiple statements share these actions
+            if len(statements_with_actions) > 1:
+                for issue in condition_issues:
+                    issue.suggestion = (
+                        f"{issue.suggestion}\n\n"
+                        f"Note: {len(statements_with_actions)} statements in this policy use these actions — each needs this condition."
+                    )
 
             issues.extend(condition_issues)
 
@@ -734,9 +726,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             statement_actions = statement.get_actions()
 
             # Check if this statement matches the action requirement
-            actions_match, matching_actions = await self._check_action_match(
-                statement_actions, requirement, fetcher
-            )
+            actions_match, matching_actions = await self._check_action_match(statement_actions, requirement, fetcher)
 
             if actions_match and matching_actions:
                 matching_statements.append((idx, statement, matching_actions))
@@ -762,7 +752,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
             # Use the first matching statement's index for the issue
             first_idx, first_stmt, _ = matching_statements[0]
-            all_actions_formatted = ", ".join(f"`{a}`" for a in sorted(all_actions))
+            all_actions_formatted = format_list_with_backticks(sorted(all_actions))
 
             issues.append(
                 ValidationIssue(
@@ -790,12 +780,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 requirement,
             )
 
-            # Add context to each issue
-            for issue in condition_issues:
-                issue.suggestion = (
-                    f"{issue.suggestion}\n\n"
-                    f"Note: Found {len(matching_statements)} statement(s) with these actions in the policy."
-                )
+            # Add cross-statement context when multiple statements share these actions
+            if len(matching_statements) > 1:
+                for issue in condition_issues:
+                    issue.suggestion = (
+                        f"{issue.suggestion}\n\n"
+                        f"Note: {len(matching_statements)} statements in this policy use these actions — each needs this condition."
+                    )
 
             issues.extend(condition_issues)
 
@@ -824,25 +815,25 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         if isinstance(actions_config, list) and (actions_config or action_patterns):
             # Simple list - check if any action matches
             for stmt_action in statement_actions:
-                if stmt_action == "*":
-                    continue
-
                 # Check if this statement action matches any of the required actions or patterns
                 # Use _action_matches which handles wildcards in both statement and config
                 matched = False
 
-                # Check against configured actions
-                for required_action in actions_config:
-                    if await self._action_matches(
-                        stmt_action, required_action, action_patterns, fetcher
-                    ):
+                # Full wildcard "*" matches any required action
+                if stmt_action == "*":
+                    if actions_config:
                         matched = True
-                        break
+                else:
+                    # Check against configured actions
+                    for required_action in actions_config:
+                        if await self._action_matches(stmt_action, required_action, action_patterns, fetcher):
+                            matched = True
+                            break
 
-                # If not matched by actions, check against action_patterns directly
-                if not matched and action_patterns:
-                    # Check if statement action matches any of the patterns
-                    matched = await self._action_matches(stmt_action, "", action_patterns, fetcher)
+                    # If not matched by actions, check against action_patterns directly
+                    if not matched and action_patterns:
+                        # Check if statement action matches any of the patterns
+                        matched = await self._action_matches(stmt_action, "", action_patterns, fetcher)
 
                 if matched and stmt_action not in matching_actions:
                     matching_actions.append(stmt_action)
@@ -861,9 +852,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 for req_action in all_of:
                     found = False
                     for stmt_action in statement_actions:
-                        if await self._action_matches(
-                            stmt_action, req_action, action_patterns, fetcher
-                        ):
+                        if await self._action_matches(stmt_action, req_action, action_patterns, fetcher):
                             found = True
                             break
                     if not found:
@@ -876,9 +865,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 # Collect matching actions
                 for stmt_action in statement_actions:
                     for req_action in all_of:
-                        if await self._action_matches(
-                            stmt_action, req_action, action_patterns, fetcher
-                        ):
+                        if await self._action_matches(stmt_action, req_action, action_patterns, fetcher):
                             if stmt_action not in matching_actions:
                                 matching_actions.append(stmt_action)
 
@@ -887,9 +874,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 any_present = False
                 for stmt_action in statement_actions:
                     for req_action in any_of:
-                        if await self._action_matches(
-                            stmt_action, req_action, action_patterns, fetcher
-                        ):
+                        if await self._action_matches(stmt_action, req_action, action_patterns, fetcher):
                             any_present = True
                             if stmt_action not in matching_actions:
                                 matching_actions.append(stmt_action)
@@ -902,9 +887,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 forbidden_actions = []
                 for stmt_action in statement_actions:
                     for forbidden_action in none_of:
-                        if await self._action_matches(
-                            stmt_action, forbidden_action, action_patterns, fetcher
-                        ):
+                        if await self._action_matches(stmt_action, forbidden_action, action_patterns, fetcher):
                             forbidden_actions.append(stmt_action)
 
                 # If forbidden actions are found, this is a match for flagging
@@ -934,7 +917,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         - statement_action="iam:C*" matches pattern="^iam:Create" (by checking actual AWS actions)
         """
         if statement_action == "*":
-            return False
+            return True
 
         # Exact match
         if statement_action == required_action:
@@ -1080,9 +1063,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
             # Validate any_of: At least ONE condition must be present
             if any_of:
-                any_present = any(
-                    self._has_condition_requirement(statement, cond_req) for cond_req in any_of
-                )
+                any_present = any(self._has_condition_requirement(statement, cond_req) for cond_req in any_of)
 
                 if not any_present:
                     # Check if requirement has custom message/suggestion/example
@@ -1101,17 +1082,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                         for cond in any_of:
                             if "all_of" in cond:
                                 # Nested all_of - collect all condition keys
-                                nested_keys = [
-                                    c.get("condition_key", "unknown") for c in cond["all_of"]
-                                ]
-                                condition_keys.append(
-                                    f"({' + '.join(f'`{k}`' for k in nested_keys)})"
-                                )
+                                nested_keys = [c.get("condition_key", "unknown") for c in cond["all_of"]]
+                                condition_keys.append(f"({' + '.join(f'`{k}`' for k in nested_keys)})")
                             else:
                                 # Simple condition
                                 condition_keys.append(f"`{cond.get('condition_key', 'unknown')}`")
                         condition_keys_formatted = " OR ".join(condition_keys)
-                        matching_actions_formatted = ", ".join(f"`{a}`" for a in matching_actions)
+                        matching_actions_formatted = format_list_with_backticks(matching_actions)
 
                         message = (
                             f"Actions {matching_actions_formatted} require at least ONE of these conditions: "
@@ -1152,9 +1129,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         return issues
 
-    def _has_condition_requirement(
-        self, statement: Statement, condition_requirement: dict[str, Any]
-    ) -> bool:
+    def _has_condition_requirement(self, statement: Statement, condition_requirement: dict[str, Any]) -> bool:
         """Check if statement has the required condition."""
         condition_key = condition_requirement.get("condition_key")
         if not condition_key:
@@ -1265,7 +1240,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             condition_key, description, example, expected_value, operator
         )
 
-        matching_actions_str = ", ".join(f"`{a}`" for a in matching_actions)
+        matching_actions_str = format_list_with_backticks(matching_actions)
         return ValidationIssue(
             severity=severity,
             statement_sid=statement.sid,
@@ -1305,12 +1280,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             if isinstance(expected_value, list):
                 value_str = (
                     "["
-                    + ", ".join(
-                        [
-                            f'"{v}"' if not str(v).startswith("${") else f'"{v}"'
-                            for v in expected_value
-                        ]
-                    )
+                    + ", ".join([f'"{v}"' if not str(v).startswith("${") else f'"{v}"' for v in expected_value])
                     + "]"
                 )
             elif expected_value is not None:
@@ -1354,7 +1324,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 # Nested all_of - show all required conditions together
                 all_of_list = cond["all_of"]
                 condition_keys = [c.get("condition_key", "unknown") for c in all_of_list]
-                condition_keys_formatted = " + ".join(f"`{k}`" for k in condition_keys)
+                condition_keys_formatted = format_list_with_backticks(condition_keys, separator=" + ")
 
                 # Check for custom message first
                 custom_message = cond.get("message")
@@ -1362,9 +1332,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     suggestions.append(f"\n- {custom_message}")
                 else:
                     # Use description from first condition or combine them
-                    descriptions = [
-                        c.get("description", "") for c in all_of_list if c.get("description")
-                    ]
+                    descriptions = [c.get("description", "") for c in all_of_list if c.get("description")]
                     if descriptions:
                         suggestions.append(f"\n- {condition_keys_formatted} - {descriptions[0]}")
                     else:
@@ -1419,8 +1387,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         description = condition_requirement.get("description", "")
         expected_value = condition_requirement.get("expected_value")
 
-        matching_actions_str = ", ".join(f"`{a}`" for a in matching_actions)
-        message = f"FORBIDDEN: Action(s) `{matching_actions_str}` must NOT have condition `{condition_key}`"
+        matching_actions_str = format_list_with_backticks(matching_actions)
+        message = f"FORBIDDEN: Action(s) {matching_actions_str} must NOT have condition `{condition_key}`"
         if expected_value is not None:
             message += f" with value `{expected_value}`"
 

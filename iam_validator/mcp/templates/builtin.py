@@ -810,15 +810,11 @@ def render_template(name: str, variables: dict[str, str]) -> dict[str, Any]:
     for var_def in template_def["variables"]:
         var_name = var_def["name"]
         if var_def["required"] and var_name not in variables:
-            missing_vars.append(
-                {"name": var_name, "description": var_def.get("description", "No description")}
-            )
+            missing_vars.append({"name": var_name, "description": var_def.get("description", "No description")})
 
     if missing_vars:
         missing_details = ", ".join(f"'{v['name']}' ({v['description']})" for v in missing_vars)
-        raise ValueError(
-            f"Missing {len(missing_vars)} required variable(s) for template '{name}': {missing_details}"
-        )
+        raise ValueError(f"Missing {len(missing_vars)} required variable(s) for template '{name}': {missing_details}")
 
     final_vars = {}
     for var_def in template_def["variables"]:

@@ -240,7 +240,7 @@ Examples:
                 path=args.paths,
                 region=args.region,
                 policy_type=policy_type,
-                profile=args.profile if hasattr(args, "profile") else None,
+                profile=args.profile,
                 recursive=not args.no_recursive,
                 custom_checks=custom_checks,
             )
@@ -319,9 +319,7 @@ Examples:
             from iam_validator.core.policy_loader import PolicyLoader
 
             loader = PolicyLoader()
-            existing_policies_loaded = loader.load_from_path(
-                args.check_no_new_access, recursive=False
-            )
+            existing_policies_loaded = loader.load_from_path(args.check_no_new_access, recursive=False)
 
             if existing_policies_loaded:
                 # Build dict of existing policies
@@ -343,9 +341,7 @@ Examples:
             # Expand "all" to all resource types
             if "all" in resource_types:
                 resource_types = [member.value for member in ResourceType]
-                logging.info(
-                    f"Checking all {len(resource_types)} supported resource types for public access"
-                )
+                logging.info(f"Checking all {len(resource_types)} supported resource types for public access")
 
             # Convert to ResourceType enums
             resource_type_enums = [ResourceType(rt) for rt in resource_types]
@@ -532,9 +528,7 @@ Examples:
             summary_parts.append("")
             summary_parts.append("---")
             summary_parts.append("")
-            summary_parts.append(
-                "📝 For detailed findings, check the PR comments or review the workflow logs."
-            )
+            summary_parts.append("📝 For detailed findings, check the PR comments or review the workflow logs.")
             summary_parts.append("")
             summary_parts.append("*Powered by AWS IAM Access Analyzer*")
 

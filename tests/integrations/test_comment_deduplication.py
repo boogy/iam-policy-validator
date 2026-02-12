@@ -1,7 +1,8 @@
 """Tests for PR comment deduplication logic."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from iam_validator.integrations.github_integration import GitHubIntegration, ReviewEvent
 
@@ -78,9 +79,7 @@ class TestCommentDeduplication:
 
         assert result is True
         # Should UPDATE the existing comment, NOT create a new one
-        github_integration.update_review_comment.assert_called_once_with(
-            100, new_comments[0]["body"]
-        )
+        github_integration.update_review_comment.assert_called_once_with(100, new_comments[0]["body"])
         # Should NOT create any new comments
         github_integration.create_review_with_comments.assert_not_called()
 
@@ -334,9 +333,7 @@ class TestCommentDeduplication:
 
         assert result is True
         # Should UPDATE the existing comment via location fallback
-        github_integration.update_review_comment.assert_called_once_with(
-            100, new_comments[0]["body"]
-        )
+        github_integration.update_review_comment.assert_called_once_with(100, new_comments[0]["body"])
         # Should NOT delete it (it was matched and updated)
         github_integration.delete_review_comment.assert_not_called()
         # Should NOT create any new comments

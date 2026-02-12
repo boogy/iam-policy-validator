@@ -38,9 +38,7 @@ IAM_PASS_ROLE_REQUIREMENT: Final[dict[str, Any]] = {
     "required_conditions": [
         {
             "condition_key": "iam:PassedToService",
-            "description": (
-                "Restrict which AWS services can assume the passed role to prevent privilege escalation"
-            ),
+            "description": ("Restrict which AWS services can assume the passed role to prevent privilege escalation"),
             "example": (
                 '"Condition": {\n'
                 '  "StringEquals": {\n'
@@ -65,7 +63,7 @@ S3_ORG_BOUNDARY: Final[dict[str, Any]] = {
     "suggestion_text": (
         "These S3 actions can read or write data. Prevent data exfiltration by ensuring operations only access organization-owned buckets:\n"
         "• Use organization ID (`aws:ResourceOrgID` = `${aws:PrincipalOrgID}`)\n"
-        "• OR use organization paths (`aws:ResourceOrgPaths` = `${aws:PrincipalOrgPaths}`)\n"
+        "• OR use organization paths (`ForAnyValue:StringLike` on `aws:ResourceOrgPaths`)\n"
         "• OR restrict by network boundary (IP/VPC/VPCe) + same account (`aws:ResourceAccount` = `${aws:PrincipalAccount}`)"
     ),
     "required_conditions": {
@@ -85,16 +83,16 @@ S3_ORG_BOUNDARY: Final[dict[str, Any]] = {
                     "}"
                 ),
             },
-            # Option 2: Restrict to organization paths
+            # Option 2: Restrict to organization paths (multivalued key — requires set operator)
             {
                 "condition_key": "aws:ResourceOrgPaths",
                 "description": "Restrict S3 operations to resources within your AWS Organization path",
-                "expected_value": "${aws:PrincipalOrgPaths}",
+                "operator": "ForAnyValue:StringLike",
                 "example": (
                     "{\n"
                     '  "Condition": {\n'
-                    '    "StringEquals": {\n'
-                    '      "aws:ResourceOrgPaths": "${aws:PrincipalOrgPaths}"\n'
+                    '    "ForAnyValue:StringLike": {\n'
+                    '      "aws:ResourceOrgPaths": ["o-EXAMPLE/r-ROOT/ou-ROOT-OUID/*"]\n'
                     "    }\n"
                     "  }\n"
                     "}"

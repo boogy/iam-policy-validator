@@ -239,8 +239,7 @@ class IgnoreCommandProcessor:
                 logger.warning(f"Failed to post denial feedback: {e}")
 
         logger.warning(
-            f"Ignore request denied: @{username} is not authorized "
-            f"for {file_path} (not in CODEOWNERS or allowed_users)"
+            f"Ignore request denied: @{username} is not authorized for {file_path} (not in CODEOWNERS or allowed_users)"
         )
 
     def _extract_check_id(self, body: str) -> str:

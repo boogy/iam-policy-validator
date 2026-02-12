@@ -17,15 +17,9 @@ class ValidationResult(BaseModel):
     Used by validation tools to return validation status and issues found.
     """
 
-    is_valid: bool = Field(
-        description="Whether the policy passed validation (no errors or warnings)"
-    )
-    issues: list[ValidationIssue] = Field(
-        default_factory=list, description="List of validation issues found"
-    )
-    policy_file: str | None = Field(
-        default=None, description="Path to the policy file that was validated"
-    )
+    is_valid: bool = Field(description="Whether the policy passed validation (no errors or warnings)")
+    issues: list[ValidationIssue] = Field(default_factory=list, description="List of validation issues found")
+    policy_file: str | None = Field(default=None, description="Path to the policy file that was validated")
     policy_type_detected: str | None = Field(
         default=None,
         description="The policy type used for validation: 'identity', 'resource', or 'trust'. "
@@ -64,9 +58,7 @@ class PolicySummary(BaseModel):
         default_factory=list, description="List of AWS services referenced (e.g., ['s3', 'ec2'])"
     )
     actions_count: int = Field(description="Total number of unique actions across all statements")
-    has_wildcards: bool = Field(
-        description="Whether the policy contains wildcard actions or resources"
-    )
+    has_wildcards: bool = Field(description="Whether the policy contains wildcard actions or resources")
     has_conditions: bool = Field(description="Whether the policy contains any conditions")
 
 
@@ -89,9 +81,7 @@ class ActionDetails(BaseModel):
         default_factory=list,
         description="Condition keys that can be used with this action",
     )
-    description: str | None = Field(
-        default=None, description="Human-readable description of what the action does"
-    )
+    description: str | None = Field(default=None, description="Human-readable description of what the action does")
 
 
 class EnforcementResult(BaseModel):
@@ -101,9 +91,7 @@ class EnforcementResult(BaseModel):
     and validating security constraints.
     """
 
-    policy: dict[str, Any] = Field(
-        description="The policy after security enforcement (with auto-added conditions)"
-    )
+    policy: dict[str, Any] = Field(description="The policy after security enforcement (with auto-added conditions)")
     warnings: list[str] = Field(
         default_factory=list,
         description="Security warnings for issues that were auto-fixed (e.g., 'Added MFA condition')",

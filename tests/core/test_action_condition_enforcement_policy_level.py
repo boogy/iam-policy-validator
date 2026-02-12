@@ -88,7 +88,7 @@ class TestPolicyLevelEnforcement:
         assert issues[0].statement_sid == "Statement3"
         assert issues[0].severity == "critical"
         assert "aws:MultiFactorAuthPresent" in issues[0].message
-        assert "2 statement(s) with these actions" in issues[0].suggestion
+        assert "2 statements in this policy use these actions" in issues[0].suggestion
 
     @pytest.mark.asyncio
     async def test_policy_level_all_of_actions(self, check, fetcher):
@@ -119,9 +119,7 @@ class TestPolicyLevelEnforcement:
             config={
                 "policy_level_requirements": [
                     {
-                        "actions": {
-                            "all_of": ["iam:CreateAccessKey", "iam:UpdateAccessKey"]
-                        },
+                        "actions": {"all_of": ["iam:CreateAccessKey", "iam:UpdateAccessKey"]},
                         "scope": "policy",
                         "description": "Dangerous combination of access key actions",
                         "severity": "critical",
@@ -161,9 +159,7 @@ class TestPolicyLevelEnforcement:
                     {
                         "actions": {"any_of": ["iam:CreateUser"]},
                         "scope": "policy",
-                        "required_conditions": [
-                            {"condition_key": "aws:MultiFactorAuthPresent"}
-                        ],
+                        "required_conditions": [{"condition_key": "aws:MultiFactorAuthPresent"}],
                     }
                 ]
             },
@@ -250,17 +246,13 @@ class TestPolicyLevelEnforcement:
                     {
                         "actions": {"any_of": ["iam:CreateUser"]},
                         "scope": "policy",
-                        "required_conditions": [
-                            {"condition_key": "aws:MultiFactorAuthPresent"}
-                        ],
+                        "required_conditions": [{"condition_key": "aws:MultiFactorAuthPresent"}],
                         "severity": "high",
                     },
                     {
                         "actions": {"any_of": ["s3:PutObject"]},
                         "scope": "policy",
-                        "required_conditions": [
-                            {"condition_key": "s3:x-amz-server-side-encryption"}
-                        ],
+                        "required_conditions": [{"condition_key": "s3:x-amz-server-side-encryption"}],
                         "severity": "medium",
                     },
                 ]
@@ -324,5 +316,3 @@ class TestPolicyLevelEnforcement:
         assert len(issues) == 1
         assert "aws:SourceIp" in issues[0].message
         # Removed: POLICY-LEVEL no longer used
-
-

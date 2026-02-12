@@ -179,12 +179,12 @@ iam-validator validate --path policy.json --format markdown
 
 ## Summary
 
-| Metric | Value |
-|--------|-------|
-| Total Policies | 1 |
-| Valid Policies | 0 |
-| Invalid Policies | 1 |
-| Total Issues | 2 |
+| Metric           | Value |
+| ---------------- | ----- |
+| Total Policies   | 1     |
+| Valid Policies   | 0     |
+| Invalid Policies | 1     |
+| Total Issues     | 2     |
 
 ## Results
 
@@ -194,10 +194,10 @@ iam-validator validate --path policy.json --format markdown
 
 #### Issues
 
-| Severity | Type | Message |
-|----------|------|---------|
-| high | service_wildcard | Statement uses service wildcard 'iam:*' which grants all IAM permissions |
-| medium | wildcard_resource | Statement applies to all resources (*) |
+| Severity | Type              | Message                                                                   |
+| -------- | ----------------- | ------------------------------------------------------------------------- |
+| high     | service_wildcard  | Statement uses service wildcard 'iam:\*' which grants all IAM permissions |
+| medium   | wildcard_resource | Statement applies to all resources (\*)                                   |
 
 **Suggestions:**
 

@@ -48,6 +48,25 @@ class IgnoredFindingInfo:
     reason: str | None = None
 
 
+@dataclass
+class ContextIssueInfo:
+    """Information about an issue found on unchanged lines (outside the PR diff).
+
+    Attributes:
+        file_path: Path to the policy file
+        line_number: Line number in the file
+        severity: Severity level of the issue
+        issue_type: Type of issue (e.g., "wildcard_action")
+        message: Description of the issue
+    """
+
+    file_path: str
+    line_number: int
+    severity: str
+    issue_type: str
+    message: str
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -115,12 +134,8 @@ class ReportGenerator:
         )
 
         # Count validity vs security issues
-        validity_issues = sum(
-            sum(1 for issue in r.issues if issue.is_validity_severity()) for r in results
-        )
-        security_issues = sum(
-            sum(1 for issue in r.issues if issue.is_security_severity()) for r in results
-        )
+        validity_issues = sum(sum(1 for issue in r.issues if issue.is_validity_severity()) for r in results)
+        security_issues = sum(sum(1 for issue in r.issues if issue.is_security_severity()) for r in results)
 
         return ValidationReport(
             total_policies=len(results),
@@ -260,6 +275,7 @@ class ReportGenerator:
         ignored_count: int = 0,
         ignored_findings: list[IgnoredFindingInfo] | None = None,
         all_blocking_ignored: bool = False,
+        context_issues: list[ContextIssueInfo] | None = None,
     ) -> list[str]:
         """Generate GitHub PR comment(s), splitting into multiple parts if needed.
 
@@ -269,6 +285,7 @@ class ReportGenerator:
             ignored_count: Number of findings that were ignored (will be shown in summary)
             ignored_findings: List of ignored finding details for display in summary
             all_blocking_ignored: True if all blocking issues were ignored (shows "Passed" status)
+            context_issues: List of issues found on unchanged lines (outside PR diff)
 
         Returns:
             List of comment parts (each under max_length_per_part)
@@ -285,13 +302,19 @@ class ReportGenerator:
                 ignored_count=ignored_count,
                 ignored_findings=ignored_findings,
                 all_blocking_ignored=all_blocking_ignored,
+                context_issues=context_issues,
             )
             if len(single_comment) <= max_length_per_part:
                 return [single_comment]
 
         # Need to split into multiple parts
         return self._generate_split_comments(
-            report, max_length_per_part, ignored_count, ignored_findings, all_blocking_ignored
+            report,
+            max_length_per_part,
+            ignored_count,
+            ignored_findings,
+            all_blocking_ignored,
+            context_issues,
         )
 
     def _estimate_report_size(self, report: ValidationReport) -> int:
@@ -315,6 +338,7 @@ class ReportGenerator:
         ignored_count: int = 0,
         ignored_findings: list[IgnoredFindingInfo] | None = None,
         all_blocking_ignored: bool = False,
+        context_issues: list[ContextIssueInfo] | None = None,
     ) -> list[str]:
         """Split a large report into multiple comment parts.
 
@@ -324,6 +348,7 @@ class ReportGenerator:
             ignored_count: Number of ignored findings to show in summary
             ignored_findings: List of ignored finding details for display
             all_blocking_ignored: True if all blocking issues were ignored
+            context_issues: List of issues found on unchanged lines (outside PR diff)
 
         Returns:
             List of comment parts
@@ -332,7 +357,7 @@ class ReportGenerator:
 
         # Generate header (will be in first part only)
         header_lines = self._generate_header(
-            report, ignored_count, ignored_findings, all_blocking_ignored
+            report, ignored_count, ignored_findings, all_blocking_ignored, context_issues
         )
         header_content = "\n".join(header_lines)
 
@@ -384,9 +409,7 @@ class ReportGenerator:
                 current_length = len("\n".join(current_part_lines))
 
             # Check if adding this policy would exceed the limit
-            test_length = (
-                current_length + policy_length + len(footer_content) + continuation_overhead
-            )
+            test_length = current_length + policy_length + len(footer_content) + continuation_overhead
 
             if test_length > max_length and len(current_part_lines) > 4:  # 4 = header lines
                 # Finalize current part without this policy
@@ -432,6 +455,7 @@ class ReportGenerator:
         ignored_count: int = 0,
         ignored_findings: list[IgnoredFindingInfo] | None = None,
         all_blocking_ignored: bool = False,
+        context_issues: list[ContextIssueInfo] | None = None,
     ) -> list[str]:
         """Generate the comment header with summary.
 
@@ -440,6 +464,7 @@ class ReportGenerator:
             ignored_count: Number of findings that were ignored
             ignored_findings: List of ignored finding details for display
             all_blocking_ignored: True if all blocking issues were ignored (shows "Passed" status)
+            context_issues: List of issues found on unchanged lines (outside PR diff)
         """
         lines = []
 
@@ -448,14 +473,10 @@ class ReportGenerator:
         is_passing = report.invalid_policies == 0 or all_blocking_ignored
         if is_passing:
             lines.append("# 🎉 IAM Policy Validation Passed!")
-            status_badge = (
-                "![Status](https://img.shields.io/badge/status-passed-success?style=flat-square)"
-            )
+            status_badge = "![Status](https://img.shields.io/badge/status-passed-success?style=flat-square)"
         else:
             lines.append("# 🚨 IAM Policy Validation Failed")
-            status_badge = (
-                "![Status](https://img.shields.io/badge/status-failed-critical?style=flat-square)"
-            )
+            status_badge = "![Status](https://img.shields.io/badge/status-failed-critical?style=flat-square)"
 
         lines.append("")
         lines.append(status_badge)
@@ -469,9 +490,7 @@ class ReportGenerator:
         lines.append(f"| **Total Policies Analyzed** | {report.total_policies} | 📋 |")
         lines.append(f"| **Valid Policies** | {report.valid_policies} | ✅ |")
         lines.append(f"| **Invalid Policies** | {report.invalid_policies} | ❌ |")
-        lines.append(
-            f"| **Total Issues Found** | {report.total_issues} | {'⚠️' if report.total_issues > 0 else '✨'} |"
-        )
+        lines.append(f"| **Total Issues Found** | {report.total_issues} | {'⚠️' if report.total_issues > 0 else '✨'} |")
         if ignored_count > 0:
             lines.append(f"| **Ignored Findings** | {ignored_count} | 🔕 |")
         lines.append("")
@@ -479,19 +498,11 @@ class ReportGenerator:
         # Issue breakdown
         if report.total_issues > 0:
             # Count issues - separate validity errors from security findings
-            validity_errors = sum(
-                1 for r in report.results for i in r.issues if i.severity == "error"
-            )
-            critical_findings = sum(
-                1 for r in report.results for i in r.issues if i.severity == "critical"
-            )
+            validity_errors = sum(1 for r in report.results for i in r.issues if i.severity == "error")
+            critical_findings = sum(1 for r in report.results for i in r.issues if i.severity == "critical")
             high_findings = sum(1 for r in report.results for i in r.issues if i.severity == "high")
-            warnings = sum(
-                1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")
-            )
-            infos = sum(
-                1 for r in report.results for i in r.issues if i.severity in ("info", "low")
-            )
+            warnings = sum(1 for r in report.results for i in r.issues if i.severity in ("warning", "medium"))
+            infos = sum(1 for r in report.results for i in r.issues if i.severity in ("info", "low"))
 
             lines.append("### 🔍 Issue Breakdown")
             lines.append("")
@@ -513,11 +524,13 @@ class ReportGenerator:
         if ignored_findings:
             lines.extend(self._generate_ignored_findings_section(ignored_findings))
 
+        # Context issues section (findings on unchanged lines)
+        if context_issues:
+            lines.extend(self._generate_context_issues_section(context_issues))
+
         return lines
 
-    def _generate_ignored_findings_section(
-        self, ignored_findings: list[IgnoredFindingInfo]
-    ) -> list[str]:
+    def _generate_ignored_findings_section(self, ignored_findings: list[IgnoredFindingInfo]) -> list[str]:
         """Generate the ignored findings section for the summary comment.
 
         Args:
@@ -529,9 +542,7 @@ class ReportGenerator:
         lines = []
         lines.append("### 🔕 Ignored Findings")
         lines.append("")
-        lines.append(
-            "> The following findings were ignored by authorized users and are excluded from validation:"
-        )
+        lines.append("> The following findings were ignored by authorized users and are excluded from validation:")
         lines.append("")
 
         lines.append("<details>")
@@ -551,8 +562,57 @@ class ReportGenerator:
             if len(reason_display) > 30:
                 reason_display = reason_display[:27] + "..."
 
+            lines.append(f"| `{file_display}` | `{finding.issue_type}` | @{finding.ignored_by} | {reason_display} |")
+
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
+
+        return lines
+
+    def _generate_context_issues_section(self, context_issues: list[ContextIssueInfo]) -> list[str]:
+        """Generate the context issues section for findings on unchanged lines.
+
+        Args:
+            context_issues: List of issues found outside the PR diff
+
+        Returns:
+            List of markdown lines for the section
+        """
+        lines = []
+        lines.append("### Additional Findings (Unchanged Lines)")
+        lines.append("")
+        lines.append(
+            "> The following issues were found on lines not changed in this PR"
+            " and could not be posted as inline comments."
+        )
+        lines.append("")
+
+        lines.append("<details>")
+        lines.append(f"<summary>View {len(context_issues)} additional finding(s)</summary>")
+        lines.append("")
+
+        lines.append("| File | Line | Severity | Type | Message |")
+        lines.append("|------|-----:|----------|------|---------|")
+
+        for issue in context_issues:
+            # Truncate file path if too long
+            file_display = issue.file_path
+            if len(file_display) > 50:
+                file_display = "..." + file_display[-47:]
+
+            # Get severity emoji from constants
+            severity_info = constants.SEVERITY_CONFIG.get(issue.severity, {})
+            severity_emoji = severity_info.get("emoji", "")
+            severity_display = f"{severity_emoji} {issue.severity}"
+
+            # Truncate message to 80 chars
+            message_display = issue.message
+            if len(message_display) > 80:
+                message_display = message_display[:77] + "..."
+
             lines.append(
-                f"| `{file_display}` | `{finding.issue_type}` | @{finding.ignored_by} | {reason_display} |"
+                f"| `{file_display}` | {issue.line_number} | {severity_display} | `{issue.issue_type}` | {message_display} |"
             )
 
         lines.append("")
@@ -661,6 +721,7 @@ class ReportGenerator:
         ignored_count: int = 0,
         ignored_findings: list[IgnoredFindingInfo] | None = None,
         all_blocking_ignored: bool = False,
+        context_issues: list[ContextIssueInfo] | None = None,
     ) -> str:
         """Generate a GitHub-flavored markdown comment for PR reviews.
 
@@ -670,6 +731,7 @@ class ReportGenerator:
             ignored_count: Number of findings that were ignored (will be shown in summary)
             ignored_findings: List of ignored finding details for display in summary
             all_blocking_ignored: True if all blocking issues were ignored (shows "Passed" status)
+            context_issues: List of issues found on unchanged lines (outside PR diff)
 
         Returns:
             Markdown formatted string
@@ -679,19 +741,13 @@ class ReportGenerator:
         # Header with emoji and status badge
         # Pass if: no invalid policies, OR all blocking issues were ignored
         has_parsing_errors = len(report.parsing_errors) > 0
-        is_passing = (
-            report.invalid_policies == 0 or all_blocking_ignored
-        ) and not has_parsing_errors
+        is_passing = (report.invalid_policies == 0 or all_blocking_ignored) and not has_parsing_errors
         if is_passing:
             lines.append("# 🎉 IAM Policy Validation Passed!")
-            status_badge = (
-                "![Status](https://img.shields.io/badge/status-passed-success?style=flat-square)"
-            )
+            status_badge = "![Status](https://img.shields.io/badge/status-passed-success?style=flat-square)"
         else:
             lines.append("# 🚨 IAM Policy Validation Failed")
-            status_badge = (
-                "![Status](https://img.shields.io/badge/status-failed-critical?style=flat-square)"
-            )
+            status_badge = "![Status](https://img.shields.io/badge/status-failed-critical?style=flat-square)"
 
         lines.append("")
         lines.append(status_badge)
@@ -705,9 +761,7 @@ class ReportGenerator:
         lines.append(f"| **Total Policies Analyzed** | {report.total_policies} | 📋 |")
         lines.append(f"| **Valid Policies** | {report.valid_policies} | ✅ |")
         lines.append(f"| **Invalid Policies** | {report.invalid_policies} | ❌ |")
-        lines.append(
-            f"| **Total Issues Found** | {report.total_issues} | {'⚠️' if report.total_issues > 0 else '✨'} |"
-        )
+        lines.append(f"| **Total Issues Found** | {report.total_issues} | {'⚠️' if report.total_issues > 0 else '✨'} |")
         if ignored_count > 0:
             lines.append(f"| **Ignored Findings** | {ignored_count} | 🔕 |")
         lines.append("")
@@ -715,19 +769,11 @@ class ReportGenerator:
         # Issue breakdown
         if report.total_issues > 0:
             # Count issues - separate validity errors from security findings
-            validity_errors = sum(
-                1 for r in report.results for i in r.issues if i.severity == "error"
-            )
-            critical_findings = sum(
-                1 for r in report.results for i in r.issues if i.severity == "critical"
-            )
+            validity_errors = sum(1 for r in report.results for i in r.issues if i.severity == "error")
+            critical_findings = sum(1 for r in report.results for i in r.issues if i.severity == "critical")
             high_findings = sum(1 for r in report.results for i in r.issues if i.severity == "high")
-            warnings = sum(
-                1 for r in report.results for i in r.issues if i.severity in ("warning", "medium")
-            )
-            infos = sum(
-                1 for r in report.results for i in r.issues if i.severity in ("info", "low")
-            )
+            warnings = sum(1 for r in report.results for i in r.issues if i.severity in ("warning", "medium"))
+            infos = sum(1 for r in report.results for i in r.issues if i.severity in ("info", "low"))
 
             lines.append("### 🔍 Issue Breakdown")
             lines.append("")
@@ -749,13 +795,15 @@ class ReportGenerator:
         if ignored_findings:
             lines.extend(self._generate_ignored_findings_section(ignored_findings))
 
+        # Context issues section (findings on unchanged lines)
+        if context_issues:
+            lines.extend(self._generate_context_issues_section(context_issues))
+
         # Parsing errors section (if any)
         if report.parsing_errors:
             lines.append("### ⚠️ Parsing Errors")
             lines.append("")
-            lines.append(
-                f"**{len(report.parsing_errors)} file(s) failed to parse** and were excluded from validation:"
-            )
+            lines.append(f"**{len(report.parsing_errors)} file(s) failed to parse** and were excluded from validation:")
             lines.append("")
             for file_path, error_msg in report.parsing_errors:
                 # Extract just the filename for cleaner display
@@ -767,9 +815,7 @@ class ReportGenerator:
                 lines.append(f"  {error_msg}")
                 lines.append("  ```")
             lines.append("")
-            lines.append(
-                "> **Note:** Fix these parsing errors first before validation can proceed on these files."
-            )
+            lines.append("> **Note:** Fix these parsing errors first before validation can proceed on these files.")
             lines.append("")
 
         # Store header for later (we always include this)
@@ -850,9 +896,7 @@ class ReportGenerator:
                     policy_lines.append("")
                     for i, issue in enumerate(validity_errors):
                         issue_content = self._format_issue_markdown(issue, result.policy_file)
-                        test_length = len("\n".join(details_lines + policy_lines)) + len(
-                            issue_content
-                        )
+                        test_length = len("\n".join(details_lines + policy_lines)) + len(issue_content)
                         if test_length > available_length:
                             truncated = True
                             break
@@ -873,9 +917,7 @@ class ReportGenerator:
                     policy_lines.append("")
                     for i, issue in enumerate(critical_findings):
                         issue_content = self._format_issue_markdown(issue, result.policy_file)
-                        test_length = len("\n".join(details_lines + policy_lines)) + len(
-                            issue_content
-                        )
+                        test_length = len("\n".join(details_lines + policy_lines)) + len(issue_content)
                         if test_length > available_length:
                             truncated = True
                             break
@@ -896,9 +938,7 @@ class ReportGenerator:
                     policy_lines.append("")
                     for i, issue in enumerate(high_findings):
                         issue_content = self._format_issue_markdown(issue, result.policy_file)
-                        test_length = len("\n".join(details_lines + policy_lines)) + len(
-                            issue_content
-                        )
+                        test_length = len("\n".join(details_lines + policy_lines)) + len(issue_content)
                         if test_length > available_length:
                             truncated = True
                             break
@@ -919,9 +959,7 @@ class ReportGenerator:
                     policy_lines.append("")
                     for i, issue in enumerate(warnings):
                         issue_content = self._format_issue_markdown(issue, result.policy_file)
-                        test_length = len("\n".join(details_lines + policy_lines)) + len(
-                            issue_content
-                        )
+                        test_length = len("\n".join(details_lines + policy_lines)) + len(issue_content)
                         if test_length > available_length:
                             truncated = True
                             break
@@ -942,9 +980,7 @@ class ReportGenerator:
                     policy_lines.append("")
                     for i, issue in enumerate(infos):
                         issue_content = self._format_issue_markdown(issue, result.policy_file)
-                        test_length = len("\n".join(details_lines + policy_lines)) + len(
-                            issue_content
-                        )
+                        test_length = len("\n".join(details_lines + policy_lines)) + len(issue_content)
                         if test_length > available_length:
                             truncated = True
                             break
@@ -973,10 +1009,7 @@ class ReportGenerator:
 
                 # Add separator between policies (but not after the last one)
                 # The footer will add its own separator
-                if (
-                    policies_shown < len([r for r in sorted_results if r[1].issues])
-                    and not truncated
-                ):
+                if policies_shown < len([r for r in sorted_results if r[1].issues]) and not truncated:
                     details_lines.append("---")
                     details_lines.append("")
 
@@ -988,15 +1021,9 @@ class ReportGenerator:
                 details_lines.append("")
                 details_lines.append("> ⚠️ **Output Truncated**")
                 details_lines.append(">")
-                details_lines.append(
-                    "> The report was truncated to fit within GitHub's comment size limit."
-                )
-                details_lines.append(
-                    f"> **Showing:** {policies_shown} policies with {issues_shown} issues"
-                )
-                details_lines.append(
-                    f"> **Remaining:** {remaining_policies} policies with {remaining_issues} issues"
-                )
+                details_lines.append("> The report was truncated to fit within GitHub's comment size limit.")
+                details_lines.append(f"> **Showing:** {policies_shown} policies with {issues_shown} issues")
+                details_lines.append(f"> **Remaining:** {remaining_policies} policies with {remaining_issues} issues")
                 details_lines.append(">")
                 details_lines.append(
                     "> 💡 **Tip:** Download the full report using `--output report.json` or `--format markdown --output report.md`"

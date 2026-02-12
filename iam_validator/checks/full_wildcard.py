@@ -11,9 +11,7 @@ class FullWildcardCheck(PolicyCheck):
     """Checks for both Action: '*' AND Resource: '*' which grants full administrative access."""
 
     check_id: ClassVar[str] = "full_wildcard"
-    description: ClassVar[str] = (
-        "Checks for both action and resource wildcards together (critical risk)"
-    )
+    description: ClassVar[str] = "Checks for both action and resource wildcards together (critical risk)"
     default_severity: ClassVar[str] = "critical"
 
     async def execute(

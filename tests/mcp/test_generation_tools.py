@@ -12,10 +12,10 @@ import pytest
 
 from iam_validator.mcp.tools.generation import (
     build_minimal_policy,
-    suggest_actions,
-    get_required_conditions,
     check_sensitive_actions,
+    get_required_conditions,
     list_templates,
+    suggest_actions,
 )
 
 
@@ -344,11 +344,13 @@ class TestCheckSensitiveActions:
     @pytest.mark.asyncio
     async def test_handles_multiple_actions(self):
         """Should check multiple actions."""
-        result = await check_sensitive_actions([
-            "iam:CreateAccessKey",
-            "s3:GetObject",
-            "iam:PassRole",
-        ])
+        result = await check_sensitive_actions(
+            [
+                "iam:CreateAccessKey",
+                "s3:GetObject",
+                "iam:PassRole",
+            ]
+        )
 
         assert isinstance(result, dict)
         assert "sensitive_actions" in result

@@ -25,6 +25,9 @@ class TestPRCommenterDiffFiltering:
         github.update_or_create_review_comments = AsyncMock(return_value=True)
         github.post_multipart_comments = AsyncMock(return_value=True)
         github.cleanup_bot_review_comments = AsyncMock(return_value=None)
+        github.create_review_comment = AsyncMock(return_value=False)
+        github.create_file_level_comment = AsyncMock(return_value=False)
+        github.get_pr_info = AsyncMock(return_value={"head": {"sha": "abc123"}})
         return github
 
     @pytest.fixture
@@ -112,9 +115,7 @@ class TestPRCommenterDiffFiltering:
         )
 
     @pytest.mark.asyncio
-    async def test_no_diff_filtering_when_pr_files_empty(
-        self, mock_github, validation_report_with_issues
-    ):
+    async def test_no_diff_filtering_when_pr_files_empty(self, mock_github, validation_report_with_issues):
         """Test that when PR files can't be fetched, filtering falls back gracefully."""
         mock_github.get_pr_files.return_value = []
 
@@ -130,9 +131,7 @@ class TestPRCommenterDiffFiltering:
         mock_github.update_or_create_review_comments.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_no_diff_filtering_with_cleanup_enabled(
-        self, mock_github, validation_report_with_issues
-    ):
+    async def test_no_diff_filtering_with_cleanup_enabled(self, mock_github, validation_report_with_issues):
         """Test that when cleanup is enabled and no inline comments, cleanup still runs."""
         mock_github.get_pr_files.return_value = []
 
@@ -187,10 +186,11 @@ class TestPRCommenterDiffFiltering:
         assert len(comments) == 1
         assert comments[0]["line"] == 7
 
-        # Line 8 issue should be in context_issues
-        assert len(commenter._context_issues) == 1
-        assert commenter._context_issues[0].line_number == 8
-        assert commenter._context_issues[0].statement_index == 0
+        # Line 8 (modified statement, unchanged line) and line 14 (unchanged statement)
+        # are both collected as context issues for off-diff posting
+        context_issue_lines = sorted([ci.line_number for ci in commenter._context_issues])
+        assert 8 in context_issue_lines
+        assert 14 in context_issue_lines
 
     @pytest.mark.asyncio
     async def test_context_issues_for_modified_statement_unchanged_lines(
@@ -202,7 +202,7 @@ class TestPRCommenterDiffFiltering:
             {
                 "filename": Path(sample_policy_file).name,
                 "status": "modified",
-                "patch": "@@ -4,7 +4,7 @@\n     {\n       \"Sid\": \"AllowS3Read\",\n       \"Effect\": \"Allow\",\n-      \"Action\": \"s3:GetObject\",\n+      \"Action\": \"s3:*\",\n       \"Resource\": \"*\"\n     },\n     {",
+                "patch": '@@ -4,7 +4,7 @@\n     {\n       "Sid": "AllowS3Read",\n       "Effect": "Allow",\n-      "Action": "s3:GetObject",\n+      "Action": "s3:*",\n       "Resource": "*"\n     },\n     {',
             }
         ]
 
@@ -213,7 +213,7 @@ class TestPRCommenterDiffFiltering:
 
         # Line 7 (changed) - inline comment
         # Line 8 (unchanged but in modified statement) - context issue
-        # Line 14 (unchanged statement) - skipped entirely
+        # Line 14 (unchanged statement) - also collected as context issue
 
         call_args = mock_github.update_or_create_review_comments.call_args
         comments = call_args.kwargs["comments"]
@@ -221,25 +221,28 @@ class TestPRCommenterDiffFiltering:
         assert len(comments) == 1  # Only line 7
         assert comments[0]["line"] == 7
 
-        # Check context issues
-        assert len(commenter._context_issues) == 1
-        context_issue = commenter._context_issues[0]
-        assert context_issue.line_number == 8
-        assert context_issue.statement_index == 0
-        assert context_issue.issue.severity == "error"
+        # Check context issues - both line 8 and line 14 are collected
+        context_issue_lines = sorted([ci.line_number for ci in commenter._context_issues])
+        assert 8 in context_issue_lines
+        assert 14 in context_issue_lines
+
+        # Verify the modified-statement issue has the right properties
+        line_8_issue = next(ci for ci in commenter._context_issues if ci.line_number == 8)
+        assert line_8_issue.statement_index == 0
+        assert line_8_issue.issue.severity == "error"
 
     @pytest.mark.asyncio
-    async def test_unchanged_statement_issues_ignored(
+    async def test_unchanged_statement_issues_collected_not_dropped(
         self, mock_github, validation_report_with_issues, sample_policy_file
     ):
-        """Test that issues in completely unchanged statements are ignored."""
+        """Test that issues in completely unchanged statements are collected for off-diff posting."""
         # Mock PR diff: only line 7 changed (Statement 0)
         # Statement 1 (lines 11-16) is completely unchanged
         mock_github.get_pr_files.return_value = [
             {
                 "filename": Path(sample_policy_file).name,
                 "status": "modified",
-                "patch": "@@ -4,7 +4,7 @@\n     {\n       \"Sid\": \"AllowS3Read\",\n       \"Effect\": \"Allow\",\n-      \"Action\": \"s3:GetObject\",\n+      \"Action\": \"s3:*\",\n       \"Resource\": \"*\"\n     },\n     {",
+                "patch": '@@ -4,7 +4,7 @@\n     {\n       "Sid": "AllowS3Read",\n       "Effect": "Allow",\n-      "Action": "s3:GetObject",\n+      "Action": "s3:*",\n       "Resource": "*"\n     },\n     {',
             }
         ]
 
@@ -248,18 +251,15 @@ class TestPRCommenterDiffFiltering:
         with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             await commenter._post_review_comments(validation_report_with_issues)
 
-        # Check that line 14 (Statement 1) is NOT in context issues
+        # Both line 8 (modified statement, unchanged line) and line 14 (unchanged statement)
+        # should be in context issues (off-diff posting failed since mocks return False)
         context_issue_lines = [ci.line_number for ci in commenter._context_issues]
-        assert 14 not in context_issue_lines
-
-        # Only line 8 should be in context (modified statement, unchanged line)
-        assert len(commenter._context_issues) == 1
-        assert commenter._context_issues[0].line_number == 8
+        assert 8 in context_issue_lines
+        assert 14 in context_issue_lines
+        assert len(commenter._context_issues) == 2
 
     @pytest.mark.asyncio
-    async def test_multiple_statements_modified(
-        self, mock_github, validation_report_with_issues, sample_policy_file
-    ):
+    async def test_multiple_statements_modified(self, mock_github, validation_report_with_issues, sample_policy_file):
         """Test filtering when multiple statements are modified."""
         # Mock PR diff: changes in both Statement 0 and Statement 1
         mock_github.get_pr_files.return_value = [
@@ -304,9 +304,7 @@ class TestPRCommenterDiffFiltering:
         assert 8 in context_issue_lines
 
     @pytest.mark.asyncio
-    async def test_new_file_all_lines_commented(
-        self, mock_github, validation_report_with_issues, sample_policy_file
-    ):
+    async def test_new_file_all_lines_commented(self, mock_github, validation_report_with_issues, sample_policy_file):
         """Test that all issues get inline comments for completely new files."""
         # Mock PR diff: entire file is new (status: added)
         with open(sample_policy_file, encoding="utf-8") as f:
@@ -314,7 +312,7 @@ class TestPRCommenterDiffFiltering:
             lines = content.split("\n")
 
         # Generate patch with all lines as additions
-        patch_lines = ["@@ -0,0 +1,{} @@".format(len(lines))]
+        patch_lines = [f"@@ -0,0 +1,{len(lines)} @@"]
         for line in lines:
             patch_lines.append(f"+{line}")
         patch = "\n".join(patch_lines)
@@ -344,15 +342,13 @@ class TestPRCommenterDiffFiltering:
 
     @pytest.mark.skip(reason="Logging test needs caplog setup")
     @pytest.mark.asyncio
-    async def test_logging_output(
-        self, mock_github, validation_report_with_issues, sample_policy_file, caplog
-    ):
+    async def test_logging_output(self, mock_github, validation_report_with_issues, sample_policy_file, caplog):
         """Test that appropriate logging messages are generated."""
         mock_github.get_pr_files.return_value = [
             {
                 "filename": Path(sample_policy_file).name,
                 "status": "modified",
-                "patch": "@@ -4,7 +4,7 @@\n     {\n       \"Sid\": \"AllowS3Read\",\n       \"Effect\": \"Allow\",\n-      \"Action\": \"s3:GetObject\",\n+      \"Action\": \"s3:*\",\n       \"Resource\": \"*\"\n     },\n     {",
+                "patch": '@@ -4,7 +4,7 @@\n     {\n       "Sid": "AllowS3Read",\n       "Effect": "Allow",\n-      "Action": "s3:GetObject",\n+      "Action": "s3:*",\n       "Resource": "*"\n     },\n     {',
             }
         ]
 
@@ -366,6 +362,217 @@ class TestPRCommenterDiffFiltering:
         assert any("Fetching PR diff information" in msg for msg in log_messages)
         assert any("Parsed diffs for" in msg for msg in log_messages)
         assert any("Diff filtering results" in msg for msg in log_messages)
+
+
+class TestPRCommenterOffDiffPipeline:
+    """Tests for the off-diff comment posting pipeline."""
+
+    @pytest.fixture
+    def mock_github(self):
+        """Create a mock GitHub integration."""
+        github = MagicMock(spec=GitHubIntegration)
+        github.is_configured = MagicMock(return_value=True)
+        github.get_pr_files = AsyncMock(return_value=[])
+        github.update_or_create_review_comments = AsyncMock(return_value=True)
+        github.post_multipart_comments = AsyncMock(return_value=True)
+        github.cleanup_bot_review_comments = AsyncMock(return_value=None)
+        github.create_review_comment = AsyncMock(return_value=False)
+        github.create_file_level_comment = AsyncMock(return_value=False)
+        github.get_pr_info = AsyncMock(return_value={"head": {"sha": "abc123"}})
+        return github
+
+    @pytest.fixture
+    def sample_policy_file(self):
+        """Create a temporary policy file for testing."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write(
+                """{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowS3Read",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowDynamoDB",
+      "Effect": "Allow",
+      "Action": "dynamodb:*",
+      "Resource": "arn:aws:dynamodb:*:*:table/*"
+    }
+  ]
+}"""
+            )
+            policy_file = f.name
+
+        yield policy_file
+        Path(policy_file).unlink()
+
+    @pytest.mark.asyncio
+    async def test_off_diff_falls_back_to_file_level(self, mock_github, sample_policy_file):
+        """Test that off-diff pipeline falls back to file-level comments when line-level fails."""
+        # Line-level fails, file-level succeeds
+        mock_github.create_review_comment.return_value = False
+        mock_github.create_file_level_comment.return_value = True
+
+        issue = ValidationIssue(
+            policy_file=sample_policy_file,
+            statement_index=1,
+            severity="critical",
+            issue_type="wildcard_action",
+            message="Action uses dangerous wildcard",
+            action="dynamodb:*",
+            line_number=14,
+        )
+
+        report = ValidationReport(
+            results=[
+                PolicyValidationResult(
+                    policy_file=sample_policy_file,
+                    is_valid=False,
+                    issues=[issue],
+                    policy_type="IDENTITY_POLICY",
+                )
+            ],
+            total_policies=1,
+            valid_policies=0,
+            invalid_policies=1,
+            total_issues=1,
+        )
+
+        # Mock diff: only line 7 changed so line 14 goes to off-diff
+        mock_github.get_pr_files.return_value = [
+            {
+                "filename": Path(sample_policy_file).name,
+                "status": "modified",
+                "patch": '@@ -4,7 +4,7 @@\n     {\n       "Sid": "AllowS3Read",\n       "Effect": "Allow",\n-      "Action": "s3:GetObject",\n+      "Action": "s3:*",\n       "Resource": "*"\n     },\n     {',
+            }
+        ]
+
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
+
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
+            await commenter._post_review_comments(report)
+
+        # Line-level should have been attempted first
+        mock_github.create_review_comment.assert_called_once()
+        call_args = mock_github.create_review_comment.call_args
+        assert call_args[0][0] == "abc123"  # commit_id
+        assert call_args[0][2] == 14  # line number
+
+        # File-level should have been called as fallback
+        mock_github.create_file_level_comment.assert_called_once()
+        file_call_args = mock_github.create_file_level_comment.call_args
+        assert call_args[0][0] == "abc123"  # commit_id
+        assert Path(sample_policy_file).name in file_call_args[0][1]  # file_path
+
+        # Context issues should be empty (successfully posted via file-level)
+        assert len(commenter._context_issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_off_diff_remaining_issues_stay_in_context(self, mock_github, sample_policy_file):
+        """Test that issues that fail both posting methods remain in context_issues."""
+        # Both methods fail
+        mock_github.create_review_comment.return_value = False
+        mock_github.create_file_level_comment.return_value = False
+
+        issue = ValidationIssue(
+            policy_file=sample_policy_file,
+            statement_index=1,
+            severity="critical",
+            issue_type="wildcard_action",
+            message="Action uses dangerous wildcard",
+            action="dynamodb:*",
+            line_number=14,
+        )
+
+        report = ValidationReport(
+            results=[
+                PolicyValidationResult(
+                    policy_file=sample_policy_file,
+                    is_valid=False,
+                    issues=[issue],
+                    policy_type="IDENTITY_POLICY",
+                )
+            ],
+            total_policies=1,
+            valid_policies=0,
+            invalid_policies=1,
+            total_issues=1,
+        )
+
+        mock_github.get_pr_files.return_value = [
+            {
+                "filename": Path(sample_policy_file).name,
+                "status": "modified",
+                "patch": '@@ -4,7 +4,7 @@\n     {\n       "Sid": "AllowS3Read",\n       "Effect": "Allow",\n-      "Action": "s3:GetObject",\n+      "Action": "s3:*",\n       "Resource": "*"\n     },\n     {',
+            }
+        ]
+
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
+
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
+            await commenter._post_review_comments(report)
+
+        # Both methods failed, so issue remains in context_issues for summary
+        assert len(commenter._context_issues) == 1
+        assert commenter._context_issues[0].line_number == 14
+
+    @pytest.mark.asyncio
+    async def test_context_issues_passed_to_summary(self, mock_github, sample_policy_file):
+        """Test that remaining context issues are passed to summary generation."""
+        # Both off-diff methods fail so issues stay in context
+        mock_github.create_review_comment.return_value = False
+        mock_github.create_file_level_comment.return_value = False
+
+        issue = ValidationIssue(
+            policy_file=sample_policy_file,
+            statement_index=1,
+            severity="critical",
+            issue_type="wildcard_action",
+            message="Action uses dangerous wildcard",
+            action="dynamodb:*",
+            line_number=14,
+        )
+
+        report = ValidationReport(
+            results=[
+                PolicyValidationResult(
+                    policy_file=sample_policy_file,
+                    is_valid=False,
+                    issues=[issue],
+                    policy_type="IDENTITY_POLICY",
+                )
+            ],
+            total_policies=1,
+            valid_policies=0,
+            invalid_policies=1,
+            total_issues=1,
+        )
+
+        mock_github.get_pr_files.return_value = [
+            {
+                "filename": Path(sample_policy_file).name,
+                "status": "modified",
+                "patch": '@@ -4,7 +4,7 @@\n     {\n       "Sid": "AllowS3Read",\n       "Effect": "Allow",\n-      "Action": "s3:GetObject",\n+      "Action": "s3:*",\n       "Resource": "*"\n     },\n     {',
+            }
+        ]
+
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
+
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
+            await commenter._post_review_comments(report)
+
+        # After _post_review_comments, context_issues should be non-empty
+        assert len(commenter._context_issues) >= 1
+
+        # Verify the context issue has the right data for summary display
+        ctx = commenter._context_issues[0]
+        assert ctx.file_path == Path(sample_policy_file).name
+        assert ctx.line_number == 14
+        assert ctx.issue.severity == "critical"
+        assert ctx.issue.issue_type == "wildcard_action"
 
 
 class TestPRCommenterBlockingIssuesIgnored:

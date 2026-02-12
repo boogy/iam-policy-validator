@@ -56,9 +56,7 @@ class TestIfExistsSecuritySensitiveAllow:
         )
         issues = await check.execute(statement, 0, None, config)
         # Should not have Allow-specific warning
-        assert not any(
-            i.issue_type == "ifexists_weakens_security_condition" for i in issues
-        )
+        assert not any(i.issue_type == "ifexists_weakens_security_condition" for i in issues)
 
     @pytest.mark.asyncio
     async def test_ifexists_secure_transport_allow_redundant(self, check, config):
@@ -71,12 +69,8 @@ class TestIfExistsSecuritySensitiveAllow:
         )
         issues = await check.execute(statement, 0, None, config)
         # SecureTransport is always present, so IfExists is redundant (not a security bypass)
-        assert not any(
-            i.issue_type == "ifexists_weakens_security_condition" for i in issues
-        )
-        assert any(
-            i.issue_type == "ifexists_on_always_present_key" for i in issues
-        )
+        assert not any(i.issue_type == "ifexists_weakens_security_condition" for i in issues)
+        assert any(i.issue_type == "ifexists_on_always_present_key" for i in issues)
 
     @pytest.mark.asyncio
     async def test_ifexists_principal_arn_allow_warns(self, check, config):
@@ -85,16 +79,10 @@ class TestIfExistsSecuritySensitiveAllow:
             Effect="Allow",
             Action=["s3:GetObject"],
             Resource=["*"],
-            Condition={
-                "ArnLikeIfExists": {
-                    "aws:PrincipalArn": "arn:aws:iam::123:role/*"
-                }
-            },
+            Condition={"ArnLikeIfExists": {"aws:PrincipalArn": "arn:aws:iam::123:role/*"}},
         )
         issues = await check.execute(statement, 0, None, config)
-        assert any(
-            i.issue_type == "ifexists_weakens_security_condition" for i in issues
-        )
+        assert any(i.issue_type == "ifexists_weakens_security_condition" for i in issues)
 
     @pytest.mark.asyncio
     async def test_ifexists_non_security_key_allow_no_warn(self, check, config):
@@ -106,9 +94,7 @@ class TestIfExistsSecuritySensitiveAllow:
             Condition={"StringLikeIfExists": {"ec2:InstanceType": ["t3.*"]}},
         )
         issues = await check.execute(statement, 0, None, config)
-        assert not any(
-            i.issue_type == "ifexists_weakens_security_condition" for i in issues
-        )
+        assert not any(i.issue_type == "ifexists_weakens_security_condition" for i in issues)
 
     @pytest.mark.asyncio
     async def test_ifexists_with_null_check_suppresses_warning(self, check, config):
@@ -123,9 +109,7 @@ class TestIfExistsSecuritySensitiveAllow:
             },
         )
         issues = await check.execute(statement, 0, None, config)
-        assert not any(
-            i.issue_type == "ifexists_weakens_security_condition" for i in issues
-        )
+        assert not any(i.issue_type == "ifexists_weakens_security_condition" for i in issues)
 
     @pytest.mark.asyncio
     async def test_ifexists_mfa_key_skipped(self, check, config):
@@ -137,9 +121,7 @@ class TestIfExistsSecuritySensitiveAllow:
             Condition={"BoolIfExists": {"aws:MultiFactorAuthPresent": "false"}},
         )
         issues = await check.execute(statement, 0, None, config)
-        assert not any(
-            i.issue_type == "ifexists_weakens_security_condition" for i in issues
-        )
+        assert not any(i.issue_type == "ifexists_weakens_security_condition" for i in issues)
 
     @pytest.mark.asyncio
     async def test_forallvalues_ifexists_security_key_warns(self, check, config):
@@ -148,16 +130,10 @@ class TestIfExistsSecuritySensitiveAllow:
             Effect="Allow",
             Action=["s3:GetObject"],
             Resource=["*"],
-            Condition={
-                "ForAllValues:StringEqualsIfExists": {
-                    "aws:PrincipalOrgPaths": ["o-123/r-abc/"]
-                }
-            },
+            Condition={"ForAllValues:StringEqualsIfExists": {"aws:PrincipalOrgPaths": ["o-123/r-abc/"]}},
         )
         issues = await check.execute(statement, 0, None, config)
-        assert any(
-            i.issue_type == "ifexists_weakens_security_condition" for i in issues
-        )
+        assert any(i.issue_type == "ifexists_weakens_security_condition" for i in issues)
 
 
 class TestIfExistsDenyPatterns:
@@ -181,9 +157,7 @@ class TestIfExistsDenyPatterns:
             Effect="Deny",
             Action=["*"],
             Resource=["*"],
-            Condition={
-                "StringNotEqualsIfExists": {"aws:PrincipalOrgID": "o-123456"}
-            },
+            Condition={"StringNotEqualsIfExists": {"aws:PrincipalOrgID": "o-123456"}},
         )
         issues = await check.execute(statement, 0, None, config)
         assert not any(i.issue_type == "ifexists_weakens_deny" for i in issues)
@@ -195,9 +169,7 @@ class TestIfExistsDenyPatterns:
             Effect="Deny",
             Action=["s3:DeleteBucket"],
             Resource=["*"],
-            Condition={
-                "StringEqualsIfExists": {"aws:SourceVpc": "vpc-123456"}
-            },
+            Condition={"StringEqualsIfExists": {"aws:SourceVpc": "vpc-123456"}},
         )
         issues = await check.execute(statement, 0, None, config)
         assert any(i.issue_type == "ifexists_weakens_deny" for i in issues)
@@ -221,11 +193,7 @@ class TestIfExistsDenyPatterns:
             Effect="Deny",
             Action=["*"],
             Resource=["*"],
-            Condition={
-                "StringNotEquals": {
-                    "aws:PrincipalAccount": "123456789012"
-                }
-            },
+            Condition={"StringNotEquals": {"aws:PrincipalAccount": "123456789012"}},
         )
         issues = await check.execute(statement, 0, None, config)
         assert not any(i.issue_type == "ifexists_deny_suggestion" for i in issues)
@@ -265,16 +233,10 @@ class TestIfExistsAlwaysPresentKeys:
             Effect="Allow",
             Action=["s3:GetObject"],
             Resource=["*"],
-            Condition={
-                "StringEqualsIfExists": {
-                    "aws:PrincipalAccount": "123456789012"
-                }
-            },
+            Condition={"StringEqualsIfExists": {"aws:PrincipalAccount": "123456789012"}},
         )
         issues = await check.execute(statement, 0, None, config)
-        redundant = [
-            i for i in issues if i.issue_type == "ifexists_on_always_present_key"
-        ]
+        redundant = [i for i in issues if i.issue_type == "ifexists_on_always_present_key"]
         assert len(redundant) == 1
         assert "always present" in redundant[0].message
         assert "StringEquals" in redundant[0].message
@@ -286,14 +248,10 @@ class TestIfExistsAlwaysPresentKeys:
             Effect="Allow",
             Action=["ec2:RunInstances"],
             Resource=["*"],
-            Condition={
-                "StringLikeIfExists": {"ec2:InstanceType": ["t3.*"]}
-            },
+            Condition={"StringLikeIfExists": {"ec2:InstanceType": ["t3.*"]}},
         )
         issues = await check.execute(statement, 0, None, config)
-        assert not any(
-            i.issue_type == "ifexists_on_always_present_key" for i in issues
-        )
+        assert not any(i.issue_type == "ifexists_on_always_present_key" for i in issues)
 
     @pytest.mark.asyncio
     async def test_warn_always_present_disabled(self, check):
@@ -306,16 +264,10 @@ class TestIfExistsAlwaysPresentKeys:
             Effect="Allow",
             Action=["s3:GetObject"],
             Resource=["*"],
-            Condition={
-                "StringEqualsIfExists": {
-                    "aws:PrincipalAccount": "123456789012"
-                }
-            },
+            Condition={"StringEqualsIfExists": {"aws:PrincipalAccount": "123456789012"}},
         )
         issues = await check.execute(statement, 0, None, config)
-        assert not any(
-            i.issue_type == "ifexists_on_always_present_key" for i in issues
-        )
+        assert not any(i.issue_type == "ifexists_on_always_present_key" for i in issues)
 
 
 class TestCheckMetadata:

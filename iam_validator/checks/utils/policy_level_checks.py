@@ -6,6 +6,7 @@ that span multiple statements in a policy.
 
 import re
 
+from iam_validator.checks.utils.formatting import format_list_with_backticks
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.models import ValidationIssue
 
@@ -140,7 +141,7 @@ def _check_all_of_pattern(
                     action_to_statements[action].append(f"Statement {sid_str}")
 
         # Format actions with backticks and statement references
-        action_list = "`, `".join(matched_actions)
+        action_list = format_list_with_backticks(matched_actions)
         stmt_details = "\n  - ".join(statement_refs)
 
         # Build a compact statement summary for the message
@@ -156,12 +157,10 @@ def _check_all_of_pattern(
         # Support {actions} and {statements} placeholders in custom messages
         message_template = item_config.get(
             "message",
-            f"Policy grants [`{action_list}`] across statements - enables privilege escalation. Found: {stmt_summary}",
+            f"Policy grants [{action_list}] across statements - enables privilege escalation. Found: {stmt_summary}",
         )
         # Replace placeholders if present in custom message
-        message = message_template.replace("{actions}", f"`{action_list}`").replace(
-            "{statements}", stmt_summary
-        )
+        message = message_template.replace("{actions}", f"`{action_list}`").replace("{statements}", stmt_summary)
 
         # Use custom suggestion if provided in item_config, otherwise use default
         suggestion = item_config.get(

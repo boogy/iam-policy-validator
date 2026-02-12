@@ -7,16 +7,56 @@ the principle of least privilege.
 
 from typing import ClassVar
 
+from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
 
 
-def _format_list_with_backticks(items: list[str], max_items: int = 3) -> str:
-    """Format a list of items with backticks for markdown rendering."""
-    formatted = [f"`{item}`" for item in items[:max_items]]
-    suffix = "..." if len(items) > max_items else ""
-    return ", ".join(formatted) + suffix
+def _extract_service_prefixes(actions: list[str]) -> set[str]:
+    """Extract unique service prefixes from a list of actions.
+
+    Args:
+        actions: List of IAM actions (e.g., ["iam:*", "s3:GetObject"])
+
+    Returns:
+        Set of service prefixes (e.g., {"iam", "s3"})
+    """
+    prefixes: set[str] = set()
+    for action in actions:
+        if ":" in action:
+            prefixes.add(action.split(":")[0])
+    return prefixes
+
+
+def _build_implicit_grant_note(excluded_services: set[str], not_actions: list[str]) -> str:
+    """Build a note explaining what services/actions are implicitly granted.
+
+    Args:
+        excluded_services: Service prefixes that are excluded
+        not_actions: The NotAction list
+
+    Returns:
+        Human-readable note about implicitly granted access
+    """
+    if not excluded_services:
+        return ""
+
+    # Check if any entries are full service wildcards (e.g., "iam:*")
+    wildcard_services = {a.split(":")[0] for a in not_actions if a.endswith(":*")}
+
+    if wildcard_services:
+        other_note = (
+            f"All AWS services EXCEPT {format_list_with_backticks(sorted(wildcard_services), 5)} "
+            f"are implicitly granted access."
+        )
+    else:
+        other_note = (
+            f"Only specific actions in {format_list_with_backticks(sorted(excluded_services), 3)} "
+            f"are excluded; all other actions in these and all other services are granted."
+        )
+
+    return other_note
 
 
 class NotActionNotResourceCheck(PolicyCheck):
@@ -52,10 +92,18 @@ class NotActionNotResourceCheck(PolicyCheck):
         not_resources = statement.get_not_resources()
         effect = statement.effect
 
+        # When both NotAction AND NotResource are present with Allow,
+        # only emit the combined critical finding (Check 3) to avoid noise.
+        has_combined = bool(not_actions and not_resources and effect == "Allow")
+
         # Check 1: NotAction with Effect: Allow
         # This grants ALL actions EXCEPT the listed ones - extremely dangerous
-        if not_actions and effect == "Allow":
+        if not_actions and effect == "Allow" and not has_combined:
             has_conditions = bool(statement.condition)
+
+            # Determine which service prefixes are excluded to explain what's implicitly granted
+            excluded_services = _extract_service_prefixes(not_actions)
+            implicit_grant_note = _build_implicit_grant_note(excluded_services, not_actions)
 
             if has_conditions:
                 # NotAction with conditions is still risky but less severe
@@ -67,17 +115,21 @@ class NotActionNotResourceCheck(PolicyCheck):
                         issue_type="not_action_allow",
                         message=(
                             "Statement uses `NotAction` with `Allow` effect. "
-                            "This grants ALL actions except the listed ones. "
+                            "This grants **ALL** actions except the listed ones. "
                             "While conditions are present, this pattern is still risky."
+                            + (f" {implicit_grant_note}" if implicit_grant_note else "")
                         ),
                         suggestion=(
                             "Consider using explicit `Action` lists instead of `NotAction`. "
-                            "If `NotAction` is required, ensure conditions are comprehensive."
+                            "If `NotAction` is intentional (e.g., to deny all except specific actions "
+                            "with a `Deny` effect), ensure the conditions are comprehensive enough "
+                            "to prevent unintended access. Add `aws:SourceIp`, `aws:PrincipalArn`, "
+                            "or `aws:MultiFactorAuthPresent` conditions as additional safeguards."
                         ),
                         example='{\n  "Effect": "Allow",\n  "Action": ["s3:GetObject", "s3:ListBucket"],\n  "Resource": "*"\n}',
                         line_number=statement.line_number,
                         field_name="action",
-                        action=_format_list_with_backticks(not_actions, 3),
+                        action=format_list_with_backticks(not_actions, 3),
                     )
                 )
             else:
@@ -90,28 +142,37 @@ class NotActionNotResourceCheck(PolicyCheck):
                         issue_type="not_action_allow_no_condition",
                         message=(
                             "Statement uses `NotAction` with `Allow` effect and NO conditions. "
-                            f"This grants ALL AWS actions except: {_format_list_with_backticks(not_actions, 5)}. "
+                            f"This grants **ALL** AWS actions except: {format_list_with_backticks(not_actions, 5)}. "
                             "This is equivalent to granting near-administrator access."
+                            + (f" {implicit_grant_note}" if implicit_grant_note else "")
                         ),
                         suggestion=(
-                            "Replace `NotAction` with explicit `Action` list. "
+                            "Replace `NotAction` with an explicit `Action` list to follow the "
+                            "principle of least privilege. If you need to allow most actions "
+                            "except a few, consider using a `Deny` statement with explicit "
+                            "`Action` list instead, combined with a separate `Allow` statement. "
                             "If `NotAction` is required, add strict conditions like "
                             "`aws:SourceIp`, `aws:PrincipalArn`, or `aws:MultiFactorAuthPresent`."
                         ),
-                        example='{\n  "Effect": "Allow",\n  "Action": ["specific:Action"],\n  "Resource": "*",\n  "Condition": {\n    "Bool": {"aws:MultiFactorAuthPresent": "true"}\n  }\n}',
+                        example='{\n  "Effect": "Deny",\n  "Action": ["iam:*", "organizations:*"],\n  "Resource": "*"\n}',
                         line_number=statement.line_number,
                         field_name="action",
-                        action=_format_list_with_backticks(not_actions, 3),
+                        action=format_list_with_backticks(not_actions, 3),
                     )
                 )
 
         # Check 2: NotResource with wildcards or broad patterns
-        if not_resources and effect == "Allow":
+        if not_resources and effect == "Allow" and not has_combined:
             # Check if NotResource is used with wildcard Resource
             resources = statement.get_resources()
             has_wildcard_resource = "*" in resources or any("*" in r for r in resources)
 
-            if has_wildcard_resource or not resources:
+            # Trust policies validly omit Resource (the role itself is the resource).
+            # Skip the "missing Resource" warning when the statement has a Principal,
+            # which is a strong signal this is a resource/trust policy.
+            is_trust_like = statement.principal is not None or statement.not_principal is not None
+
+            if has_wildcard_resource or (not resources and not is_trust_like):
                 issues.append(
                     ValidationIssue(
                         severity=self.get_severity(config),
@@ -120,17 +181,20 @@ class NotActionNotResourceCheck(PolicyCheck):
                         issue_type="not_resource_broad",
                         message=(
                             "Statement uses `NotResource` with `Allow` effect and broad `Resource`. "
-                            f"This grants access to ALL resources except: {_format_list_with_backticks(not_resources, 3)}."
+                            f"This grants access to ALL resources except: {format_list_with_backticks(not_resources, 3)}."
                         ),
                         suggestion=(
-                            "Replace `NotResource` with explicit `Resource` ARNs. "
-                            "Using `NotResource` grants access to all current and future resources "
-                            "except those explicitly excluded."
+                            "Replace `NotResource` with explicit `Resource` ARNs to follow the "
+                            "principle of least privilege. If you need to protect specific resources, "
+                            "use a `Deny` statement with explicit `Resource` ARNs instead. "
+                            "`NotResource` grants access to all current and future resources "
+                            "except those explicitly excluded, which is dangerous as new resources "
+                            "are automatically included."
                         ),
                         example='{\n  "Effect": "Allow",\n  "Action": ["s3:GetObject"],\n  "Resource": "arn:aws:s3:::my-bucket/*"\n}',
                         line_number=statement.line_number,
                         field_name="resource",
-                        resource=_format_list_with_backticks(not_resources, 3),
+                        resource=format_list_with_backticks(not_resources, 3),
                     )
                 )
 
@@ -145,19 +209,21 @@ class NotActionNotResourceCheck(PolicyCheck):
                     issue_type="combined_not_action_not_resource",
                     message=(
                         "**CRITICAL:** Policy uses both `NotAction` AND `NotResource` with `Allow` effect. "
-                        f"This grants ALL actions except [{_format_list_with_backticks(not_actions, 3)}] "
-                        f"on ALL resources except [{_format_list_with_backticks(not_resources, 3)}]. "
+                        f"This grants **ALL** actions except [{format_list_with_backticks(not_actions, 3)}] "
+                        f"on **ALL** resources except [{format_list_with_backticks(not_resources, 3)}]. "
                         "This is equivalent to near-administrator access."
                     ),
                     suggestion=(
                         "Rewrite using explicit `Action` and `Resource` lists instead of negations. "
-                        "The combination of `NotAction` + `NotResource` is almost always a mistake."
+                        "The combination of `NotAction` + `NotResource` is almost always a mistake. "
+                        "If the intent is to protect certain actions/resources, use separate `Deny` "
+                        "statements with explicit `Action` and `Resource` lists instead."
                     ),
                     example='{\n  "Effect": "Allow",\n  "Action": ["specific:Action"],\n  "Resource": "arn:aws:service:::specific-resource"\n}',
                     line_number=statement.line_number,
                     field_name="action",
-                    action=_format_list_with_backticks(not_actions, 3),
-                    resource=_format_list_with_backticks(not_resources, 3),
+                    action=format_list_with_backticks(not_actions, 3),
+                    resource=format_list_with_backticks(not_resources, 3),
                 )
             )
 
@@ -177,7 +243,7 @@ class NotActionNotResourceCheck(PolicyCheck):
                         issue_type="not_action_deny_review",
                         message=(
                             "Statement uses `NotAction` with `Deny` effect on all resources. "
-                            f"This denies everything except: {_format_list_with_backticks(not_actions, 5)}. "
+                            f"This denies everything except: {format_list_with_backticks(not_actions, 5)}. "
                             "Review to ensure this is the intended behavior."
                         ),
                         suggestion=(
@@ -186,7 +252,7 @@ class NotActionNotResourceCheck(PolicyCheck):
                         ),
                         line_number=statement.line_number,
                         field_name="action",
-                        action=_format_list_with_backticks(not_actions, 3),
+                        action=format_list_with_backticks(not_actions, 3),
                     )
                 )
 

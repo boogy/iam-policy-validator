@@ -47,9 +47,7 @@ class TestTemplateMetadata:
                 assert "required" in var, f"Template {name} has variable without 'required'"
                 # Optional variables should have a default
                 if not var["required"]:
-                    assert "default" in var, (
-                        f"Template {name} optional variable {var['name']} missing default"
-                    )
+                    assert "default" in var, f"Template {name} optional variable {var['name']} missing default"
 
     def test_list_templates_returns_all(self):
         """list_templates returns metadata for all templates."""
@@ -86,9 +84,7 @@ class TestTemplateMetadata:
             assert name.islower(), f"Template {name} is not lowercase"
             assert " " not in name, f"Template {name} contains spaces"
             # Allow letters, numbers, and hyphens only
-            assert all(c.isalnum() or c == "-" for c in name), (
-                f"Template {name} has invalid characters"
-            )
+            assert all(c.isalnum() or c == "-" for c in name), f"Template {name} has invalid characters"
 
 
 class TestTemplateRendering:
@@ -202,9 +198,7 @@ class TestTemplateRendering:
     def test_render_no_unsubstituted_variables(self):
         """Rendered templates should have no ${variable} placeholders."""
         # Test only templates that don't have AWS policy variables
-        test_templates = [
-            name for name, tmpl in TEMPLATES.items() if "${aws:" not in str(tmpl["policy"])
-        ]
+        test_templates = [name for name, tmpl in TEMPLATES.items() if "${aws:" not in str(tmpl["policy"])]
 
         for template_name in test_templates:
             template = TEMPLATES[template_name]
@@ -239,9 +233,7 @@ class TestTemplateRendering:
 
             template_vars = re.findall(r"\$\{([^}]+)\}", policy_str)
             non_aws_vars = [v for v in template_vars if not v.startswith("aws:")]
-            assert len(non_aws_vars) == 0, (
-                f"Template {template_name} has unsubstituted variables: {non_aws_vars}"
-            )
+            assert len(non_aws_vars) == 0, f"Template {template_name} has unsubstituted variables: {non_aws_vars}"
 
 
 class TestTemplateValidation:
@@ -289,13 +281,10 @@ class TestTemplateValidation:
 
         # Check no structural errors (policy_structure check)
         structural_errors = [
-            issue
-            for issue in result.issues
-            if issue.check_id in ("policy_structure",) and issue.severity == "error"
+            issue for issue in result.issues if issue.check_id in ("policy_structure",) and issue.severity == "error"
         ]
         assert len(structural_errors) == 0, (
-            f"Template {template_name} has structural errors: "
-            f"{[issue.message for issue in structural_errors]}"
+            f"Template {template_name} has structural errors: {[issue.message for issue in structural_errors]}"
         )
 
     @pytest.mark.asyncio
@@ -313,18 +302,14 @@ class TestTemplateValidation:
         """ECS task execution template passes validation."""
         from iam_validator.mcp.tools.validation import validate_policy
 
-        policy = render_template(
-            "ecs-task-execution", {"account_id": "123456789012", "region": "us-east-1"}
-        )
+        policy = render_template("ecs-task-execution", {"account_id": "123456789012", "region": "us-east-1"})
 
         result = await validate_policy(policy=policy, policy_type="identity")
 
         # May have warnings about Resource: "*" for ECR GetAuthorizationToken (expected)
         # but should not have structural errors
         structural_errors = [
-            issue
-            for issue in result.issues
-            if issue.check_id == "policy_structure" and issue.severity == "error"
+            issue for issue in result.issues if issue.check_id == "policy_structure" and issue.severity == "error"
         ]
         assert len(structural_errors) == 0
 
@@ -381,10 +366,7 @@ class TestTemplateSecurityFeatures:
                             assert any(
                                 keyword in action.lower()
                                 for keyword in ["describe", "list", "get", "authorization", "batch"]
-                            ), (
-                                f"Template {template_name} uses Resource: '*' with "
-                                f"non-read action {action}"
-                            )
+                            ), f"Template {template_name} uses Resource: '*' with non-read action {action}"
 
     def test_templates_have_unique_sids(self):
         """Each template should have unique SIDs within its statements."""
@@ -397,9 +379,7 @@ class TestTemplateSecurityFeatures:
 
             # If there are SIDs, they should be unique
             if sids:
-                assert len(sids) == len(set(sids)), (
-                    f"Template {template_name} has duplicate SIDs: {sids}"
-                )
+                assert len(sids) == len(set(sids)), f"Template {template_name} has duplicate SIDs: {sids}"
 
     def test_lambda_templates_include_cloudwatch_logs(self):
         """Lambda templates should include CloudWatch Logs permissions."""
@@ -423,9 +403,7 @@ class TestTemplateSecurityFeatures:
                     has_logs_permissions = True
                     break
 
-            assert has_logs_permissions, (
-                f"Template {template_name} should include CloudWatch Logs permissions"
-            )
+            assert has_logs_permissions, f"Template {template_name} should include CloudWatch Logs permissions"
 
     def test_secrets_manager_template_includes_version_stage(self):
         """Secrets Manager template should restrict to AWSCURRENT version stage."""
@@ -441,9 +419,7 @@ class TestTemplateSecurityFeatures:
                     has_version_stage_condition = True
                     assert "AWSCURRENT" in str(conditions)
 
-        assert has_version_stage_condition, (
-            "secrets-manager-read template should include VersionStage condition"
-        )
+        assert has_version_stage_condition, "secrets-manager-read template should include VersionStage condition"
 
 
 class TestTemplateEdgeCases:

@@ -16,6 +16,8 @@ Benefits of code-first approach:
 - 5-10x faster than YAML parsing
 """
 
+import copy
+
 from iam_validator.core import constants
 from iam_validator.core.config.category_suggestions import get_category_suggestions
 from iam_validator.core.config.condition_requirements import CONDITION_REQUIREMENTS
@@ -729,7 +731,7 @@ DEFAULT_CONFIG = {
         # CRITICAL: This key is used by sensitive_action check for filtering
         # It must be named "requirements" (not "action_condition_requirements")
         # to enable automatic deduplication of warnings
-        "requirements": __import__("copy").deepcopy(CONDITION_REQUIREMENTS),
+        "requirements": copy.deepcopy(CONDITION_REQUIREMENTS),
         # POLICY-LEVEL: Scan entire policy and enforce conditions across ALL matching statements
         # Example: "If ANY statement grants iam:CreateUser, then ALL such statements must have MFA"
         # Default: Empty list (opt-in feature)

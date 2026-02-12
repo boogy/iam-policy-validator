@@ -26,9 +26,7 @@ from iam_validator.core.policy_loader import PolicyLoader
 logger = logging.getLogger(__name__)
 
 
-def _should_fail_on_issue(
-    issue: ValidationIssue, fail_on_severities: list[str] | None = None
-) -> bool:
+def _should_fail_on_issue(issue: ValidationIssue, fail_on_severities: list[str] | None = None) -> bool:
     """Determine if an issue should cause validation to fail.
 
     Args:
@@ -73,9 +71,7 @@ async def validate_policies(
     enable_parallel = config.get_setting("parallel_execution", True)
     enable_builtin_checks = config.get_setting("enable_builtin_checks", True)
 
-    registry = create_default_registry(
-        enable_parallel=enable_parallel, include_builtin_checks=enable_builtin_checks
-    )
+    registry = create_default_registry(enable_parallel=enable_parallel, include_builtin_checks=enable_builtin_checks)
 
     if not enable_builtin_checks:
         logger.info("Built-in checks disabled - using only custom checks")
@@ -87,9 +83,7 @@ async def validate_policies(
     # Load custom checks from explicit module paths (old method)
     custom_checks = ConfigLoader.load_custom_checks(config, registry)
     if custom_checks:
-        logger.info(
-            f"Loaded {len(custom_checks)} custom checks from modules: {', '.join(custom_checks)}"
-        )
+        logger.info(f"Loaded {len(custom_checks)} custom checks from modules: {', '.join(custom_checks)}")
 
     # Auto-discover custom checks from directory (new method)
     # Priority: CLI arg > config file > default None
@@ -98,9 +92,7 @@ async def validate_policies(
         checks_dir_path = Path(checks_dir).resolve()
         discovered_checks = ConfigLoader.discover_checks_in_directory(checks_dir_path, registry)
         if discovered_checks:
-            logger.info(
-                f"Auto-discovered {len(discovered_checks)} custom checks from {checks_dir_path}"
-            )
+            logger.info("Auto-discovered %d custom checks from configured directory", len(discovered_checks))
 
     # Apply configuration again to include custom checks
     # This allows configuring auto-discovered checks via the config file
@@ -180,9 +172,7 @@ async def _validate_policy_with_registry(
         policy_type_validation,
     )
 
-    policy_type_issues = await policy_type_validation.execute_policy(
-        policy, policy_file, policy_type=policy_type
-    )
+    policy_type_issues = await policy_type_validation.execute_policy(policy, policy_file, policy_type=policy_type)
     result.issues.extend(policy_type_issues)  # pylint: disable=no-member
 
     # Run policy-level checks first (checks that need to see the entire policy)
@@ -213,8 +203,6 @@ async def _validate_policy_with_registry(
                 result.condition_keys_checked += len(conditions)
 
     # Update final validation status based on fail_on_severities configuration
-    result.is_valid = (
-        len([i for i in result.issues if _should_fail_on_issue(i, fail_on_severities)]) == 0
-    )
+    result.is_valid = len([i for i in result.issues if _should_fail_on_issue(i, fail_on_severities)]) == 0
 
     return result

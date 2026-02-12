@@ -24,6 +24,7 @@ Example:
 import re
 from typing import ClassVar
 
+from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.checks.utils.action_parser import get_action_case_insensitive, parse_action
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
@@ -97,7 +98,12 @@ class ActionResourceMatchingCheck(PolicyCheck):
             if not parsed:
                 continue  # Invalid action format (or "*"), handled by action_validation
 
-            # Skip wildcard actions
+            # Skip wildcard actions — expanding wildcards (e.g., "s3:Get*") to all
+            # matching actions and validating resources against each would require
+            # fetching service definitions and iterating over every expansion.
+            # The cost/complexity is high for marginal benefit since wildcard actions
+            # typically pair with wildcard resources ("*"). This may be revisited
+            # if demand warrants it.
             if parsed.has_wildcard:
                 continue
 
@@ -229,15 +235,10 @@ class ActionResourceMatchingCheck(PolicyCheck):
         if reason:
             message = reason
         elif all_required_formats and len(all_required_formats) > 1:
-            types = ", ".join(f"`{f['type']}`" for f in all_required_formats)
-            message = (
-                f"No resources match for action `{action}`. This action requires one of: {types}"
-            )
+            types = format_list_with_backticks(f["type"] for f in all_required_formats)
+            message = f"No resources match for action `{action}`. This action requires one of: {types}"
         else:
-            message = (
-                f"No resources match for action `{action}`. "
-                f"This action requires resource type: `{required_type}`"
-            )
+            message = f"No resources match for action `{action}`. This action requires resource type: `{required_type}`"
 
         # Build suggestion with examples
         suggestion = self._get_suggestion(
@@ -254,11 +255,7 @@ class ActionResourceMatchingCheck(PolicyCheck):
             issue_type="resource_mismatch",
             message=message,
             action=action,
-            resource=(
-                ", ".join(provided_resources)
-                if len(provided_resources) <= 3
-                else f"{provided_resources[0]}..."
-            ),
+            resource=(", ".join(provided_resources) if len(provided_resources) <= 3 else f"{provided_resources[0]}..."),
             suggestion=suggestion,
             line_number=line_number,
             field_name="resource",
@@ -307,9 +304,7 @@ class ActionResourceMatchingCheck(PolicyCheck):
                 resource_type = fmt["type"]
                 arn_format = fmt["format"]
 
-                suggestion_parts.append(
-                    f"**Option {all_required_formats.index(fmt) + 1}: `{resource_type}` resource**"
-                )
+                suggestion_parts.append(f"**Option {all_required_formats.index(fmt) + 1}: `{resource_type}` resource**")
                 suggestion_parts.append("```")
                 suggestion_parts.append(arn_format)
                 suggestion_parts.append("```")
@@ -450,11 +445,7 @@ class ActionResourceMatchingCheck(PolicyCheck):
             contexts.append("ARN uses colon (:) separators in resource section")
 
         # Detect List/Describe actions (often need wildcards)
-        if (
-            action_name.startswith("List")
-            or action_name.startswith("Describe")
-            or action_name.startswith("Get")
-        ):
+        if action_name.startswith("List") or action_name.startswith("Describe") or action_name.startswith("Get"):
             # Some Get/List actions require specific resources, others need "*"
             # Only suggest wildcard if pattern is actually "*"
             if pattern == "*":
@@ -463,10 +454,7 @@ class ActionResourceMatchingCheck(PolicyCheck):
         # Generic resource type matching hint
         if resource_type and resource_type != "resource":
             # Avoid redundant message if resource type is obvious
-            if not any(
-                word in resource_type
-                for word in ["object", "bucket", "function", "instance", "user", "role"]
-            ):
+            if not any(word in resource_type for word in ["object", "bucket", "function", "instance", "user", "role"]):
                 contexts.append(f"Resource ARN must be of type '{resource_type}'")
 
         return "Note: " + " | ".join(contexts) if contexts else ""

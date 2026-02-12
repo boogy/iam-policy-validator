@@ -36,9 +36,7 @@ async def execute_policy(
         return issues
 
     # Check if any statement has Principal
-    has_any_principal = any(
-        stmt.principal is not None or stmt.not_principal is not None for stmt in policy.statement
-    )
+    has_any_principal = any(stmt.principal is not None or stmt.not_principal is not None for stmt in policy.statement)
 
     # If policy has Principal but type is IDENTITY_POLICY (default), provide helpful info
     if has_any_principal and policy_type == "IDENTITY_POLICY":
@@ -134,10 +132,42 @@ async def execute_policy(
 
     # Service Control Policies (SCPs) should not have Principal
     elif policy_type == "SERVICE_CONTROL_POLICY":
-        for idx, statement in enumerate(policy.statement):
-            has_principal = statement.principal is not None or statement.not_principal is not None
+        # SCP size limit validation (5,120 bytes, different from identity policies)
+        import json
+        import re
 
-            if has_principal:
+        raw_policy_dict = kwargs.get("raw_policy_dict")
+        if raw_policy_dict:
+            policy_string = json.dumps(raw_policy_dict, separators=(",", ":"))
+            policy_size = len(re.sub(r"\s+", "", policy_string))
+            scp_max_size = 5120
+            if policy_size > scp_max_size:
+                percentage_over = ((policy_size - scp_max_size) / scp_max_size) * 100
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        issue_type="scp_size_exceeded",
+                        message=(
+                            f"Service Control Policy size ({policy_size:,} characters) exceeds "
+                            f"the SCP limit of {scp_max_size:,} characters. "
+                            "SCPs have a stricter size limit than identity policies."
+                        ),
+                        statement_index=-1,
+                        statement_sid=None,
+                        line_number=None,
+                        suggestion=(
+                            f"The SCP is {policy_size - scp_max_size:,} characters over the limit "
+                            f"({percentage_over:.1f}% too large). Consider:\n"
+                            "  1. Splitting the SCP into multiple smaller policies\n"
+                            "  2. Using more concise action patterns with wildcards\n"
+                            "  3. Removing unnecessary statements or conditions"
+                        ),
+                    )
+                )
+
+        for idx, statement in enumerate(policy.statement):
+            # Check for Principal element (SCPs don't use Principal - it's implicit)
+            if statement.principal is not None:
                 issues.append(
                     ValidationIssue(
                         severity="error",
@@ -162,6 +192,24 @@ async def execute_policy(
                         "  }\n"
                         "}\n"
                         "```",
+                        field_name="principal",
+                    )
+                )
+
+            # Check for NotPrincipal element (SCPs don't support NotPrincipal)
+            if statement.not_principal is not None:
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        issue_type="invalid_not_principal",
+                        message="Service Control Policy must not contain `NotPrincipal` element. "
+                        "Service Control Policies (SCPs) do not support the `NotPrincipal` element. "
+                        "SCPs apply to all principals in the organization or OU.",
+                        statement_index=idx,
+                        statement_sid=statement.sid,
+                        line_number=statement.line_number,
+                        suggestion="Remove the `NotPrincipal` element from this SCP statement. "
+                        "Use `Condition` elements to exclude specific principals if needed.",
                         field_name="principal",
                     )
                 )
@@ -244,9 +292,7 @@ async def execute_policy(
 
             # 3. Check for unsupported actions (actions not in supported services)
             if statement.action:
-                actions = (
-                    statement.action if isinstance(statement.action, list) else [statement.action]
-                )
+                actions = statement.action if isinstance(statement.action, list) else [statement.action]
                 unsupported_actions = []
 
                 for action in actions:

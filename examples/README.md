@@ -10,6 +10,7 @@ examples/
 ├── custom_checks/        # Custom check examples
 ├── github-actions/       # GitHub Actions workflow examples
 ├── iam-test-policies/    # Test IAM policies by type
+├── sdk/                  # Python SDK usage examples
 ├── trust-policies/       # Trust policy examples
 ├── access-analyzer/      # AWS Access Analyzer examples
 └── quick-start/          # Quick start policies
@@ -23,6 +24,7 @@ For detailed documentation, see:
 - **Configuration**: [docs/user-guide/configuration.md](../docs/user-guide/configuration.md)
 - **GitHub Actions**: [docs/integrations/github-actions.md](../docs/integrations/github-actions.md)
 - **Custom Checks**: [docs/developer-guide/custom-checks/](../docs/developer-guide/custom-checks/)
+- **SDK Reference**: [docs/api-reference/sdk.md](../docs/api-reference/sdk.md)
 
 ## Quick Start
 
@@ -32,7 +34,7 @@ iam-validator validate examples/quick-start/s3-policy.json
 
 # Use a configuration file
 iam-validator validate examples/iam-test-policies/ \
-  --config examples/configs/minimal-validation-config.yaml
+  --config examples/configs/strict-security.yaml
 
 # Validate trust policies
 iam-validator validate examples/trust-policies/ \

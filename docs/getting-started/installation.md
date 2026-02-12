@@ -65,7 +65,7 @@ iam-validator --version
 You should see output like:
 
 ```
-iam-validator 1.14.1
+iam-validator 1.17.0
 ```
 
 ## Shell Completion
@@ -84,13 +84,6 @@ Enable shell completion for a better CLI experience:
     ```bash
     # Add to ~/.zshrc
     eval "$(iam-validator completion zsh)"
-    ```
-
-=== "Fish"
-
-    ```bash
-    # Add to ~/.config/fish/config.fish
-    iam-validator completion fish | source
     ```
 
 ## Upgrading

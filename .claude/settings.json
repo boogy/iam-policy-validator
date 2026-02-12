@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "ENABLE_TOOL_SEARCH": "true",
+    "CLAUDE_CODE_ENABLE_TASKS": "true",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [[ \"$CLAUDE_TOOL_INPUT\" =~ (rm[[:space:]]+-rf[[:space:]]+[/~]|git[[:space:]]+push[[:space:]]+--force|git[[:space:]]+push[[:space:]]+-f|git[[:space:]]+reset[[:space:]]+--hard) ]]; then echo 'BLOCKED: Dangerous command detected. Use with caution.' && exit 1; fi"
+          },
+          {
+            "type": "command",
+            "command": "if [[ \"$CLAUDE_TOOL_INPUT\" =~ git[[:space:]]+push && $(git rev-parse --abbrev-ref HEAD 2>/dev/null) =~ ^(main|master)$ ]]; then echo 'WARNING: Pushing directly to main/master branch. Create a PR instead.' && exit 2; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for f in $CLAUDE_FILE_PATHS; do if [[ \"$f\" =~ \\.env ]]; then echo 'BLOCKED: Editing .env files requires explicit user consent. Please ask the user first.' && exit 2; fi; done"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for f in $CLAUDE_FILE_PATHS; do if [[ \"$f\" =~ \\.py$ ]]; then uv run ruff format \"$f\" 2>/dev/null || true; uv run ruff check --fix \"$f\" 2>/dev/null || true; fi; done"
+          },
+          {
+            "type": "command",
+            "command": "for f in $CLAUDE_FILE_PATHS; do if [[ \"$f\" =~ \\.md$ ]] && command -v prettier &>/dev/null; then prettier --write \"$f\" 2>/dev/null || true; fi; done"
+          },
+          {
+            "type": "command",
+            "command": "for f in $CLAUDE_FILE_PATHS; do if [[ \"$f\" =~ tests/.*\\.py$ ]] || [[ \"$f\" =~ test_.*\\.py$ ]]; then echo \"Test file modified: $f - run 'uv run pytest $f' to verify\"; fi; done"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -63,9 +63,7 @@ class TestSessionConfigManager:
 
     def test_set_and_get_config(self):
         """Test setting and getting configuration."""
-        config = SessionConfigManager.set_config(
-            {"settings": {"fail_on_severity": ["error"]}}, source="test"
-        )
+        SessionConfigManager.set_config({"settings": {"fail_on_severity": ["error"]}}, source="test")
 
         retrieved = SessionConfigManager.get_config()
         assert retrieved is not None
@@ -209,10 +207,12 @@ class TestOrgConfigToolImplementations:
             set_organization_config_impl,
         )
 
-        result = await set_organization_config_impl({
-            "settings": {"fail_on_severity": ["error", "critical"]},
-            "wildcard_action": {"enabled": True, "severity": "high"},
-        })
+        result = await set_organization_config_impl(
+            {
+                "settings": {"fail_on_severity": ["error", "critical"]},
+                "wildcard_action": {"enabled": True, "severity": "high"},
+            }
+        )
 
         assert result["success"] is True
         assert "settings" in result["applied_config"]
@@ -239,9 +239,11 @@ class TestOrgConfigToolImplementations:
             set_organization_config_impl,
         )
 
-        await set_organization_config_impl({
-            "settings": {"fail_on_severity": ["error"]},
-        })
+        await set_organization_config_impl(
+            {
+                "settings": {"fail_on_severity": ["error"]},
+            }
+        )
         result = await get_organization_config_impl()
 
         assert result["has_config"] is True
@@ -336,9 +338,11 @@ settings:
         )
 
         # Set a config that enables certain checks
-        await set_organization_config_impl({
-            "settings": {"fail_on_severity": ["error", "critical"]},
-        })
+        await set_organization_config_impl(
+            {
+                "settings": {"fail_on_severity": ["error", "critical"]},
+            }
+        )
 
         policy = {
             "Version": "2012-10-17",

@@ -7,8 +7,9 @@ Note: These tests require the optional 'mcp' extra (fastmcp package).
       Tests will be skipped if fastmcp is not installed.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.models import IAMPolicy, Statement, ValidationIssue

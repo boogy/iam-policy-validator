@@ -56,7 +56,7 @@ class IfExistsConditionCheck(PolicyCheck):
         # Build the full set of security-sensitive keys
         security_keys = SECURITY_SENSITIVE_CONDITION_KEYS | frozenset(additional_security_keys)
 
-        # Collect Null-checked keys for suppression
+        # Collect Null-checked keys for suppression (normalized to lowercase)
         null_checked_keys: set[str] = set()
         for op, conds in statement.condition.items():
             base_op, _, _ = normalize_operator(op)
@@ -65,7 +65,7 @@ class IfExistsConditionCheck(PolicyCheck):
                     # Only suppress if Null checks for key presence (value = "false")
                     values = value if isinstance(value, list) else [value]
                     if any(str(v).lower() == "false" for v in values):
-                        null_checked_keys.add(key)
+                        null_checked_keys.add(key.lower())
 
         for operator, conditions in statement.condition.items():
             has_ifexists = has_if_exists_suffix(operator)
@@ -83,9 +83,7 @@ class IfExistsConditionCheck(PolicyCheck):
                 if has_ifexists:
                     # IfExists on always-present keys is redundant
                     if warn_always_present_keys:
-                        always_present_match = any(
-                            k.lower() == key_lower for k in ALWAYS_PRESENT_CONDITION_KEYS
-                        )
+                        always_present_match = any(k.lower() == key_lower for k in ALWAYS_PRESENT_CONDITION_KEYS)
                         if always_present_match:
                             # Reconstruct the operator without IfExists for the message
                             raw_base = operator
@@ -93,9 +91,7 @@ class IfExistsConditionCheck(PolicyCheck):
                                 parts = operator.split(":", 1)
                                 if parts[0] in ("ForAllValues", "ForAnyValue"):
                                     raw_base = parts[1]
-                            base_without_ifexists = (
-                                raw_base[:-8] if raw_base.endswith("IfExists") else raw_base
-                            )
+                            base_without_ifexists = raw_base[:-8] if raw_base.endswith("IfExists") else raw_base
                             if ":" in operator:
                                 parts = operator.split(":", 1)
                                 if parts[0] in ("ForAllValues", "ForAnyValue"):
@@ -126,15 +122,15 @@ class IfExistsConditionCheck(PolicyCheck):
                     if effect == "Allow" and warn_security_sensitive_allow:
                         # IfExists on security-sensitive keys in Allow may bypass controls
                         if is_security_key:
-                            # Check for complementary Null check
-                            if condition_key not in null_checked_keys:
+                            # Check for complementary Null check (compare lowered)
+                            if key_lower not in null_checked_keys:
                                 issues.append(
                                     ValidationIssue(
                                         severity=self.get_severity(config),
                                         message=(
                                             f"Security control may be bypassed: "
                                             f"`{operator}` with `{condition_key}` in "
-                                            f"an Allow statement means the restriction "
+                                            f"an `Allow` statement means the restriction "
                                             f"is not enforced when the key is missing "
                                             f"from the request context. Not all API "
                                             f"calls include `{condition_key}` (e.g., "
@@ -155,14 +151,14 @@ class IfExistsConditionCheck(PolicyCheck):
                     elif effect == "Deny":
                         # Non-negated IfExists in Deny weakens the restriction
                         if not is_negated and is_security_key:
-                            if condition_key not in null_checked_keys:
+                            if key_lower not in null_checked_keys:
                                 issues.append(
                                     ValidationIssue(
                                         severity=self.get_severity(config),
                                         message=(
-                                            f"Weakened Deny: `{operator}` with "
-                                            f"`{condition_key}` in a Deny statement "
-                                            f"means the Deny does not apply when "
+                                            f"Weakened `Deny`: `{operator}` with "
+                                            f"`{condition_key}` in a `Deny` statement "
+                                            f"means the `Deny` does not apply when "
                                             f"`{condition_key}` is missing from the "
                                             f"request context. Consider removing "
                                             f"`IfExists` or adding a `Null` condition "
@@ -181,9 +177,7 @@ class IfExistsConditionCheck(PolicyCheck):
                     # Suggest IfExists for negated operator in Deny without it
                     if is_negated:
                         # Only suggest for keys that may be absent
-                        is_always_present = any(
-                            k.lower() == key_lower for k in ALWAYS_PRESENT_CONDITION_KEYS
-                        )
+                        is_always_present = any(k.lower() == key_lower for k in ALWAYS_PRESENT_CONDITION_KEYS)
                         is_security_key = any(k.lower() == key_lower for k in security_keys)
                         if not is_always_present and is_security_key:
                             issues.append(
@@ -192,10 +186,10 @@ class IfExistsConditionCheck(PolicyCheck):
                                     message=(
                                         f"Consider using `{base_op}IfExists` instead "
                                         f"of `{base_op}` in this Deny statement. "
-                                        f"Without `IfExists`, the Deny does not apply "
+                                        f"Without `IfExists`, the `Deny` does not apply "
                                         f"when `{condition_key}` is missing from the "
                                         f"request context. With `{base_op}IfExists`, "
-                                        f"the Deny still applies even when the key is "
+                                        f"the `Deny` still applies even when the key is "
                                         f"absent."
                                     ),
                                     statement_sid=statement_sid,

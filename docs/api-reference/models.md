@@ -43,8 +43,8 @@ Represents a validation issue found in a policy.
 
 ```python
 class ValidationIssue(BaseModel):
-    # Core fields
-    severity: str              # error, warning, critical, high, medium, low
+    # Core fields (severity is validated to be one of the allowed values)
+    severity: str              # error, warning, info, critical, high, medium, low
     statement_index: int       # Statement number (0-based)
     issue_type: str            # Issue category (e.g., "invalid_action", "overly_permissive")
     message: str               # Human-readable description

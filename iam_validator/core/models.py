@@ -6,7 +6,7 @@ IAM policies, and validation results.
 
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from iam_validator.core import constants
 
@@ -34,10 +34,8 @@ class ActionDetail(BaseModel):
     model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
 
     name: str = Field(alias="Name")
-    action_condition_keys: list[str] | None = Field(
-        default_factory=list, alias="ActionConditionKeys"
-    )
-    resources: list[dict[str, Any]] | None = Field(default_factory=list, alias="Resources")
+    action_condition_keys: list[str] = Field(default_factory=list, alias="ActionConditionKeys")
+    resources: list[dict[str, Any]] = Field(default_factory=list, alias="Resources")
     annotations: dict[str, Any] | None = Field(default=None, alias="Annotations")
     supported_by: dict[str, Any] | None = Field(default=None, alias="SupportedBy")
 
@@ -167,6 +165,15 @@ class ValidationIssue(BaseModel):
     """
 
     severity: str  # "error", "warning", "info" OR "critical", "high", "medium", "low"
+
+    @field_validator("severity")
+    @classmethod
+    def validate_severity(cls, v: str) -> str:
+        valid = {"error", "warning", "info", "critical", "high", "medium", "low"}
+        if v not in valid:
+            raise ValueError(f"Invalid severity '{v}'. Must be one of: {', '.join(sorted(valid))}")
+        return v
+
     statement_sid: str | None = None
     statement_index: int
     issue_type: str  # "invalid_action", "invalid_condition_key", "invalid_resource", etc.
@@ -177,9 +184,7 @@ class ValidationIssue(BaseModel):
     suggestion: str | None = None
     example: str | None = None  # Code example (JSON/YAML) - formatted separately for GitHub
     line_number: int | None = None  # Line number in the policy file (if available)
-    check_id: str | None = (
-        None  # Check that triggered this issue (e.g., "policy_size", "sensitive_action")
-    )
+    check_id: str | None = None  # Check that triggered this issue (e.g., "policy_size", "sensitive_action")
     # Field that caused the issue (for precise line detection in PR comments)
     # Values: "action", "resource", "condition", "principal", "effect", "sid"
     field_name: str | None = None
@@ -241,9 +246,7 @@ class ValidationIssue(BaseModel):
             Formatted comment string
         """
         # Get severity config with emoji and action guidance
-        severity_config = constants.SEVERITY_CONFIG.get(
-            self.severity, {"emoji": "•", "action": "Review"}
-        )
+        severity_config = constants.SEVERITY_CONFIG.get(self.severity, {"emoji": "•", "action": "Review"})
         emoji = severity_config["emoji"]
         action = severity_config["action"]
 
@@ -390,16 +393,12 @@ class ValidationReport(BaseModel):
     total_policies: int
     valid_policies: int
     invalid_policies: int  # Policies with IAM validity issues (error/warning)
-    policies_with_security_issues: int = (
-        0  # Policies with security findings (critical/high/medium/low)
-    )
+    policies_with_security_issues: int = 0  # Policies with security findings (critical/high/medium/low)
     total_issues: int
     validity_issues: int = 0  # Count of IAM validity issues (error/warning/info)
     security_issues: int = 0  # Count of security issues (critical/high/medium/low)
     results: list[PolicyValidationResult] = Field(default_factory=list)
-    parsing_errors: list[tuple[str, str]] = Field(
-        default_factory=list
-    )  # (file_path, error_message)
+    parsing_errors: list[tuple[str, str]] = Field(default_factory=list)  # (file_path, error_message)
 
     def get_summary(self) -> str:
         """Generate a human-readable summary."""

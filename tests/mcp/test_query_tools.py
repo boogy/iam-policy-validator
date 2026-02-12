@@ -63,10 +63,13 @@ class TestExpandWildcardAction:
     """Tests for expand_wildcard_action function."""
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("pattern,expected_prefix", [
-        ("s3:Get*", "s3:Get"),
-        ("s3:*", "s3:"),
-    ])
+    @pytest.mark.parametrize(
+        "pattern,expected_prefix",
+        [
+            ("s3:Get*", "s3:Get"),
+            ("s3:*", "s3:"),
+        ],
+    )
     async def test_expands_wildcard_patterns(self, pattern, expected_prefix):
         """Should expand wildcard patterns correctly."""
         actions = await expand_wildcard_action(pattern)
@@ -183,14 +186,17 @@ class TestListSensitiveActions:
     """Tests for list_sensitive_actions function."""
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("category", [
-        None,  # All categories
-        "credential_exposure",
-        "privilege_escalation",
-        "data_access",
-        "resource_exposure",
-        "priv_esc",  # Alias
-    ])
+    @pytest.mark.parametrize(
+        "category",
+        [
+            None,  # All categories
+            "credential_exposure",
+            "privilege_escalation",
+            "data_access",
+            "resource_exposure",
+            "priv_esc",  # Alias
+        ],
+    )
     async def test_lists_sensitive_actions(self, category):
         """Should list sensitive actions with optional category filter."""
         actions = await list_sensitive_actions(category=category)
@@ -210,11 +216,14 @@ class TestGetConditionRequirements:
     """Tests for get_condition_requirements function."""
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("action", [
-        "iam:PassRole",  # Has requirements
-        "ec2:DescribeInstances",  # No requirements
-        "s3:*",  # Wildcard
-    ])
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "iam:PassRole",  # Has requirements
+            "ec2:DescribeInstances",  # No requirements
+            "s3:*",  # Wildcard
+        ],
+    )
     async def test_returns_requirements(self, action):
         """Should return requirements dict or None."""
         req = await get_condition_requirements(action)

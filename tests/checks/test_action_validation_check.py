@@ -47,9 +47,7 @@ class TestActionValidationCheck:
         """Test valid action passes."""
         fetcher.validate_action.return_value = (True, None, False)
 
-        statement = Statement(
-            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 0
@@ -64,9 +62,7 @@ class TestActionValidationCheck:
             False,
         )
 
-        statement = Statement(
-            Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 1
@@ -89,9 +85,7 @@ class TestActionValidationCheck:
         """Test valid wildcard pattern actions are validated and pass."""
         fetcher.validate_action.return_value = (True, None, True)
 
-        statement = Statement(
-            Effect="Allow", Action=["s3:Put*"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:Put*"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # No issues - wildcard matches at least one action
@@ -109,9 +103,7 @@ class TestActionValidationCheck:
         )
 
         # Typo in wildcard pattern - "Putt*" instead of "Put*"
-        statement = Statement(
-            Effect="Allow", Action=["s3:Putt*"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:Putt*"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         # Invalid wildcard pattern should be flagged
@@ -162,9 +154,7 @@ class TestActionValidationCheck:
         """Test that statement index is captured."""
         fetcher.validate_action.return_value = (False, "Invalid action", False)
 
-        statement = Statement(
-            Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 3, fetcher, config)
 
         assert issues[0].statement_index == 3
@@ -174,9 +164,7 @@ class TestActionValidationCheck:
         """Test that line number is captured when available."""
         fetcher.validate_action.return_value = (False, "Invalid action", False)
 
-        statement = Statement(
-            Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"])
         statement.line_number = 42
 
         issues = await check.execute(statement, 0, fetcher, config)
@@ -189,9 +177,7 @@ class TestActionValidationCheck:
         fetcher.validate_action.return_value = (False, "Invalid action", False)
 
         config = CheckConfig(check_id="action_validation", severity="warning")
-        statement = Statement(
-            Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert issues[0].severity == "warning"
@@ -201,9 +187,7 @@ class TestActionValidationCheck:
         """Test action as string instead of list."""
         fetcher.validate_action.return_value = (True, None, False)
 
-        statement = Statement(
-            Effect="Allow", Action="s3:GetObject", Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action="s3:GetObject", Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 0
@@ -223,9 +207,7 @@ class TestActionValidationCheck:
         """Test fallback error message when none provided."""
         fetcher.validate_action.return_value = (False, None, False)
 
-        statement = Statement(
-            Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 1
@@ -236,9 +218,7 @@ class TestActionValidationCheck:
         """Test valid NotAction passes."""
         fetcher.validate_action.return_value = (True, None, False)
 
-        statement = Statement(
-            Effect="Deny", NotAction=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Deny", NotAction=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 0
@@ -253,9 +233,7 @@ class TestActionValidationCheck:
             False,
         )
 
-        statement = Statement(
-            Effect="Deny", NotAction=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Deny", NotAction=["s3:InvalidAction"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 1
@@ -274,9 +252,7 @@ class TestActionValidationCheck:
         )
 
         # Typo in NotAction wildcard - "Gett*" instead of "Get*"
-        statement = Statement(
-            Effect="Deny", NotAction=["s3:Gett*"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Deny", NotAction=["s3:Gett*"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
 
         assert len(issues) == 1

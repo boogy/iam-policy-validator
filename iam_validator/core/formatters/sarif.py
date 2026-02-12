@@ -15,6 +15,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+from iam_validator.core.config.check_documentation import CheckDocumentationRegistry
 from iam_validator.core.formatters.base import OutputFormatter
 from iam_validator.core.models import ValidationIssue, ValidationReport
 
@@ -95,8 +96,7 @@ class SARIFFormatter(OutputFormatter):
                     "results": self._create_results(report, severity_map),
                     "invocations": [
                         {
-                            "executionSuccessful": len([r for r in report.results if r.is_valid])
-                            > 0,
+                            "executionSuccessful": len([r for r in report.results if r.is_valid]) > 0,
                             "endTimeUtc": datetime.now(timezone.utc).isoformat(),
                         }
                     ],
@@ -166,31 +166,10 @@ class SARIFFormatter(OutputFormatter):
 
     def _get_rule_short_description(self, issue: ValidationIssue) -> str:
         """Get a short description for the rule based on check_id or issue_type."""
-        # Map check_id to human-readable short descriptions
-        descriptions = {
-            "action_validation": "Invalid IAM Action",
-            "condition_key_validation": "Invalid Condition Key",
-            "condition_type_mismatch": "Condition Type Mismatch",
-            "resource_validation": "Invalid Resource ARN",
-            "sid_uniqueness": "Duplicate Statement ID",
-            "policy_size": "Policy Size Exceeded",
-            "policy_structure": "Invalid Policy Structure",
-            "set_operator_validation": "Invalid Set Operator",
-            "mfa_condition_check": "Missing MFA Condition",
-            "principal_validation": "Invalid Principal",
-            "policy_type_validation": "Policy Type Mismatch",
-            "action_resource_matching": "Action-Resource Mismatch",
-            "trust_policy_validation": "Trust Policy Issue",
-            "wildcard_action": "Wildcard Action",
-            "wildcard_resource": "Wildcard Resource",
-            "full_wildcard": "Full Wildcard Permission",
-            "service_wildcard": "Service-Wide Wildcard",
-            "sensitive_action": "Sensitive Action",
-            "action_condition_enforcement": "Missing Required Condition",
-        }
-
-        if issue.check_id and issue.check_id in descriptions:
-            return descriptions[issue.check_id]
+        if issue.check_id:
+            desc = CheckDocumentationRegistry.get_short_description(issue.check_id)
+            if desc:
+                return desc
 
         # Fall back to formatting issue_type
         return issue.issue_type.replace("_", " ").title()
@@ -200,43 +179,19 @@ class SARIFFormatter(OutputFormatter):
         if issue.risk_explanation:
             return issue.risk_explanation
 
-        # Default descriptions based on check_id
-        descriptions = {
-            "action_validation": "The specified IAM action does not exist in AWS or is incorrectly formatted.",
-            "condition_key_validation": "The specified condition key is not valid for this action or service.",
-            "condition_type_mismatch": "The condition operator does not match the expected type for the condition key.",
-            "resource_validation": "The resource ARN format is invalid or does not match the expected pattern.",
-            "sid_uniqueness": "Multiple statements use the same Statement ID (Sid), which can cause confusion and policy conflicts.",
-            "policy_size": "The policy exceeds AWS size limits and may fail to apply.",
-            "policy_structure": "The policy structure is invalid and will be rejected by AWS.",
-            "wildcard_action": "Using wildcard (*) in actions grants broader permissions than necessary, violating least privilege.",
-            "wildcard_resource": "Using wildcard (*) in resources allows actions on all resources of that type.",
-            "full_wildcard": "Using Action: '*' with Resource: '*' grants full administrative access.",
-            "service_wildcard": "Using service:* grants all permissions for a service, which is overly permissive.",
-            "sensitive_action": "This action can modify security-critical resources and should be carefully restricted.",
-            "action_condition_enforcement": "Sensitive actions require specific conditions to prevent security issues.",
-        }
-
-        if issue.check_id and issue.check_id in descriptions:
-            return descriptions[issue.check_id]
+        if issue.check_id:
+            explanation = CheckDocumentationRegistry.get_risk_explanation(issue.check_id)
+            if explanation:
+                return explanation
 
         return issue.message
 
     def _get_default_help_uri(self, issue: ValidationIssue) -> str:
         """Get default AWS documentation URL based on issue type."""
-        uri_map = {
-            "action_validation": "https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_action.html",
-            "condition_key_validation": "https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition.html",
-            "resource_validation": "https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html",
-            "sid_uniqueness": "https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_sid.html",
-            "principal_validation": "https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_principal.html",
-            "wildcard_action": "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html#grant-least-privilege",
-            "wildcard_resource": "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html#grant-least-privilege",
-            "sensitive_action": "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html#use-policy-conditions",
-        }
-
-        if issue.check_id and issue.check_id in uri_map:
-            return uri_map[issue.check_id]
+        if issue.check_id:
+            url = CheckDocumentationRegistry.get_documentation_url(issue.check_id)
+            if url:
+                return url
 
         return "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html"
 
@@ -277,9 +232,7 @@ class SARIFFormatter(OutputFormatter):
 
         return "\n".join(parts) if parts else ""
 
-    def _create_results(
-        self, report: ValidationReport, severity_map: dict[str, str]
-    ) -> list[dict[str, Any]]:
+    def _create_results(self, report: ValidationReport, severity_map: dict[str, str]) -> list[dict[str, Any]]:
         """Create SARIF results from validation issues with full context.
 
         Each result includes:
@@ -395,9 +348,7 @@ class SARIFFormatter(OutputFormatter):
 
         return fixes
 
-    def _build_related_locations(
-        self, issue: ValidationIssue, policy_file: str
-    ) -> list[dict[str, Any]]:
+    def _build_related_locations(self, issue: ValidationIssue, policy_file: str) -> list[dict[str, Any]]:
         """Build related locations for affected fields.
 
         Args:

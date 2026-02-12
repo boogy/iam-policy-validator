@@ -7,7 +7,23 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/boogy/iam-policy-validator/badge)](https://scorecard.dev/viewer/?uri=github.com/boogy/iam-policy-validator)
 
-**[📖 Full Documentation](https://boogy.github.io/iam-policy-validator/)**
+**[Full Documentation](https://boogy.github.io/iam-policy-validator/)**
+
+---
+
+## Table of Contents
+
+- [Why This Tool Exists](#why-this-tool-exists)
+- [Quick Start](#quick-start)
+- [What Makes This Different](#what-makes-this-different)
+- [What Does It Check?](#what-does-it-check)
+- [Installation & Usage](#installation--usage)
+- [MCP Server](#mcp-server)
+- [AWS Access Analyzer (Optional)](#aws-access-analyzer-optional)
+- [Comparison with Other Tools](#comparison-with-other-tools)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
@@ -21,7 +37,7 @@ Security teams need to **enforce organization-specific IAM requirements** and **
 2. **Broken automation** - Syntactically valid but functionally wrong policies (`s3:GetObject` on bucket ARN)
 3. **Missing security controls** - No IAM conditions for sensitive AWS API actions
 4. **Overly permissive access** - Wildcard actions and resources that violate least privilege
-5. **Trust policy vulnerabilities** - Incorrect principals, missing OIDC audience, SAML misconfiguration
+5. **Trust policy vulnerabilities** - Confused deputy risks, incorrect principals, missing OIDC audience, SAML misconfiguration
 6. **Typos and invalid syntax** - Invalid actions (`s3:GetObjekt`), condition keys, or ARN formats before deployment
 7. **Your own detection** - Set custom configuration file for custom detections
 
@@ -35,8 +51,6 @@ pip install iam-policy-validator
 # Try it with the example policies (from repository root)
 iam-validator validate --path examples/quick-start/ --format enhanced
 ```
-
-**Example output:**
 
 <details>
 <summary>See the example policies used (examples/quick-start/)</summary>
@@ -93,10 +107,13 @@ iam-validator validate --path examples/quick-start/ --format enhanced
 
 </details>
 
+<details>
+<summary>See the example output</summary>
+
 ```
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
 │                                                                                                  │
-│                              IAM Policy Validation Report (v1.14.1)                              │
+│                                  IAM Policy Validation Report                                    │
 │                                                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ───────────────────────────────────────── Detailed Results ─────────────────────────────────────────
@@ -106,11 +123,9 @@ iam-validator validate --path examples/quick-start/ --format enhanced
 Issues (2)
 ├── 🔴 High
 │   └── [Statement 2 @L10] missing_required_condition
-│       └── Required: Action(s) ``iam:PassRole`` require condition `iam:PassedToService`
+│       └── Required: Action(s) `iam:PassRole` require condition `iam:PassedToService`
 │           ├── Action: iam:PassRole • Condition: iam:PassedToService
 │           └── 💡 Restrict which AWS services can assume the passed role to prevent privilege escalation
-│
-│               Note: Found 1 statement(s) with these actions in the policy.
 │               Example:
 │               "Condition": {
 │                 "StringEquals": {
@@ -133,21 +148,11 @@ Issues (2)
 Issues (1)
 └── 🔴 High
     └── [Statement 1 @L5] missing_required_condition_any_of
-        └── Actions `s3:GetObject` require at least ONE of these conditions: `aws:ResourceOrgID` OR `aws:ResourceOrgPaths` OR `aws:SourceIp` OR
-            `aws:SourceVpc` OR `aws:SourceVpce` OR `aws:ResourceAccount`
-            ├── Action: s3:GetObject
-            └── 💡 Add at least ONE of these conditions:
-                - **Option 1**: `aws:ResourceOrgID` - Restrict S3 operations to resources within your AWS Organization (value:
-                `${aws:PrincipalOrgID}`)
-                - **Option 2**: `aws:ResourceOrgPaths` - Restrict S3 operations to resources within your AWS Organization path (value:
-                `${aws:PrincipalOrgPaths}`)
-                - **Option 3**: `aws:SourceIp` - Restrict S3 operations by source IP address and same account
-                - **Option 4**: `aws:SourceVpc` - Restrict S3 operations by source VPC and same account
-                - **Option 5**: `aws:SourceVpce` - Restrict S3 operations by VPC endpoint and same account
-                - **Option 6**: `aws:ResourceAccount` - Restrict S3 operations to resources within the same AWS account (value:
-                `${aws:PrincipalAccount}`)
-
-                Note: Found 1 statement(s) with these actions in the policy.
+        └── Actions `s3:GetObject` require at least ONE of these conditions: `aws:ResourceOrgID` OR
+            `aws:ResourceOrgPaths` OR `aws:SourceIp` OR `aws:SourceVpc` OR `aws:SourceVpce` OR
+            `aws:ResourceAccount`
+            └── 💡 Add at least ONE of these conditions to restrict S3 operations
+                [truncated...]
 
 ✅ [3/3] examples/quick-start/lambda-policy.json • VALID
      No issues detected
@@ -160,25 +165,15 @@ Issues (1)
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
-### In GitHub PRs
-
-```yaml
-# .github/workflows/iam-validator.yml
-- uses: boogy/iam-policy-validator@v1
-  with:
-    path: policies/
-    github-review: true
-```
-
-**Result:** Line-specific comments on policy files showing what's wrong and how to fix it.
+</details>
 
 ---
 
 ## What Makes This Different
 
-### 🎯 **1. Enforce Your Organization's Security Rules**
+### 1. Enforce Your Organization's Security Rules
 
-Define security requirements as code—the validator becomes your organization's policy gatekeeper:
+Define security requirements as code -- the validator becomes your organization's policy gatekeeper:
 
 ```yaml
 # .iam-validator.yaml - Your security requirements as code
@@ -215,20 +210,11 @@ action_condition_enforcement:
           - condition_key: "aws:RequestTag/Owner"
 ```
 
-**Real-world use cases:**
-
-- 🏢 **Corporate network only**: Require `aws:SourceIp` for admin actions (automation from CI/CD IPs)
-- 🏷️ **Cost tracking**: Enforce resource tagging before creation
-- 🔐 **Encryption mandates**: Require encryption conditions on data operations
-- ⏰ **Time-based access**: Require `aws:CurrentTime` conditions for temporary access
-- 🔒 **Service restrictions**: Limit `iam:PassRole` to specific AWS services
-- 🌐 **VPC restrictions**: Require `aws:SourceVpc` for sensitive operations
-
 **Why this matters:** Other tools perform AWS-standard security checks but lack the flexibility to codify your organization's specific security requirements (IP restrictions, tagging mandates, encryption requirements, etc.).
 
 ---
 
-### 🔍 **2. Detect Cross-Statement Privilege Escalation**
+### 2. Detect Cross-Statement Privilege Escalation
 
 Privilege escalation often occurs when multiple actions are scattered across different statements. This validator uses `all_of` logic to detect when ALL actions in a dangerous combination exist somewhere in the policy:
 
@@ -250,11 +236,7 @@ Privilege escalation often occurs when multiple actions are scattered across dif
 }
 ```
 
-**🚨 Detected:** Statements 1 and 3 enable privilege escalation:
-
-1. Create new IAM user
-2. Attach `AdministratorAccess` policy to that user
-3. Escalate to full account access
+**Detected:** Statements 1 and 3 enable privilege escalation -- create a new IAM user, attach `AdministratorAccess`, and escalate to full account access.
 
 **Built-in escalation patterns** (enabled by default):
 
@@ -268,31 +250,13 @@ Privilege escalation often occurs when multiple actions are scattered across dif
 Additionally detects **[hundreds of sensitive actions](iam_validator/core/config/sensitive_actions.py)** across 4 categories (credential exposure, data access, privilege escalation, resource exposure) that should have IAM conditions.
 List of actions copied from [primeharbor/sensitive_iam_actions](https://github.com/primeharbor/sensitive_iam_actions).
 
-**Extend with custom patterns:**
-
-```yaml
-sensitive_action:
-  sensitive_actions:
-    # Add your own cross-statement patterns
-    - all_of: ["cloudformation:CreateStack", "iam:PassRole"]
-      severity: critical
-      message: "CloudFormation + PassRole enables infrastructure privilege escalation"
-```
-
-See [Security Checks Documentation](docs/user-guide/checks/security-checks.md) for all built-in patterns and custom configuration.
-
-**Comparison:**
-
-- **This tool**: 6 built-in escalation patterns + hundreds of sensitive actions + extensible
-- **IAM Lens**: Runtime permission evaluator ("what can this principal do?"), not policy validator
-- **Policy Sentry**: Generates policies, doesn't scan for escalation
-- **IAMSpy**: Enumerates permissions, different use case
+See [Security Checks Documentation](https://boogy.github.io/iam-policy-validator/user-guide/checks/security-checks/) for all built-in patterns and custom configuration.
 
 ---
 
-### ⚙️ **3. Catch Functionally Broken Policies**
+### 3. Catch Functionally Broken Policies
 
-Validates that actions and resources are **compatible**—catches policies that pass AWS validation but fail at runtime:
+Validates that actions and resources are **compatible** -- catches policies that pass AWS validation but fail at runtime:
 
 ```json
 {
@@ -302,35 +266,24 @@ Validates that actions and resources are **compatible**—catches policies that 
 }
 ```
 
-**🚨 Detected:** `s3:GetObject` operates on **objects**, not buckets. This policy does nothing.
-**💡 Fix:** `"Resource": "arn:aws:s3:::mybucket/*"`
+**Detected:** `s3:GetObject` operates on **objects**, not buckets. This policy does nothing.
+**Fix:** `"Resource": "arn:aws:s3:::mybucket/*"`
 
-**More examples:**
+More action-resource mismatches this catches:
 
-```json
-// BAD: s3:ListBucket with object ARN
-{"Action": "s3:ListBucket", "Resource": "arn:aws:s3:::bucket/*"}
-// ✅ FIX: s3:ListBucket needs bucket ARN
-{"Action": "s3:ListBucket", "Resource": "arn:aws:s3:::bucket"}
-
-// BAD: iam:ListUsers with user-specific ARN
-{"Action": "iam:ListUsers", "Resource": "arn:aws:iam::*:user/bob"}
-// ✅ FIX: iam:ListUsers is global, needs wildcard
-{"Action": "iam:ListUsers", "Resource": "*"}
-
-// BAD: ec2:DescribeInstances with specific instance
-{"Action": "ec2:DescribeInstances", "Resource": "arn:aws:ec2:*:*:instance/i-1234"}
-// ✅ FIX: Describe actions don't support resource-level permissions
-{"Action": "ec2:DescribeInstances", "Resource": "*"}
-```
+| Broken Policy                                                  | Problem                                             | Fix                   |
+| -------------------------------------------------------------- | --------------------------------------------------- | --------------------- |
+| `s3:ListBucket` with `arn:aws:s3:::bucket/*`                   | `ListBucket` needs a bucket ARN, not an object ARN  | `arn:aws:s3:::bucket` |
+| `iam:ListUsers` with `arn:aws:iam::*:user/bob`                 | `ListUsers` is global, needs wildcard               | `*`                   |
+| `ec2:DescribeInstances` with `arn:aws:ec2:*:*:instance/i-1234` | Describe actions don't support resource-level perms | `*`                   |
 
 **Why this matters:** These policies look correct but fail silently in production. AWS validates syntax, not action-resource compatibility.
 
 ---
 
-### 🔧 **4. Uses Official AWS Service Definitions**
+### 4. Uses Official AWS Service Definitions
 
-Fetches **real AWS service data** from AWS's official IAM service definition API (JSON endpoint)—always accurate and up-to-date:
+Fetches **real AWS service data** from AWS's official IAM service definition API (JSON endpoint) -- always accurate and up-to-date:
 
 - **Actions**: Validates against 250+ AWS services with complete action lists
 - **Condition keys**: Checks valid keys for each action
@@ -348,16 +301,9 @@ iam-validator sync-services --output-dir ./aws-services
 iam-validator validate --path policies/ --aws-services-dir ./aws-services
 ```
 
-**Comparison:**
-
-- **This tool**: Official AWS API, auto-updates, offline mode
-- **Policy Sentry**: Official AWS API, excellent query capabilities
-- **IAM Lens**: Uses actual AWS account data (runtime analysis)
-- **IAMSpy**: Static database, may lag behind AWS updates
-
 ---
 
-### 🎨 **5. Built for CI/CD and Developer Workflows**
+### 5. Built for CI/CD and Developer Workflows
 
 **GitHub PR Integration:**
 
@@ -366,14 +312,7 @@ iam-validator validate --path policies/ --aws-services-dir ./aws-services
 - **Smart cleanup**: Updates existing comments, removes stale ones
 - **Severity-based reviews**: Auto-approve or request changes based on findings
 
-**Multiple output formats:**
-
-- Console (colored terminal)
-- JSON (automation/API)
-- SARIF (GitHub Code Scanning)
-- Markdown (documentation)
-- HTML (interactive reports)
-- CSV (spreadsheet analysis)
+**Multiple output formats:** Console, JSON, SARIF (GitHub Code Scanning), Markdown, HTML, CSV
 
 **Example GitHub Action:**
 
@@ -381,56 +320,60 @@ iam-validator validate --path policies/ --aws-services-dir ./aws-services
 - uses: boogy/iam-policy-validator@v1
   with:
     path: policies/
-    github-review: true # Inline PR comments
+    create-review: true # Inline PR comments
     github-summary: true # Actions summary tab
-    fail-on-severity: high # Block merge on high/critical
+    config-file: .iam-validator.yaml # fail_on_severity set in config
 ```
 
 ---
 
 ## What Does It Check?
 
-### ✅ **AWS Correctness (12 checks)**
+### AWS Correctness (14 checks)
 
 Validates against official AWS IAM requirements:
 
-| Check                        | What It Does                                                                        |
-| ---------------------------- | ----------------------------------------------------------------------------------- |
-| **Policy Structure**         | Required fields (Version, Statement, Effect), valid JSON/YAML                       |
-| **Action Validation**        | Actions exist in AWS services (detects typos: `s3:GetObjekt`)                       |
-| **Condition Keys**           | Valid condition keys for actions (e.g., `s3:prefix` valid for `s3:ListBucket`)      |
-| **Condition Types**          | Values match expected types (IP for `aws:SourceIp`, Bool for `aws:SecureTransport`) |
-| **Resource ARNs**            | Correct ARN format and patterns                                                     |
-| **Principal Validation**     | Valid principals in resource/trust policies                                         |
-| **Policy Size**              | AWS limits (6144 bytes managed, 10240 inline, 20480 resource)                       |
-| **SID Uniqueness**           | Statement IDs unique within policy                                                  |
-| **Set Operators**            | Correct `ForAllValues`/`ForAnyValue` usage with arrays                              |
-| **MFA Conditions**           | Detect insecure MFA patterns (`!= false` instead of `== true`)                      |
-| **Policy Type**              | RCP/SCP-specific requirements                                                       |
-| **Action-Resource Matching** | Actions compatible with resources (catches functional errors)                       |
+| Check                        | What It Does                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------------ |
+| **Policy Structure**         | Required fields (Version, Statement, Effect), valid JSON/YAML, outdated version warnings   |
+| **Action Validation**        | Actions exist in AWS services (detects typos: `s3:GetObjekt`)                              |
+| **Condition Keys**           | Valid condition keys for actions (e.g., `s3:prefix` valid for `s3:ListBucket`)             |
+| **Condition Types**          | Operator-value type matching (IP/CIDR format, ARN format, Bool values, type compatibility) |
+| **IfExists Validation**      | Validates proper usage of `IfExists` suffix on condition operators                         |
+| **Resource ARNs**            | Correct ARN format and patterns                                                            |
+| **Principal Validation**     | Valid principals in resource/trust policies                                                |
+| **NotPrincipal Validation**  | Detects unsupported `NotPrincipal`+`Allow` and deprecated `NotPrincipal` usage patterns    |
+| **Policy Size**              | AWS limits (6144 bytes managed, 10240 inline, 20480 resource, 5120 SCP)                    |
+| **SID Uniqueness**           | Statement IDs unique within policy                                                         |
+| **Set Operators**            | Correct `ForAllValues`/`ForAnyValue` usage with arrays                                     |
+| **MFA Conditions**           | Detect insecure MFA patterns (`!= false` instead of `== true`)                             |
+| **Policy Type**              | RCP/SCP-specific requirements (size limits, Principal/NotPrincipal restrictions)           |
+| **Action-Resource Matching** | Actions compatible with resources (catches functional errors)                              |
 
-### 🔒 **Security Best Practices (6 checks)**
+### Security Best Practices (7 checks)
 
 Identifies overly permissive configurations:
 
-| Check                     | What It Catches                                          |
-| ------------------------- | -------------------------------------------------------- |
-| **Wildcard Action**       | `Action: "*"` grants all AWS permissions                 |
-| **Wildcard Resource**     | `Resource: "*"` applies to all resources                 |
-| **Full Wildcard**         | Both `Action: "*"` AND `Resource: "*"` (admin access)    |
-| **Service Wildcards**     | `s3:*`, `iam:*`, `ec2:*` (overly broad)                  |
-| **Sensitive Actions**     | 490+ privilege escalation patterns and dangerous actions |
-| **Condition Enforcement** | Organization-specific condition requirements             |
+| Check                     | What It Catches                                                   |
+| ------------------------- | ----------------------------------------------------------------- |
+| **Wildcard Action**       | `Action: "*"` grants all AWS permissions                          |
+| **Wildcard Resource**     | `Resource: "*"` applies to all resources                          |
+| **Full Wildcard**         | Both `Action: "*"` AND `Resource: "*"` (admin access)             |
+| **Service Wildcards**     | `s3:*`, `iam:*`, `ec2:*` (overly broad)                           |
+| **NotAction/NotResource** | Dangerous `NotAction`/`NotResource` patterns with implicit grants |
+| **Sensitive Actions**     | 490+ privilege escalation patterns and dangerous actions          |
+| **Condition Enforcement** | Organization-specific condition requirements                      |
 
 **Note on Sensitive Actions:** This check has two modes:
 
 - `all_of`: **Policy-wide** detection (e.g., `iam:CreateUser` in statement 0 + `iam:AttachUserPolicy` in statement 2)
 - `any_of`: **Per-statement** detection (e.g., any statement with `iam:PutUserPolicy`)
 
-### 🔐 **Trust Policy Validation (opt-in)**
+### Trust Policy Validation (opt-in)
 
 Specialized checks for role assumption:
 
+- **Confused deputy detection** -- flags service principals (e.g., `sns.amazonaws.com`) without `aws:SourceArn`/`aws:SourceAccount` conditions, with a curated safe-service list verified against AWS documentation
 - Correct principal types (`AssumeRoleWithSAML` needs `Federated` principal)
 - SAML/OIDC provider ARN validation
 - Required conditions (`SAML:aud`, OIDC audience)
@@ -462,18 +405,24 @@ iam-validator validate --path policies/ --format sarif --output code-scanning.sa
 ### Python Library
 
 ```python
-from iam_validator.core.policy_loader import PolicyLoader
-from iam_validator.core.policy_checks import validate_policies
+from iam_validator.sdk import validate_file, validate_directory, quick_validate
 
-loader = PolicyLoader()
-policies = loader.load_from_path("./policies")
-results = await validate_policies(policies)
+# Validate a single file
+result = await validate_file("policy.json")
+for issue in result.issues:
+    print(f"{issue.severity}: {issue.message} at line {issue.line_number}")
 
+# Validate a directory
+results = await validate_directory("./policies")
 for result in results:
     if not result.is_valid:
-        for issue in result.issues:
-            print(f"{issue.severity}: {issue.message} at line {issue.line_number}")
+        print(f"{result.file_path}: {len(result.issues)} issues")
+
+# Quick one-liner validation
+issues = await quick_validate("policy.json")
 ```
+
+See the [Python Library Guide](https://boogy.github.io/iam-policy-validator/developer-guide/sdk/) for the full SDK reference.
 
 ### Configuration
 
@@ -521,106 +470,27 @@ ignore_patterns:
     reason: "Admin policies reviewed separately"
 ```
 
-#### Understanding Configuration: Two Ways to Control Action Validation
+For the full configuration reference including how `action_condition_enforcement` and `sensitive_action` work together, see:
 
-The validator provides two complementary approaches for action-specific validation:
+- [Configuration Guide](https://boogy.github.io/iam-policy-validator/user-guide/configuration/)
+- [Full Reference Config](https://github.com/boogy/iam-policy-validator/blob/main/examples/configs/full-reference-config.yaml)
 
-**Option 1: Enforce Required Conditions** (`action_condition_enforcement`)
+---
 
-Use this when you want to **mandate specific conditions** for certain actions:
+## MCP Server
 
-```yaml
-action_condition_enforcement:
-  enabled: true
-  requirements:
-    # Enforce that iam:PassRole must specify which service can use the role
-    - actions: ["iam:PassRole"]
-      required_conditions:
-        - condition_key: "iam:PassedToService"
-          description: "Prevent privilege escalation by restricting service access"
+Use the IAM Policy Validator as an [MCP](https://modelcontextprotocol.io/) server for AI assistants like Claude Desktop. Provides 36 tools across validation, policy generation, AWS service querying, analysis, and organization config management.
 
-    # Enforce MFA for credential creation
-    - actions: ["iam:CreateAccessKey"]
-      required_conditions:
-        - condition_key: "aws:MultiFactorAuthPresent"
-          expected_value: true
+```bash
+# Quick start with uvx (no installation needed)
+uvx --from "iam-policy-validator[mcp]" iam-validator-mcp
+
+# Or install with MCP extras
+pip install "iam-policy-validator[mcp]"
+iam-validator-mcp
 ```
 
-**What this does:**
-
-- ✅ **Validates** that required conditions exist in the policy
-- ✅ **Fails validation** when conditions are missing
-- ✅ **Prevents duplicate warnings** (automatically filters from `sensitive_action` check)
-- ✅ **Specific guidance** per action about which conditions are required
-
-**Option 2: Suggest Best Practices** (`sensitive_action`)
-
-Use this when you want to **flag actions without conditions** and provide ABAC guidance:
-
-```yaml
-sensitive_action:
-  enabled: true
-  # Uses built-in list of 490+ sensitive actions across 4 categories:
-  # - credential_exposure: Actions that expose credentials/secrets
-  # - data_access: Actions that retrieve sensitive data
-  # - priv_esc: Actions that enable privilege escalation
-  # - resource_exposure: Actions that modify resource policies
-
-  # Optionally add your own sensitive actions
-  sensitive_actions:
-    - "custom:SensitiveAction"
-```
-
-**What this does:**
-
-- ⚠️ **Suggests** that actions should have conditions (doesn't enforce specific ones)
-- ⚠️ **Generic ABAC guidance** (tag matching, MFA, IP restrictions)
-- ✅ **Automatic filtering** (skips actions already validated by `action_condition_enforcement`)
-
-**Decision Matrix:**
-
-| Your Goal                                           | Use This                       | Config Example                                   |
-| --------------------------------------------------- | ------------------------------ | ------------------------------------------------ |
-| **Must enforce** specific conditions for compliance | `action_condition_enforcement` | Require `iam:PassedToService` for `iam:PassRole` |
-| **Want to suggest** general security improvements   | `sensitive_action`             | Flag `s3:GetObject` without any conditions       |
-| **Organization-specific** rules (IP, tags, MFA)     | `action_condition_enforcement` | Require corporate IPs for admin actions          |
-| **General best practices** (ABAC)                   | `sensitive_action`             | Suggest tag-based access control                 |
-
-**How They Work Together:**
-
-1. `action_condition_enforcement` validates **specific required conditions** (strict enforcement)
-2. `sensitive_action` suggests **ABAC best practices** for actions without conditions (general guidance)
-3. **Automatic deduplication** prevents showing both warnings for the same action
-4. Actions in `action_condition_enforcement` are automatically filtered from `sensitive_action`
-
-**Example - Complete Configuration:**
-
-```yaml
-# Strict enforcement for critical actions
-action_condition_enforcement:
-  enabled: true
-  requirements:
-    - actions: ["iam:PassRole"]
-      required_conditions:
-        - condition_key: "iam:PassedToService"
-
-    - actions: ["s3:GetObject", "s3:GetObjectVersion"]
-      required_conditions:
-        any_of:
-          - condition_key: "aws:ResourceOrgID"
-          - condition_key: "aws:SourceVpc"
-
-# General suggestions for other sensitive actions
-sensitive_action:
-  enabled: true
-  # Will NOT warn about iam:PassRole or s3:GetObject (already covered above)
-  # Will warn about other sensitive actions like iam:CreateUser, s3:DeleteObject, etc.
-```
-
-For more details, see:
-
-- [Configuration Guide](docs/user-guide/configuration.md) - How to configure condition requirements
-- [examples/configs/full-reference-config.yaml](examples/configs/full-reference-config.yaml) - Complete configuration reference
+See the [MCP Server Documentation](https://boogy.github.io/iam-policy-validator/integrations/mcp-server/) for Claude Desktop configuration and tool reference.
 
 ---
 
@@ -648,95 +518,45 @@ iam-validator analyze --path new-policy.json \
 
 ---
 
-## Comparison Matrix
+## Comparison with Other Tools
 
-| Feature                        | IAM Policy Validator              | IAM Lens                      | IAMSpy                 | Policy Sentry              |
-| ------------------------------ | --------------------------------- | ----------------------------- | ---------------------- | -------------------------- |
-| **Primary Purpose**            | Pre-deployment validation         | Runtime permission analysis   | Permission enumeration | Least-privilege generation |
-| **Use Case**                   | CI/CD policy scanning             | "What can this principal do?" | Pentesting/audit       | Policy creation            |
-| **Custom Security Rules**      | ✅ Full support                   | ❌ No                         | ❌ No                  | ❌ No                      |
-| **Cross-Statement Patterns**   | ✅ Privilege escalation detection | N/A (different purpose)       | N/A                    | N/A                        |
-| **Action-Resource Validation** | ✅ Catches incompatible pairs     | N/A                           | ❌ No                  | ✅ Generates correct       |
-| **Organization Conditions**    | ✅ IP, tags, encryption, etc.     | ❌ No                         | ❌ No                  | ❌ No                      |
-| **CI/CD Ready**                | ✅ GitHub Actions native          | ⚠️ Manual setup               | ⚠️ Manual              | ⚠️ Manual                  |
-| **PR Line Comments**           | ✅ Diff-aware                     | ❌ No                         | ❌ No                  | ❌ No                      |
-| **AWS Service Data**           | ✅ Official API (auto-update)     | ✅ Real AWS account data      | ⚠️ Static              | ✅ Official API            |
-| **Offline Mode**               | ✅ Yes                            | ❌ Needs AWS account          | ✅ Yes                 | ❌ Needs internet          |
-| **Query Permissions**          | ✅ Yes                            | ✅ Yes (different approach)   | ⚠️ Enumerate only      | ✅ Excellent               |
+| Feature                        | IAM Policy Validator           | Policy Sentry              | IAM Lens                      | IAMSpy                 |
+| ------------------------------ | ------------------------------ | -------------------------- | ----------------------------- | ---------------------- |
+| **Primary Purpose**            | Pre-deployment validation      | Least-privilege generation | Runtime permission analysis   | Permission enumeration |
+| **Use Case**                   | CI/CD policy scanning          | Policy creation            | "What can this principal do?" | Pentesting/audit       |
+| **Custom Security Rules**      | Full support                   | No                         | No                            | No                     |
+| **Cross-Statement Patterns**   | Privilege escalation detection | N/A                        | N/A                           | N/A                    |
+| **Action-Resource Validation** | Catches incompatible pairs     | Generates correct pairs    | N/A                           | No                     |
+| **Organization Conditions**    | IP, tags, encryption, etc.     | No                         | No                            | No                     |
+| **CI/CD Ready**                | GitHub Actions native          | Manual setup               | Manual setup                  | Manual                 |
+| **PR Line Comments**           | Diff-aware                     | No                         | No                            | No                     |
+| **AWS Service Data**           | Official API (auto-update)     | Official API               | Real AWS account data         | Static                 |
+| **Offline Mode**               | Yes                            | Needs internet             | Needs AWS account             | Yes                    |
+| **Query Permissions**          | Yes                            | Excellent                  | Yes (different approach)      | Enumerate only         |
 
-**Choose this tool if you:**
+**These tools are complementary, not competing.** Choose based on your use case:
 
-- Need **pre-deployment validation** in CI/CD
-- Want to **enforce organization-specific security requirements**
-- Need to catch **privilege escalation patterns**
-- Want to validate **action-resource compatibility**
-- Need **PR integration with line comments**
-
-**Choose IAM Lens if you:**
-
-- Need **runtime permission analysis** ("can this user do X?")
-- Want to **simulate real AWS requests**
-- Need to understand **effective permissions across policies**
-
-**Choose Policy Sentry if you:**
-
-- Need to **generate least-privilege policies** from scratch
-- Want to **query AWS permissions** for policy writing
-
-**IAMSpy is for:**
-
-- **Enumerating existing permissions** in AWS accounts
-- **Security assessment** (pentesting, not validation)
+- **This tool** -- Pre-deployment CI/CD validation with custom security rules and PR integration
+- **[Policy Sentry](https://github.com/salesforce/policy_sentry)** -- Generate least-privilege policies from scratch (great for policy _creation_)
+- **[IAM Lens](https://github.com/welldone-cloud/aws-iam-lens)** -- Runtime permission analysis and request simulation (great for _understanding_ existing permissions)
+- **[IAMSpy](https://github.com/WithSecureLabs/IAMSpy)** -- Enumerate existing permissions in AWS accounts (security assessment/pentesting)
+- **[Parliament](https://github.com/duo-labs/parliament)** -- Basic IAM policy linting (this tool extends Parliament's ARN pattern matching)
+- **[Cloudsplaining](https://github.com/salesforce/cloudsplaining)** -- Scan existing AWS account policies for security issues (runtime audit)
+- **[AWS Access Analyzer](https://aws.amazon.com/iam/access-analyzer/)** -- AWS's built-in validation and external access detection (this tool can optionally integrate with it)
 
 ---
 
 ## Documentation
 
-**Guides:**
-
-- [Check Reference](docs/user-guide/checks/) - All checks with examples
-- [Configuration Guide](docs/user-guide/configuration.md) - Customize checks and behavior
-- [GitHub Actions Guide](docs/integrations/github-actions.md) - CI/CD integration
-- [Python Library Guide](docs/developer-guide/sdk/) - Use as Python package
-- [Trust Policy Examples](examples/trust-policies/) - Trust policy validation examples
-- [Changelog](CHANGELOG.md) - Version history and migration guides
-
-**Examples:**
-
-- [Configuration Examples](examples/configs/) - Config file templates
-- [Workflow Examples](examples/github-actions/) - GitHub Actions workflows
-- [Custom Checks](examples/custom_checks/) - Add your own validation rules
-
----
-
-## Related Tools & Resources
-
-Other tools in the IAM security ecosystem that serve different purposes:
-
-### Policy Analysis & Generation
-
-- **[Parliament](https://github.com/duo-labs/parliament)** - IAM policy linter that checks for syntax errors and basic security issues. This validator uses Parliament's ARN pattern matching logic.
-- **[Policy Sentry](https://github.com/salesforce/policy_sentry)** - Generates least-privilege IAM policies from AWS service definitions. Great for policy creation; this validator focuses on policy validation.
-- **[Cloudsplaining](https://github.com/salesforce/cloudsplaining)** - Scans existing AWS account policies for security issues. Runtime analysis vs. pre-deployment validation.
-
-### Permission Analysis
-
-- **[IAM Dataset](https://github.com/glassechidna/iam-dataset)** - Curated dataset of AWS IAM actions, resources, and conditions scraped from AWS documentation. Useful reference for policy authors.
-- **[IAMSpy](https://github.com/WithSecureLabs/IAMSpy)** - Enumerates IAM permissions for roles/users in an AWS account. Pentesting/audit tool, not a validator.
-- **[IAM Lens](https://github.com/welldone-cloud/aws-iam-lens)** - Runtime permission evaluator that answers "what can this principal do?". Complements pre-deployment validation.
-
-### AWS Official Tools
-
-- **[AWS Access Analyzer](https://aws.amazon.com/iam/access-analyzer/)** - AWS's built-in policy validation and external access detection. This validator can optionally integrate with it.
-- **[AWS IAM Policy Simulator](https://policysim.aws.amazon.com/)** - Test policies against AWS resources to see if actions are allowed.
-
-**When to use this validator vs. others:**
-
-- Use this for **pre-deployment CI/CD validation** with custom security rules
-- Use Policy Sentry for **generating** least-privilege policies
-- Use Cloudsplaining/IAMSpy for **auditing existing** AWS accounts
-- Use IAM Lens for **runtime permission analysis**
-- Use Parliament if you only need basic syntax/ARN validation
+- [Check Reference](https://boogy.github.io/iam-policy-validator/user-guide/checks/) - All checks with examples
+- [Configuration Guide](https://boogy.github.io/iam-policy-validator/user-guide/configuration/) - Customize checks and behavior
+- [GitHub Actions Guide](https://boogy.github.io/iam-policy-validator/integrations/github-actions/) - CI/CD integration
+- [Python Library Guide](https://boogy.github.io/iam-policy-validator/developer-guide/sdk/) - Use as Python package
+- [MCP Server Guide](https://boogy.github.io/iam-policy-validator/integrations/mcp-server/) - AI assistant integration
+- [Trust Policy Examples](https://github.com/boogy/iam-policy-validator/tree/main/examples/trust-policies) - Trust policy validation examples
+- [Configuration Examples](https://github.com/boogy/iam-policy-validator/tree/main/examples/configs) - Config file templates
+- [Custom Checks](https://boogy.github.io/iam-policy-validator/developer-guide/custom-checks/) - Add your own validation rules
+- [Changelog](https://boogy.github.io/iam-policy-validator/changelog/) - Version history and migration guides
 
 ---
 

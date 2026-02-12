@@ -1,5 +1,6 @@
 # Strict Security Configuration
 # Enforces strict security best practices and fails on warnings
+# For production IAM policies in high-security environments
 
 settings:
   fail_fast: false
@@ -8,22 +9,26 @@ settings:
   parallel_execution: true
 
   # AWS services configuration
-  aws_services_dir: null  # Use AWS API (default)
+  aws_services_dir: null # Use AWS API (default)
   cache_enabled: true
   cache_ttl_hours: 168
 
   # Fail on more severity levels for strict security
   fail_on_severity:
-    - error      # IAM validity errors
-    - critical   # Critical security issues
-    - high       # High severity security issues
-    - medium     # Medium severity issues (stricter than default)
+    - error # IAM validity errors
+    - critical # Critical security issues
+    - high # High severity security issues
+    - medium # Medium severity issues (stricter than default)
 
-# Security Best Practices - Strict Configuration
-security_best_practices_check:
+# Wildcard action check - elevated severity
+wildcard_action:
   enabled: true
+  severity: high # Elevated from default medium
 
-  # Minimal allowed wildcards - only truly safe read operations
+# Wildcard resource check - elevated severity, minimal allowed wildcards
+wildcard_resource:
+  enabled: true
+  severity: high # Elevated from default medium
   allowed_wildcards:
     - cloudwatch:Describe*
     - cloudwatch:Get*
@@ -35,41 +40,30 @@ security_best_practices_check:
     - logs:Get*
     - s3:List*
 
-  # Wildcard action check - fail on any wildcard actions
-  wildcard_action_check:
-    enabled: true
-    severity: high  # Elevated from default medium
+# Full wildcard check - both Action and Resource are "*"
+full_wildcard:
+  enabled: true
+  severity: critical
 
-  # Wildcard resource check - fail on Resource: "*" unless explicitly allowed
-  wildcard_resource_check:
-    enabled: true
-    severity: high  # Elevated from default medium
+# Service wildcard check - only allow logs and cloudwatch
+service_wildcard:
+  enabled: true
+  severity: high
+  allowed_services:
+    - logs
+    - cloudwatch
 
-  # Full wildcard check - both Action and Resource are "*"
-  full_wildcard_check:
-    enabled: true
-    severity: critical
+# Sensitive action check - elevated severity
+sensitive_action:
+  enabled: true
+  severity: high # Elevated from default medium
 
-  # Service wildcard check - actions like "s3:*", "ec2:*"
-  service_wildcard_check:
-    enabled: true
-    severity: high
-    # Only allow wildcards for these services
-    allowed_services:
-      - logs
-      - cloudwatch
-
-  # Sensitive action check - require conditions for sensitive actions
-  sensitive_action_check:
-    enabled: true
-    severity: high  # Elevated from default medium
-
-# Action Condition Enforcement - Strict Requirements
+# Action condition enforcement - strict requirements
 action_condition_enforcement:
   enabled: true
-  severity: critical  # Elevated from default high
+  severity: critical # Elevated from default high
 
-  action_condition_requirements:
+  requirements:
     # iam:PassRole MUST have iam:PassedToService condition
     - actions:
         - iam:PassRole

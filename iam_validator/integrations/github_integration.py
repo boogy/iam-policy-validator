@@ -92,13 +92,9 @@ class GitHubIntegration:
             pr_number: PR number (defaults to GITHUB_PR_NUMBER env var)
         """
         self.token = self._validate_token(token or os.environ.get("GITHUB_TOKEN"))
-        self.repository = self._validate_repository(
-            repository or os.environ.get("GITHUB_REPOSITORY")
-        )
+        self.repository = self._validate_repository(repository or os.environ.get("GITHUB_REPOSITORY"))
         self.pr_number = self._validate_pr_number(pr_number or os.environ.get("GITHUB_PR_NUMBER"))
-        self.api_url = self._validate_api_url(
-            os.environ.get("GITHUB_API_URL", "https://api.github.com")
-        )
+        self.api_url = self._validate_api_url(os.environ.get("GITHUB_API_URL", "https://api.github.com"))
         self._client: httpx.AsyncClient | None = None
         # Cache for team memberships: (org, team_slug) -> list[str]
         # Reduces API calls when checking multiple users against same team
@@ -106,6 +102,9 @@ class GitHubIntegration:
         # Cache for CODEOWNERS content (fetched once per instance)
         self._codeowners_cache: str | None = None
         self._codeowners_loaded: bool = False
+        # Cache for PR info (fetched once per instance, immutable within a run)
+        self._pr_info_cache: dict[str, Any] | None = None
+        self._pr_info_loaded: bool = False
 
     def _validate_token(self, token: str | None) -> str | None:
         """Validate and sanitize GitHub token.
@@ -179,10 +178,7 @@ class GitHubIntegration:
         # GitHub allows these characters in usernames and repo names
         valid_pattern = re.compile(r"^[a-zA-Z0-9._-]+$")
         if not valid_pattern.match(owner) or not valid_pattern.match(repo):
-            logger.warning(
-                f"Invalid characters in repository: {repository} "
-                "(only alphanumeric, ., -, _ allowed)"
-            )
+            logger.warning(f"Invalid characters in repository: {repository} (only alphanumeric, ., -, _ allowed)")
             return None
 
         return repository
@@ -234,9 +230,7 @@ class GitHubIntegration:
 
         # Must be HTTPS (security requirement)
         if not api_url.startswith("https://"):
-            logger.warning(
-                f"API URL must use HTTPS: {api_url}, using default https://api.github.com"
-            )
+            logger.warning(f"API URL must use HTTPS: {api_url}, using default https://api.github.com")
             return "https://api.github.com"
 
         # Basic URL validation
@@ -299,9 +293,7 @@ class GitHubIntegration:
 
         return is_valid
 
-    async def _make_request(
-        self, method: str, endpoint: str, **kwargs: Any
-    ) -> dict[str, Any] | None:
+    async def _make_request(self, method: str, endpoint: str, **kwargs: Any) -> dict[str, Any] | None:
         """Make an HTTP request to GitHub API with retry and rate limit handling.
 
         Implements exponential backoff for transient errors (5xx, 429) and
@@ -379,9 +371,7 @@ class GitHubIntegration:
                     return None
                 # For server errors, continue to retry logic
                 if attempt < MAX_RETRIES:
-                    logger.warning(
-                        f"HTTP error {e.response.status_code}, retrying in {backoff:.1f}s"
-                    )
+                    logger.warning(f"HTTP error {e.response.status_code}, retrying in {backoff:.1f}s")
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * BACKOFF_MULTIPLIER, MAX_BACKOFF_SECONDS)
                     continue
@@ -406,9 +396,7 @@ class GitHubIntegration:
             logger.error(f"Request failed after {MAX_RETRIES + 1} attempts: {last_error}")
         return None
 
-    async def _make_request_no_retry(
-        self, method: str, endpoint: str, **kwargs: Any
-    ) -> dict[str, Any] | None:
+    async def _make_request_no_retry(self, method: str, endpoint: str, **kwargs: Any) -> dict[str, Any] | None:
         """Make an HTTP request without retry (for non-critical operations).
 
         Args:
@@ -442,9 +430,7 @@ class GitHubIntegration:
             logger.error(f"Request failed: {e}")
             return None
 
-    async def _make_paginated_request(
-        self, endpoint: str, max_pages: int = 100
-    ) -> list[dict[str, Any]]:
+    async def _make_paginated_request(self, endpoint: str, max_pages: int = 100) -> list[dict[str, Any]]:
         """Make a paginated GET request to GitHub API, fetching all pages.
 
         GitHub API returns at most 100 items per page for list endpoints.
@@ -477,9 +463,7 @@ class GitHubIntegration:
                 if self._client:
                     response = await self._client.request("GET", url)
                 else:
-                    async with httpx.AsyncClient(
-                        timeout=httpx.Timeout(30.0), headers=self._get_headers()
-                    ) as client:
+                    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0), headers=self._get_headers()) as client:
                         response = await client.request("GET", url)
 
                 response.raise_for_status()
@@ -487,10 +471,7 @@ class GitHubIntegration:
 
                 if isinstance(items, list):
                     all_items.extend(items)
-                    logger.debug(
-                        f"Fetched page {page_count} with {len(items)} items "
-                        f"(total: {len(all_items)})"
-                    )
+                    logger.debug(f"Fetched page {page_count} with {len(items)} items (total: {len(all_items)})")
                 else:
                     # Not a list response, shouldn't happen for list endpoints
                     logger.warning(f"Unexpected response type on page {page_count}")
@@ -520,9 +501,7 @@ class GitHubIntegration:
         if page_count >= max_pages:
             logger.warning(f"Reached max pages limit ({max_pages}), results may be incomplete")
 
-        logger.debug(
-            f"Paginated request complete: {len(all_items)} total items from {page_count} page(s)"
-        )
+        logger.debug(f"Paginated request complete: {len(all_items)} total items from {page_count} page(s)")
         return all_items
 
     # ==================== PR Comments ====================
@@ -657,17 +636,13 @@ class GitHubIntegration:
                     "> Download the full report using `--output report.json` or "
                     "`--format markdown --output report.md`\n"
                 )
-                full_body = (
-                    f"{identifier}\n{part_indicator}\n\n{truncated_body}{truncation_warning}"
-                )
+                full_body = f"{identifier}\n{part_indicator}\n\n{truncated_body}{truncation_warning}"
 
             if not await self.post_comment(full_body):
                 logger.error(f"Failed to post comment part {part_num}/{total_parts}")
                 success = False
             else:
-                logger.debug(
-                    f"Posted part {part_num}/{total_parts} ({len(full_body):,} characters)"
-                )
+                logger.debug(f"Posted part {part_num}/{total_parts} ({len(full_body):,} characters)")
 
         if success:
             logger.info(f"Successfully posted {total_parts} comment part(s)")
@@ -677,29 +652,28 @@ class GitHubIntegration:
     async def _delete_comments_with_identifier(self, identifier: str) -> int:
         """Delete all comments with the given identifier.
 
+        Uses paginated request to ensure all comments are found on large PRs.
+
         Args:
             identifier: HTML comment identifier to find comments
 
         Returns:
             Number of comments deleted
         """
-        result = await self._make_request("GET", f"issues/{self.pr_number}/comments")
+        all_comments = await self._make_paginated_request(f"issues/{self.pr_number}/comments")
 
         deleted_count = 0
-        if result and isinstance(result, list):
-            for comment in result:
-                if not isinstance(comment, dict):
-                    continue
+        for comment in all_comments:
+            if not isinstance(comment, dict):
+                continue
 
-                body = comment.get("body", "")
-                comment_id = comment.get("id")
+            body = comment.get("body", "")
+            comment_id = comment.get("id")
 
-                if identifier in str(body) and isinstance(comment_id, int):
-                    delete_result = await self._make_request(
-                        "DELETE", f"issues/comments/{comment_id}"
-                    )
-                    if delete_result is not None:
-                        deleted_count += 1
+            if identifier in str(body) and isinstance(comment_id, int):
+                delete_result = await self._make_request("DELETE", f"issues/comments/{comment_id}")
+                if delete_result is not None:
+                    deleted_count += 1
 
         if deleted_count > 0:
             logger.info(f"Deleted {deleted_count} old comments")
@@ -959,6 +933,41 @@ class GitHubIntegration:
             return True
         return False
 
+    async def create_file_level_comment(
+        self,
+        commit_id: str,
+        file_path: str,
+        body: str,
+    ) -> bool:
+        """Create a file-level review comment (not attached to a specific line).
+
+        This is used for findings that cannot be pinned to a specific diff line,
+        such as context-only issues detected outside the PR diff.
+
+        Args:
+            commit_id: The SHA of the commit to comment on
+            file_path: The relative path to the file in the repo
+            body: The comment text (markdown supported)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        result = await self._make_request(
+            "POST",
+            f"pulls/{self.pr_number}/comments",
+            json={
+                "commit_id": commit_id,
+                "path": file_path,
+                "subject_type": "file",
+                "body": body,
+            },
+        )
+
+        if result:
+            logger.info(f"Successfully posted file-level comment on {file_path}")
+            return True
+        return False
+
     async def create_review_with_comments(
         self,
         comments: list[dict[str, Any]],
@@ -1040,6 +1049,7 @@ class GitHubIntegration:
         identifier: str = constants.REVIEW_IDENTIFIER,
         validated_files: set[str] | None = None,
         skip_cleanup: bool = False,
+        protected_fingerprints: set[str] | None = None,
     ) -> bool:
         """Smart comment management using fingerprint-based matching.
 
@@ -1069,6 +1079,9 @@ class GitHubIntegration:
             skip_cleanup: If True, skip the cleanup phase (deleting resolved comments).
                          Use this in streaming mode where files are processed one at a time
                          to avoid deleting comments from files processed earlier.
+            protected_fingerprints: Set of fingerprints that should NOT be deleted during
+                         cleanup. Used to preserve file-level context comments that are
+                         managed by a separate pipeline.
 
         Returns:
             True if successful, False otherwise
@@ -1089,9 +1102,7 @@ class GitHubIntegration:
         """
         # Step 1: Get existing bot comments indexed by fingerprint
         existing_by_fingerprint = await self._get_bot_comments_by_fingerprint(identifier)
-        logger.debug(
-            f"Found {len(existing_by_fingerprint)} existing bot comments with fingerprints"
-        )
+        logger.debug(f"Found {len(existing_by_fingerprint)} existing bot comments with fingerprints")
 
         # Also get location-based index for fallback (comments without fingerprints)
         existing_by_location = await self.get_bot_review_comments_with_location(identifier)
@@ -1149,9 +1160,7 @@ class GitHubIntegration:
                     if success:
                         updated_count += 1
                         if finding_id:
-                            logger.debug(
-                                f"Updated comment at {path}:{line} (fingerprint mismatch, location match)"
-                            )
+                            logger.debug(f"Updated comment at {path}:{line} (fingerprint mismatch, location match)")
                         else:
                             logger.debug(f"Updated legacy comment at {path}:{line}")
                 continue
@@ -1236,6 +1245,10 @@ class GitHubIntegration:
                 comment_id = existing["id"]
                 # Skip if this comment was matched/updated via location fallback
                 if comment_id in matched_comment_ids:
+                    continue
+                # Skip if this fingerprint is protected (managed by another pipeline)
+                if protected_fingerprints and fingerprint in protected_fingerprints:
+                    logger.debug(f"Skipping protected comment {fingerprint[:8]}...")
                     continue
                 if fingerprint not in seen_fingerprints and should_delete_comment(existing["path"]):
                     comment_ids_to_delete.append(comment_id)
@@ -1418,10 +1431,19 @@ class GitHubIntegration:
     async def get_pr_info(self) -> dict[str, Any] | None:
         """Get detailed information about the PR.
 
+        Results are cached for the lifetime of this instance since PR metadata
+        (head SHA, base branch, etc.) does not change within a single run.
+
         Returns:
             PR information dict or None on error
         """
-        return await self._make_request("GET", f"pulls/{self.pr_number}")
+        if self._pr_info_loaded:
+            return self._pr_info_cache
+
+        result = await self._make_request("GET", f"pulls/{self.pr_number}")
+        self._pr_info_cache = result
+        self._pr_info_loaded = True
+        return result
 
     async def get_pr_files(self) -> list[dict[str, Any]]:
         """Get list of files changed in the PR.
@@ -1573,9 +1595,7 @@ class GitHubIntegration:
             if self._client:
                 response = await self._client.request("GET", url)
             else:
-                async with httpx.AsyncClient(
-                    headers=self._get_headers(), timeout=httpx.Timeout(30.0)
-                ) as client:
+                async with httpx.AsyncClient(headers=self._get_headers(), timeout=httpx.Timeout(30.0)) as client:
                     response = await client.request("GET", url)
 
             response.raise_for_status()
@@ -1593,9 +1613,7 @@ class GitHubIntegration:
                 return members
 
         except httpx.HTTPStatusError as e:
-            logger.warning(
-                f"Failed to get team members for {org}/{team_slug}: HTTP {e.response.status_code}"
-            )
+            logger.warning(f"Failed to get team members for {org}/{team_slug}: HTTP {e.response.status_code}")
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning(f"Failed to get team members for {org}/{team_slug}: {e}")
 

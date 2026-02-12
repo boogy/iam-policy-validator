@@ -79,7 +79,9 @@ from iam_validator.sdk.arn_matching import (
     arn_matches,
     arn_strictly_valid,
     convert_aws_pattern_to_wildcard,
+    has_template_variables,
     is_glob_match,
+    normalize_template_variables,
 )
 from iam_validator.sdk.context import (
     ValidationContext,
@@ -113,6 +115,12 @@ from iam_validator.sdk.policy_utils import (
     policy_to_json,
 )
 from iam_validator.sdk.query_utils import (
+    ActionDetails,
+    ActionInfo,
+    ArnFormatDetails,
+    ArnTypeInfo,
+    ConditionKeyDetails,
+    ConditionKeyInfo,
     get_actions_by_access_level,
     get_actions_supporting_condition,
     get_wildcard_only_actions,
@@ -126,6 +134,8 @@ from iam_validator.sdk.query_utils import (
 )
 from iam_validator.sdk.shortcuts import (
     count_issues_by_severity,
+    filter_issues_by_check_id,
+    filter_issues_by_severity,
     get_issues,
     quick_validate,
     validate_directory,
@@ -144,6 +154,8 @@ __all__ = [
     "quick_validate",
     "get_issues",
     "count_issues_by_severity",
+    "filter_issues_by_check_id",
+    "filter_issues_by_severity",
     # === Context managers ===
     "validator",
     "validator_from_config",
@@ -174,11 +186,20 @@ __all__ = [
     "get_actions_by_access_level",
     "get_wildcard_only_actions",
     "get_actions_supporting_condition",
+    # === Query TypedDicts ===
+    "ActionInfo",
+    "ActionDetails",
+    "ConditionKeyInfo",
+    "ConditionKeyDetails",
+    "ArnTypeInfo",
+    "ArnFormatDetails",
     # === ARN utilities ===
     "arn_matches",
     "arn_strictly_valid",
     "is_glob_match",
     "convert_aws_pattern_to_wildcard",
+    "normalize_template_variables",
+    "has_template_variables",
     # === Custom check development ===
     "PolicyCheck",
     "CheckRegistry",
@@ -218,4 +239,4 @@ __all__ = [
 ]
 
 # SDK version (same as main package)
-from iam_validator.__version__ import __version__
+from iam_validator import __version__

@@ -38,8 +38,20 @@ Examples:
     iam-validator query action --name "s3:Get*" --show-resource-types --output text
     iam-validator query action --name iam:CreateRole --show-access-level --show-condition-keys
 
+    # Filter by condition key support
+    iam-validator query action --name "s3:GetO*" --has-condition-key "s3:ResourceAccount"
+    iam-validator query action --service s3 --has-condition-key "s3:ResourceAccount"
+
     # Query ARN formats for a service
     iam-validator query arn --service s3
+
+    # Filter ARN types by condition key
+    iam-validator query arn --service s3 --has-condition-key "s3:ResourceAccount"
+
+    # Filter ARN output to specific fields
+    iam-validator query arn --service s3 --show-condition-keys
+    iam-validator query arn --service s3 --show-arn-format --show-condition-keys
+    iam-validator query arn --service s3 --has-condition-key "s3:BucketTag" --show-condition-keys
 
     # Query specific ARN type
     iam-validator query arn --service s3 --name bucket
@@ -125,8 +137,20 @@ examples:
   iam-validator query action --name "s3:Get*" --show-resource-types --output text
   iam-validator query action --name iam:CreateRole --show-access-level --show-condition-keys
 
+  # Filter by condition key support
+  iam-validator query action --name "s3:GetO*" --has-condition-key "s3:ResourceAccount"
+  iam-validator query action --service s3 --has-condition-key "s3:ResourceAccount"
+
   # Query ARN formats for a service
   iam-validator query arn --service s3
+
+  # Filter ARN types by condition key
+  iam-validator query arn --service s3 --has-condition-key "s3:ResourceAccount"
+
+  # Filter ARN output to specific fields
+  iam-validator query arn --service s3 --show-condition-keys
+  iam-validator query arn --service s3 --show-arn-format --show-condition-keys
+  iam-validator query arn --service s3 --has-condition-key "s3:BucketTag" --show-condition-keys
 
   # Query specific ARN type
   iam-validator query arn --service s3 --name bucket
@@ -181,8 +205,10 @@ note:
             help='Filter by resource type (use "*" for wildcard-only actions)',
         )
         action_parser.add_argument(
+            "--has-condition-key",
             "--condition",
-            help="Filter actions that support specific condition key",
+            dest="has_condition_key",
+            help="Filter actions that support a specific condition key (e.g., s3:ResourceAccount)",
         )
         action_parser.add_argument(
             "--output",
@@ -223,6 +249,10 @@ note:
             help="ARN resource type (e.g., bucket or s3:bucket). If service prefix included, --service is optional.",
         )
         arn_parser.add_argument(
+            "--has-condition-key",
+            help="Filter ARN types that support a specific condition key (e.g., s3:ResourceAccount)",
+        )
+        arn_parser.add_argument(
             "--list-arn-types",
             action="store_true",
             help="List all ARN types with their formats",
@@ -232,6 +262,23 @@ note:
             choices=["json", "yaml", "text"],
             default="json",
             help="Output format (default: json)",
+        )
+
+        # Output field filters for ARN queries
+        arn_parser.add_argument(
+            "--show-condition-keys",
+            action="store_true",
+            help="Show condition keys for each resource type",
+        )
+        arn_parser.add_argument(
+            "--show-arn-format",
+            action="store_true",
+            help="Show ARN format patterns for each resource type",
+        )
+        arn_parser.add_argument(
+            "--show-resource-type",
+            action="store_true",
+            help="Show resource type name",
         )
 
         # Condition query
@@ -255,9 +302,7 @@ note:
             help="Output format (default: json)",
         )
 
-    def _parse_service_and_name(
-        self, args: argparse.Namespace, query_type: str
-    ) -> tuple[str, str | None]:
+    def _parse_service_and_name(self, args: argparse.Namespace, query_type: str) -> tuple[str, str | None]:
         """Parse service and name from arguments (single name - for ARN/condition queries).
 
         Extracts service from --name if it contains a colon (e.g., 's3:GetObject').
@@ -343,8 +388,7 @@ note:
         if not names:
             if not default_service:
                 raise ValueError(
-                    "--service is required when --name is not provided. "
-                    "Use '--service <service>' to list all actions."
+                    "--service is required when --name is not provided. Use '--service <service>' to list all actions."
                 )
             return [(default_service, None, False)]
 
@@ -433,6 +477,28 @@ note:
         # Default to read if none of the above
         return "read"
 
+    @staticmethod
+    def _matches_condition_key(condition_keys: list[str], filter_value: str) -> bool:
+        """Check if any condition key matches the filter using prefix matching.
+
+        Condition keys can contain template parameters (e.g., ``s3:BucketTag/${TagKey}``).
+        A filter of ``s3:BucketTag`` should match ``s3:BucketTag/${TagKey}``.
+        Exact matches are also supported.
+
+        Args:
+            condition_keys: List of condition keys from an action or resource type.
+            filter_value: The condition key filter to match against.
+
+        Returns:
+            True if any condition key matches the filter.
+        """
+        filter_lower = filter_value.lower()
+        for key in condition_keys:
+            key_lower = key.lower()
+            if key_lower == filter_lower or key_lower.startswith(filter_lower + "/"):
+                return True
+        return False
+
     def _get_field_filters(self, args: argparse.Namespace) -> set[str] | None:
         """Extract field filters from arguments.
 
@@ -451,6 +517,53 @@ note:
 
         return fields if fields else None
 
+    def _get_arn_field_filters(self, args: argparse.Namespace) -> set[str] | None:
+        """Extract ARN field filters from arguments.
+
+        Returns:
+            Set of fields to include, or None if no filters specified (show all).
+            Valid fields: 'condition_keys', 'arn_formats', 'resource_type'
+        """
+        fields: set[str] = set()
+
+        if getattr(args, "show_condition_keys", False):
+            fields.add("condition_keys")
+        if getattr(args, "show_arn_format", False):
+            fields.add("arn_formats")
+        if getattr(args, "show_resource_type", False):
+            fields.add("resource_type")
+
+        return fields if fields else None
+
+    @staticmethod
+    def _format_arn_detail(
+        resource_type: Any,
+        fields: set[str] | None = None,
+    ) -> dict[str, Any]:
+        """Format ARN resource type detail for output.
+
+        Args:
+            resource_type: Resource type from service definition.
+            fields: Set of fields to include. If None, include all fields.
+
+        Returns:
+            Formatted resource type dictionary. ``resource_type`` (name) is always included.
+        """
+        if fields:
+            result: dict[str, Any] = {"resource_type": resource_type.name}
+            if "arn_formats" in fields:
+                result["arn_formats"] = resource_type.arn_formats or []
+            if "condition_keys" in fields:
+                result["condition_keys"] = resource_type.condition_keys or []
+            return result
+
+        # Full output
+        return {
+            "resource_type": resource_type.name,
+            "arn_formats": resource_type.arn_formats or [],
+            "condition_keys": resource_type.condition_keys or [],
+        }
+
     async def _query_action_table(
         self, fetcher: AWSServiceFetcher, args: argparse.Namespace
     ) -> dict[str, Any] | list[dict[str, Any]]:
@@ -467,6 +580,7 @@ note:
 
         # Get field filters if any
         fields = self._get_field_filters(args)
+        condition_key_filter = getattr(args, "has_condition_key", None)
 
         # Check if this is a "list all" query (single service, no name)
         if len(parsed_actions) == 1 and parsed_actions[0][1] is None:
@@ -548,6 +662,11 @@ note:
                 action_part = full_action.split(":")[1] if ":" in full_action else full_action
                 action_detail = service_detail.actions.get(action_part)
                 if action_detail:
+                    # Filter by condition key on raw data before formatting
+                    if condition_key_filter and not self._matches_condition_key(
+                        action_detail.action_condition_keys or [], condition_key_filter
+                    ):
+                        continue
                     results.append(
                         self._format_action_detail(
                             service,
@@ -582,11 +701,15 @@ note:
                 seen_actions.add(full_action)
 
                 action_detail = service_detail.actions[original_key]
+                # Filter by condition key on raw data before formatting
+                if condition_key_filter and not self._matches_condition_key(
+                    action_detail.action_condition_keys or [], condition_key_filter
+                ):
+                    continue
                 results.append(
                     self._format_action_detail(
                         service,
                         action_detail,
-                        # Simple mode only for lists without field filters, not single queries
                         simple=args.output == "text" and not is_single_exact_query and not fields,
                         # Backwards compat: single exact query returns action without service prefix
                         include_service_prefix=not is_single_exact_query,
@@ -632,9 +755,7 @@ note:
             Formatted action dictionary
         """
         access_level = self._get_access_level(action_detail)
-        action_name = (
-            f"{service}:{action_detail.name}" if include_service_prefix else action_detail.name
-        )
+        action_name = f"{service}:{action_detail.name}" if include_service_prefix else action_detail.name
 
         # Simple mode: just action name (for text output of action lists)
         if simple and not fields:
@@ -646,19 +767,13 @@ note:
             if "condition_keys" in fields:
                 result["condition_keys"] = action_detail.action_condition_keys or []
             if "resource_types" in fields:
-                result["resource_types"] = [
-                    r.get("Name", "*") for r in (action_detail.resources or [])
-                ]
+                result["resource_types"] = [r.get("Name", "*") for r in (action_detail.resources or [])]
             if "access_level" in fields:
                 result["access_level"] = access_level
             return result
 
         # Full output mode
-        description = (
-            action_detail.annotations.get("Description", "N/A")
-            if action_detail.annotations
-            else "N/A"
-        )
+        description = action_detail.annotations.get("Description", "N/A") if action_detail.annotations else "N/A"
 
         return {
             "service": service,
@@ -701,9 +816,8 @@ note:
                     if args.resource_type not in resource_names:
                         continue
 
-            if args.condition:
-                condition_keys = action_detail.action_condition_keys or []
-                if args.condition not in condition_keys:
+            if args.has_condition_key:
+                if not self._matches_condition_key(action_detail.action_condition_keys or [], args.has_condition_key):
                     continue
 
             # Add to filtered list using _format_action_detail for consistency
@@ -724,6 +838,8 @@ note:
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Query ARN table."""
         service_detail = await fetcher.fetch_service_by_name(args.service)
+        condition_key_filter = getattr(args, "has_condition_key", None)
+        arn_fields = self._get_arn_field_filters(args)
 
         # If specific ARN type requested
         if args.name:
@@ -734,9 +850,15 @@ note:
                     break
 
             if not resource_type:
-                raise ValueError(
-                    f"ARN resource type '{args.name}' not found in service '{args.service}'"
-                )
+                raise ValueError(f"ARN resource type '{args.name}' not found in service '{args.service}'")
+
+            # Apply condition key filter to specific ARN type
+            if condition_key_filter:
+                if not self._matches_condition_key(resource_type.condition_keys or [], condition_key_filter):
+                    return []
+
+            if arn_fields:
+                return self._format_arn_detail(resource_type, arn_fields)
 
             return {
                 "service": args.service,
@@ -745,22 +867,23 @@ note:
                 "condition_keys": resource_type.condition_keys or [],
             }
 
-        # List all ARN types
-        if args.list_arn_types:
-            return [
-                {
-                    "resource_type": rt.name,
-                    "arn_formats": rt.arn_formats or [],
-                }
-                for rt in service_detail.resources.values()
-            ]
+        # Collect matching resource types (filter by condition key if set)
+        matching_types = []
+        for rt in service_detail.resources.values():
+            if condition_key_filter:
+                if not self._matches_condition_key(rt.condition_keys or [], condition_key_filter):
+                    continue
+            matching_types.append(rt)
 
-        # Return all raw ARN formats
+        # When field filters or --list-arn-types: return structured per-type results
+        if arn_fields or args.list_arn_types:
+            return [self._format_arn_detail(rt, arn_fields) for rt in matching_types]
+
+        # Default: return flat list of ARN format strings
         all_arns = []
-        for resource_type in service_detail.resources.values():
-            if resource_type.arn_formats:
-                all_arns.extend(resource_type.arn_formats)
-
+        for rt in matching_types:
+            if rt.arn_formats:
+                all_arns.extend(rt.arn_formats)
         return list(set(all_arns))  # Remove duplicates
 
     async def _query_condition_table(
@@ -790,9 +913,7 @@ note:
                         break
 
             if not condition_key:
-                raise ValueError(
-                    f"Condition key '{args.name}' not found in service '{args.service}'"
-                )
+                raise ValueError(f"Condition key '{args.name}' not found in service '{args.service}'")
 
             return {
                 "service": args.service,
@@ -838,9 +959,7 @@ note:
             first_item = result[0]
             if "action" in first_item:
                 # Action list - check if we have filtered fields to show
-                has_filtered_fields = any(
-                    k in first_item for k in ("condition_keys", "resource_types", "access_level")
-                )
+                has_filtered_fields = any(k in first_item for k in ("condition_keys", "resource_types", "access_level"))
                 for item in result:
                     if has_filtered_fields:
                         # Print action with filtered fields
@@ -853,9 +972,16 @@ note:
                 for item in result:
                     print(item["condition_key"])
             elif "resource_type" in first_item:
-                # ARN type list
+                # ARN type list - check if we have filtered fields to show
+                has_filtered_fields = any(
+                    k in first_item for k in ("condition_keys", "arn_formats") if k != "resource_type"
+                )
                 for item in result:
-                    print(f"{item['resource_type']}: {', '.join(item['arn_formats'])}")
+                    if has_filtered_fields:
+                        self._print_arn_with_fields(item)
+                    else:
+                        # Only resource_type name
+                        print(item["resource_type"])
             else:
                 # Generic list (e.g., plain ARN formats)
                 for item in result:
@@ -867,13 +993,7 @@ note:
                 self._print_action_with_fields(result)
 
             elif "resource_type" in result:
-                # ARN details
-                print(result["resource_type"])
-                if result.get("arn_formats"):
-                    for arn in result["arn_formats"]:
-                        print(f"  {arn}")
-                if result.get("condition_keys"):
-                    print(f"  Condition keys: {', '.join(result['condition_keys'])}")
+                self._print_arn_with_fields(result)
 
             elif "condition_key" in result:
                 # Condition key details
@@ -896,6 +1016,19 @@ note:
             print(f"  Condition keys: {', '.join(item['condition_keys'])}")
         if item.get("access_level"):
             print(f"  Access level: {item['access_level']}")
+
+    def _print_arn_with_fields(self, item: dict[str, Any]) -> None:
+        """Print ARN resource type with any available fields.
+
+        Args:
+            item: ARN dict with 'resource_type' key and optionally filtered fields.
+        """
+        print(item["resource_type"])
+        if item.get("arn_formats"):
+            for arn in item["arn_formats"]:
+                print(f"  {arn}")
+        if item.get("condition_keys"):
+            print(f"  Condition keys: {', '.join(item['condition_keys'])}")
 
 
 # For testing

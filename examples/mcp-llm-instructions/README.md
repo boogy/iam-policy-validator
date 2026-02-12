@@ -57,21 +57,25 @@ The system prompt enforces these security principles:
 ## Available MCP Tools
 
 ### Validation
-- `validate_policy` - Comprehensive validation against 19 checks
+
+- `validate_policy` - Comprehensive validation against 21 checks
 - `quick_validate` - Fast pass/fail check
 - `validate_policies_batch` - Batch validation
 
 ### Generation
+
 - `generate_policy_from_template` - 15 secure templates
 - `build_minimal_policy` - Build from actions + resources
 - `suggest_actions` - NLP-based action suggestions
 
 ### Query
+
 - `query_service_actions` - List actions for a service
 - `expand_wildcard_action` - Expand `s3:Get*` to actual actions
 - `query_arn_formats` - Get correct ARN patterns
 
 ### Security
+
 - `check_sensitive_actions` - Identify privilege escalation risks
 - `get_required_conditions` - Get mandatory conditions
 - `set_organization_config` - Enforce org-wide policies
@@ -83,6 +87,7 @@ Ask your AI assistant:
 > "Create a policy for a Lambda function that needs to read from S3 bucket 'my-data' and write to DynamoDB table 'users'"
 
 The AI will:
+
 1. Query the correct actions and ARN formats
 2. Generate a least-privilege policy
 3. Validate it against security checks
@@ -91,7 +96,7 @@ The AI will:
 
 ## Security Validation Checks
 
-The MCP server runs 19 built-in checks:
+The MCP server runs 21 built-in checks:
 
 | Check                          | Severity | Description                          |
 | ------------------------------ | -------- | ------------------------------------ |
@@ -102,7 +107,7 @@ The MCP server runs 19 built-in checks:
 | `sensitive_action`             | medium   | 490+ privilege escalation actions    |
 | `action_condition_enforcement` | high     | Missing conditions on sensitive ops  |
 | `not_action_not_resource`      | high     | Dangerous NotAction/NotResource      |
-| ...                            | ...      | 12 more checks                       |
+| ...                            | ...      | 14 more checks                       |
 
 ## Organization Configuration
 
@@ -135,6 +140,7 @@ sensitive_action:
 ```
 
 Load with:
+
 ```
 Tool: set_organization_config
 Input: {"config": {...}}

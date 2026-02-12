@@ -46,10 +46,7 @@ def get_template_variables(template_name: str) -> list[str]:
     """
     template = _get_template(template_name)
     if not template:
-        raise ValueError(
-            f"Template '{template_name}' not found. "
-            f"Available templates: {', '.join(list_templates())}"
-        )
+        raise ValueError(f"Template '{template_name}' not found. Available templates: {', '.join(list_templates())}")
 
     return [var["name"] for var in template["variables"]]
 

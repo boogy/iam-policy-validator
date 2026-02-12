@@ -21,11 +21,81 @@ Example:
     ...     prefix_key = await query_condition_key(fetcher, "s3", "s3:prefix")
 """
 
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from iam_validator.core.aws_service.fetcher import AWSServiceFetcher
 
 AccessLevel = Literal["read", "write", "list", "tagging", "permissions-management"]
+
+
+class ActionInfo(TypedDict):
+    """Type information for action query results.
+
+    Returned by :func:`query_actions`.
+    """
+
+    action: str
+    access_level: str
+    description: str
+
+
+class ActionDetails(TypedDict):
+    """Type information for detailed action query results.
+
+    Returned by :func:`query_action_details`.
+    """
+
+    service: str
+    action: str
+    description: str
+    access_level: str
+    resource_types: list[str]
+    condition_keys: list[str]
+
+
+class ConditionKeyInfo(TypedDict):
+    """Type information for condition key query results.
+
+    Returned by :func:`query_condition_keys`.
+    """
+
+    condition_key: str
+    description: str
+    types: list[str]
+
+
+class ConditionKeyDetails(TypedDict):
+    """Type information for detailed condition key query results.
+
+    Returned by :func:`query_condition_key`.
+    """
+
+    service: str
+    condition_key: str
+    description: str
+    types: list[str]
+
+
+class ArnTypeInfo(TypedDict):
+    """Type information for ARN resource type query results.
+
+    Returned by :func:`query_arn_types`.
+    """
+
+    resource_type: str
+    arn_formats: list[str]
+
+
+class ArnFormatDetails(TypedDict):
+    """Type information for detailed ARN format query results.
+
+    Returned by :func:`query_arn_format`.
+    """
+
+    service: str
+    resource_type: str
+    arn_formats: list[str]
+    condition_keys: list[str]
 
 
 def _get_access_level(action_detail: Any) -> str:
@@ -67,7 +137,7 @@ async def query_actions(
     access_level: AccessLevel | None = None,
     resource_type: str | None = None,
     condition: str | None = None,
-) -> list[dict[str, Any]]:
+) -> list[ActionInfo]:
     """Query IAM actions for a service with optional filtering.
 
     Args:
@@ -123,11 +193,7 @@ async def query_actions(
             if condition not in condition_keys:
                 continue
 
-        description = (
-            action_detail.annotations.get("Description", "N/A")
-            if action_detail.annotations
-            else "N/A"
-        )
+        description = action_detail.annotations.get("Description", "N/A") if action_detail.annotations else "N/A"
 
         filtered_actions.append(
             {
@@ -144,7 +210,7 @@ async def query_action_details(
     fetcher: AWSServiceFetcher,
     service: str,
     action_name: str,
-) -> dict[str, Any]:
+) -> ActionDetails:
     """Get detailed information about a specific action.
 
     Args:
@@ -177,9 +243,7 @@ async def query_action_details(
         raise ValueError(f"Action '{action_name}' not found in service '{service}'")
 
     access_level = _get_access_level(action_detail)
-    description = (
-        action_detail.annotations.get("Description", "N/A") if action_detail.annotations else "N/A"
-    )
+    description = action_detail.annotations.get("Description", "N/A") if action_detail.annotations else "N/A"
 
     return {
         "service": service,
@@ -223,7 +287,7 @@ async def query_arn_formats(
 async def query_arn_types(
     fetcher: AWSServiceFetcher,
     service: str,
-) -> list[dict[str, Any]]:
+) -> list[ArnTypeInfo]:
     """Query all ARN resource types with their formats.
 
     Args:
@@ -254,7 +318,7 @@ async def query_arn_format(
     fetcher: AWSServiceFetcher,
     service: str,
     resource_type_name: str,
-) -> dict[str, Any]:
+) -> ArnFormatDetails:
     """Get ARN format details for a specific resource type.
 
     Args:
@@ -282,9 +346,7 @@ async def query_arn_format(
             break
 
     if not resource_type:
-        raise ValueError(
-            f"ARN resource type '{resource_type_name}' not found in service '{service}'"
-        )
+        raise ValueError(f"ARN resource type '{resource_type_name}' not found in service '{service}'")
 
     return {
         "service": service,
@@ -297,7 +359,7 @@ async def query_arn_format(
 async def query_condition_keys(
     fetcher: AWSServiceFetcher,
     service: str,
-) -> list[dict[str, Any]]:
+) -> list[ConditionKeyInfo]:
     """Query all condition keys for a service.
 
     Args:
@@ -329,7 +391,7 @@ async def query_condition_key(
     fetcher: AWSServiceFetcher,
     service: str,
     condition_key_name: str,
-) -> dict[str, Any]:
+) -> ConditionKeyDetails:
     """Get details for a specific condition key.
 
     Args:
@@ -441,6 +503,14 @@ async def get_actions_supporting_condition(
 
 
 __all__ = [
+    # TypedDicts
+    "ActionInfo",
+    "ActionDetails",
+    "ConditionKeyInfo",
+    "ConditionKeyDetails",
+    "ArnTypeInfo",
+    "ArnFormatDetails",
+    # Query functions
     "query_actions",
     "query_action_details",
     "query_arn_formats",

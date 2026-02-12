@@ -252,9 +252,7 @@ class TestActionValidationWithWildcards:
     async def test_validate_wildcard_with_disallow(self):
         """Test wildcard validation when wildcards are not allowed."""
         async with AWSServiceFetcher() as fetcher:
-            is_valid, error_msg, is_wildcard = await fetcher.validate_action(
-                "s3:Get*", allow_wildcards=False
-            )
+            is_valid, error_msg, is_wildcard = await fetcher.validate_action("s3:Get*", allow_wildcards=False)
 
             assert is_valid is False
             assert "Wildcard actions are not allowed" in error_msg

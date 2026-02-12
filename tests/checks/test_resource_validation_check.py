@@ -26,9 +26,7 @@ class TestResourceValidationCheck:
     @pytest.mark.asyncio
     async def test_valid_arn_aws_partition(self, check, fetcher, config):
         """Test valid ARN with aws partition."""
-        statement = Statement(
-            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::my-bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::my-bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
 
@@ -57,9 +55,7 @@ class TestResourceValidationCheck:
     @pytest.mark.asyncio
     async def test_invalid_arn_missing_prefix(self, check, fetcher, config):
         """Test invalid ARN without arn: prefix."""
-        statement = Statement(
-            Effect="Allow", Action=["s3:GetObject"], Resource=["aws:s3:::my-bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["aws:s3:::my-bucket/*"])
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
         assert issues[0].issue_type == "invalid_resource"

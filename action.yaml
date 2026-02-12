@@ -232,7 +232,7 @@ runs:
 
           if [ "$FILE_COUNT" -gt 0 ]; then
             echo "📋 Sample of cached files:"
-            ls -lh ~/.cache/iam-validator/aws_services | head -5
+            ls -lh ~/.cache/iam-validator/aws_services | head -5 || true
 
             # Update file modification times to prevent re-download due to TTL expiration
             # GitHub Actions cache preserves original timestamps, which can cause files
@@ -332,7 +332,7 @@ runs:
         if [ -n "$NON_IAM_FILES" ] && [ $((TOTAL_FILES - IAM_POLICY_COUNT)) -gt 0 ]; then
           echo ""
           echo "⏭️  Skipped non-IAM files:"
-          echo "$NON_IAM_FILES" | grep -v '^$' | head -10
+          echo "$NON_IAM_FILES" | grep -v '^$' | head -10 || true
           if [ $((TOTAL_FILES - IAM_POLICY_COUNT)) -gt 10 ]; then
             echo "  ... and $((TOTAL_FILES - IAM_POLICY_COUNT - 10)) more"
           fi

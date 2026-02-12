@@ -75,9 +75,7 @@ class TestServiceWildcardCheck:
             enabled=True,
             config={"allowed_services": ["logs", "cloudwatch"]},
         )
-        statement = Statement(
-            Effect="Allow", Action=["logs:*", "cloudwatch:*", "iam:*"], Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=["logs:*", "cloudwatch:*", "iam:*"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
         # Only iam:* should be flagged
         assert len(issues) == 1

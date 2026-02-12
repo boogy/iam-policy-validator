@@ -1,7 +1,5 @@
 """Tests for trust policy detection with multiple statements."""
 
-import pytest
-
 from iam_validator.checks.policy_structure import is_trust_policy
 from iam_validator.core.models import IAMPolicy, Statement
 
@@ -201,12 +199,8 @@ class TestTrustPolicyMultipleStatements:
                     },
                     Action="sts:AssumeRoleWithWebIdentity",
                     Condition={
-                        "StringEquals": {
-                            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-                        },
-                        "StringLike": {
-                            "token.actions.githubusercontent.com:sub": "repo:myorg/myrepo:*"
-                        },
+                        "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
+                        "StringLike": {"token.actions.githubusercontent.com:sub": "repo:myorg/myrepo:*"},
                     },
                 )
             ],

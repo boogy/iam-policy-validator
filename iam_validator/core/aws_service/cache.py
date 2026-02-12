@@ -90,9 +90,7 @@ class ServiceCacheManager:
                 return cached
         return None
 
-    async def set(
-        self, cache_key: str, value: Any, url: str | None = None, base_url: str = ""
-    ) -> None:
+    async def set(self, cache_key: str, value: Any, url: str | None = None, base_url: str = "") -> None:
         """Store in memory and optionally disk cache.
 
         Args:

@@ -1,6 +1,5 @@
 """Tests for CustomInstructionsManager."""
 
-import os
 import tempfile
 from pathlib import Path
 
@@ -10,7 +9,8 @@ from iam_validator.mcp.session_config import CustomInstructionsManager
 
 # Check if fastmcp is available for tests that need it
 try:
-    import fastmcp
+    import fastmcp  # noqa: F401
+
     HAS_FASTMCP = True
 except ImportError:
     HAS_FASTMCP = False

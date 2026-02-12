@@ -1,7 +1,5 @@
 """Tests for ignore pattern functionality with list support."""
 
-import pytest
-
 from iam_validator.core.ignore_patterns import IgnorePatternMatcher
 from iam_validator.core.models import ValidationIssue
 
@@ -34,13 +32,15 @@ class TestIgnorePatternListSupport:
 
     def test_list_with_regex_patterns(self):
         """Test list with regex patterns."""
-        actions = frozenset([
-            "s3:GetObject",
-            "s3:PutObject",
-            "s3:DeleteObject",
-            "iam:CreateUser",
-            "iam:DeleteUser",
-        ])
+        actions = frozenset(
+            [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "iam:CreateUser",
+                "iam:DeleteUser",
+            ]
+        )
         ignore_patterns = [{"action": ["^s3:.*", "^iam:Create.*"]}]
 
         filtered = IgnorePatternMatcher.filter_actions(actions, ignore_patterns)
@@ -56,13 +56,15 @@ class TestIgnorePatternListSupport:
 
     def test_multiple_patterns_with_lists(self):
         """Test multiple ignore patterns with lists."""
-        actions = frozenset([
-            "s3:GetObject",
-            "s3:PutObject",
-            "iam:CreateUser",
-            "ec2:RunInstances",
-            "lambda:InvokeFunction",
-        ])
+        actions = frozenset(
+            [
+                "s3:GetObject",
+                "s3:PutObject",
+                "iam:CreateUser",
+                "ec2:RunInstances",
+                "lambda:InvokeFunction",
+            ]
+        )
         ignore_patterns = [
             {"action": ["^s3:.*"]},
             {"action": ["^iam:.*", "^ec2:.*"]},
@@ -80,12 +82,14 @@ class TestIgnorePatternListSupport:
 
     def test_mixed_single_and_list_patterns(self):
         """Test mixing single and list action patterns."""
-        actions = frozenset([
-            "s3:GetObject",
-            "s3:PutObject",
-            "iam:CreateUser",
-            "ec2:RunInstances",
-        ])
+        actions = frozenset(
+            [
+                "s3:GetObject",
+                "s3:PutObject",
+                "iam:CreateUser",
+                "ec2:RunInstances",
+            ]
+        )
         ignore_patterns = [
             {"action": "^s3:GetObject$"},  # Single pattern
             {"action": ["^iam:.*", "^ec2:.*"]},  # List pattern

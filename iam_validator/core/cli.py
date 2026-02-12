@@ -40,7 +40,11 @@ def setup_logging(log_level: str | None = None, verbose: bool = False) -> None:
 
     # Priority: CLI --log-level > LOG_LEVEL env var > --verbose flag > default (WARNING)
     if log_level:
-        level = level_map[log_level.upper()]
+        upper_level = log_level.upper()
+        level = level_map.get(upper_level)
+        if level is None:
+            valid_levels = ", ".join(sorted(level_map.keys()))
+            raise ValueError(f"Invalid log level '{log_level}'. Valid levels: {valid_levels}")
     elif env_log_level in level_map:
         level = level_map[env_log_level]
     elif verbose:

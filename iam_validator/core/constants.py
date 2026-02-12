@@ -18,7 +18,9 @@ References:
 # This pattern is specifically designed for validation and allows wildcards (*) in region and account fields
 # Unlike the parsing pattern in CompiledPatterns, this is more lenient for validation purposes
 # Supports all AWS partitions: aws, aws-cn, aws-us-gov, aws-eusc, aws-iso*
-DEFAULT_ARN_VALIDATION_PATTERN = r"^arn:(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f):[a-z0-9\-]+:[a-z0-9\-*]*:[0-9*]*:.+$"
+DEFAULT_ARN_VALIDATION_PATTERN = (
+    r"^arn:(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f):[a-z0-9\-]+:[a-z0-9\-*]*:[0-9*]*:.+$"
+)
 
 # Maximum allowed ARN length to prevent ReDoS attacks
 # AWS maximum ARN length is approximately 2048 characters

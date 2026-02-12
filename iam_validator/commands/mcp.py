@@ -63,7 +63,7 @@ Config File (YAML) - same format as CLI validator:
 Features:
   - Policy generation from natural language descriptions
   - Template-based policy generation (15 built-in templates)
-  - Policy validation with 19 security checks
+  - Policy validation with 20 security checks
   - AWS service queries (actions, resources, condition keys)
   - Security enforcement (auto-adds required conditions)
   - Session-wide configuration management
@@ -128,9 +128,7 @@ Features:
             from iam_validator.mcp import create_server
         except ImportError as e:
             logging.error(f"Failed to import MCP server: {e}")
-            logging.error(
-                "Make sure the MCP module is properly installed with: uv sync --extra mcp"
-            )
+            logging.error("Make sure the MCP module is properly installed with: uv sync --extra mcp")
             return 1
 
         # Set up logging level
@@ -165,9 +163,7 @@ Features:
                         logging.info(f"  Fail on severity: {fail_on}")
 
                 if config.checks_config:
-                    disabled_checks = [
-                        k for k, v in config.checks_config.items() if not v.get("enabled", True)
-                    ]
+                    disabled_checks = [k for k, v in config.checks_config.items() if not v.get("enabled", True)]
                     if disabled_checks:
                         logging.info(f"  Disabled checks: {disabled_checks}")
 
@@ -190,9 +186,7 @@ Features:
                 await server.run_stdio_async()
             else:
                 # SSE transport
-                logging.info(
-                    f"Starting MCP server with SSE transport on {args.host}:{args.port}..."
-                )
+                logging.info(f"Starting MCP server with SSE transport on {args.host}:{args.port}...")
                 # Run with SSE transport using async method
                 await server.run_http_async(host=args.host, port=args.port)
 

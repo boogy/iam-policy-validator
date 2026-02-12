@@ -9,29 +9,29 @@ Use IAM Policy Validator programmatically in your Python applications.
 
 <div class="grid cards" markdown>
 
--   :material-code-braces:{ .lg .middle } **Python SDK**
+- :material-code-braces:{ .lg .middle } **Python SDK**
 
-    ---
+  ***
 
-    Validate policies in your Python code
+  Validate policies in your Python code
 
-    [:octicons-arrow-right-24: SDK Guide](sdk/index.md)
+  [:octicons-arrow-right-24: SDK Guide](sdk/index.md)
 
--   :material-puzzle:{ .lg .middle } **Custom Checks**
+- :material-puzzle:{ .lg .middle } **Custom Checks**
 
-    ---
+  ***
 
-    Write organization-specific validation rules
+  Write organization-specific validation rules
 
-    [:octicons-arrow-right-24: Custom Checks](custom-checks/index.md)
+  [:octicons-arrow-right-24: Custom Checks](custom-checks/index.md)
 
--   :material-sitemap:{ .lg .middle } **Architecture**
+- :material-sitemap:{ .lg .middle } **Architecture**
 
-    ---
+  ***
 
-    Understand the system design
+  Understand the system design
 
-    [:octicons-arrow-right-24: Architecture](architecture.md)
+  [:octicons-arrow-right-24: Architecture](architecture.md)
 
 </div>
 

@@ -41,9 +41,7 @@ class TestWildcardActionCheck:
     @pytest.mark.asyncio
     async def test_specific_actions_not_flagged(self, check, fetcher, config):
         """Test that specific actions are not flagged."""
-        statement = Statement(
-            Effect="Allow", Action=["s3:GetObject"], Resource=["*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["*"])
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 0
 

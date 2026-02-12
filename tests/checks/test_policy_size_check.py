@@ -68,9 +68,7 @@ class TestPolicySizeCheck:
         config = CheckConfig(check_id="policy_size", config={"policy_type": "inline_user"})
         policy = IAMPolicy(
             Version="2012-10-17",
-            Statement=[
-                Statement(Effect="Allow", Action=actions, Resource=["arn:aws:s3:::my-bucket/*"])
-            ],
+            Statement=[Statement(Effect="Allow", Action=actions, Resource=["arn:aws:s3:::my-bucket/*"])],
         )
         issues = await check.execute_policy(policy, "test.json", fetcher, config)
         assert len(issues) == 1

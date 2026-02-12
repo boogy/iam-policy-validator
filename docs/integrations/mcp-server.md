@@ -111,7 +111,7 @@ Add the server to your Claude Desktop configuration:
       "mcpServers": {
         "iam-policy-validator": {
           "command": "uvx",
-          "args": ["--from", "iam-policy-validator[mcp]==1.15.2", "iam-validator-mcp"]
+          "args": ["--from", "iam-policy-validator[mcp]", "iam-validator-mcp"]
         }
       }
     }
@@ -391,20 +391,20 @@ principal_validation:
 
 ### Query Tools
 
-| Tool                                    | Description                                                                             |
-| --------------------------------------- | --------------------------------------------------------------------------------------- |
-| `query_service_actions`                 | Get all actions for an AWS service                                                      |
-| `query_action_details`                  | Get detailed information about a specific action                                        |
-| `query_actions_batch`                   | Get details for multiple actions in a single call (more efficient than individual calls)|
-| `expand_wildcard_action`                | Expand patterns like `s3:Get*` to specific actions                                      |
-| `query_condition_keys`                  | Get condition keys for a service                                                        |
-| `query_arn_formats`                     | Get ARN format patterns for a service                                                   |
-| `list_checks`                           | List all available validation checks                                                    |
-| `get_check_details`                     | Get full documentation for a specific check including examples and configuration options|
-| `get_policy_summary`                    | Analyze a policy's structure                                                            |
-| `list_sensitive_actions`                | List sensitive actions by category                                                      |
-| `check_actions_batch`                   | Validate and check sensitivity for multiple actions in one call                         |
-| `get_condition_requirements_for_action` | Get required conditions for a specific action based on sensitivity and best practices   |
+| Tool                                    | Description                                                                              |
+| --------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `query_service_actions`                 | Get all actions for an AWS service                                                       |
+| `query_action_details`                  | Get detailed information about a specific action                                         |
+| `query_actions_batch`                   | Get details for multiple actions in a single call (more efficient than individual calls) |
+| `expand_wildcard_action`                | Expand patterns like `s3:Get*` to specific actions                                       |
+| `query_condition_keys`                  | Get condition keys for a service                                                         |
+| `query_arn_formats`                     | Get ARN format patterns for a service                                                    |
+| `list_checks`                           | List all available validation checks                                                     |
+| `get_check_details`                     | Get full documentation for a specific check including examples and configuration options |
+| `get_policy_summary`                    | Analyze a policy's structure                                                             |
+| `list_sensitive_actions`                | List sensitive actions by category                                                       |
+| `check_actions_batch`                   | Validate and check sensitivity for multiple actions in one call                          |
+| `get_condition_requirements_for_action` | Get required conditions for a specific action based on sensitivity and best practices    |
 
 ### Fix and Help Tools
 
@@ -1078,7 +1078,7 @@ The server also provides static resources that Claude can reference:
 | Resource                     | Content                         |
 | ---------------------------- | ------------------------------- |
 | `iam://templates`            | List of all policy templates    |
-| `iam://checks`               | All 19 validation checks        |
+| `iam://checks`               | All 21 validation checks        |
 | `iam://sensitive-categories` | Sensitive action categories     |
 | `iam://org-config-schema`    | Organization config JSON schema |
 | `iam://org-config-examples`  | Example organization configs    |
@@ -1626,7 +1626,7 @@ uvx --from 'iam-policy-validator[mcp]' iam-validator-mcp
 uvx --from 'iam-policy-validator[mcp]' iam-validator-mcp --config ./config.yaml
 
 # Pin to a specific version
-uvx --from 'iam-policy-validator[mcp]==1.15.2' iam-validator-mcp
+uvx --from 'iam-policy-validator[mcp]==1.17.0' iam-validator-mcp
 
 # Run with custom instructions
 uvx --from 'iam-policy-validator[mcp]' iam-validator-mcp --instructions "Require MFA for all sensitive actions"

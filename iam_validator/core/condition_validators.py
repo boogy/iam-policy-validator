@@ -377,9 +377,7 @@ def _validate_date_value(value_str: str) -> tuple[bool, str | None]:
         tz_hour, tz_minute = int(match.group(9)), int(match.group(10))
 
         # Validate ranges
-        validation_error = _validate_datetime_components(
-            year, month, day, hour, minute, second, tz_hour, tz_minute
-        )
+        validation_error = _validate_datetime_components(year, month, day, hour, minute, second, tz_hour, tz_minute)
         if validation_error:
             return False, validation_error
 

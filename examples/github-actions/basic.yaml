@@ -1,0 +1,25 @@
+# Validate IAM policies on pull requests and post findings as PR comments.
+name: IAM Policy Validation
+
+on:
+  pull_request:
+    paths:
+      - "policies/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate IAM policies
+        uses: boogy/iam-policy-auditor@v1
+        with:
+          path: policies/
+          post-comment: true
+          create-review: true
+          fail-on-warnings: true

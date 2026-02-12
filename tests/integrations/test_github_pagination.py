@@ -1,9 +1,9 @@
 """Tests for GitHub API pagination."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
 
 from iam_validator.integrations.github_integration import GitHubIntegration
 
@@ -36,9 +36,7 @@ class TestGitHubPagination:
         mock_response.headers = {}  # No Link header = single page
         mock_response.raise_for_status = MagicMock()
 
-        with patch.object(
-            github_integration, "_client", None
-        ):
+        with patch.object(github_integration, "_client", None):
             with patch("httpx.AsyncClient") as mock_client_class:
                 mock_client = MagicMock()
                 mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -46,9 +44,7 @@ class TestGitHubPagination:
                 mock_client.request = AsyncMock(return_value=mock_response)
                 mock_client_class.return_value = mock_client
 
-                result = await github_integration._make_paginated_request(
-                    "pulls/123/comments"
-                )
+                result = await github_integration._make_paginated_request("pulls/123/comments")
 
         assert len(result) == 2
         assert result[0]["id"] == 1
@@ -81,9 +77,7 @@ class TestGitHubPagination:
                 mock_client.request = AsyncMock(side_effect=[page1_response, page2_response])
                 mock_client_class.return_value = mock_client
 
-                result = await github_integration._make_paginated_request(
-                    "pulls/123/comments"
-                )
+                result = await github_integration._make_paginated_request("pulls/123/comments")
 
         assert len(result) == 152  # 100 + 52
         assert result[0]["id"] == 1
@@ -93,14 +87,13 @@ class TestGitHubPagination:
     @pytest.mark.asyncio
     async def test_paginated_request_respects_max_pages(self, github_integration):
         """Test that pagination respects max_pages limit."""
+
         # Create responses that always have a next page
         def make_response(page_num):
             response = MagicMock()
             response.status_code = 200
             response.json.return_value = [{"id": page_num, "body": f"page {page_num}"}]
-            response.headers = {
-                "Link": f'<https://api.github.com/next?page={page_num + 1}>; rel="next"'
-            }
+            response.headers = {"Link": f'<https://api.github.com/next?page={page_num + 1}>; rel="next"'}
             response.raise_for_status = MagicMock()
             return response
 
@@ -112,9 +105,7 @@ class TestGitHubPagination:
                 mock_client.request = AsyncMock(side_effect=[make_response(i) for i in range(1, 10)])
                 mock_client_class.return_value = mock_client
 
-                result = await github_integration._make_paginated_request(
-                    "pulls/123/comments", max_pages=3
-                )
+                result = await github_integration._make_paginated_request("pulls/123/comments", max_pages=3)
 
         assert len(result) == 3  # Should stop at 3 pages
 
@@ -163,9 +154,7 @@ class TestGitHubPagination:
                 mock_client.request = AsyncMock(return_value=mock_response)
                 mock_client_class.return_value = mock_client
 
-                result = await github_integration._make_paginated_request(
-                    "pulls/123/comments"
-                )
+                result = await github_integration._make_paginated_request("pulls/123/comments")
 
         assert result == []  # Should return empty list on error
 
@@ -283,9 +272,7 @@ class TestParallelDeletion:
             "delete_review_comment",
             side_effect=mock_delete,
         ):
-            successful, failed = await github_integration._delete_comments_parallel(
-                comment_ids, max_concurrent=5
-            )
+            successful, failed = await github_integration._delete_comments_parallel(comment_ids, max_concurrent=5)
 
         assert successful == 20
         assert failed == 0

@@ -13,6 +13,7 @@ from iam_validator.checks.full_wildcard import FullWildcardCheck
 from iam_validator.checks.ifexists_condition_check import IfExistsConditionCheck
 from iam_validator.checks.mfa_condition_check import MFAConditionCheck
 from iam_validator.checks.not_action_not_resource import NotActionNotResourceCheck
+from iam_validator.checks.not_principal_validation import NotPrincipalValidationCheck
 from iam_validator.checks.policy_size import PolicySizeCheck
 from iam_validator.checks.policy_structure import PolicyStructureCheck
 from iam_validator.checks.principal_validation import PrincipalValidationCheck
@@ -35,6 +36,7 @@ __all__ = [
     "IfExistsConditionCheck",
     "MFAConditionCheck",
     "NotActionNotResourceCheck",
+    "NotPrincipalValidationCheck",
     "PolicySizeCheck",
     "PolicyStructureCheck",
     "PrincipalValidationCheck",

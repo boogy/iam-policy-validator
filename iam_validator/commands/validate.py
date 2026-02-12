@@ -237,9 +237,7 @@ Examples:
         # Auto-enable streaming for CI environments or large policy sets
         # to provide progressive feedback
         if not use_stream and os.getenv("CI"):
-            logging.info(
-                "CI environment detected, enabling streaming mode for progressive feedback"
-            )
+            logging.info("CI environment detected, enabling streaming mode for progressive feedback")
             use_stream = True
 
         if use_stream:
@@ -324,9 +322,7 @@ Examples:
             format_options = {}
             if args.format == "enhanced":
                 format_options["show_summary"] = getattr(args, "summary", False)
-                format_options["show_severity_breakdown"] = getattr(
-                    args, "severity_breakdown", False
-                )
+                format_options["show_severity_breakdown"] = getattr(args, "severity_breakdown", False)
             output_content = generator.format_report(report, args.format, **format_options)
             if args.output:
                 with open(args.output, "w", encoding="utf-8") as f:
@@ -402,9 +398,7 @@ Examples:
         logging.info(f"Starting streaming validation from {len(args.paths)} path(s)")
 
         # Process policies one at a time
-        for file_path, policy in loader.stream_from_paths(
-            args.paths, recursive=not args.no_recursive
-        ):
+        for file_path, policy in loader.stream_from_paths(args.paths, recursive=not args.no_recursive):
             total_processed += 1
             logging.info(f"[{total_processed}] Processing: {file_path}")
 
@@ -480,9 +474,7 @@ Examples:
             format_options = {}
             if args.format == "enhanced":
                 format_options["show_summary"] = getattr(args, "summary", False)
-                format_options["show_severity_breakdown"] = getattr(
-                    args, "severity_breakdown", False
-                )
+                format_options["show_severity_breakdown"] = getattr(args, "severity_breakdown", False)
             output_content = generator.format_report(report, args.format, **format_options)
             if args.output:
                 with open(args.output, "w", encoding="utf-8") as f:
@@ -740,9 +732,7 @@ Examples:
             summary_parts.append(f"| Total Policies | {report.total_policies} |")
             summary_parts.append(f"| Valid Policies | {report.valid_policies} |")
             summary_parts.append(f"| Invalid Policies | {report.invalid_policies} |")
-            summary_parts.append(
-                f"| Policies with Security Issues | {report.policies_with_security_issues} |"
-            )
+            summary_parts.append(f"| Policies with Security Issues | {report.policies_with_security_issues} |")
             summary_parts.append(f"| **Total Issues** | **{report.total_issues}** |")
 
             # Issue breakdown by severity if there are issues
@@ -784,9 +774,7 @@ Examples:
             summary_parts.append("")
             summary_parts.append("---")
             summary_parts.append("")
-            summary_parts.append(
-                "📝 For detailed findings, check the PR comments or review the workflow logs."
-            )
+            summary_parts.append("📝 For detailed findings, check the PR comments or review the workflow logs.")
 
             # Write to summary file (append mode)
             with open(summary_file, "a", encoding="utf-8") as f:
@@ -798,9 +786,7 @@ Examples:
         except Exception as e:
             logging.warning(f"Failed to write GitHub Actions summary: {e}")
 
-    def _print_ci_console_output(
-        self, report: ValidationReport, generator: ReportGenerator
-    ) -> None:
+    def _print_ci_console_output(self, report: ValidationReport, generator: ReportGenerator) -> None:
         """Print enhanced console output for CI visibility.
 
         This shows validation results in the CI job logs in a human-readable format.

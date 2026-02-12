@@ -92,10 +92,10 @@ async def tool_name(
 
 ### Token Limits
 
-| Component | Max Tokens |
-|-----------|------------|
-| Tool docstring | 300 |
-| BASE_INSTRUCTIONS | 2500 |
+| Component         | Max Tokens |
+| ----------------- | ---------- |
+| Tool docstring    | 300        |
+| BASE_INSTRUCTIONS | 2500       |
 
 ## Getting Help
 

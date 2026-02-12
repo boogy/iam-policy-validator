@@ -21,9 +21,7 @@ class TestMFAConditionCheck:
     @pytest.mark.asyncio
     async def test_no_conditions(self, check, config):
         """Test statement with no conditions."""
-        statement = Statement(
-            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"]
-        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"])
         issues = await check.execute(statement, 0, None, config)
         assert len(issues) == 0
 

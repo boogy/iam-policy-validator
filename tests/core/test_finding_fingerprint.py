@@ -221,7 +221,7 @@ class TestFindingFingerprint:
         )
 
         with pytest.raises(Exception):  # FrozenInstanceError
-            fingerprint.file_path = "other.json" # type: ignore
+            fingerprint.file_path = "other.json"  # type: ignore
 
     def test_fingerprint_hashable(self):
         """Test that fingerprint can be used in sets (hashable)."""

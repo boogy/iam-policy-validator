@@ -1,11 +1,11 @@
 ---
 title: Advanced Checks
-description: Condition enforcement and trust policy validation
+description: Condition enforcement, trust policy validation, and confused deputy detection
 ---
 
 # Advanced Checks
 
-These 3 checks provide advanced validation for condition enforcement and trust policies.
+These 3 checks provide advanced validation for condition enforcement, trust policies, and confused deputy protection.
 
 ## action_condition_enforcement
 
@@ -100,17 +100,70 @@ Validates actions are compatible with resource types.
 
 ## trust_policy_validation
 
-Validates IAM role trust policies.
+Validates IAM role trust policies for security best practices.
 
-**Severity:** `high`
+**Severity:** `high` (trust issues) / `medium` (confused deputy)
+
+!!! note "Opt-in Check"
+Trust policy validation is enabled when using `--policy-type TRUST_POLICY`. The validator auto-detects trust policies (containing `sts:AssumeRole` actions with Principal elements) and suggests using this flag.
 
 ### What It Checks
 
-- Valid Principal format
-- Service principal syntax
-- OIDC provider configuration
-- SAML provider configuration
-- Cross-account trust patterns
+- **Action-Principal type matching** - correct principal types for each assume action
+- **Provider ARN validation** - SAML and OIDC provider ARN format
+- **Required conditions** - SAML:aud, OIDC audience/subject conditions
+- **Confused deputy prevention** - service principals without source restrictions
+
+### Confused Deputy Detection
+
+When a trust policy allows a service principal to assume a role without `aws:SourceArn` or `aws:SourceAccount` conditions, any resource using that service could assume the role - not just the intended one. This is the [confused deputy problem](https://docs.aws.amazon.com/IAM/latest/UserGuide/confused-deputy.html).
+
+#### Vulnerable Example
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {
+    "Service": "sns.amazonaws.com"
+  },
+  "Action": "sts:AssumeRole"
+}
+```
+
+**Warning:** Trust policy allows service principal `sns.amazonaws.com` without `aws:SourceArn` or `aws:SourceAccount` condition. This may be vulnerable to confused deputy attacks.
+
+#### Secure Example
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {
+    "Service": "sns.amazonaws.com"
+  },
+  "Action": "sts:AssumeRole",
+  "Condition": {
+    "ArnLike": {
+      "aws:SourceArn": "arn:aws:sns:us-east-1:123456789012:my-topic"
+    },
+    "StringEquals": {
+      "aws:SourceAccount": "123456789012"
+    }
+  }
+}
+```
+
+#### Safe Services (Not Flagged)
+
+Only services where the role is directly bound to a compute resource owned by the account are exempt from confused deputy checks:
+
+| Service                    | Reason                                           |
+| -------------------------- | ------------------------------------------------ |
+| `ec2.amazonaws.com`        | Instance profile bound to account-owned instance |
+| `lambda.amazonaws.com`     | Execution role bound to account-owned function   |
+| `edgelambda.amazonaws.com` | Lambda@Edge, same model as Lambda                |
+
+!!! warning "All Other Services Require Conditions"
+All other AWS service principals -- including services that typically use service-linked roles (e.g., `guardduty`, `elasticloadbalancing`, `organizations`) -- require `aws:SourceArn` or `aws:SourceAccount` conditions when used in custom trust policies. If a customer writes a custom trust policy for any of these services, the confused deputy risk applies to that custom role.
 
 ### Trust Policy Types
 
@@ -119,13 +172,15 @@ Validates IAM role trust policies.
 ```json
 {
   "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {
-      "Service": "lambda.amazonaws.com"
-    },
-    "Action": "sts:AssumeRole"
-  }]
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "lambda.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
 }
 ```
 
@@ -134,18 +189,20 @@ Validates IAM role trust policies.
 ```json
 {
   "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {
-      "AWS": "arn:aws:iam::123456789012:root"
-    },
-    "Action": "sts:AssumeRole",
-    "Condition": {
-      "StringEquals": {
-        "sts:ExternalId": "unique-external-id"
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::123456789012:root"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "sts:ExternalId": "unique-external-id"
+        }
       }
     }
-  }]
+  ]
 }
 ```
 
@@ -154,21 +211,23 @@ Validates IAM role trust policies.
 ```json
 {
   "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {
-      "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
-    },
-    "Action": "sts:AssumeRoleWithWebIdentity",
-    "Condition": {
-      "StringEquals": {
-        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
       },
-      "StringLike": {
-        "token.actions.githubusercontent.com:sub": "repo:org/repo:*"
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:org/repo:*"
+        }
       }
     }
-  }]
+  ]
 }
 ```
 

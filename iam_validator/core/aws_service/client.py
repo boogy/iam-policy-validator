@@ -115,7 +115,7 @@ class AWSServiceClient:
             return await existing_future
 
         # Create new future for this request
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         future: asyncio.Future[Any] = loop.create_future()
 
         # Second check: register future or use existing one (double-check pattern)
@@ -179,9 +179,7 @@ class AWSServiceClient:
 
                 except Exception as json_error:  # pylint: disable=broad-exception-caught
                     logger.error(f"Failed to parse response as JSON: {json_error}")
-                    raise ValueError(
-                        f"Invalid JSON response from {url}: {json_error}"
-                    ) from json_error
+                    raise ValueError(f"Invalid JSON response from {url}: {json_error}") from json_error
 
             except httpx.HTTPStatusError as e:
                 logger.error(f"HTTP error {e.response.status_code} for {url}")
