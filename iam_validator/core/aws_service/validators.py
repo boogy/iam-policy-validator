@@ -386,14 +386,14 @@ class ServiceValidator:
         action_names: list[str],
         service_detail: ServiceDetail,
     ) -> set[str]:
-        """Collect union of valid condition keys from service-level + action-level + resource-level."""
-        valid_keys: set[str] = set()
+        """Collect valid condition keys from action-level + resource-level sources.
 
-        if service_detail.condition_keys:
-            if isinstance(service_detail.condition_keys, dict):
-                valid_keys.update(service_detail.condition_keys.keys())
-            elif isinstance(service_detail.condition_keys, list):
-                valid_keys.update(service_detail.condition_keys)
+        Note: Service-level condition keys are intentionally excluded because they
+        represent the superset across ALL actions in the service, not what a specific
+        action supports. Including them would suggest keys like aws:RequestTag/${TagKey}
+        are valid for actions that don't actually support them.
+        """
+        valid_keys: set[str] = set()
 
         for act_name in action_names:
             action_detail = service_detail.actions.get(act_name)
