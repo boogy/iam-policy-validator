@@ -57,6 +57,7 @@ _Bugs:_
 - Fix `_delete_comments_with_identifier()` not paginating ([#79])
 - Fix `_strip_variables_from_arn()` to also handle Terraform and CloudFormation variables
 - Fix bash/zsh shell completions: missing options, unreachable cases, command detection ([#79])
+- Fix GitHub Action broken pipe error in cache status step — `ls | head` causes SIGPIPE exit code 2 under `pipefail`, preventing validation from running
 - Fix `deep_merge` sharing list references between configs
 - Add bounded cache eviction to `wildcard_resource.py` module-level caches
 
