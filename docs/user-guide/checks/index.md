@@ -11,29 +11,29 @@ IAM Policy Validator includes 21 built-in checks across three categories.
 
 <div class="grid cards" markdown>
 
-- :material-aws:{ .lg .middle } **AWS Validation (10)**
+-   :material-aws:{ .lg .middle } **AWS Validation (10)**
 
-  ***
+    ---
 
-  Ensure policies comply with AWS IAM rules
+    Ensure policies comply with AWS IAM rules
 
-  [:octicons-arrow-right-24: AWS Checks](aws-validation.md)
+    [:octicons-arrow-right-24: AWS Checks](aws-validation.md)
 
-- :material-shield-lock:{ .lg .middle } **Security Checks (8)**
+-   :material-shield-lock:{ .lg .middle } **Security Checks (8)**
 
-  ***
+    ---
 
-  Detect security risks and best practice violations
+    Detect security risks and best practice violations
 
-  [:octicons-arrow-right-24: Security Checks](security-checks.md)
+    [:octicons-arrow-right-24: Security Checks](security-checks.md)
 
-- :material-cog-outline:{ .lg .middle } **Advanced Checks (3)**
+-   :material-cog-outline:{ .lg .middle } **Advanced Checks (3)**
 
-  ***
+    ---
 
-  Condition enforcement, trust policy, and policy type validation
+    Condition enforcement, trust policy, and policy type validation
 
-  [:octicons-arrow-right-24: Advanced Checks](advanced-checks.md)
+    [:octicons-arrow-right-24: Advanced Checks](advanced-checks.md)
 
 </div>
 

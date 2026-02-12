@@ -9,29 +9,29 @@ Get up and running with IAM Policy Validator in under 5 minutes.
 
 <div class="grid cards" markdown>
 
-- :material-download:{ .lg .middle } **Installation**
+-   :material-download:{ .lg .middle } **Installation**
 
-  ***
+    ---
 
-  Install via pip, uv, or pipx
+    Install via pip, uv, or pipx
 
-  [:octicons-arrow-right-24: Install](installation.md)
+    [:octicons-arrow-right-24: Install](installation.md)
 
-- :material-rocket-launch:{ .lg .middle } **Quick Start**
+-   :material-rocket-launch:{ .lg .middle } **Quick Start**
 
-  ***
+    ---
 
-  Validate your first policy in seconds
+    Validate your first policy in seconds
 
-  [:octicons-arrow-right-24: Quick Start](quickstart.md)
+    [:octicons-arrow-right-24: Quick Start](quickstart.md)
 
-- :material-school:{ .lg .middle } **First Validation**
+-   :material-school:{ .lg .middle } **First Validation**
 
-  ***
+    ---
 
-  Step-by-step tutorial with explanations
+    Step-by-step tutorial with explanations
 
-  [:octicons-arrow-right-24: Tutorial](first-validation.md)
+    [:octicons-arrow-right-24: Tutorial](first-validation.md)
 
 </div>
 

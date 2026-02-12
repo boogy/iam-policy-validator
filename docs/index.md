@@ -9,37 +9,37 @@ description: Stop IAM misconfigurations before they become breaches
 
 <div class="grid cards" markdown>
 
-- :material-rocket-launch:{ .lg .middle } **Get Started in 5 Minutes**
+-   :material-rocket-launch:{ .lg .middle } **Get Started in 5 Minutes**
 
-  ***
+    ---
 
-  Install with pip and validate your first policy
+    Install with pip and validate your first policy
 
-  [:octicons-arrow-right-24: Getting Started](getting-started/index.md)
+    [:octicons-arrow-right-24: Getting Started](getting-started/index.md)
 
-- :material-github:{ .lg .middle } **GitHub Actions Ready**
+-   :material-github:{ .lg .middle } **GitHub Actions Ready**
 
-  ***
+    ---
 
-  Integrate into your CI/CD pipeline with our GitHub Action
+    Integrate into your CI/CD pipeline with our GitHub Action
 
-  [:octicons-arrow-right-24: GitHub Actions](integrations/github-actions.md)
+    [:octicons-arrow-right-24: GitHub Actions](integrations/github-actions.md)
 
-- :material-shield-check:{ .lg .middle } **21 Built-in Checks**
+-   :material-shield-check:{ .lg .middle } **21 Built-in Checks**
 
-  ***
+    ---
 
-  AWS validation, security best practices, and advanced enforcement
+    AWS validation, security best practices, and advanced enforcement
 
-  [:octicons-arrow-right-24: Check Reference](user-guide/checks/index.md)
+    [:octicons-arrow-right-24: Check Reference](user-guide/checks/index.md)
 
-- :material-code-braces:{ .lg .middle } **Python SDK**
+-   :material-code-braces:{ .lg .middle } **Python SDK**
 
-  ***
+    ---
 
-  Programmatic validation in your Python applications
+    Programmatic validation in your Python applications
 
-  [:octicons-arrow-right-24: SDK Documentation](developer-guide/sdk/index.md)
+    [:octicons-arrow-right-24: SDK Documentation](developer-guide/sdk/index.md)
 
 </div>
 
