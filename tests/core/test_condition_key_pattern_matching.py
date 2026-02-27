@@ -297,9 +297,7 @@ class TestConditionTypeMismatchPatternMatching:
 
         service_detail = MagicMock()
         service_detail.condition_keys = {
-            "aws:ResourceTag/${TagKey}": ConditionKey(
-                Name="aws:ResourceTag/${TagKey}", Types=["String"]
-            ),
+            "aws:ResourceTag/${TagKey}": ConditionKey(Name="aws:ResourceTag/${TagKey}", Types=["String"]),
         }
         service_detail.actions = {"DeleteEventBus": action_detail}
         service_detail.resources = {"event-bus": resource_type}
@@ -330,15 +328,11 @@ class TestSetOperatorValidationPatternMatching:
         fetcher.parse_action = MagicMock(return_value=("svc", "DoThing"))
         service_detail = MagicMock()
         service_detail.condition_keys = {
-            "svc:tag/${TagKey}": ConditionKey(
-                Name="svc:tag/${TagKey}", Types=["ArrayOfString"]
-            ),
+            "svc:tag/${TagKey}": ConditionKey(Name="svc:tag/${TagKey}", Types=["ArrayOfString"]),
         }
         fetcher.fetch_service_by_name = AsyncMock(return_value=service_detail)
 
-        result = await check._is_multivalued_key(
-            "svc:tag/team/owner", fetcher, ["svc:DoThing"]
-        )
+        result = await check._is_multivalued_key("svc:tag/team/owner", fetcher, ["svc:DoThing"])
         assert result is True
 
     @pytest.mark.asyncio
@@ -352,15 +346,11 @@ class TestSetOperatorValidationPatternMatching:
         fetcher.parse_action = MagicMock(return_value=("events", "DeleteEventBus"))
         service_detail = MagicMock()
         service_detail.condition_keys = {
-            "aws:ResourceTag/${TagKey}": ConditionKey(
-                Name="aws:ResourceTag/${TagKey}", Types=["String"]
-            ),
+            "aws:ResourceTag/${TagKey}": ConditionKey(Name="aws:ResourceTag/${TagKey}", Types=["String"]),
         }
         fetcher.fetch_service_by_name = AsyncMock(return_value=service_detail)
 
-        result = await check._is_multivalued_key(
-            "aws:ResourceTag/team/owner", fetcher, ["events:DeleteEventBus"]
-        )
+        result = await check._is_multivalued_key("aws:ResourceTag/team/owner", fetcher, ["events:DeleteEventBus"])
         assert result is False
 
 

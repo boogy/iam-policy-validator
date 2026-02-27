@@ -25,9 +25,7 @@ def _resolve_off_diff_mode(args: argparse.Namespace, config) -> str:
     Returns:
         One of ``"summary_only"``, ``"individual"``, or ``"modified_statements_only"``
     """
-    return getattr(args, "off_diff_comment_mode", None) or config.get_setting(
-        "off_diff_comment_mode", "summary_only"
-    )
+    return getattr(args, "off_diff_comment_mode", None) or config.get_setting("off_diff_comment_mode", "summary_only")
 
 
 class ValidateCommand(Command):

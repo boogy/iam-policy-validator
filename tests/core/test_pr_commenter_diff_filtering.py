@@ -454,9 +454,7 @@ class TestPRCommenterOffDiffPipeline:
             }
         ]
 
-        commenter = PRCommenter(
-            github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="individual"
-        )
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="individual")
 
         with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             await commenter._post_review_comments(report)
@@ -956,15 +954,15 @@ class TestOffDiffCommentMode:
     def diff_patch(self):
         """Diff patch that only changes line 7 in statement 0."""
         return (
-            '@@ -4,7 +4,7 @@\n'
-            '     {\n'
+            "@@ -4,7 +4,7 @@\n"
+            "     {\n"
             '       "Sid": "AllowS3Read",\n'
             '       "Effect": "Allow",\n'
             '-      "Action": "s3:GetObject",\n'
             '+      "Action": "s3:*",\n'
             '       "Resource": "*"\n'
-            '     },\n'
-            '     {'
+            "     },\n"
+            "     {"
         )
 
     @pytest.mark.asyncio
@@ -976,9 +974,7 @@ class TestOffDiffCommentMode:
             {"filename": Path(sample_policy_file).name, "status": "modified", "patch": diff_patch}
         ]
 
-        commenter = PRCommenter(
-            github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="summary_only"
-        )
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="summary_only")
 
         with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             with mock.patch.object(commenter, "_post_off_diff_comments", new_callable=AsyncMock) as mock_post:
@@ -997,9 +993,7 @@ class TestOffDiffCommentMode:
             {"filename": Path(sample_policy_file).name, "status": "modified", "patch": diff_patch}
         ]
 
-        commenter = PRCommenter(
-            github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="individual"
-        )
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="individual")
 
         with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             with mock.patch.object(
@@ -1045,9 +1039,7 @@ class TestOffDiffCommentMode:
             {"filename": Path(sample_policy_file).name, "status": "modified", "patch": diff_patch}
         ]
 
-        commenter = PRCommenter(
-            github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="summary_only"
-        )
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="summary_only")
 
         with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             await commenter._post_review_comments(report_with_off_diff_issues)
