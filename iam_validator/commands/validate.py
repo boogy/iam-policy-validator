@@ -13,6 +13,21 @@ from iam_validator.core.report import ReportGenerator
 from iam_validator.integrations.github_integration import GitHubIntegration
 
 
+def _resolve_off_diff_mode(args: argparse.Namespace, config) -> str:
+    """Resolve the off-diff comment mode from CLI args or config.
+
+    Priority: CLI ``--off-diff-comment-mode`` > config setting > default ``"summary_only"``.
+
+    Args:
+        args: Parsed command-line arguments
+        config: Loaded configuration object with ``get_setting()``
+
+    Returns:
+        One of ``"summary_only"``, ``"individual"``, or ``"modified_statements_only"``
+    """
+    return getattr(args, "off_diff_comment_mode", None) or config.get_setting("off_diff_comment_mode", "summary_only")
+
+
 class ValidateCommand(Command):
     """Command to validate IAM policies."""
 
@@ -216,6 +231,16 @@ Examples:
         )
 
         parser.add_argument(
+            "--off-diff-comment-mode",
+            choices=["summary_only", "individual", "modified_statements_only"],
+            default=None,
+            help="How to handle findings on unchanged lines in PRs: "
+            "'summary_only' (default) shows in summary table only, "
+            "'individual' posts each as a review comment, "
+            "'modified_statements_only' posts only for modified statements",
+        )
+
+        parser.add_argument(
             "--ci",
             action="store_true",
             help="CI mode: print enhanced console output for visibility in job logs, "
@@ -349,6 +374,9 @@ Examples:
                 enable_ignore = False
             allowed_users = ignore_settings.get("allowed_users", [])
 
+            # Get off-diff comment mode (CLI override > config > default)
+            off_diff_mode = _resolve_off_diff_mode(args, config)
+
             async with GitHubIntegration() as github:
                 commenter = PRCommenter(
                     github,
@@ -356,6 +384,7 @@ Examples:
                     severity_labels=severity_labels,
                     enable_codeowners_ignore=enable_ignore,
                     allowed_ignore_users=allowed_users,
+                    off_diff_comment_mode=off_diff_mode,
                 )
                 success = await commenter.post_findings_to_pr(
                     report,
@@ -501,6 +530,9 @@ Examples:
                 enable_ignore = False
             allowed_users = ignore_settings.get("allowed_users", [])
 
+            # Get off-diff comment mode (CLI override > config > default)
+            off_diff_mode = _resolve_off_diff_mode(args, config)
+
             async with GitHubIntegration() as github:
                 commenter = PRCommenter(
                     github,
@@ -508,6 +540,7 @@ Examples:
                     severity_labels=severity_labels,
                     enable_codeowners_ignore=enable_ignore,
                     allowed_ignore_users=allowed_users,
+                    off_diff_comment_mode=off_diff_mode,
                 )
                 success = await commenter.post_findings_to_pr(
                     report,
@@ -567,6 +600,9 @@ Examples:
                     enable_ignore = False
                 allowed_users = ignore_settings.get("allowed_users", [])
 
+                # Get off-diff comment mode (CLI override > config > default)
+                off_diff_mode = _resolve_off_diff_mode(args, config)
+
                 # In streaming mode, don't cleanup comments (we want to keep earlier files)
                 # Cleanup will happen once at the end
                 commenter = PRCommenter(
@@ -575,6 +611,7 @@ Examples:
                     fail_on_severities=fail_on_severities,
                     enable_codeowners_ignore=enable_ignore,
                     allowed_ignore_users=allowed_users,
+                    off_diff_comment_mode=off_diff_mode,
                 )
 
                 # Create a mini-report for just this file
@@ -666,6 +703,9 @@ Examples:
                     enable_ignore = False
                 allowed_users = ignore_settings.get("allowed_users", [])
 
+                # Get off-diff comment mode (CLI override > config > default)
+                off_diff_mode = _resolve_off_diff_mode(args, config)
+
                 # Create commenter WITH cleanup enabled for the final pass
                 commenter = PRCommenter(
                     github,
@@ -673,6 +713,7 @@ Examples:
                     fail_on_severities=fail_on_severities,
                     enable_codeowners_ignore=enable_ignore,
                     allowed_ignore_users=allowed_users,
+                    off_diff_comment_mode=off_diff_mode,
                 )
 
                 # Create a full report with all results

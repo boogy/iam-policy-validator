@@ -162,7 +162,8 @@ class TestConditionAwareSeverity:
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
         assert issues[0].severity == "low"
-        assert "aws:ResourceTag" in issues[0].message
+        assert "ABAC" in issues[0].message
+        assert "aws:ResourceTag/nx:component" in issues[0].message
 
     @pytest.mark.asyncio
     async def test_resource_tag_with_resource_level_support_lowers_severity_s3(self, check, fetcher, config):
@@ -176,7 +177,8 @@ class TestConditionAwareSeverity:
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
         assert issues[0].severity == "low"
-        assert "aws:ResourceTag" in issues[0].message
+        assert "ABAC" in issues[0].message
+        assert "aws:ResourceTag/Env" in issues[0].message
 
     @pytest.mark.asyncio
     async def test_resource_tag_no_support_keeps_severity_route53(self, check, fetcher, config):
@@ -190,7 +192,7 @@ class TestConditionAwareSeverity:
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
         assert issues[0].severity == "medium"
-        assert "don't support resource tags" in issues[0].message
+        assert "don't support them" in issues[0].message
 
     @pytest.mark.asyncio
     async def test_non_resource_scoping_condition_keeps_severity(self, check, fetcher, config):
@@ -229,7 +231,7 @@ class TestConditionAwareSeverity:
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
         assert issues[0].severity == "medium"
-        assert "don't support resource tags" in issues[0].message
+        assert "don't support them" in issues[0].message
 
     @pytest.mark.asyncio
     async def test_multiple_global_conditions_lowers_severity(self, check, fetcher, config):
@@ -265,4 +267,67 @@ class TestConditionAwareSeverity:
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
         assert issues[0].severity == "low"
-        assert "aws:ResourceTag" in issues[0].message
+        assert "ABAC" in issues[0].message
+        assert "aws:ResourceTag/Env" in issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_request_tag_abac_lowers_severity(self, check, fetcher, config):
+        """Test: aws:RequestTag/* ABAC conditions lower severity to LOW."""
+        statement = Statement(
+            Effect="Allow",
+            Action=["sqs:CreateQueue"],
+            Resource=["*"],
+            Condition={
+                "StringEquals": {
+                    "aws:RequestTag/owner": "${aws:PrincipalTag/owner}",
+                    "aws:RequestTag/env": "${aws:PrincipalTag/env}",
+                },
+                "Null": {
+                    "aws:RequestTag/owner": "false",
+                    "aws:RequestTag/env": "false",
+                },
+            },
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].severity == "low"
+        assert "ABAC" in issues[0].message
+        assert "aws:RequestTag/" in issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_request_tag_with_tagkeys_includes_both_in_message(self, check, fetcher, config):
+        """Test: aws:RequestTag/* with aws:TagKeys includes both in the message."""
+        statement = Statement(
+            Effect="Allow",
+            Action=["sqs:CreateQueue"],
+            Resource=["*"],
+            Condition={
+                "StringEquals": {
+                    "aws:RequestTag/owner": "${aws:PrincipalTag/owner}",
+                },
+                "ForAllValues:StringEquals": {
+                    "aws:TagKeys": ["owner"],
+                },
+                "Null": {
+                    "aws:RequestTag/owner": "false",
+                },
+            },
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].severity == "low"
+        assert "aws:RequestTag/owner" in issues[0].message
+        assert "aws:TagKeys" in issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_principal_tag_does_not_lower_severity(self, check, fetcher, config):
+        """aws:PrincipalTag/* scopes WHO, not WHAT — should NOT lower severity."""
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={"StringEquals": {"aws:PrincipalTag/team": "engineering"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].severity == "medium"

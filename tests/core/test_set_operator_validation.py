@@ -1,10 +1,12 @@
 """Tests for Set Operator Validation Check."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from iam_validator.checks.set_operator_validation import SetOperatorValidationCheck
 from iam_validator.core.check_registry import CheckConfig
-from iam_validator.core.models import Statement
+from iam_validator.core.models import ConditionKey, Statement
 
 
 class TestSetOperatorValidationCheck:
@@ -438,3 +440,111 @@ class TestForAllValuesIfExistsCompound:
         )
         issues = await check.execute(statement, 0, None, config)
         assert not any(i.issue_type == "forallvalues_allow_without_null_check" for i in issues)
+
+
+class TestAWSServiceMetadataLookup:
+    """Test multivalued key detection via AWS service metadata (ArrayOfString types)."""
+
+    @pytest.fixture
+    def check(self):
+        return SetOperatorValidationCheck()
+
+    @pytest.fixture
+    def config(self):
+        return CheckConfig(check_id="set_operator_validation", enabled=True)
+
+    @pytest.fixture
+    def mock_fetcher_with_route53(self):
+        """Mock fetcher that returns route53 service data with ArrayOfString condition key."""
+        fetcher = MagicMock()
+        fetcher.parse_action = MagicMock(return_value=("route53", "ChangeResourceRecordSets"))
+
+        service_detail = MagicMock()
+        service_detail.condition_keys = {
+            "route53:ChangeResourceRecordSetsNormalizedRecordNames": ConditionKey(
+                Name="route53:ChangeResourceRecordSetsNormalizedRecordNames",
+                Description="DNS record names",
+                Types=["ArrayOfString"],
+            ),
+            "route53:ChangeResourceRecordSetsTTL": ConditionKey(
+                Name="route53:ChangeResourceRecordSetsTTL",
+                Description="TTL value",
+                Types=["Numeric"],
+            ),
+        }
+        fetcher.fetch_service_by_name = AsyncMock(return_value=service_detail)
+        return fetcher
+
+    @pytest.mark.asyncio
+    async def test_arrayofstring_key_recognized_as_multivalued(self, check, config, mock_fetcher_with_route53):
+        """Test that a condition key with ArrayOfString type is recognized as multivalued."""
+        statement = Statement(
+            effect="Allow",
+            action=["route53:ChangeResourceRecordSets"],
+            resource=["*"],
+            condition={
+                "ForAllValues:StringLike": {
+                    "route53:ChangeResourceRecordSetsNormalizedRecordNames": ["*.example.com"],
+                },
+                "Null": {
+                    "route53:ChangeResourceRecordSetsNormalizedRecordNames": "false",
+                },
+            },
+        )
+        issues = await check.execute(statement, 0, mock_fetcher_with_route53, config)
+        # Should NOT flag as single-valued key since AWS metadata says ArrayOfString
+        assert not any(i.issue_type == "set_operator_on_single_valued_key" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_numeric_key_still_flagged_as_single_valued(self, check, config, mock_fetcher_with_route53):
+        """Test that a condition key with Numeric type is still flagged as single-valued."""
+        statement = Statement(
+            effect="Allow",
+            action=["route53:ChangeResourceRecordSets"],
+            resource=["*"],
+            condition={
+                "ForAllValues:NumericEquals": {
+                    "route53:ChangeResourceRecordSetsTTL": ["300"],
+                },
+            },
+        )
+        issues = await check.execute(statement, 0, mock_fetcher_with_route53, config)
+        assert any(i.issue_type == "set_operator_on_single_valued_key" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_fetcher_lookup_falls_back_when_fetcher_is_none(self, check, config):
+        """Test that when fetcher is None, unknown service keys are treated as single-valued."""
+        statement = Statement(
+            effect="Allow",
+            action=["route53:ChangeResourceRecordSets"],
+            resource=["*"],
+            condition={
+                "ForAllValues:StringLike": {
+                    "route53:ChangeResourceRecordSetsNormalizedRecordNames": ["*.example.com"],
+                },
+            },
+        )
+        issues = await check.execute(statement, 0, None, config)
+        # Without fetcher, falls back to hardcoded list — key is unknown, so flagged
+        assert any(i.issue_type == "set_operator_on_single_valued_key" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_fetcher_exception_handled_gracefully(self, check, config):
+        """Test that fetcher exceptions don't break the check."""
+        fetcher = MagicMock()
+        fetcher.parse_action = MagicMock(return_value=("route53", "ChangeResourceRecordSets"))
+        fetcher.fetch_service_by_name = AsyncMock(side_effect=Exception("Network error"))
+
+        statement = Statement(
+            effect="Allow",
+            action=["route53:ChangeResourceRecordSets"],
+            resource=["*"],
+            condition={
+                "ForAllValues:StringLike": {
+                    "route53:ChangeResourceRecordSetsNormalizedRecordNames": ["*.example.com"],
+                },
+            },
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        # Falls back to single-valued when fetcher fails
+        assert any(i.issue_type == "set_operator_on_single_valued_key" for i in issues)

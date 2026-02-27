@@ -6,9 +6,11 @@ Based on AWS IAM best practices:
 https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-single-vs-multi-valued-context-keys.html
 """
 
+import logging
 from typing import ClassVar
 
 from iam_validator.core.aws_service import AWSServiceFetcher
+from iam_validator.core.aws_service.validators import find_matching_condition_key
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.condition_validators import (
     has_if_exists_suffix,
@@ -17,6 +19,8 @@ from iam_validator.core.condition_validators import (
 )
 from iam_validator.core.models import Statement, ValidationIssue
 
+logger = logging.getLogger(__name__)
+
 
 class SetOperatorValidationCheck(PolicyCheck):
     """Check for proper usage of ForAllValues and ForAnyValue set operators."""
@@ -24,6 +28,55 @@ class SetOperatorValidationCheck(PolicyCheck):
     check_id: ClassVar[str] = "set_operator_validation"
     description: ClassVar[str] = "Validates proper usage of ForAllValues and ForAnyValue set operators"
     default_severity: ClassVar[str] = "error"
+
+    async def _is_multivalued_key(
+        self,
+        condition_key: str,
+        fetcher: AWSServiceFetcher | None,
+        actions: list[str],
+    ) -> bool:
+        """Check if a condition key is multivalued using hardcoded list and AWS service metadata.
+
+        First checks the hardcoded known multivalued keys, then falls back to
+        looking up the condition key's Types in AWS service data (ArrayOfString etc.).
+        """
+        # Fast path: check hardcoded known multivalued keys
+        if is_multivalued_context_key(condition_key):
+            return True
+
+        if not fetcher:
+            return False
+
+        # Look up condition key type from AWS service data
+        # Try extracting service prefix from the condition key itself (e.g. "route53:KeyName")
+        service_prefixes: set[str] = set()
+        if ":" in condition_key and not condition_key.startswith("aws:"):
+            service_prefixes.add(condition_key.split(":")[0].lower())
+
+        # Also extract service prefixes from the statement's actions
+        for action in actions:
+            if action == "*":
+                continue
+            try:
+                service_prefix, _ = fetcher.parse_action(action)
+                service_prefixes.add(service_prefix.lower())
+            except Exception:
+                logger.debug("Failed to parse action %s for condition key lookup", action)
+                continue
+
+        for service_prefix in service_prefixes:
+            try:
+                service_detail = await fetcher.fetch_service_by_name(service_prefix)
+                matched_key = find_matching_condition_key(condition_key, service_detail.condition_keys)
+                if matched_key:
+                    condition_key_obj = service_detail.condition_keys[matched_key]
+                    if condition_key_obj.types and any(t.startswith("ArrayOf") for t in condition_key_obj.types):
+                        return True
+            except Exception:
+                logger.debug("Failed to look up condition key %s in service %s", condition_key, service_prefix)
+                continue
+
+        return False
 
     async def execute(
         self,
@@ -43,7 +96,7 @@ class SetOperatorValidationCheck(PolicyCheck):
         Args:
             statement: The IAM statement to check
             statement_idx: Index of this statement in the policy
-            fetcher: AWS service fetcher (unused but required by interface)
+            fetcher: AWS service fetcher for looking up condition key metadata
             config: Check configuration
 
         Returns:
@@ -58,6 +111,7 @@ class SetOperatorValidationCheck(PolicyCheck):
         statement_sid = statement.sid
         line_number = statement.line_number
         effect = statement.effect
+        actions = statement.get_actions()
 
         # Track which condition keys have set operators and Null checks
         set_operator_keys: dict[str, str] = {}  # key -> operator prefix
@@ -88,7 +142,7 @@ class SetOperatorValidationCheck(PolicyCheck):
             # Check each condition key used with a set operator
             for condition_key, _condition_values in conditions.items():
                 # Issue 1: Set operator used with single-valued context key (anti-pattern)
-                if not is_multivalued_context_key(condition_key):
+                if not await self._is_multivalued_key(condition_key, fetcher, actions):
                     issues.append(
                         ValidationIssue(
                             severity=self.get_severity(config),

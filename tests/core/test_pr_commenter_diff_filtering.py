@@ -28,6 +28,8 @@ class TestPRCommenterDiffFiltering:
         github.create_review_comment = AsyncMock(return_value=False)
         github.create_file_level_comment = AsyncMock(return_value=False)
         github.get_pr_info = AsyncMock(return_value={"head": {"sha": "abc123"}})
+        github._get_bot_comments_by_fingerprint = AsyncMock(return_value={})
+        github.update_review_comment = AsyncMock(return_value=True)
         return github
 
     @pytest.fixture
@@ -379,6 +381,8 @@ class TestPRCommenterOffDiffPipeline:
         github.create_review_comment = AsyncMock(return_value=False)
         github.create_file_level_comment = AsyncMock(return_value=False)
         github.get_pr_info = AsyncMock(return_value={"head": {"sha": "abc123"}})
+        github._get_bot_comments_by_fingerprint = AsyncMock(return_value={})
+        github.update_review_comment = AsyncMock(return_value=True)
         return github
 
     @pytest.fixture
@@ -450,7 +454,7 @@ class TestPRCommenterOffDiffPipeline:
             }
         ]
 
-        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="individual")
 
         with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
             await commenter._post_review_comments(report)
@@ -573,6 +577,136 @@ class TestPRCommenterOffDiffPipeline:
         assert ctx.line_number == 14
         assert ctx.issue.severity == "critical"
         assert ctx.issue.issue_type == "wildcard_action"
+
+    @pytest.mark.asyncio
+    async def test_off_diff_skips_existing_unchanged_comment(self, mock_github, sample_policy_file):
+        """Test that off-diff pipeline skips posting when identical comment already exists."""
+        from iam_validator.core.finding_fingerprint import FindingFingerprint
+
+        issue = ValidationIssue(
+            policy_file=sample_policy_file,
+            statement_index=1,
+            severity="critical",
+            issue_type="wildcard_action",
+            message="Action uses dangerous wildcard",
+            action="dynamodb:*",
+            line_number=14,
+        )
+
+        relative_path = Path(sample_policy_file).name
+        fp_hash = FindingFingerprint.from_issue(issue, relative_path).to_hash()
+
+        # Build the expected body (same as what _post_off_diff_comments would generate)
+        expected_body = issue.to_pr_comment(file_path=relative_path)
+        expected_body += "\n\n> **Note:** This finding is on line 14, which was not modified in this PR."
+
+        # Mock existing comment with same fingerprint and same body
+        mock_github._get_bot_comments_by_fingerprint.return_value = {
+            fp_hash: {
+                "id": 42,
+                "body": expected_body,
+                "path": relative_path,
+                "line": 14,
+            }
+        }
+
+        report = ValidationReport(
+            results=[
+                PolicyValidationResult(
+                    policy_file=sample_policy_file,
+                    is_valid=False,
+                    issues=[issue],
+                    policy_type="IDENTITY_POLICY",
+                )
+            ],
+            total_policies=1,
+            valid_policies=0,
+            invalid_policies=1,
+            total_issues=1,
+        )
+
+        mock_github.get_pr_files.return_value = [
+            {
+                "filename": relative_path,
+                "status": "modified",
+                "patch": '@@ -4,7 +4,7 @@\n     {\n       "Sid": "AllowS3Read",\n       "Effect": "Allow",\n-      "Action": "s3:GetObject",\n+      "Action": "s3:*",\n       "Resource": "*"\n     },\n     {',
+            }
+        ]
+
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="individual")
+
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
+            await commenter._post_review_comments(report)
+
+        # Should NOT create a new comment (dedup skipped it)
+        mock_github.create_review_comment.assert_not_called()
+        mock_github.create_file_level_comment.assert_not_called()
+        # Should NOT update (body unchanged)
+        mock_github.update_review_comment.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_off_diff_updates_existing_changed_comment(self, mock_github, sample_policy_file):
+        """Test that off-diff pipeline updates comment when body has changed."""
+        from iam_validator.core.finding_fingerprint import FindingFingerprint
+
+        issue = ValidationIssue(
+            policy_file=sample_policy_file,
+            statement_index=1,
+            severity="critical",
+            issue_type="wildcard_action",
+            message="Action uses dangerous wildcard",
+            action="dynamodb:*",
+            line_number=14,
+        )
+
+        relative_path = Path(sample_policy_file).name
+        fp_hash = FindingFingerprint.from_issue(issue, relative_path).to_hash()
+
+        # Mock existing comment with same fingerprint but DIFFERENT body (stale)
+        mock_github._get_bot_comments_by_fingerprint.return_value = {
+            fp_hash: {
+                "id": 42,
+                "body": "old stale body content",
+                "path": relative_path,
+                "line": 14,
+            }
+        }
+
+        report = ValidationReport(
+            results=[
+                PolicyValidationResult(
+                    policy_file=sample_policy_file,
+                    is_valid=False,
+                    issues=[issue],
+                    policy_type="IDENTITY_POLICY",
+                )
+            ],
+            total_policies=1,
+            valid_policies=0,
+            invalid_policies=1,
+            total_issues=1,
+        )
+
+        mock_github.get_pr_files.return_value = [
+            {
+                "filename": relative_path,
+                "status": "modified",
+                "patch": '@@ -4,7 +4,7 @@\n     {\n       "Sid": "AllowS3Read",\n       "Effect": "Allow",\n-      "Action": "s3:GetObject",\n+      "Action": "s3:*",\n       "Resource": "*"\n     },\n     {',
+            }
+        ]
+
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="individual")
+
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
+            await commenter._post_review_comments(report)
+
+        # Should NOT create a new comment
+        mock_github.create_review_comment.assert_not_called()
+        mock_github.create_file_level_comment.assert_not_called()
+        # Should UPDATE existing comment with new body
+        mock_github.update_review_comment.assert_called_once()
+        call_args = mock_github.update_review_comment.call_args
+        assert call_args[0][0] == 42  # comment ID
 
 
 class TestPRCommenterBlockingIssuesIgnored:
@@ -733,6 +867,223 @@ class TestPRCommenterBlockingIssuesIgnored:
 
         result = commenter._are_all_blocking_issues_ignored(report)
         assert result is False
+
+
+class TestOffDiffCommentMode:
+    """Tests for the off_diff_comment_mode setting."""
+
+    @pytest.fixture
+    def sample_policy_file(self):
+        """Create a temporary policy file for testing."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write(
+                """{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowS3Read",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowDynamoDB",
+      "Effect": "Allow",
+      "Action": "dynamodb:*",
+      "Resource": "arn:aws:dynamodb:*:*:table/*"
+    }
+  ]
+}"""
+            )
+            policy_file = f.name
+
+        yield policy_file
+        Path(policy_file).unlink()
+
+    @pytest.fixture
+    def mock_github(self):
+        """Create a mock GitHub integration."""
+        github = MagicMock(spec=GitHubIntegration)
+        github.is_configured = MagicMock(return_value=True)
+        github.get_pr_files = AsyncMock(return_value=[])
+        github.update_or_create_review_comments = AsyncMock(return_value=True)
+        github.post_multipart_comments = AsyncMock(return_value=True)
+        github.create_review_comment = AsyncMock(return_value=False)
+        github.create_file_level_comment = AsyncMock(return_value=False)
+        github.get_pr_info = AsyncMock(return_value={"head": {"sha": "abc123"}})
+        github.get_existing_review_comments = AsyncMock(return_value=[])
+        github.update_review_comment = AsyncMock(return_value=True)
+        return github
+
+    @pytest.fixture
+    def report_with_off_diff_issues(self, sample_policy_file):
+        """Report with issues on lines that won't match the diff (off-diff)."""
+        return ValidationReport(
+            total_policies=1,
+            valid_policies=0,
+            invalid_policies=1,
+            total_issues=2,
+            results=[
+                PolicyValidationResult(
+                    policy_file=sample_policy_file,
+                    is_valid=False,
+                    issues=[
+                        # Issue on line 8 (Resource in statement 0, modified statement but unchanged line)
+                        ValidationIssue(
+                            severity="medium",
+                            issue_type="wildcard_resource",
+                            message="Wildcard resource",
+                            statement_index=0,
+                            line_number=8,
+                        ),
+                        # Issue on line 14 (unchanged statement 1)
+                        ValidationIssue(
+                            severity="high",
+                            issue_type="service_wildcard",
+                            message="Service wildcard",
+                            statement_index=1,
+                            line_number=14,
+                        ),
+                    ],
+                    policy_type="IDENTITY_POLICY",
+                )
+            ],
+        )
+
+    @pytest.fixture
+    def diff_patch(self):
+        """Diff patch that only changes line 7 in statement 0."""
+        return (
+            "@@ -4,7 +4,7 @@\n"
+            "     {\n"
+            '       "Sid": "AllowS3Read",\n'
+            '       "Effect": "Allow",\n'
+            '-      "Action": "s3:GetObject",\n'
+            '+      "Action": "s3:*",\n'
+            '       "Resource": "*"\n'
+            "     },\n"
+            "     {"
+        )
+
+    @pytest.mark.asyncio
+    async def test_summary_only_skips_off_diff_posting(
+        self, mock_github, sample_policy_file, report_with_off_diff_issues, diff_patch
+    ):
+        """summary_only mode should not call _post_off_diff_comments."""
+        mock_github.get_pr_files.return_value = [
+            {"filename": Path(sample_policy_file).name, "status": "modified", "patch": diff_patch}
+        ]
+
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="summary_only")
+
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
+            with mock.patch.object(commenter, "_post_off_diff_comments", new_callable=AsyncMock) as mock_post:
+                await commenter._post_review_comments(report_with_off_diff_issues)
+                mock_post.assert_not_called()
+
+        # Context issues should remain for summary (both off-diff issues)
+        assert len(commenter._context_issues) >= 1
+
+    @pytest.mark.asyncio
+    async def test_individual_posts_all_off_diff(
+        self, mock_github, sample_policy_file, report_with_off_diff_issues, diff_patch
+    ):
+        """individual mode should pass all context issues to _post_off_diff_comments."""
+        mock_github.get_pr_files.return_value = [
+            {"filename": Path(sample_policy_file).name, "status": "modified", "patch": diff_patch}
+        ]
+
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="individual")
+
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
+            with mock.patch.object(
+                commenter, "_post_off_diff_comments", new_callable=AsyncMock, return_value=(set(), [])
+            ) as mock_post:
+                await commenter._post_review_comments(report_with_off_diff_issues)
+                mock_post.assert_called_once()
+                # Should pass all context issues (both modified-statement and unchanged-statement)
+                assert len(mock_post.call_args[0][0]) >= 1
+
+    @pytest.mark.asyncio
+    async def test_modified_statements_only_splits_correctly(
+        self, mock_github, sample_policy_file, report_with_off_diff_issues, diff_patch
+    ):
+        """modified_statements_only should only post issues from modified statements."""
+        mock_github.get_pr_files.return_value = [
+            {"filename": Path(sample_policy_file).name, "status": "modified", "patch": diff_patch}
+        ]
+
+        commenter = PRCommenter(
+            github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="modified_statements_only"
+        )
+
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
+            with mock.patch.object(
+                commenter, "_post_off_diff_comments", new_callable=AsyncMock, return_value=(set(), [])
+            ) as mock_post:
+                await commenter._post_review_comments(report_with_off_diff_issues)
+                mock_post.assert_called_once()
+                # Should only pass modified-statement issues (in_modified_statement=True)
+                posted_issues = mock_post.call_args[0][0]
+                assert all(ci.in_modified_statement for ci in posted_issues)
+
+        # Unchanged-statement issues should remain in _context_issues for summary
+        assert any(not ci.in_modified_statement for ci in commenter._context_issues)
+
+    @pytest.mark.asyncio
+    async def test_in_modified_statement_flag_set_correctly(
+        self, mock_github, sample_policy_file, report_with_off_diff_issues, diff_patch
+    ):
+        """Verify in_modified_statement flag is set correctly on ContextIssue during diff filtering."""
+        mock_github.get_pr_files.return_value = [
+            {"filename": Path(sample_policy_file).name, "status": "modified", "patch": diff_patch}
+        ]
+
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="summary_only")
+
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
+            await commenter._post_review_comments(report_with_off_diff_issues)
+
+        # Should have context issues with both in_modified_statement=True and False
+        modified = [ci for ci in commenter._context_issues if ci.in_modified_statement]
+        unchanged = [ci for ci in commenter._context_issues if not ci.in_modified_statement]
+        # Statement 0 was modified (line 7 changed), so its off-diff issue (line 8) is in_modified_statement=True
+        assert len(modified) >= 1
+        # Statement 1 was NOT modified, so its issue (line 14) is in_modified_statement=False
+        assert len(unchanged) >= 1
+
+    def test_default_mode_is_summary_only(self, mock_github):
+        """PRCommenter should default to summary_only mode."""
+        commenter = PRCommenter(github=mock_github)
+        assert commenter.off_diff_comment_mode == "summary_only"
+
+
+class TestOffDiffCommentModeConfigValidation:
+    """Tests for off_diff_comment_mode config validation."""
+
+    def test_valid_modes_accepted(self):
+        """All valid modes should be accepted by schema validation."""
+        from iam_validator.core.config.config_loader import SettingsSchema
+
+        for mode in ["summary_only", "individual", "modified_statements_only"]:
+            schema = SettingsSchema(off_diff_comment_mode=mode)
+            assert schema.off_diff_comment_mode == mode
+
+    def test_invalid_mode_rejected(self):
+        """Invalid modes should raise ValidationError."""
+        from pydantic import ValidationError
+
+        from iam_validator.core.config.config_loader import SettingsSchema
+
+        with pytest.raises(ValidationError, match="Invalid off_diff_comment_mode"):
+            SettingsSchema(off_diff_comment_mode="invalid_mode")
+
+    def test_default_is_summary_only(self):
+        """Default mode in schema should be summary_only."""
+        from iam_validator.core.config.config_loader import SettingsSchema
+
+        schema = SettingsSchema()
+        assert schema.off_diff_comment_mode == "summary_only"
 
 
 if __name__ == "__main__":

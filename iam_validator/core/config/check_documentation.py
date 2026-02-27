@@ -22,7 +22,7 @@ RISK_CATEGORY_ICONS = {
 }
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CheckDocumentation:
     """Documentation for a single check.
 
@@ -36,9 +36,9 @@ class CheckDocumentation:
     """
 
     check_id: str
-    short_description: str
     risk_explanation: str
     documentation_url: str
+    short_description: str = ""
     remediation_steps: list[str] = field(default_factory=list)
     risk_category: str | None = None
 
@@ -83,7 +83,7 @@ class CheckDocumentationRegistry:
     def get_short_description(cls, check_id: str) -> str | None:
         """Get short description for a check."""
         doc = cls.get(check_id)
-        return doc.short_description if doc else None
+        return doc.short_description if doc and doc.short_description else None
 
     @classmethod
     def get_remediation_steps(cls, check_id: str) -> list[str] | None:

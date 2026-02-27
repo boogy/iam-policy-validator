@@ -13,7 +13,7 @@ import asyncio
 import logging
 from abc import ABC
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.config.check_documentation import CheckDocumentationRegistry
@@ -160,7 +160,7 @@ class PolicyCheck(ABC):
 
     Two ways to define check_id and description:
 
-    Option 1 - Class attributes (simpler, recommended for static values):
+    Option 1 - Class attributes (recommended):
         from typing import ClassVar
 
         class MyCheck(PolicyCheck):
@@ -170,9 +170,7 @@ class PolicyCheck(ABC):
             async def execute(self, statement, statement_idx, fetcher, config):
                 return []
 
-        Note: ClassVar annotation is required for Pylance type checker compatibility.
-
-    Option 2 - Property decorators (more flexible, supports dynamic values):
+    Option 2 - Property decorators (supports dynamic values):
         class MyCheck(PolicyCheck):
             @property
             def check_id(self) -> str:
@@ -210,24 +208,28 @@ class PolicyCheck(ABC):
                 return issues
     """
 
-    @property
-    def check_id(self) -> str:
-        """Unique identifier for this check (e.g., 'action_validation')."""
-        raise NotImplementedError("Subclasses must define check_id")
+    #: Unique identifier for this check (e.g., 'action_validation').
+    #: Subclasses must define this as a ClassVar or @property.
+    check_id: ClassVar[str]
 
-    @property
-    def description(self) -> str:
-        """Human-readable description of what this check does."""
-        raise NotImplementedError("Subclasses must define description")
+    #: Human-readable description of what this check does.
+    #: Subclasses must define this as a ClassVar or @property.
+    description: ClassVar[str]
 
-    @property
-    def default_severity(self) -> str:
-        """Default severity level for issues found by this check."""
-        return "warning"
+    #: Default severity level for issues found by this check.
+    #: Subclasses may override. Defaults to "warning".
+    default_severity: ClassVar[str] = "warning"
+
+    def __getattr__(self, name: str) -> Any:
+        """Raise NotImplementedError for required attributes not defined by subclass."""
+        if name in ("check_id", "description"):
+            raise NotImplementedError(f"Subclasses must define {name}")
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def __init_subclass__(cls, **kwargs):
         """
-        Validate that subclasses override at least one execution method.
+        Validate that subclasses define required attributes and override
+        at least one execution method.
 
         This ensures checks implement either execute() OR execute_policy() (or both).
         If neither is overridden, the check would never produce any results.

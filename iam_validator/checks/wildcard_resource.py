@@ -5,8 +5,9 @@ It intelligently adjusts severity based on conditions that restrict resource sco
 
 - Global resource-scoping conditions (aws:ResourceAccount, aws:ResourceOrgID, aws:ResourceOrgPaths)
   always lower severity since they apply to all services.
-- Resource tag conditions (aws:ResourceTag/*) lower severity only if ALL actions in the
-  statement support the condition (validated against AWS service definitions).
+- Tag-based ABAC conditions (aws:ResourceTag/*, aws:RequestTag/*, aws:TagKeys,
+  s3:ExistingObjectTag/*, etc.) lower severity only if ALL actions in the statement
+  support the condition (validated against AWS service definitions).
 """
 
 import asyncio
@@ -103,6 +104,20 @@ def _has_global_resource_scoping(condition_keys: set[str]) -> bool:
         True if any global resource-scoping condition is present
     """
     return bool(condition_keys & GLOBAL_RESOURCE_SCOPING_CONDITION_KEYS)
+
+
+def _is_resource_scoping_tag_condition(key: str) -> bool:
+    """Check if a condition key is a tag-based ABAC condition that scopes resources.
+
+    Matches any condition key containing "Tag/" (e.g., aws:ResourceTag/*,
+    aws:RequestTag/*, s3:ExistingObjectTag/*) or aws:TagKeys.
+
+    Excludes aws:PrincipalTag/* since those scope the principal (WHO), not the resource (WHAT).
+    """
+    key_lower = key.lower()
+    if key_lower.startswith("aws:principaltag/"):
+        return False
+    return "tag/" in key_lower or key_lower == "aws:tagkeys"
 
 
 async def _validate_condition_key_support(
@@ -317,7 +332,8 @@ class WildcardResourceCheck(PolicyCheck):
         This method checks if the statement has conditions that meaningfully restrict
         resource scope:
         1. Global resource-scoping conditions (aws:ResourceAccount, etc.) always lower severity
-        2. Resource tag conditions (aws:ResourceTag/*) lower severity only if ALL actions support them
+        2. Tag-based ABAC conditions (aws:ResourceTag/*, aws:RequestTag/*, aws:TagKeys,
+           s3:ExistingObjectTag/*, etc.) lower severity only if ALL actions support them
 
         Args:
             statement: The policy statement being checked
@@ -340,26 +356,41 @@ class WildcardResourceCheck(PolicyCheck):
                 f"Severity lowered: resource scope restricted by `{', '.join(sorted(global_keys))}`",
             )
 
-        # Check for aws:ResourceTag conditions (must validate per-action support)
-        resource_tag_keys = {k for k in condition_keys if k.startswith("aws:ResourceTag/")}
-        if resource_tag_keys:
-            # Use the first tag key for validation (all should have same support pattern)
-            tag_key = next(iter(resource_tag_keys))
-            all_support, unsupported = await _validate_condition_key_support(actions, tag_key, fetcher)
-            if all_support:
-                return (
-                    "low",
-                    f"Severity lowered: resource scope restricted by `{', '.join(sorted(resource_tag_keys))}`",
-                )
-            else:
-                # Tag condition present but not all actions support it
-                unsupported_display = unsupported[:3]
-                more = f" (+{len(unsupported) - 3} more)" if len(unsupported) > 3 else ""
-                return (
-                    base_severity,
-                    f"Note: `aws:ResourceTag` condition found but these actions don't support "
-                    f"resource tags: `{', '.join(unsupported_display)}`{more}",
-                )
+        # Check for tag-based ABAC conditions that scope resources
+        # Covers: aws:ResourceTag/*, aws:RequestTag/*, aws:TagKeys,
+        # s3:ExistingObjectTag/*, and any other service-specific tag condition keys
+        tag_condition_keys = {k for k in condition_keys if _is_resource_scoping_tag_condition(k)}
+        if tag_condition_keys:
+            # Deduplicate by prefix — actions that support aws:RequestTag/X
+            # also support aws:RequestTag/Y, so validate one per prefix
+            seen_prefixes: set[str] = set()
+            representative_keys: list[str] = []
+            for key in sorted(tag_condition_keys):
+                prefix = key.split("/")[0] if "/" in key else key
+                if prefix not in seen_prefixes:
+                    seen_prefixes.add(prefix)
+                    representative_keys.append(key)
+
+            # Validate that actions support at least one tag condition family
+            last_unsupported: list[str] = []
+            for tag_key in representative_keys:
+                all_support, unsupported = await _validate_condition_key_support(actions, tag_key, fetcher)
+                if all_support:
+                    return (
+                        "low",
+                        f"Severity lowered: ABAC conditions restrict resource scope via "
+                        f"`{', '.join(sorted(tag_condition_keys))}`",
+                    )
+                last_unsupported = unsupported
+
+            # Tag conditions present but no family is fully supported by all actions
+            unsupported_display = last_unsupported[:3]
+            more = f" (+{len(last_unsupported) - 3} more)" if len(last_unsupported) > 3 else ""
+            return (
+                base_severity,
+                f"Note: ABAC tag conditions found but these actions don't support "
+                f"them: `{', '.join(unsupported_display)}`{more}",
+            )
 
         # Has conditions but none that scope resources
         return (base_severity, None)
