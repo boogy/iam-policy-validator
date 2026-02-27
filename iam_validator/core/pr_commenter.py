@@ -492,8 +492,10 @@ class PRCommenter:
     async def _post_off_diff_comments(self, off_diff_issues: list[ContextIssue]) -> tuple[set[str], list[ContextIssue]]:
         """Post comments for issues found outside the PR diff.
 
-        Attempts to post each issue as a line-level review comment first,
-        then falls back to a file-level comment if that fails. Issues that
+        Uses fingerprint-based deduplication to avoid posting duplicate comments
+        on subsequent runs. Existing comments are updated if the body changed,
+        or skipped if unchanged. New issues are posted as line-level review
+        comments first, with a fallback to file-level comments. Issues that
         cannot be posted at all are returned for inclusion in the summary.
 
         Args:
@@ -516,15 +518,38 @@ class PRCommenter:
             return set(), off_diff_issues
 
         commit_id = pr_info["head"]["sha"]
+
+        # Fetch existing bot comments indexed by fingerprint to avoid duplicates
+        existing_by_fingerprint = await self.github._get_bot_comments_by_fingerprint(self.REVIEW_IDENTIFIER)
+
         posted_fingerprints: set[str] = set()
         remaining: list[ContextIssue] = []
+        created_count = 0
+        updated_count = 0
+        skipped_count = 0
 
         for ctx_issue in off_diff_issues:
+            fp_hash = FindingFingerprint.from_issue(ctx_issue.issue, ctx_issue.file_path).to_hash()
             body = ctx_issue.issue.to_pr_comment(file_path=ctx_issue.file_path)
             body += (
                 f"\n\n> **Note:** This finding is on line {ctx_issue.line_number}, which was not modified in this PR."
             )
 
+            # Check if a comment with this fingerprint already exists
+            existing = existing_by_fingerprint.get(fp_hash)
+            if existing:
+                posted_fingerprints.add(fp_hash)
+                if existing["body"] != body:
+                    # Body changed (e.g., message updated) - update existing comment
+                    await self.github.update_review_comment(existing["id"], body)
+                    updated_count += 1
+                    logger.debug(f"Updated off-diff comment: {ctx_issue.file_path}:{ctx_issue.line_number}")
+                else:
+                    skipped_count += 1
+                    logger.debug(f"Skipped existing off-diff comment: {ctx_issue.file_path}:{ctx_issue.line_number}")
+                continue
+
+            # New finding - post as review comment
             # Try line-level comment first
             posted = await self.github.create_review_comment(
                 commit_id, ctx_issue.file_path, ctx_issue.line_number, body
@@ -535,14 +560,17 @@ class PRCommenter:
                 posted = await self.github.create_file_level_comment(commit_id, ctx_issue.file_path, body)
 
             if posted:
-                fp_hash = FindingFingerprint.from_issue(ctx_issue.issue, ctx_issue.file_path).to_hash()
                 posted_fingerprints.add(fp_hash)
+                created_count += 1
                 logger.debug(f"Posted off-diff comment: {ctx_issue.file_path}:{ctx_issue.line_number}")
             else:
                 remaining.append(ctx_issue)
                 logger.debug(f"Failed to post off-diff comment: {ctx_issue.file_path}:{ctx_issue.line_number}")
 
-        logger.info(f"Off-diff comments: {len(posted_fingerprints)} posted, {len(remaining)} remaining for summary")
+        logger.info(
+            f"Off-diff comments: {created_count} created, {updated_count} updated, "
+            f"{skipped_count} unchanged, {len(remaining)} remaining for summary"
+        )
         return posted_fingerprints, remaining
 
     def _make_relative_path(self, policy_file: str) -> str | None:

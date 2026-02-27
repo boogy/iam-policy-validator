@@ -5,6 +5,16 @@ All notable changes to IAM Policy Validator are documented in this file.
 The format is based on [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.1] - 2026-02-27
+
+### Fixed
+
+- Fix `set_operator_validation` false positive on multivalued service condition keys — look up `Types` metadata from AWS service definitions (`ArrayOfString` etc.) instead of relying solely on hardcoded allowlist
+- Fix `wildcard_resource` false positive when ABAC tag conditions scope `Resource: "*"` — unify detection to cover `aws:ResourceTag/*`, `aws:RequestTag/*`, `aws:TagKeys`, `s3:ExistingObjectTag/*`, and any service-specific tag condition key, validated against AWS service definitions
+- Fix off-diff PR comments posting duplicates on re-runs — deduplicate via fingerprint, skip unchanged comments, update modified ones
+
+---
+
 ## [1.17.0] - 2026-02-08
 
 ### Changed
@@ -463,6 +473,7 @@ _First release._
 
 ---
 
+[1.17.1]: https://github.com/boogy/iam-policy-validator/compare/v1.17.0...v1.17.1
 [1.17.0]: https://github.com/boogy/iam-policy-validator/compare/v1.16.0...v1.17.0
 [1.16.0]: https://github.com/boogy/iam-policy-validator/compare/v1.15.5...v1.16.0
 [1.15.5]: https://github.com/boogy/iam-policy-validator/compare/v1.15.4...v1.15.5

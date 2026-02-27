@@ -28,6 +28,8 @@ class TestPRCommenterDiffFiltering:
         github.create_review_comment = AsyncMock(return_value=False)
         github.create_file_level_comment = AsyncMock(return_value=False)
         github.get_pr_info = AsyncMock(return_value={"head": {"sha": "abc123"}})
+        github._get_bot_comments_by_fingerprint = AsyncMock(return_value={})
+        github.update_review_comment = AsyncMock(return_value=True)
         return github
 
     @pytest.fixture
@@ -379,6 +381,8 @@ class TestPRCommenterOffDiffPipeline:
         github.create_review_comment = AsyncMock(return_value=False)
         github.create_file_level_comment = AsyncMock(return_value=False)
         github.get_pr_info = AsyncMock(return_value={"head": {"sha": "abc123"}})
+        github._get_bot_comments_by_fingerprint = AsyncMock(return_value={})
+        github.update_review_comment = AsyncMock(return_value=True)
         return github
 
     @pytest.fixture
@@ -573,6 +577,136 @@ class TestPRCommenterOffDiffPipeline:
         assert ctx.line_number == 14
         assert ctx.issue.severity == "critical"
         assert ctx.issue.issue_type == "wildcard_action"
+
+    @pytest.mark.asyncio
+    async def test_off_diff_skips_existing_unchanged_comment(self, mock_github, sample_policy_file):
+        """Test that off-diff pipeline skips posting when identical comment already exists."""
+        from iam_validator.core.finding_fingerprint import FindingFingerprint
+
+        issue = ValidationIssue(
+            policy_file=sample_policy_file,
+            statement_index=1,
+            severity="critical",
+            issue_type="wildcard_action",
+            message="Action uses dangerous wildcard",
+            action="dynamodb:*",
+            line_number=14,
+        )
+
+        relative_path = Path(sample_policy_file).name
+        fp_hash = FindingFingerprint.from_issue(issue, relative_path).to_hash()
+
+        # Build the expected body (same as what _post_off_diff_comments would generate)
+        expected_body = issue.to_pr_comment(file_path=relative_path)
+        expected_body += "\n\n> **Note:** This finding is on line 14, which was not modified in this PR."
+
+        # Mock existing comment with same fingerprint and same body
+        mock_github._get_bot_comments_by_fingerprint.return_value = {
+            fp_hash: {
+                "id": 42,
+                "body": expected_body,
+                "path": relative_path,
+                "line": 14,
+            }
+        }
+
+        report = ValidationReport(
+            results=[
+                PolicyValidationResult(
+                    policy_file=sample_policy_file,
+                    is_valid=False,
+                    issues=[issue],
+                    policy_type="IDENTITY_POLICY",
+                )
+            ],
+            total_policies=1,
+            valid_policies=0,
+            invalid_policies=1,
+            total_issues=1,
+        )
+
+        mock_github.get_pr_files.return_value = [
+            {
+                "filename": relative_path,
+                "status": "modified",
+                "patch": '@@ -4,7 +4,7 @@\n     {\n       "Sid": "AllowS3Read",\n       "Effect": "Allow",\n-      "Action": "s3:GetObject",\n+      "Action": "s3:*",\n       "Resource": "*"\n     },\n     {',
+            }
+        ]
+
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
+
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
+            await commenter._post_review_comments(report)
+
+        # Should NOT create a new comment (dedup skipped it)
+        mock_github.create_review_comment.assert_not_called()
+        mock_github.create_file_level_comment.assert_not_called()
+        # Should NOT update (body unchanged)
+        mock_github.update_review_comment.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_off_diff_updates_existing_changed_comment(self, mock_github, sample_policy_file):
+        """Test that off-diff pipeline updates comment when body has changed."""
+        from iam_validator.core.finding_fingerprint import FindingFingerprint
+
+        issue = ValidationIssue(
+            policy_file=sample_policy_file,
+            statement_index=1,
+            severity="critical",
+            issue_type="wildcard_action",
+            message="Action uses dangerous wildcard",
+            action="dynamodb:*",
+            line_number=14,
+        )
+
+        relative_path = Path(sample_policy_file).name
+        fp_hash = FindingFingerprint.from_issue(issue, relative_path).to_hash()
+
+        # Mock existing comment with same fingerprint but DIFFERENT body (stale)
+        mock_github._get_bot_comments_by_fingerprint.return_value = {
+            fp_hash: {
+                "id": 42,
+                "body": "old stale body content",
+                "path": relative_path,
+                "line": 14,
+            }
+        }
+
+        report = ValidationReport(
+            results=[
+                PolicyValidationResult(
+                    policy_file=sample_policy_file,
+                    is_valid=False,
+                    issues=[issue],
+                    policy_type="IDENTITY_POLICY",
+                )
+            ],
+            total_policies=1,
+            valid_policies=0,
+            invalid_policies=1,
+            total_issues=1,
+        )
+
+        mock_github.get_pr_files.return_value = [
+            {
+                "filename": relative_path,
+                "status": "modified",
+                "patch": '@@ -4,7 +4,7 @@\n     {\n       "Sid": "AllowS3Read",\n       "Effect": "Allow",\n-      "Action": "s3:GetObject",\n+      "Action": "s3:*",\n       "Resource": "*"\n     },\n     {',
+            }
+        ]
+
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False)
+
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
+            await commenter._post_review_comments(report)
+
+        # Should NOT create a new comment
+        mock_github.create_review_comment.assert_not_called()
+        mock_github.create_file_level_comment.assert_not_called()
+        # Should UPDATE existing comment with new body
+        mock_github.update_review_comment.assert_called_once()
+        call_args = mock_github.update_review_comment.call_args
+        assert call_args[0][0] == 42  # comment ID
 
 
 class TestPRCommenterBlockingIssuesIgnored:

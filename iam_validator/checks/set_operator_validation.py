@@ -25,6 +25,52 @@ class SetOperatorValidationCheck(PolicyCheck):
     description: ClassVar[str] = "Validates proper usage of ForAllValues and ForAnyValue set operators"
     default_severity: ClassVar[str] = "error"
 
+    async def _is_multivalued_key(
+        self,
+        condition_key: str,
+        fetcher: AWSServiceFetcher | None,
+        actions: list[str],
+    ) -> bool:
+        """Check if a condition key is multivalued using hardcoded list and AWS service metadata.
+
+        First checks the hardcoded known multivalued keys, then falls back to
+        looking up the condition key's Types in AWS service data (ArrayOfString etc.).
+        """
+        # Fast path: check hardcoded known multivalued keys
+        if is_multivalued_context_key(condition_key):
+            return True
+
+        if not fetcher:
+            return False
+
+        # Look up condition key type from AWS service data
+        # Try extracting service prefix from the condition key itself (e.g. "route53:KeyName")
+        service_prefixes: set[str] = set()
+        if ":" in condition_key and not condition_key.startswith("aws:"):
+            service_prefixes.add(condition_key.split(":")[0].lower())
+
+        # Also extract service prefixes from the statement's actions
+        for action in actions:
+            if action == "*":
+                continue
+            try:
+                service_prefix, _ = fetcher.parse_action(action)
+                service_prefixes.add(service_prefix.lower())
+            except Exception:
+                continue
+
+        for service_prefix in service_prefixes:
+            try:
+                service_detail = await fetcher.fetch_service_by_name(service_prefix)
+                if condition_key in service_detail.condition_keys:
+                    condition_key_obj = service_detail.condition_keys[condition_key]
+                    if condition_key_obj.types and any(t.startswith("ArrayOf") for t in condition_key_obj.types):
+                        return True
+            except Exception:
+                continue
+
+        return False
+
     async def execute(
         self,
         statement: Statement,
@@ -43,7 +89,7 @@ class SetOperatorValidationCheck(PolicyCheck):
         Args:
             statement: The IAM statement to check
             statement_idx: Index of this statement in the policy
-            fetcher: AWS service fetcher (unused but required by interface)
+            fetcher: AWS service fetcher for looking up condition key metadata
             config: Check configuration
 
         Returns:
@@ -58,6 +104,7 @@ class SetOperatorValidationCheck(PolicyCheck):
         statement_sid = statement.sid
         line_number = statement.line_number
         effect = statement.effect
+        actions = statement.get_actions()
 
         # Track which condition keys have set operators and Null checks
         set_operator_keys: dict[str, str] = {}  # key -> operator prefix
@@ -88,7 +135,7 @@ class SetOperatorValidationCheck(PolicyCheck):
             # Check each condition key used with a set operator
             for condition_key, _condition_values in conditions.items():
                 # Issue 1: Set operator used with single-valued context key (anti-pattern)
-                if not is_multivalued_context_key(condition_key):
+                if not await self._is_multivalued_key(condition_key, fetcher, actions):
                     issues.append(
                         ValidationIssue(
                             severity=self.get_severity(config),
