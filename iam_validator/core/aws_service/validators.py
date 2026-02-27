@@ -45,17 +45,59 @@ def _is_valid_tag_key(tag_key: str) -> bool:
     return bool(_TAG_KEY_PATTERN.match(tag_key))
 
 
+def find_matching_condition_key(condition_key: str, condition_keys: list[str] | dict[str, Any]) -> str | None:
+    """Find the matching pattern key in a collection of condition keys.
+
+    Supports both lists and dicts. Returns the matched key string so the caller
+    can look up associated metadata when working with dicts.
+
+    AWS service definitions use patterns with tag-key placeholders like:
+    - ``ssm:resourceTag/tag-key`` to match ``ssm:resourceTag/owner``
+    - ``aws:ResourceTag/${TagKey}`` to match ``aws:ResourceTag/Environment``
+    - ``s3:RequestObjectTag/<key>`` to match ``s3:RequestObjectTag/Environment``
+
+    Any pattern containing "/" is treated as a potential tag-key pattern where
+    the prefix before the FIRST "/" must match exactly and the suffix after that "/"
+    in the condition_key must be a valid AWS tag key.
+
+    IMPORTANT: Uses the pattern's prefix length (up to the first "/") to split the
+    condition_key. This is critical because AWS tag keys can contain "/" characters
+    (e.g., ``aws:ResourceTag/team/project-owner``). Using ``rfind("/")`` on the
+    condition key would incorrectly split at the last "/" instead of the pattern boundary.
+
+    Args:
+        condition_key: The condition key to look up
+        condition_keys: List or dict of condition keys (may include patterns)
+
+    Returns:
+        The matched key/pattern string, or None if not found
+    """
+    # Fast path: exact match (works for both list and dict via `in`)
+    if condition_key in condition_keys:
+        return condition_key
+
+    # Pattern matching only applies when the condition key contains "/"
+    if "/" not in condition_key:
+        return None
+
+    for pattern in condition_keys:
+        if "/" not in pattern:
+            continue
+        pattern_prefix = pattern[: pattern.find("/")]
+        if not condition_key.startswith(pattern_prefix + "/"):
+            continue
+        tag_key = condition_key[len(pattern_prefix) + 1 :]
+        if tag_key and _is_valid_tag_key(tag_key):
+            return pattern
+
+    return None
+
+
 def condition_key_in_list(condition_key: str, condition_keys: list[str]) -> bool:
     """Check if a condition key matches any key in the list, supporting patterns.
 
-    AWS service definitions use patterns with tag-key placeholders like:
-    - `ssm:resourceTag/tag-key` to match `ssm:resourceTag/owner`
-    - `aws:ResourceTag/${TagKey}` to match `aws:ResourceTag/Environment`
-    - `s3:RequestObjectTag/<key>` to match `s3:RequestObjectTag/Environment`
-
-    Any pattern containing "/" is treated as a potential tag-key pattern where
-    the prefix before "/" must match exactly and the suffix after "/" in the
-    condition_key must be a valid AWS tag key.
+    Convenience wrapper around :func:`find_matching_condition_key` that returns
+    a boolean instead of the matched pattern string.
 
     Args:
         condition_key: The condition key to check
@@ -64,35 +106,7 @@ def condition_key_in_list(condition_key: str, condition_keys: list[str]) -> bool
     Returns:
         True if condition_key matches any entry in the list
     """
-    # Fast path: check for exact match first (most common case)
-    if condition_key in condition_keys:
-        return True
-
-    # Check if condition_key could match a pattern (must contain "/")
-    if "/" not in condition_key:
-        return False
-
-    # Extract prefix and tag key from condition_key
-    cond_slash_idx = condition_key.rfind("/")
-    if cond_slash_idx <= 0:
-        return False
-
-    cond_prefix = condition_key[:cond_slash_idx]
-    tag_key = condition_key[cond_slash_idx + 1 :]
-
-    # Validate tag key format
-    if not _is_valid_tag_key(tag_key):
-        return False
-
-    # Check if any pattern has a matching prefix
-    for pattern in condition_keys:
-        if "/" not in pattern:
-            continue
-        pattern_prefix = pattern[: pattern.rfind("/")]
-        if pattern_prefix == cond_prefix:
-            return True
-
-    return False
+    return find_matching_condition_key(condition_key, condition_keys) is not None
 
 
 @dataclass

@@ -31,6 +31,11 @@ inputs:
     required: false
     default: "true"
 
+  off-diff-comment-mode:
+    description: "How to handle findings on unchanged lines: 'summary_only' (default), 'individual', or 'modified_statements_only'"
+    required: false
+    default: "summary_only"
+
   allow-owner-ignore:
     description: "Allow CODEOWNERS to ignore findings by replying 'ignore' to review comments"
     required: false
@@ -494,6 +499,11 @@ runs:
         # Add owner-ignore flag (default is enabled, so only add flag when disabled)
         if [ "${{ inputs.allow-owner-ignore }}" = "false" ]; then
           ARGS="$ARGS --no-owner-ignore"
+        fi
+
+        # Add off-diff comment mode (only add flag when not the default)
+        if [ -n "${{ inputs.off-diff-comment-mode }}" ] && [ "${{ inputs.off-diff-comment-mode }}" != "summary_only" ]; then
+          ARGS="$ARGS --off-diff-comment-mode ${{ inputs.off-diff-comment-mode }}"
         fi
 
         # Create temp file for JSON metrics extraction

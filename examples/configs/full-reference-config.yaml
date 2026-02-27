@@ -166,6 +166,19 @@ settings:
   # Example: ["low", "info"] - hide low and info severity findings
   hide_severities: None
 
+  # How to handle findings on lines outside the PR diff
+  # Controls whether off-diff issues get individual review comments or are
+  # consolidated in the summary table. Reduces PR noise for large policies
+  # where only a small section changed.
+  #
+  # Available modes:
+  #   summary_only:              Show in summary table only (default, least noise)
+  #   individual:                Post each as an individual review comment
+  #   modified_statements_only:  Individual comments for issues in modified
+  #                              statements only; unchanged statement issues
+  #                              go to summary
+  off_diff_comment_mode: summary_only
+
   # GitHub PR label mapping based on severity findings
   # When issues with these severities are found, apply the corresponding labels to the PR
   # If no issues with these severities exist, remove the labels if present

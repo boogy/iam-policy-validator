@@ -7,6 +7,10 @@ import ipaddress
 from typing import ClassVar
 
 from iam_validator.core.aws_service import AWSServiceFetcher
+from iam_validator.core.aws_service.validators import (
+    condition_key_in_list,
+    find_matching_condition_key,
+)
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.condition_validators import (
     CONDITION_OPERATORS,
@@ -214,9 +218,10 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                 service_prefix, action_name = fetcher.parse_action(action)
                 service_detail = await fetcher.fetch_service_by_name(service_prefix)
 
-                # Check service-level condition keys
-                if condition_key in service_detail.condition_keys:
-                    condition_key_obj = service_detail.condition_keys[condition_key]
+                # Check service-level condition keys (pattern-aware for tag keys with "/")
+                matched_key = find_matching_condition_key(condition_key, service_detail.condition_keys)
+                if matched_key:
+                    condition_key_obj = service_detail.condition_keys[matched_key]
                     if condition_key_obj.types:
                         return condition_key_obj.types[0]
 
@@ -224,10 +229,13 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                 if action_name in service_detail.actions:
                     action_detail = service_detail.actions[action_name]
 
-                    # For action-specific keys, we need to check the service condition keys list
-                    if action_detail.action_condition_keys and condition_key in action_detail.action_condition_keys:
-                        if condition_key in service_detail.condition_keys:
-                            condition_key_obj = service_detail.condition_keys[condition_key]
+                    # For action-specific keys, check with pattern matching then look up type
+                    if action_detail.action_condition_keys and condition_key_in_list(
+                        condition_key, action_detail.action_condition_keys
+                    ):
+                        matched_key = find_matching_condition_key(condition_key, service_detail.condition_keys)
+                        if matched_key:
+                            condition_key_obj = service_detail.condition_keys[matched_key]
                             if condition_key_obj.types:
                                 return condition_key_obj.types[0]
 
@@ -240,10 +248,13 @@ class ConditionTypeMismatchCheck(PolicyCheck):
 
                             resource_type = service_detail.resources.get(resource_name)
                             if resource_type and resource_type.condition_keys:
-                                if condition_key in resource_type.condition_keys:
+                                if condition_key_in_list(condition_key, resource_type.condition_keys):
                                     # Resource condition keys reference service condition keys
-                                    if condition_key in service_detail.condition_keys:
-                                        condition_key_obj = service_detail.condition_keys[condition_key]
+                                    matched_key = find_matching_condition_key(
+                                        condition_key, service_detail.condition_keys
+                                    )
+                                    if matched_key:
+                                        condition_key_obj = service_detail.condition_keys[matched_key]
                                         if condition_key_obj.types:
                                             return condition_key_obj.types[0]
 

@@ -7,11 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.17.1] - 2026-02-27
 
+### Added
+
+- Add `off_diff_comment_mode` setting to control how findings on unchanged lines are surfaced in PRs — supports `summary_only` (default), `individual`, and `modified_statements_only` modes
+- Add `--off-diff-comment-mode` CLI argument for `validate` and `post-to-pr` commands
+- Add `off-diff-comment-mode` input to GitHub Action
+
+### Changed
+
+- Change default off-diff behavior from posting individual review comments to consolidating in the summary table (`summary_only`), reducing PR noise for large policies
+- Change `check_id`, `description`, and `default_severity` annotations in `PolicyCheck` base class from `@property` to `ClassVar[str]` to resolve IDE warnings when subclasses use `ClassVar` overrides
+
 ### Fixed
 
+- Fix `condition_key_in_list` false positive on tag keys containing `/` (e.g., `aws:ResourceTag/team/project-owner`) — use pattern prefix length instead of `rfind("/")` which split at the wrong `/`
+- Fix `condition_type_mismatch` and `set_operator_validation` failing to resolve types for compound tag keys — replace exact `in` lookups on pattern dicts with `find_matching_condition_key()`
 - Fix `set_operator_validation` false positive on multivalued service condition keys — look up `Types` metadata from AWS service definitions (`ArrayOfString` etc.) instead of relying solely on hardcoded allowlist
 - Fix `wildcard_resource` false positive when ABAC tag conditions scope `Resource: "*"` — unify detection to cover `aws:ResourceTag/*`, `aws:RequestTag/*`, `aws:TagKeys`, `s3:ExistingObjectTag/*`, and any service-specific tag condition key, validated against AWS service definitions
 - Fix off-diff PR comments posting duplicates on re-runs — deduplicate via fingerprint, skip unchanged comments, update modified ones
+- Fix off-diff PR comment silently lost when `update_review_comment` fails — fall back to summary table
+- Fix `CheckDocumentation` breaking custom check loading when `short_description` field is missing — make optional with `kw_only=True` to prevent silent positional argument swapping
 
 ---
 

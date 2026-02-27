@@ -220,6 +220,16 @@ Examples:
         )
 
         parser.add_argument(
+            "--off-diff-comment-mode",
+            choices=["summary_only", "individual", "modified_statements_only"],
+            default=None,
+            help="How to handle findings on unchanged lines in PRs: "
+            "'summary_only' (default) shows in summary table only, "
+            "'individual' posts each as a review comment, "
+            "'modified_statements_only' posts only for modified statements",
+        )
+
+        parser.add_argument(
             "--verbose",
             "-v",
             action="store_true",
@@ -397,6 +407,11 @@ Examples:
             enable_ignore = ignore_settings.get("enabled", True)
             allowed_users = ignore_settings.get("allowed_users", [])
 
+            # Get off-diff comment mode (CLI override > config > default)
+            off_diff_mode = getattr(args, "off_diff_comment_mode", None) or config.get_setting(
+                "off_diff_comment_mode", "summary_only"
+            )
+
             async with GitHubIntegration() as github:
                 commenter = PRCommenter(
                     github,
@@ -404,6 +419,7 @@ Examples:
                     severity_labels=severity_labels,
                     enable_codeowners_ignore=enable_ignore,
                     allowed_ignore_users=allowed_users,
+                    off_diff_comment_mode=off_diff_mode,
                 )
                 success = await commenter.post_findings_to_pr(
                     validation_report,

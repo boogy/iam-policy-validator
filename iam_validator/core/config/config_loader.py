@@ -138,6 +138,15 @@ class SettingsSchema(BaseModel):
     ignore_settings: IgnoreSettingsSchema = IgnoreSettingsSchema()
     documentation: DocumentationSettingsSchema = DocumentationSettingsSchema()
     hide_severities: list[str] | None = None  # Global severity filtering
+    off_diff_comment_mode: str = "summary_only"
+
+    @field_validator("off_diff_comment_mode")
+    @classmethod
+    def validate_off_diff_comment_mode(cls, v: str) -> str:
+        valid_modes = {"summary_only", "individual", "modified_statements_only"}
+        if v not in valid_modes:
+            raise ValueError(f"Invalid off_diff_comment_mode: {v}. Must be one of: {sorted(valid_modes)}")
+        return v
 
     @field_validator("fail_on_severity")
     @classmethod

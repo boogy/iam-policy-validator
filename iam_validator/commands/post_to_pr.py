@@ -74,6 +74,16 @@ Examples:
             help="Path to configuration file (for fail_on_severity setting)",
         )
 
+        parser.add_argument(
+            "--off-diff-comment-mode",
+            choices=["summary_only", "individual", "modified_statements_only"],
+            default=None,
+            help="How to handle findings on unchanged lines in PRs: "
+            "'summary_only' (default) shows in summary table only, "
+            "'individual' posts each as a review comment, "
+            "'modified_statements_only' posts only for modified statements",
+        )
+
     async def execute(self, args: argparse.Namespace) -> int:
         """Execute the post-to-pr command."""
         success = await post_report_to_pr(
@@ -81,6 +91,7 @@ Examples:
             create_review=args.create_review,
             add_summary=args.add_summary,
             config_path=getattr(args, "config", None),
+            off_diff_comment_mode=getattr(args, "off_diff_comment_mode", None),
         )
 
         return 0 if success else 1

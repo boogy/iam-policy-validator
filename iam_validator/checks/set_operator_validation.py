@@ -6,9 +6,11 @@ Based on AWS IAM best practices:
 https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-single-vs-multi-valued-context-keys.html
 """
 
+import logging
 from typing import ClassVar
 
 from iam_validator.core.aws_service import AWSServiceFetcher
+from iam_validator.core.aws_service.validators import find_matching_condition_key
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.condition_validators import (
     has_if_exists_suffix,
@@ -16,6 +18,8 @@ from iam_validator.core.condition_validators import (
     normalize_operator,
 )
 from iam_validator.core.models import Statement, ValidationIssue
+
+logger = logging.getLogger(__name__)
 
 
 class SetOperatorValidationCheck(PolicyCheck):
@@ -57,16 +61,19 @@ class SetOperatorValidationCheck(PolicyCheck):
                 service_prefix, _ = fetcher.parse_action(action)
                 service_prefixes.add(service_prefix.lower())
             except Exception:
+                logger.debug("Failed to parse action %s for condition key lookup", action)
                 continue
 
         for service_prefix in service_prefixes:
             try:
                 service_detail = await fetcher.fetch_service_by_name(service_prefix)
-                if condition_key in service_detail.condition_keys:
-                    condition_key_obj = service_detail.condition_keys[condition_key]
+                matched_key = find_matching_condition_key(condition_key, service_detail.condition_keys)
+                if matched_key:
+                    condition_key_obj = service_detail.condition_keys[matched_key]
                     if condition_key_obj.types and any(t.startswith("ArrayOf") for t in condition_key_obj.types):
                         return True
             except Exception:
+                logger.debug("Failed to look up condition key %s in service %s", condition_key, service_prefix)
                 continue
 
         return False

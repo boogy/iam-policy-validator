@@ -118,6 +118,11 @@ DEFAULT_CONFIG = {
         # Valid values: "error", "warning", "info", "critical", "high", "medium", "low"
         # Example: ["low", "info"] - hide low and info severity findings
         "hide_severities": None,
+        # How to handle findings on lines outside the PR diff
+        # summary_only: Show in summary table only (default, least noise)
+        # individual: Post each as an individual review comment
+        # modified_statements_only: Individual comments for modified statements only
+        "off_diff_comment_mode": "summary_only",
     },
     # ========================================================================
     # AWS IAM Validation Checks (17 checks total)
