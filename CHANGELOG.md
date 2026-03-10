@@ -5,6 +5,16 @@ All notable changes to IAM Policy Validator are documented in this file.
 The format is based on [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.1] - 2026-03-10
+
+### Fixed
+
+- Fix `service_wildcard` reporting `high` severity for service wildcards with ABAC tag conditions (`aws:ResourceTag/*` = `${aws:PrincipalTag/*}`) — severity is now reduced to `low` (configurable via `abac_mitigated_severity`) when tag-based ownership constraints restrict the blast radius
+- Fix `service_wildcard` ABAC detection not recognizing `ForAllValues:`/`ForAnyValue:` set operator prefixes and `IfExists` suffix on condition operators
+- Fix `service_wildcard` ABAC detection not explicitly excluding negated operators (`StringNotEquals`, `StringNotLike`) which do not restrict access
+
+---
+
 ## [1.18.0] - 2026-02-27
 
 ### Added
@@ -488,6 +498,7 @@ _First release._
 
 ---
 
+[1.18.1]: https://github.com/boogy/iam-policy-validator/compare/v1.18.0...v1.18.1
 [1.18.0]: https://github.com/boogy/iam-policy-validator/compare/v1.17.0...v1.18.0
 [1.17.0]: https://github.com/boogy/iam-policy-validator/compare/v1.16.0...v1.17.0
 [1.16.0]: https://github.com/boogy/iam-policy-validator/compare/v1.15.5...v1.16.0
