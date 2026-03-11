@@ -45,6 +45,11 @@ from iam_validator.core.config.wildcards import (
 #    - medium:   Medium security risk (e.g., overly permissive wildcards)
 #    - low:      Low security risk (e.g., minor best practice violations)
 #
+# 3. SPECIAL SEVERITIES:
+#    - none:     Suppressed — issue is filtered out and never shown in any output
+#               (useful for checks that conditionally suppress findings, e.g.,
+#                ABAC-mitigated service wildcards)
+#
 # Use 'error' for policy validity issues, and 'critical/high/medium/low' for
 # security best practices. This distinction helps separate "broken policies"
 # from "insecure but valid policies".

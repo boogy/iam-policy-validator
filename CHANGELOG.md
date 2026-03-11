@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.18.1] - 2026-03-10
 
+### Added
+
+- Add `"none"` severity level to suppress findings entirely — checks can set severity to `"none"` to filter issues from all output (CLI, PR comments, JSON, SARIF, etc.)
+
 ### Fixed
 
 - Fix `service_wildcard` reporting `high` severity for service wildcards with ABAC tag conditions (`aws:ResourceTag/*` = `${aws:PrincipalTag/*}`) — severity is now reduced to `low` (configurable via `abac_mitigated_severity`) when tag-based ownership constraints restrict the blast radius

@@ -105,6 +105,38 @@ class MultiSeverityCheck(PolicyCheck):
         ]
 
 
+class NoneSeverityCheck(PolicyCheck):
+    """Mock check that generates a mix of 'none' and normal severity issues."""
+
+    def __init__(self, check_id="none_severity_check"):
+        self._check_id = check_id
+
+    @property
+    def check_id(self) -> str:
+        return self._check_id
+
+    @property
+    def description(self) -> str:
+        return "Generates issues including none severity"
+
+    async def execute(self, statement, statement_idx, fetcher, config):
+        """Generate issues with none and normal severities."""
+        return [
+            ValidationIssue(
+                severity="none",
+                statement_index=statement_idx,
+                issue_type="suppressed_issue",
+                message="This should be suppressed",
+            ),
+            ValidationIssue(
+                severity="high",
+                statement_index=statement_idx,
+                issue_type="real_issue",
+                message="This should be visible",
+            ),
+        ]
+
+
 class TestCheckConfig:
     """Test the CheckConfig dataclass."""
 
@@ -601,6 +633,32 @@ class TestCheckRegistry:
         # Should get 3 issues (medium, high, critical)
         assert len(issues) == 3
         assert all(issue.severity != "low" for issue in issues)
+
+    @pytest.mark.asyncio
+    async def test_none_severity_filtered_out_parallel(self, mock_statement, mock_fetcher):
+        """Test that 'none' severity issues are always filtered out in parallel execution."""
+        registry = CheckRegistry(enable_parallel=True)
+        check = NoneSeverityCheck()
+        registry.register(check)
+
+        issues = await registry.execute_checks_parallel(mock_statement, 0, mock_fetcher)
+
+        assert len(issues) == 1
+        assert issues[0].severity == "high"
+        assert issues[0].issue_type == "real_issue"
+
+    @pytest.mark.asyncio
+    async def test_none_severity_filtered_out_sequential(self, mock_statement, mock_fetcher):
+        """Test that 'none' severity issues are always filtered out in sequential execution."""
+        registry = CheckRegistry(enable_parallel=False)
+        check = NoneSeverityCheck()
+        registry.register(check)
+
+        issues = await registry.execute_checks_parallel(mock_statement, 0, mock_fetcher)
+
+        assert len(issues) == 1
+        assert issues[0].severity == "high"
+        assert issues[0].issue_type == "real_issue"
 
 
 class TestCreateDefaultRegistry:

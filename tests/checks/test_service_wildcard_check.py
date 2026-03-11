@@ -142,6 +142,30 @@ class TestServiceWildcardCheck:
         assert issues[0].severity == "medium"
 
     @pytest.mark.asyncio
+    async def test_abac_mitigated_severity_none_suppresses_issue(self, check, fetcher):
+        """abac_mitigated_severity set to 'none' produces an issue that the framework will filter out."""
+        config = CheckConfig(
+            check_id="service_wildcard",
+            enabled=True,
+            config={"abac_mitigated_severity": "none"},
+        )
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:*"],
+            Resource=["*"],
+            Condition={
+                "StringEquals": {
+                    "aws:ResourceTag/owner": "${aws:PrincipalTag/owner}",
+                }
+            },
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        # The check still emits the issue with severity "none";
+        # the framework's _process_issues will filter it out
+        assert len(issues) == 1
+        assert issues[0].severity == "none"
+
+    @pytest.mark.asyncio
     async def test_abac_without_principal_tag_ref_uses_normal_severity(self, check, fetcher, config):
         """Condition with ResourceTag but a static value (not PrincipalTag) uses normal severity."""
         statement = Statement(

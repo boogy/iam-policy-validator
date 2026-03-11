@@ -162,14 +162,16 @@ class ValidationIssue(BaseModel):
       (for issues that make the policy invalid according to AWS IAM rules)
     - Security: "critical", "high", "medium", "low"
       (for security best practices and configuration issues)
+    - Special: "none"
+      (issue is suppressed — never shown in any output)
     """
 
-    severity: str  # "error", "warning", "info" OR "critical", "high", "medium", "low"
+    severity: str  # "error", "warning", "info" OR "critical", "high", "medium", "low" OR "none"
 
     @field_validator("severity")
     @classmethod
     def validate_severity(cls, v: str) -> str:
-        valid = {"error", "warning", "info", "critical", "high", "medium", "low"}
+        valid = {"error", "warning", "info", "critical", "high", "medium", "low", "none"}
         if v not in valid:
             raise ValueError(f"Invalid severity '{v}'. Must be one of: {', '.join(sorted(valid))}")
         return v
@@ -209,6 +211,7 @@ class ValidationIssue(BaseModel):
             "high",
             "medium",
             "low",  # Security severities
+            "none",  # Suppressed — filtered out before output
         ]
     )
 

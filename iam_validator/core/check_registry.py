@@ -472,7 +472,9 @@ class CheckRegistry:
         return [
             issue
             for issue in issues
-            if not config.should_ignore(issue, filepath) and config.should_show_severity(issue.severity)
+            if issue.severity != "none"
+            and not config.should_ignore(issue, filepath)
+            and config.should_show_severity(issue.severity)
         ]
 
     async def execute_checks_parallel(
