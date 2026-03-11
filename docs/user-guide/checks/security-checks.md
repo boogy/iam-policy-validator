@@ -181,9 +181,9 @@ Or use resource-scoping conditions:
 
 ## service_wildcard
 
-Detects service-level wildcards like `s3:*` or `iam:*`.
+Detects service-level wildcards like `s3:*` or `iam:*` that grant all permissions for a service.
 
-**Severity:** `high`
+**Severity:** `high` (may be lowered to `low` with ABAC tag conditions)
 
 ### Fail Example
 
@@ -206,6 +206,55 @@ Use specific actions or action patterns:
   "Resource": "*"
 }
 ```
+
+### ABAC-Aware Severity
+
+When a statement uses a service wildcard but restricts access via ABAC tag conditions —
+where `aws:ResourceTag/*` is compared against `${aws:PrincipalTag/*}` — the finding is
+still reported but at a reduced severity (`low` by default). The wildcard remains an
+auditable finding, but the tag-based ownership constraint meaningfully limits its blast radius.
+
+**Detected pattern:**
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["secretsmanager:*"],
+  "Resource": "arn:aws:secretsmanager:*:123456789012:secret:*",
+  "Condition": {
+    "StringLike": {
+      "aws:ResourceTag/owner": "${aws:PrincipalTag/owner}",
+      "aws:ResourceTag/env": "${aws:PrincipalTag/env}"
+    }
+  }
+}
+```
+
+This applies to any service, not only `secretsmanager`.
+
+### Configuration Options
+
+```yaml
+service_wildcard:
+  enabled: true
+
+  # Severity for wildcards without ABAC mitigation (default: high)
+  severity: high
+
+  # Severity when ABAC ResourceTag/PrincipalTag conditions are present (default: low)
+  abac_mitigated_severity: low
+
+  # Services exempt from this check entirely
+  allowed_services:
+    - logs
+    - cloudwatch
+```
+
+| Option                    | Type           | Default | Description                                                                    |
+| ------------------------- | -------------- | ------- | ------------------------------------------------------------------------------ |
+| `severity`                | string         | `high`  | Severity for service wildcards without ABAC conditions                         |
+| `abac_mitigated_severity` | string         | `low`   | Severity when `aws:ResourceTag/*` = `${aws:PrincipalTag/*}` conditions present |
+| `allowed_services`        | list of string | `[]`    | Service prefixes (e.g. `logs`, `s3`) that are exempt from this check           |
 
 ---
 
