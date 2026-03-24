@@ -1,5 +1,6 @@
 """Condition key validation check - validates condition keys against AWS definitions."""
 
+from collections import defaultdict
 from typing import ClassVar
 
 from iam_validator.core.aws_service import AWSServiceFetcher
@@ -121,4 +122,86 @@ class ConditionKeyValidationCheck(PolicyCheck):
                         )
                     )
 
-        return issues
+        return self._aggregate_invalid_key_issues(issues)
+
+    @staticmethod
+    def _condition_key_base(condition_key: str) -> str:
+        """Extract base pattern for grouping (e.g., 'aws:RequestTag/owner' -> 'aws:RequestTag').
+
+        Keys with the same base pattern share the same underlying reason for being
+        invalid, so they can be merged into a single issue.
+        """
+        slash_idx = condition_key.find("/")
+        if slash_idx > 0:
+            return condition_key[:slash_idx]
+        return condition_key
+
+    @staticmethod
+    def _extract_explanation(message: str) -> str:
+        """Extract the explanation part from an error message, after the key-specific prefix.
+
+        Error messages follow the pattern:
+          "Condition key `X` is not supported by action `Y`. <explanation>"
+
+        Returns the explanation part, or empty string if not found.
+        """
+        # Split after the first sentence (which names the specific key)
+        dot_space_idx = message.find(". ")
+        if dot_space_idx > 0:
+            return message[dot_space_idx + 2 :]
+        return ""
+
+    def _aggregate_invalid_key_issues(self, issues: list[ValidationIssue]) -> list[ValidationIssue]:
+        """Aggregate invalid_condition_key issues that share the same action and key pattern.
+
+        Multiple condition keys failing for the same action and same reason (e.g.,
+        aws:RequestTag/owner, aws:RequestTag/jira, aws:RequestTag/env all unsupported
+        by lambda:AddPermission) are merged into a single issue listing all keys.
+        """
+        invalid_key_issues = [i for i in issues if i.issue_type == "invalid_condition_key"]
+        other_issues = [i for i in issues if i.issue_type != "invalid_condition_key"]
+
+        if len(invalid_key_issues) <= 1:
+            return issues
+
+        # Group by (action, condition_key_base_pattern)
+        grouped: dict[tuple[str | None, str], list[ValidationIssue]] = defaultdict(list)
+        for issue in invalid_key_issues:
+            base = self._condition_key_base(issue.condition_key or "")
+            key = (issue.action, base)
+            grouped[key].append(issue)
+
+        aggregated = []
+        for group in grouped.values():
+            if len(group) == 1:
+                aggregated.append(group[0])
+            else:
+                aggregated.append(self._merge_condition_key_issues(group))
+
+        return other_issues + aggregated
+
+    @staticmethod
+    def _merge_condition_key_issues(group: list[ValidationIssue]) -> ValidationIssue:
+        """Merge multiple invalid_condition_key issues into a single aggregated issue."""
+        first = group[0]
+        keys = [i.condition_key for i in group if i.condition_key]
+        keys_formatted = ", ".join(f"`{k}`" for k in keys)
+
+        # Build aggregated message: list all keys, then shared explanation
+        message = f"Condition keys {keys_formatted} are not supported by action `{first.action}`."
+        explanation = ConditionKeyValidationCheck._extract_explanation(first.message or "")
+        if explanation:
+            message += f" {explanation}"
+
+        return ValidationIssue(
+            severity=first.severity,
+            statement_sid=first.statement_sid,
+            statement_index=first.statement_index,
+            issue_type="invalid_condition_key",
+            message=message,
+            action=first.action,
+            condition_key=keys[0] if keys else None,
+            line_number=first.line_number,
+            suggestion=first.suggestion,
+            field_name="condition",
+        )
