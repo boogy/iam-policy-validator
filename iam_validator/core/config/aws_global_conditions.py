@@ -51,7 +51,7 @@ AWS_GLOBAL_CONDITION_KEYS = {
     # Resource Properties
     "aws:ResourceAccount": "String",  # Resource owner's AWS account ID
     "aws:ResourceOrgID": "String",  # Organization ID of resource owner
-    "aws:ResourceOrgPaths": "String",  # AWS Organizations path of resource
+    "aws:ResourceOrgPaths": "ArrayOfString",  # AWS Organizations paths of resource (multivalued)
     # Request Properties
     "aws:CurrentTime": "Date",  # Current date and time
     "aws:EpochTime": "Date",  # Request timestamp in epoch format (also accepts Numeric)

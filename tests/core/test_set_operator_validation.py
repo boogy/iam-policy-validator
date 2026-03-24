@@ -260,6 +260,22 @@ class TestSetOperatorValidationCheck:
         assert all(issue.issue_type != "set_operator_on_single_valued_key" for issue in issues)
 
     @pytest.mark.asyncio
+    async def test_resource_org_paths_is_multivalued(self, check, config):
+        """Test aws:ResourceOrgPaths is recognized as multivalued (like aws:PrincipalOrgPaths)."""
+        statement = Statement(
+            effect="Allow",
+            action=["sts:AssumeRole"],
+            resource=["*"],
+            condition={
+                "ForAnyValue:StringEquals": {
+                    "aws:ResourceOrgPaths": "${aws:PrincipalOrgPaths}",
+                },
+            },
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert all(issue.issue_type != "set_operator_on_single_valued_key" for issue in issues)
+
+    @pytest.mark.asyncio
     async def test_statement_with_sid(self, check, config):
         """Test issue includes statement SID when present."""
         statement = Statement(

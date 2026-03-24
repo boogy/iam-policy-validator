@@ -845,6 +845,7 @@ def is_multivalued_context_key(condition_key: str) -> bool:
     multivalued_keys = {
         "aws:tagkeys",  # List of tag keys being applied/modified
         "aws:principalorgpaths",  # Organization paths for the principal
+        "aws:resourceorgpaths",  # Organization paths for the resource
     }
 
     # Check exact matches

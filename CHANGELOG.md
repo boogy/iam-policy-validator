@@ -5,6 +5,16 @@ All notable changes to IAM Policy Validator are documented in this file.
 The format is based on [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.2] - 2026-03-24
+
+### Fixed
+
+- Fix `set_operator_validation` false positive on `aws:ResourceOrgPaths` — classify it as a multivalued condition key (matching `aws:PrincipalOrgPaths`), and update type from `String` to `ArrayOfString` in global condition key metadata ([#87])
+
+[#87]: https://github.com/boogy/iam-policy-validator/pull/87
+
+---
+
 ## [1.18.1] - 2026-03-10
 
 ### Added
