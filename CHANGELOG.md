@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix `condition_key_validation` generating one PR comment per invalid condition key — aggregate keys that share the same action and base pattern (e.g., `aws:RequestTag/owner`, `aws:RequestTag/jira`, `aws:RequestTag/env`) into a single finding listing all affected keys
 - Fix `set_operator_validation` false positive on `aws:ResourceOrgPaths` — classify it as a multivalued condition key (matching `aws:PrincipalOrgPaths`), and update type from `String` to `ArrayOfString` in global condition key metadata ([#87])
 
 [#87]: https://github.com/boogy/iam-policy-validator/pull/87
