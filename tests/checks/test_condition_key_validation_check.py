@@ -577,10 +577,7 @@ class TestConditionKeyIssueAggregation:
             if key.startswith("aws:RequestTag/"):
                 return ConditionKeyValidationResult(
                     is_valid=False,
-                    error_message=(
-                        f"Condition key `{key}` is not supported by action `{action}`. "
-                        f"Not supported."
-                    ),
+                    error_message=(f"Condition key `{key}` is not supported by action `{action}`. Not supported."),
                 )
             return ConditionKeyValidationResult(is_valid=True)
 
