@@ -216,7 +216,7 @@ runs:
 
     - name: Restore AWS service definitions cache
       id: cache-aws-services
-      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: ~/.cache/iam-validator/aws_services
         # Cache key refreshes weekly to get latest AWS service updates
@@ -563,7 +563,7 @@ runs:
       # Attempting to save with an existing key will silently do nothing
       # Use always() to ensure cache is saved even if validation fails
       if: always() && steps.cache-aws-services.outputs.cache-hit != 'true'
-      uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: ~/.cache/iam-validator/aws_services
         key: aws-services-${{ runner.os }}-${{ steps.week.outputs.week }}
