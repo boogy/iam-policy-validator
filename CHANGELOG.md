@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ValidationReport.get_summary()` string format changed (now reports `clean` / `with errors` / `with findings` instead of `valid` / `invalid`). Code parsing this human-readable summary must update
 - Reclassify `action_condition_enforcement` default severity from `error` to `high` — missing an organizational condition (MFA, IP, tags) is a security concern rather than an AWS-rejectable structural error. The check now appears under "Policies with Findings" instead of "Policies with Errors (AWS-invalid)"; users who rely on the previous severity can restore it via `checks.action_condition_enforcement.severity: error` in config
 - Expose `policies_with_errors` and `policies_with_findings` as Pydantic `@computed_field`s so they appear in `ValidationReport.model_dump()` and the JSON formatter output, matching the terminology used by every other formatter
+- Expand `RCP_SUPPORTED_SERVICES` to reflect the current AWS Resource Control Policy service list — adds `cognito-idp`, `cognito-identity`, `dynamodb`, `ecr`, `es` (OpenSearch), and `logs` (CloudWatch Logs) alongside the existing `s3`, `sts`, `sqs`, `kms`, `secretsmanager`. The `policy_type_validation` check no longer emits `unsupported_rcp_service` false positives for policies targeting these newer services
 
 ### Fixed
 

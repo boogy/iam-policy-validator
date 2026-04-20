@@ -167,16 +167,35 @@ SECONDS_PER_HOUR = 3600
 # Policy Type Restrictions
 # ============================================================================
 
-# AWS services that support Resource Control Policies (RCP)
-# These services can have wildcard actions in RCP policy statements
+# AWS services that support Resource Control Policies (RCP).
+# Expanded by AWS after the 2024 launch — as of the most recent update
+# accounts for the following IAM service prefixes:
+#
+#   - S3 (s3)
+#   - STS (sts)
+#   - SQS (sqs)
+#   - KMS (kms)
+#   - Secrets Manager (secretsmanager)
+#   - Cognito: User Pools (cognito-idp) and Identity Pools (cognito-identity)
+#   - DynamoDB (dynamodb)
+#   - ECR (ecr)
+#   - OpenSearch Service (es — the IAM prefix carried over from Elasticsearch)
+#   - CloudWatch Logs (logs)
+#
 # Reference: https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_rcps.html
 RCP_SUPPORTED_SERVICES = frozenset(
     {
         "s3",
         "sts",
         "sqs",
-        "secretsmanager",
         "kms",
+        "secretsmanager",
+        "cognito-idp",
+        "cognito-identity",
+        "dynamodb",
+        "ecr",
+        "es",
+        "logs",
     }
 )
 
