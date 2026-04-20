@@ -2,75 +2,53 @@
 description: Run performance benchmarks
 ---
 
-You are running performance benchmarks for the iam-policy-validator project.
+Run `pytest` benchmarks for the iam-policy-validator project.
 
-Given optional arguments: $ARGUMENTS
+Argument: `$ARGUMENTS` (optional — check name, or `validation` for the full pipeline).
 
-## Steps
+## Recipes
 
-1. **Determine what to benchmark**:
-   - If no argument: Run all benchmarks
-   - If check name provided: Benchmark specific check
-   - If "validation": Benchmark full validation pipeline
+**All benchmarks**
 
-2. **Run benchmarks**:
+```bash
+uv run pytest tests/ -m benchmark -p benchmark --benchmark-enable --benchmark-only -v
+```
 
-   **All benchmarks**:
+**A specific check**
 
-   ```bash
-   uv run pytest tests/ -m benchmark -p benchmark --benchmark-enable --benchmark-only -v
-   ```
+```bash
+uv run pytest tests/checks/ -k "$ARGUMENTS" -m benchmark -p benchmark --benchmark-enable --benchmark-only -v
+```
 
-   **Specific check** (if $ARGUMENTS provided):
+**Validation pipeline**
 
-   ```bash
-   uv run pytest tests/checks/ -k "$ARGUMENTS" -m benchmark -p benchmark --benchmark-enable --benchmark-only -v
-   ```
+```bash
+uv run pytest tests/ -k "benchmark" -m benchmark -p benchmark --benchmark-enable --benchmark-only -v
+```
 
-   **Validation pipeline**:
+## Regression detection
 
-   ```bash
-   uv run pytest tests/ -k "benchmark" -m benchmark -p benchmark --benchmark-enable --benchmark-only -v
-   ```
+**Save a baseline** (do this once, typically on `main`):
 
-3. **Compare with baseline** (if `.benchmarks` exists):
+```bash
+uv run pytest tests/ -m benchmark -p benchmark --benchmark-enable --benchmark-save=baseline --benchmark-only
+```
 
-   ```bash
-   uv run pytest tests/ -m benchmark -p benchmark --benchmark-enable --benchmark-compare --benchmark-only
-   ```
+**Compare against the saved baseline**:
 
-4. **Save new baseline**:
+```bash
+uv run pytest tests/ -m benchmark -p benchmark --benchmark-enable --benchmark-compare --benchmark-only
+```
 
-   ```bash
-   uv run pytest tests/ -m benchmark -p benchmark --benchmark-enable --benchmark-save=baseline --benchmark-only
-   ```
+Flag anything >10% slower as a regression.
 
-5. **Analyze results**:
-   - Identify slowest operations
-   - Compare with previous runs
-   - Flag regressions (>10% slower)
+## Benchmark test pattern
 
-6. **Provide recommendations**:
-   - Optimization opportunities
-   - Caching improvements
-   - Async parallelization opportunities
-
-## Example Usage
-
-- `/benchmark` - Run all benchmarks
-- `/benchmark wildcard_action` - Benchmark specific check
-- `/benchmark validation` - Benchmark validation pipeline
-
-## Benchmark Markers
-
-Tests marked with `@pytest.mark.benchmark` are included.
-
-Example benchmark test:
+Tests marked with `@pytest.mark.benchmark` are included:
 
 ```python
 @pytest.mark.benchmark
 def test_wildcard_check_performance(benchmark, check, config, mock_fetcher):
-    """Benchmark WildcardActionCheck performance."""
     statement = Statement(effect="Allow", action=["*"], resource=["*"])
 
     async def run_check():
@@ -80,11 +58,8 @@ def test_wildcard_check_performance(benchmark, check, config, mock_fetcher):
     assert len(result) == 1
 ```
 
-## Output
+## Examples
 
-Provide:
-
-1. Benchmark results table
-2. Comparison with baseline (if available)
-3. Performance regressions (if any)
-4. Optimization suggestions
+- `/benchmark` — run all benchmarks
+- `/benchmark wildcard_action` — benchmark a single check
+- `/benchmark validation` — benchmark the full validation pipeline

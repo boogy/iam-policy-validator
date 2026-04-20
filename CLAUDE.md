@@ -60,16 +60,12 @@ Subdirectories contain specialized CLAUDE.md files that extend these rules.
 
 ### Commands (procedural workflows)
 
-| Command               | Purpose                                          |
-| --------------------- | ------------------------------------------------ |
-| `/create-pr`          | Create PR with version bump workflow             |
-| `/create-version-tag` | Bump version in both files, create signed tag    |
-| `/update-changelog`   | Update CHANGELOG.md following Common Changelog   |
-| `/run-check`          | Validate a policy file with the IAM validator    |
-| `/test-check`         | Run tests for a specific check                   |
-| `/benchmark`          | Run performance benchmarks                       |
-| `/debug-check`        | Debug a specific check with verbose output       |
-| `/generate-policy`    | Generate IAM policy from template or description |
+| Command               | Purpose                                         |
+| --------------------- | ----------------------------------------------- |
+| `/create-pr`          | Stage commits and push a branch for a PR        |
+| `/create-version-tag` | Bump version in both files, create signed tag   |
+| `/update-changelog`   | Update CHANGELOG.md following Common Changelog  |
+| `/benchmark`          | Run performance benchmarks                      |
 
 ### Skills (reasoning frameworks)
 
