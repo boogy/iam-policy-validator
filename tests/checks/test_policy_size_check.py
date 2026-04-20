@@ -182,6 +182,40 @@ class TestPolicySizeCheck:
         assert "bytes" in issues[0].message.lower()
 
     @pytest.mark.asyncio
+    async def test_runtime_policy_type_routes_end_to_end_through_validate_policies(self, tmp_path):
+        """Integration: --policy-type TRUST_POLICY reaches policy_size via validate_policies.
+
+        Regression guard for a bug where `defaults.py` set `policy_size.policy_type = "managed"`
+        in the DEFAULT config, which my priority rule treated as an explicit user choice and
+        prevented the runtime --policy-type kwarg from ever reaching the check.
+        """
+        import json
+
+        from iam_validator.core.policy_checks import validate_policies
+        from iam_validator.core.policy_loader import PolicyLoader
+
+        # Trust policy ~2.4 KB > 2048-byte limit
+        raw = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "lambda.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                    "Condition": {"StringEquals": {"aws:SourceAccount": "x" * 2200}},
+                }
+            ],
+        }
+        path = tmp_path / "trust.json"
+        path.write_text(json.dumps(raw))
+        policies = PolicyLoader().load_from_paths([str(path)], recursive=False)
+        results = await validate_policies(policies, policy_type="TRUST_POLICY")
+        size_issues = [i for r in results for i in r.issues if i.check_id == "policy_size"]
+        assert len(size_issues) == 1
+        assert "2,048 bytes" in size_issues[0].message
+        assert "trust policy" in size_issues[0].message.lower()
+
+    @pytest.mark.asyncio
     async def test_size_counts_utf8_bytes_not_codepoints(self, check, fetcher):
         """Non-ASCII characters count as multiple UTF-8 bytes, matching AWS."""
         # A single non-ASCII codepoint stuffed into a SID repeatedly.
