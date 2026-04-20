@@ -54,7 +54,7 @@ iam-validator validate [OPTIONS]
 | Option                | Description                                                                                                   | Default           |
 | --------------------- | ------------------------------------------------------------------------------------------------------------- | ----------------- |
 | `--config`, `-c`      | Path to configuration file                                                                                    | Auto-detect       |
-| `--policy-type`, `-t` | Policy type (IDENTITY_POLICY, RESOURCE_POLICY, TRUST_POLICY, SERVICE_CONTROL_POLICY, RESOURCE_CONTROL_POLICY) | `IDENTITY_POLICY` |
+| `--policy-type`, `-t` | Policy type (IDENTITY_POLICY, RESOURCE_POLICY, TRUST_POLICY, SERVICE_CONTROL_POLICY, RESOURCE_CONTROL_POLICY). When omitted, each policy's type is auto-resolved per file (config `policy_types:` glob → content detection → IDENTITY_POLICY). See [Policy Type Resolution](configuration.md#policy-type-resolution). | _auto-detect_ |
 | `--fail-on-warnings`  | Fail validation if warnings are found                                                                         | `false`           |
 | `--no-recursive`      | Don't recursively search directories                                                                          | `false`           |
 | `--custom-checks-dir` | Path to directory containing custom checks                                                                    |                   |

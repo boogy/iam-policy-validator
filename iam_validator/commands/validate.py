@@ -140,8 +140,13 @@ Examples:
                 "SERVICE_CONTROL_POLICY",
                 "RESOURCE_CONTROL_POLICY",
             ],
-            default="IDENTITY_POLICY",
-            help="Type of IAM policy being validated (default: IDENTITY_POLICY). "
+            default=None,
+            help="Type of IAM policy being validated. When omitted, each "
+            "policy's type is resolved per-file: config `policy_types:` glob "
+            "mapping first, then content auto-detection (trust vs resource "
+            "vs identity), then a fallback to IDENTITY_POLICY. When supplied, "
+            "this value is applied to every policy in the run and "
+            "auto-detection is skipped. "
             "IDENTITY_POLICY: Attached to users/groups/roles | "
             "RESOURCE_POLICY: S3/SNS/SQS policies | "
             "TRUST_POLICY: Role assumption policies | "
@@ -307,7 +312,11 @@ Examples:
         config_path = getattr(args, "config", None)
         custom_checks_dir = getattr(args, "custom_checks_dir", None)
         aws_services_dir = getattr(args, "aws_services_dir", None)
-        policy_type = cast(PolicyType, getattr(args, "policy_type", "IDENTITY_POLICY"))
+        # None means "user didn't pass --policy-type" → orchestrator runs
+        # per-file resolution (glob → auto-detect → default). Only cast when
+        # the user actually supplied a value.
+        policy_type_arg = getattr(args, "policy_type", None)
+        policy_type: PolicyType | None = cast(PolicyType, policy_type_arg) if policy_type_arg else None
         results = await validate_policies(
             policies,
             config_path=config_path,

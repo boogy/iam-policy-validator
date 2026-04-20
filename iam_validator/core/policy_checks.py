@@ -14,7 +14,7 @@ from pathlib import Path
 from iam_validator.core import constants
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckRegistry, create_default_registry
-from iam_validator.core.config.config_loader import ConfigLoader
+from iam_validator.core.config.config_loader import ConfigLoader, ValidatorConfig
 from iam_validator.core.models import (
     IAMPolicy,
     PolicyType,
@@ -24,6 +24,79 @@ from iam_validator.core.models import (
 from iam_validator.core.policy_loader import PolicyLoader
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_policy_type(
+    policy: IAMPolicy,
+    policy_file: str,
+    cli_policy_type: PolicyType | None,
+    config: ValidatorConfig,
+) -> tuple[PolicyType, str, str | None]:
+    """Resolve the PolicyType to use for a single policy.
+
+    Priority:
+      1. ``cli_policy_type`` (from CLI flag / SDK kwarg) — authoritative.
+      2. ``policy_types:`` glob mapping in config — first match wins.
+      3. Content auto-detection via ``detect_policy_type()``.
+      4. Default ``IDENTITY_POLICY``.
+
+    Args:
+        policy: Parsed IAM policy.
+        policy_file: Path to the policy file (used for glob matching and logs).
+        cli_policy_type: Type explicitly requested by the caller, or ``None``.
+        config: Loaded validator config (used for the glob list).
+
+    Returns:
+        A ``(resolved_type, source, matched_pattern)`` tuple where ``source``
+        is one of ``"cli-flag"``, ``"config-glob"``, ``"auto-detect"``,
+        ``"default"`` and ``matched_pattern`` is the glob that matched when
+        ``source == "config-glob"`` (otherwise ``None``).
+    """
+    if cli_policy_type is not None:
+        return cli_policy_type, "cli-flag", None
+
+    glob_type = config.get_policy_type_for_path(policy_file)
+    if glob_type is not None:
+        matched_pattern: str | None = None
+        for entry in config.policy_types:
+            if glob_type == entry["type"]:
+                matched_pattern = entry["pattern"]
+                break
+        return glob_type, "config-glob", matched_pattern
+
+    # Lazy import — `iam_validator.checks` pulls the whole package which
+    # transitively imports from `iam_validator.sdk`, which imports from this
+    # module. Importing inside the function breaks the cycle.
+    from iam_validator.checks.policy_structure import (  # pylint: disable=import-outside-toplevel
+        detect_policy_type,
+    )
+
+    detected = detect_policy_type(policy)
+    if detected != "IDENTITY_POLICY":
+        return detected, "auto-detect", None
+
+    return "IDENTITY_POLICY", "default", None
+
+
+def _log_resolved_policy_type(policy_file: str, resolved_type: PolicyType, source: str, pattern: str | None) -> None:
+    """Emit the single machine-greppable debug line per policy.
+
+    Format (one of):
+        policy_type=<TYPE> source=cli-flag file=<path>
+        policy_type=<TYPE> source=config-glob pattern='<pat>' file=<path>
+        policy_type=<TYPE> source=auto-detect file=<path>
+        policy_type=<TYPE> source=default file=<path>
+    """
+    if source == "config-glob" and pattern is not None:
+        logger.debug(
+            "policy_type=%s source=%s pattern='%s' file=%s",
+            resolved_type,
+            source,
+            pattern,
+            policy_file,
+        )
+    else:
+        logger.debug("policy_type=%s source=%s file=%s", resolved_type, source, policy_file)
 
 
 def _should_fail_on_issue(issue: ValidationIssue, fail_on_severities: list[str] | None = None) -> bool:
@@ -48,7 +121,7 @@ async def validate_policies(
     policies: list[tuple[str, IAMPolicy]] | list[tuple[str, IAMPolicy, dict]],
     config_path: str | None = None,
     custom_checks_dir: str | None = None,
-    policy_type: PolicyType = "IDENTITY_POLICY",
+    policy_type: PolicyType | None = None,
     aws_services_dir: str | None = None,
 ) -> list[PolicyValidationResult]:
     """Validate multiple policies concurrently.
@@ -57,7 +130,10 @@ async def validate_policies(
         policies: List of (file_path, policy) or (file_path, policy, raw_dict) tuples
         config_path: Optional path to configuration file
         custom_checks_dir: Optional path to directory containing custom checks for auto-discovery
-        policy_type: Type of policy (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY)
+        policy_type: Explicit policy type to apply to *every* policy in the run.
+            When ``None`` (default), each policy's type is resolved per-file via
+            the config ``policy_types:`` glob list, then content auto-detection,
+            then a final fallback to ``IDENTITY_POLICY``.
         aws_services_dir: Optional path to directory containing pre-downloaded AWS service definitions
                          (enables offline mode, overrides config setting)
 
@@ -116,18 +192,26 @@ async def validate_policies(
         cache_dir=cache_directory,
         aws_services_dir=services_dir,
     ) as fetcher:
-        tasks = [
-            _validate_policy_with_registry(
-                item[1],  # policy
-                item[0],  # file_path
-                registry,
-                fetcher,
-                fail_on_severities,
-                policy_type,
-                item[2] if len(item) == 3 else None,  # raw_dict (optional)
+        tasks = []
+        for item in policies:
+            policy_file = item[0]
+            policy_obj = item[1]
+            raw_dict = item[2] if len(item) == 3 else None
+
+            resolved_type, source, matched_pattern = _resolve_policy_type(policy_obj, policy_file, policy_type, config)
+            _log_resolved_policy_type(policy_file, resolved_type, source, matched_pattern)
+
+            tasks.append(
+                _validate_policy_with_registry(
+                    policy_obj,
+                    policy_file,
+                    registry,
+                    fetcher,
+                    fail_on_severities,
+                    resolved_type,
+                    raw_dict,
+                )
             )
-            for item in policies
-        ]
 
         results = await asyncio.gather(*tasks)
 
