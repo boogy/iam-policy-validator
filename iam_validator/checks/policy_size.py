@@ -131,8 +131,7 @@ class PolicySizeCheck(PolicyCheck):
                 statement_index=-1,  # Policy-level issue
                 issue_type="policy_size_exceeded",
                 message=(
-                    f"Policy size ({policy_size:,} bytes) exceeds AWS limit for "
-                    f"{policy_type_desc} ({max_size:,} bytes)"
+                    f"Policy size ({policy_size:,} bytes) exceeds AWS limit for {policy_type_desc} ({max_size:,} bytes)"
                 ),
                 suggestion=(
                     f"The policy is {policy_size - max_size:,} bytes over the limit "

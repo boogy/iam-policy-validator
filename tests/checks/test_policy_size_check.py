@@ -111,9 +111,7 @@ class TestPolicySizeCheck:
                 )
             ],
         )
-        issues = await check.execute_policy(
-            policy, "trust.json", fetcher, config, policy_type="TRUST_POLICY"
-        )
+        issues = await check.execute_policy(policy, "trust.json", fetcher, config, policy_type="TRUST_POLICY")
         assert len(issues) == 1
         assert "2,048" in issues[0].message
         assert "trust policy" in issues[0].message.lower()
@@ -126,9 +124,7 @@ class TestPolicySizeCheck:
             Version="2012-10-17",
             Statement=[Statement(Effect="Deny", Action=actions, Resource="*")],
         )
-        issues = await check.execute_policy(
-            policy, "scp.json", fetcher, config, policy_type="SERVICE_CONTROL_POLICY"
-        )
+        issues = await check.execute_policy(policy, "scp.json", fetcher, config, policy_type="SERVICE_CONTROL_POLICY")
         assert len(issues) == 1
         assert "5,120" in issues[0].message
         assert "Service Control Policy" in issues[0].message
@@ -141,9 +137,7 @@ class TestPolicySizeCheck:
             Version="2012-10-17",
             Statement=[Statement(Effect="Deny", Action=actions, Resource="*")],
         )
-        issues = await check.execute_policy(
-            policy, "rcp.json", fetcher, config, policy_type="RESOURCE_CONTROL_POLICY"
-        )
+        issues = await check.execute_policy(policy, "rcp.json", fetcher, config, policy_type="RESOURCE_CONTROL_POLICY")
         assert len(issues) == 1
         assert "5,120" in issues[0].message
         assert "Resource Control Policy" in issues[0].message
@@ -160,9 +154,7 @@ class TestPolicySizeCheck:
         # Runtime says IDENTITY_POLICY (which would resolve to managed/6144 -> no issue)
         # but YAML pins inline_user (2048 -> flagged).
         config = CheckConfig(check_id="policy_size", config={"policy_type": "inline_user"})
-        issues = await check.execute_policy(
-            policy, "p.json", fetcher, config, policy_type="IDENTITY_POLICY"
-        )
+        issues = await check.execute_policy(policy, "p.json", fetcher, config, policy_type="IDENTITY_POLICY")
         assert len(issues) == 1
         assert "2,048" in issues[0].message
 
@@ -185,9 +177,7 @@ class TestPolicySizeCheck:
             ],
         }
         cfg = CheckConfig(check_id="policy_size", config={"policy_type": "inline_user"})
-        issues = await check.execute_policy(
-            policy, "p.json", fetcher, cfg, raw_policy_dict=raw
-        )
+        issues = await check.execute_policy(policy, "p.json", fetcher, cfg, raw_policy_dict=raw)
         assert len(issues) == 1
         assert "bytes" in issues[0].message.lower()
 
