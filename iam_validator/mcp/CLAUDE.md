@@ -11,7 +11,7 @@ The MCP (Model Context Protocol) module provides a FastMCP server that exposes t
 
 **Key Features**:
 
-- 25+ MCP tools across validation, generation, query, and organization config domains
+- 35+ MCP tools across validation, generation, query, and organization config domains
 - 10 built-in policy templates with variable substitution
 - 6 MCP Resources for static data (templates, checks, sensitive categories, org config)
 - Organization-wide policy configuration with session persistence
@@ -115,7 +115,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```
 iam_validator/mcp/
 ├── __init__.py            # Package exports (create_server, run_server, models)
-├── server.py              # FastMCP server with 25+ tool registrations + 6 resources
+├── server.py              # FastMCP server with 35+ tool registrations + 6 resources
 ├── models.py              # 5 Pydantic models for request/response types
 ├── session_config.py      # Session configuration manager (ValidatorConfig wrapper)
 ├── tools/

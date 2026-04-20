@@ -5,7 +5,7 @@ description: Condition enforcement, trust policy validation, and confused deputy
 
 # Advanced Checks
 
-These 3 checks provide advanced validation for condition enforcement, trust policies, and confused deputy protection.
+These 4 checks provide advanced validation for condition enforcement, trust policies, confused deputy protection, and policy-type-specific rules.
 
 ## action_condition_enforcement
 

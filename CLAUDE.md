@@ -140,7 +140,7 @@ iam-policy-auditor/
 │   │   ├── aws_service/       # AWS API integration
 │   │   ├── config/            # Configuration system
 │   │   └── formatters/        # Output formatters (7 formats)
-│   ├── checks/                 # 21 built-in checks ([CLAUDE.md](iam_validator/checks/CLAUDE.md))
+│   ├── checks/                 # 22 built-in checks ([CLAUDE.md](iam_validator/checks/CLAUDE.md))
 │   ├── commands/               # 8 CLI commands ([CLAUDE.md](iam_validator/commands/CLAUDE.md))
 │   ├── mcp/                    # MCP server ([CLAUDE.md](iam_validator/mcp/CLAUDE.md))
 │   ├── sdk/                    # Public SDK API ([CLAUDE.md](iam_validator/sdk/CLAUDE.md))
@@ -166,7 +166,7 @@ iam-policy-auditor/
 | SDK API    | `iam_validator/sdk/__init__.py`              | Public library interface                    |
 | Version    | `iam_validator/__version__.py`               | Keep in sync with pyproject.toml            |
 | Config     | `iam_validator/core/config/config_loader.py` | YAML config loader                          |
-| MCP Server | `iam_validator/mcp/server.py`                | FastMCP server with 25+ tools               |
+| MCP Server | `iam_validator/mcp/server.py`                | FastMCP server with 35+ tools               |
 | Action     | `action.yaml`                                | GitHub Action definition                    |
 
 ---
@@ -208,6 +208,8 @@ PolicyLoader.load_from_file()
     ↓
 validate_policies() in policy_checks.py
     ↓
+_resolve_policy_type() per file [cli-flag > config-glob > auto-detect > default]
+    ↓
 CheckRegistry.execute_policy_checks() [policy-level]
     ↓
 CheckRegistry.execute_checks_parallel() [statement-level, parallel async]
@@ -216,6 +218,15 @@ ReportGenerator.generate_report()
     ↓
 Formatter output (console|json|markdown|sarif|csv|html)
 ```
+
+### Policy Type Resolution
+
+- `--policy-type`/SDK `policy_type=` kwarg, when supplied, applies to every
+  policy in the run (auto-detection skipped).
+- When omitted, each policy's type is resolved per-file from:
+  `policy_types:` glob mapping → content auto-detect (trust/resource/identity)
+  → default `IDENTITY_POLICY`.
+- `--log-level debug` prints one `policy_type=… source=cli-flag|config-glob|auto-detect|default file=…` line per policy for auditing.
 
 ### AWS Service Fetcher
 
@@ -289,7 +300,7 @@ rg -n "@mcp.tool" iam_validator/mcp/server.py
 
 ---
 
-## Built-in Checks (21)
+## Built-in Checks (22)
 
 | Check ID                       | Category | Severity | Description                          |
 | ------------------------------ | -------- | -------- | ------------------------------------ |
@@ -300,6 +311,7 @@ rg -n "@mcp.tool" iam_validator/mcp/server.py
 | `principal_validation`         | AWS      | high     | Principal format (resource policies) |
 | `policy_structure`             | AWS      | error    | Required fields, valid values        |
 | `policy_size`                  | AWS      | error    | Character size limits                |
+| `policy_type_validation`       | AWS      | error    | Policy-type-specific requirements    |
 | `sid_uniqueness`               | AWS      | warning  | Unique SIDs across statements        |
 | `set_operator_validation`      | AWS      | error    | ForAllValues/ForAnyValue usage       |
 | `ifexists_condition_usage`     | AWS      | warning  | IfExists condition validation        |
@@ -423,7 +435,7 @@ uv sync --extra mcp && iam-validator-mcp
 mise run mcp:inspector
 ```
 
-**25+ tools** across validation, generation, query, and org config categories.
+**35+ tools** across validation, generation, query, and org config categories.
 See [iam_validator/mcp/CLAUDE.md](iam_validator/mcp/CLAUDE.md) for full tool reference, Claude Desktop config, and development guide.
 
 ---

@@ -58,7 +58,7 @@ The system prompt enforces these security principles:
 
 ### Validation
 
-- `validate_policy` - Comprehensive validation against 21 checks
+- `validate_policy` - Comprehensive validation against 22 checks
 - `quick_validate` - Fast pass/fail check
 - `validate_policies_batch` - Batch validation
 
@@ -96,7 +96,7 @@ The AI will:
 
 ## Security Validation Checks
 
-The MCP server runs 21 built-in checks:
+The MCP server runs 22 built-in checks:
 
 | Check                          | Severity | Description                          |
 | ------------------------------ | -------- | ------------------------------------ |

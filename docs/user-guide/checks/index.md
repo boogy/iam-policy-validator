@@ -1,11 +1,11 @@
 ---
 title: Validation Checks
-description: All 21 built-in validation checks
+description: All 22 built-in validation checks
 ---
 
 # Validation Checks
 
-IAM Policy Validator includes 21 built-in checks across three categories.
+IAM Policy Validator includes 22 built-in checks across three categories.
 
 ## Check Categories
 
@@ -27,7 +27,7 @@ IAM Policy Validator includes 21 built-in checks across three categories.
 
     [:octicons-arrow-right-24: Security Checks](security-checks.md)
 
--   :material-cog-outline:{ .lg .middle } **Advanced Checks (3)**
+-   :material-cog-outline:{ .lg .middle } **Advanced Checks (4)**
 
     ---
 
@@ -74,6 +74,7 @@ IAM Policy Validator includes 21 built-in checks across three categories.
 | `action_condition_enforcement` | high     | Required conditions                      |
 | `action_resource_matching`     | medium   | Action-resource compatibility            |
 | `trust_policy_validation`      | high     | Trust policy structure + confused deputy |
+| `policy_type_validation`       | error    | Policy-type-specific requirements        |
 
 ## Severity Levels
 
