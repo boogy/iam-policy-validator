@@ -295,10 +295,7 @@ class TestValidationReport:
         return PolicyValidationResult(
             policy_file=name,
             is_valid=not severities,
-            issues=[
-                ValidationIssue(severity=s, statement_index=0, issue_type="t", message="m")
-                for s in severities
-            ],
+            issues=[ValidationIssue(severity=s, statement_index=0, issue_type="t", message="m") for s in severities],
         )
 
     def test_policies_with_errors_counts_error_severity_only(self):
@@ -343,9 +340,7 @@ class TestValidationReport:
 
     def test_empty_results_returns_zero(self):
         """Both properties return 0 when results list is empty."""
-        report = ValidationReport(
-            total_policies=0, valid_policies=0, invalid_policies=0, total_issues=0, results=[]
-        )
+        report = ValidationReport(total_policies=0, valid_policies=0, invalid_policies=0, total_issues=0, results=[])
         assert report.policies_with_errors == 0
         assert report.policies_with_findings == 0
 
