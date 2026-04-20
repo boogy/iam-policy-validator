@@ -9,7 +9,6 @@ Given the file path argument: $ARGUMENTS
 Steps:
 
 1. **Validate the path exists**:
-
    - Check if the file/directory exists
    - If no argument provided, ask for the policy file path
 
@@ -20,7 +19,6 @@ Steps:
    ```
 
 3. **If validation fails with issues**:
-
    - Summarize the issues found
    - Group by severity (critical, high, medium, low)
    - Offer to help fix specific issues

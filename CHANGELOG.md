@@ -5,6 +5,27 @@ All notable changes to IAM Policy Validator are documented in this file.
 The format is based on [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2026-04-20
+
+### Added
+
+- Add `ValidationReport.policies_with_errors` and `ValidationReport.policies_with_findings` computed properties to express "structurally invalid" vs. "has findings" separately from the `fail_on_severities`-gated `invalid_policies` counter
+
+### Changed
+
+- Clarify PR summary terminology — replace the "Valid Policies" / "Invalid Policies" rows with "Policies with Errors (AWS-invalid)" and "Policies with Findings" so a policy flagged only for security or best-practice issues is no longer mislabeled as invalid. The same wording now applies to the GitHub Actions step summary, Rich console output, and the enhanced / CSV / HTML / markdown formatters
+- **CSV output schema change**: the `Valid Policies (IAM)`, `Invalid Policies (IAM)`, and `Policies with Security Findings` rows have been replaced by `Policies with Errors (AWS-invalid)` and `Policies with Findings`. Downstream CSV consumers must update column expectations
+- `ValidationReport.get_summary()` string format changed (now reports `clean` / `with errors` / `with findings` instead of `valid` / `invalid`). Code parsing this human-readable summary must update
+- Reclassify `action_condition_enforcement` default severity from `error` to `high` — missing an organizational condition (MFA, IP, tags) is a security concern rather than an AWS-rejectable structural error. The check now appears under "Policies with Findings" instead of "Policies with Errors (AWS-invalid)"; users who rely on the previous severity can restore it via `checks.action_condition_enforcement.severity: error` in config
+- Expose `policies_with_errors` and `policies_with_findings` as Pydantic `@computed_field`s so they appear in `ValidationReport.model_dump()` and the JSON formatter output, matching the terminology used by every other formatter
+
+### Fixed
+
+- Fix `ValidationReport.policies_with_findings` double-counting policies whose only issues were structural errors — "findings" now counts only policies with at least one non-`error` severity issue (`warning` / `info` / `critical` / `high` / `medium` / `low`), aligning with the display split between errors (AWS-invalid) and findings (security / best-practice). Policies with both kinds of issues are counted in both properties
+- Fix `clean` policy count in the Rich console report and `get_summary()` — compute directly from policies with no issues instead of subtracting `policies_with_findings` (which would have marked error-only policies as clean after the `policies_with_findings` fix)
+- Fix GitHub PR comment hiding the entire "Detailed Findings" section (and printing "All Policies Valid / no issues found") when `invalid_policies == 0` but `total_issues > 0` — happens with the default `fail_on_severities=["error","critical"]` on a policy with only `high`/`medium`/`low`/`warning` issues. The detail section is now gated on `total_issues > 0` so all findings are rendered
+- Fix `ValidationReport.get_summary()` reporting "N clean" (and omitting any error count) for legacy callers that build a report with only scalar counters and no `results` list — falls back to `total_policies - invalid_policies` so a failing run isn't mis-reported as fully clean
+
 ## [1.18.2] - 2026-03-24
 
 ### Fixed

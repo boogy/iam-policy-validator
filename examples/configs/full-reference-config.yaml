@@ -128,7 +128,7 @@ settings:
   #   - _services.json: List of all services (underscore prefix for easy discovery)
   #   - {service}.json: Individual service definition files (e.g., s3.json, ec2.json)
   #
-  # You can download these files using: make download-aws-services
+  # You can download these files using: mise run download-aws-services
   # This will create an aws_services/ directory with all service definitions
   #
   # Examples:

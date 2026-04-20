@@ -145,7 +145,6 @@ git push -u origin $(git branch --show-current)
 Determine PR details:
 
 - **Title**: Use conventional commit format based on changes
-
   - `feat:` - New features
   - `fix:` - Bug fixes
   - `docs:` - Documentation only

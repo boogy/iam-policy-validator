@@ -9,7 +9,6 @@ Given the argument: $ARGUMENTS
 ## Steps
 
 1. **Determine generation method**:
-
    - If argument matches a template name → use template
    - If argument is a description → build minimal policy
    - If no argument → list available templates

@@ -15,7 +15,6 @@ Given the check name argument: $ARGUMENTS
    ```
 
 2. **Read the check implementation**:
-
    - Open the check file
    - Understand the validation logic
    - Identify what conditions trigger issues
@@ -27,7 +26,6 @@ Given the check name argument: $ARGUMENTS
    ```
 
 4. **Create a debug test policy**:
-
    - Create a minimal policy that should trigger the check
    - Save to `/tmp/debug-policy.json`
 

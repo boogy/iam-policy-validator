@@ -9,7 +9,6 @@ Given the check name argument: $ARGUMENTS
 Steps:
 
 1. **Parse the check name**:
-
    - If argument provided, use it as the check name
    - If no argument, list available checks and ask which to test
 
@@ -27,7 +26,6 @@ Steps:
    ```
 
 4. **If tests fail**:
-
    - Show the failure details
    - Offer to help fix the failing tests
    - Show the relevant source code

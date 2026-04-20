@@ -71,7 +71,7 @@ IAM Policy Validator includes 21 built-in checks across three categories.
 
 | Check ID                       | Severity | Description                              |
 | ------------------------------ | -------- | ---------------------------------------- |
-| `action_condition_enforcement` | error    | Required conditions                      |
+| `action_condition_enforcement` | high     | Required conditions                      |
 | `action_resource_matching`     | medium   | Action-resource compatibility            |
 | `trust_policy_validation`      | high     | Trust policy structure + confused deputy |
 

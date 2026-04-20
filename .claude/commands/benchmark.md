@@ -9,7 +9,6 @@ Given optional arguments: $ARGUMENTS
 ## Steps
 
 1. **Determine what to benchmark**:
-
    - If no argument: Run all benchmarks
    - If check name provided: Benchmark specific check
    - If "validation": Benchmark full validation pipeline
@@ -47,7 +46,6 @@ Given optional arguments: $ARGUMENTS
    ```
 
 5. **Analyze results**:
-
    - Identify slowest operations
    - Compare with previous runs
    - Flag regressions (>10% slower)

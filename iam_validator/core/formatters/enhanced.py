@@ -105,10 +105,12 @@ class EnhancedFormatter(OutputFormatter):
 
     def _print_summary_panel(self, console: Console, report: ValidationReport) -> None:
         """Print summary panel with clean metrics display."""
-        # Create a simple table for metrics without progress bars
+        # Create a simple table for metrics without progress bars.
+        # First column is sized to fit the longest label ("Policies with Errors (AWS-invalid)")
+        # without wrapping.
         metrics_table = Table.grid(padding=(0, 2))
-        metrics_table.add_column(style="bold", justify="left", width=30)
-        metrics_table.add_column(style="bold", justify="left", width=20)
+        metrics_table.add_column(style="bold", justify="left", width=42, no_wrap=True)
+        metrics_table.add_column(style="bold", justify="left", width=20, no_wrap=True)
 
         # Total policies
         metrics_table.add_row(
@@ -116,25 +118,33 @@ class EnhancedFormatter(OutputFormatter):
             str(report.total_policies),
         )
 
-        # Valid policies
+        # Policies with errors (AWS-invalid) and policies with findings
         if report.total_policies > 0:
-            valid_pct = report.valid_policies * 100 // report.total_policies
-            metrics_table.add_row(
-                "✅ Valid Policies",
-                f"[green]{report.valid_policies} ({valid_pct}%)[/green]",
-            )
+            policies_with_errors = report.policies_with_errors
+            policies_with_findings = report.policies_with_findings
 
-            # Invalid policies
-            invalid_pct = report.invalid_policies * 100 // report.total_policies
-            if report.invalid_policies > 0:
+            errors_pct = policies_with_errors * 100 // report.total_policies
+            if policies_with_errors > 0:
                 metrics_table.add_row(
-                    "❌ Invalid Policies",
-                    f"[red]{report.invalid_policies} ({invalid_pct}%)[/red]",
+                    "❌ Policies with Errors (AWS-invalid)",
+                    f"[red]{policies_with_errors} ({errors_pct}%)[/red]",
                 )
             else:
                 metrics_table.add_row(
-                    "❌ Invalid Policies",
-                    f"[dim]{report.invalid_policies} ({invalid_pct}%)[/dim]",
+                    "✅ Policies with Errors (AWS-invalid)",
+                    f"[green]{policies_with_errors} ({errors_pct}%)[/green]",
+                )
+
+            findings_pct = policies_with_findings * 100 // report.total_policies
+            if policies_with_findings > 0:
+                metrics_table.add_row(
+                    "⚠️  Policies with Findings",
+                    f"[yellow]{policies_with_findings} ({findings_pct}%)[/yellow]",
+                )
+            else:
+                metrics_table.add_row(
+                    "✨ Policies with Findings",
+                    f"[green]{policies_with_findings} ({findings_pct}%)[/green]",
                 )
 
         # Total issues
@@ -420,41 +430,44 @@ class EnhancedFormatter(OutputFormatter):
 
     def _print_final_status(self, console: Console, report: ValidationReport) -> None:
         """Print final status panel."""
-        if report.invalid_policies == 0 and report.total_issues == 0:
+        policies_with_errors = report.policies_with_errors
+        policies_with_findings = report.policies_with_findings
+
+        if policies_with_errors == 0 and report.total_issues == 0:
             # Perfect success
             status = Text("🎉 ALL POLICIES VALIDATED SUCCESSFULLY! 🎉", style="bold green")
             message = Text(
-                f"All {report.valid_policies} policies passed validation with no issues.",
+                f"All {report.total_policies} policies are structurally valid with no findings.",
                 style="green",
             )
             border_color = "green"
-        elif report.invalid_policies == 0:
-            # Valid IAM policies but may have security findings
-            # Check if there are critical/high security issues
+        elif policies_with_errors == 0:
+            # Structurally valid policies but may have security/best-practice findings
             has_critical = any(i.severity in constants.HIGH_SEVERITY_LEVELS for r in report.results for i in r.issues)
 
             if has_critical:
-                status = Text("⚠️ All Policies Valid (with security issues)", style="bold red")
+                status = Text("⚠️ All Policies Structurally Valid (with findings)", style="bold red")
                 message = Text(
-                    f"{report.valid_policies} policies are valid, but {report.total_issues} "
-                    f"security issue(s) were found that must be addressed.",
+                    f"All {report.total_policies} policies are structurally valid (AWS-accepted), but "
+                    f"{policies_with_findings} have {report.total_issues} finding(s) that must be addressed.",
                     style="red",
                 )
                 border_color = "red"
             else:
-                status = Text("✅ All Policies Valid (with warnings)", style="bold yellow")
+                status = Text("✅ All Policies Structurally Valid (with advisories)", style="bold yellow")
                 message = Text(
-                    f"{report.valid_policies} policies are valid, but {report.total_issues} "
-                    f"warning(s) were found that should be reviewed.",
+                    f"All {report.total_policies} policies are structurally valid, but "
+                    f"{policies_with_findings} have {report.total_issues} advisory finding(s) "
+                    f"that should be reviewed.",
                     style="yellow",
                 )
                 border_color = "yellow"
         else:
-            # Has invalid policies
+            # Has structurally invalid policies (AWS would reject)
             status = Text("❌ VALIDATION FAILED", style="bold red")
             message = Text(
-                f"{report.invalid_policies} of {report.total_policies} policies have critical "
-                f"issues that must be resolved.",
+                f"{policies_with_errors} of {report.total_policies} policies are AWS-invalid "
+                f"(structural errors AWS would reject) and must be fixed.",
                 style="red",
             )
             border_color = "red"

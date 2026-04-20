@@ -96,7 +96,7 @@ uv sync --extra mcp              # Install MCP server support
 uv run ruff format .             # Format code
 uv run ruff check --fix .        # Lint + auto-fix
 uv run mypy iam_validator/       # Type check
-make check                       # All checks (lint + type + test)
+mise run check                   # All checks (lint + type + test)
 
 # Testing
 uv run pytest                    # Run all tests
@@ -112,7 +112,7 @@ uv run iam-validator analyze --path policy.json   # AWS Access Analyzer
 
 # MCP Server
 iam-validator-mcp                # Start MCP server (stdio)
-make mcp-inspector               # Debug MCP with inspector
+mise run mcp:inspector           # Debug MCP with inspector
 ```
 
 ### Test Markers
@@ -313,7 +313,7 @@ rg -n "@mcp.tool" iam_validator/mcp/server.py
 | `service_wildcard`             | Security | high     | `s3:*` style wildcards               |
 | `sensitive_action`             | Security | medium   | 490+ privilege escalation actions    |
 | `not_action_not_resource`      | Security | high     | Dangerous NotAction/NotResource      |
-| `action_condition_enforcement` | Security | error    | Sensitive actions require conditions |
+| `action_condition_enforcement` | Security | high     | Sensitive actions require conditions |
 
 ---
 
@@ -420,7 +420,7 @@ uvx --from "iam-policy-validator[mcp]" iam-validator-mcp
 uv sync --extra mcp && iam-validator-mcp
 
 # Debug with MCP Inspector
-make mcp-inspector
+mise run mcp:inspector
 ```
 
 **25+ tools** across validation, generation, query, and org config categories.

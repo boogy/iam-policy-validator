@@ -49,7 +49,7 @@ iam-validator-mcp
 iam-validator-mcp --org-config ./org-policy.yaml
 
 # Debug with MCP Inspector
-make mcp-inspector
+mise run mcp:inspector
 ```
 
 ### Claude Desktop Configuration
@@ -222,7 +222,7 @@ iam_validator/mcp/
 1. **Define implementation** in `tools/validation.py`, `tools/generation.py`, or `tools/query.py`
 2. **Register in server.py** with `@mcp.tool()` decorator
 3. **Add docstring** describing parameters and return value
-4. **Test** via Claude Desktop or `make mcp-inspector`
+4. **Test** via Claude Desktop or `mise run mcp:inspector`
 
 ```python
 # In tools/query.py
@@ -296,7 +296,7 @@ uv run pytest tests/mcp/test_org_config.py
 uv run pytest tests/mcp/test_templates.py
 
 # Debug with MCP Inspector
-make mcp-inspector
+mise run mcp:inspector
 ```
 
 ---

@@ -39,7 +39,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     description: ClassVar[str] = (
         "Enforces conditions (MFA, IP, tags, etc.) for specific actions (supports all_of/any_of)"
     )
-    default_severity: ClassVar[str] = "error"
+    # Missing a required condition (MFA, tag, IP, etc.) is an organizational
+    # policy / security concern, not an AWS-rejectable structural error. Classify
+    # it as a finding so it appears under "Policies with Findings" rather than
+    # "Policies with Errors (AWS-invalid)". Users can override via config.
+    default_severity: ClassVar[str] = "high"
 
     async def execute_policy(
         self,

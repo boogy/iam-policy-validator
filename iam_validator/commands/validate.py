@@ -756,24 +756,29 @@ Examples:
             summary_parts = []
 
             # Header with status
+            policies_with_errors = report.policies_with_errors
             if report.total_issues == 0:
                 summary_parts.append("# ✅ IAM Policy Validation - Passed")
-            elif report.invalid_policies > 0:
-                summary_parts.append("# ❌ IAM Policy Validation - Failed")
+            elif policies_with_errors > 0:
+                summary_parts.append("# ❌ IAM Policy Validation - Failed (AWS-invalid policies)")
             else:
-                summary_parts.append("# ⚠️ IAM Policy Validation - Security Issues Found")
+                summary_parts.append("# ⚠️ IAM Policy Validation - Findings Reported")
 
             summary_parts.append("")
 
             # Summary table
             summary_parts.append("## Summary")
             summary_parts.append("")
+            summary_parts.append(
+                "> _**Invalid** = structurally broken (AWS would reject)._ "
+                "_**Findings** = security or best-practice issues on a valid policy._"
+            )
+            summary_parts.append("")
             summary_parts.append("| Metric | Count |")
             summary_parts.append("|--------|-------|")
             summary_parts.append(f"| Total Policies | {report.total_policies} |")
-            summary_parts.append(f"| Valid Policies | {report.valid_policies} |")
-            summary_parts.append(f"| Invalid Policies | {report.invalid_policies} |")
-            summary_parts.append(f"| Policies with Security Issues | {report.policies_with_security_issues} |")
+            summary_parts.append(f"| Policies with Errors (AWS-invalid) | {policies_with_errors} |")
+            summary_parts.append(f"| Policies with Findings | {report.policies_with_findings} |")
             summary_parts.append(f"| **Total Issues** | **{report.total_issues}** |")
 
             # Issue breakdown by severity if there are issues
@@ -852,6 +857,6 @@ Examples:
             logging.warning(f"Failed to generate enhanced output: {e}")
             print("\nValidation Summary:")
             print(f"  Total policies: {report.total_policies}")
-            print(f"  Valid: {report.valid_policies}")
-            print(f"  Invalid: {report.invalid_policies}")
+            print(f"  With errors (AWS-invalid): {report.policies_with_errors}")
+            print(f"  With findings: {report.policies_with_findings}")
             print(f"  Total issues: {report.total_issues}\n")
