@@ -45,7 +45,7 @@ class MarkdownFormatter(OutputFormatter):
             f"{'⚠️' if report.policies_with_findings > 0 else '✨'}",
             "",
             "_Invalid = structurally broken (AWS would reject). "
-            "Findings = security or best-practice issues on a valid policy._",
+            + "Findings = security or best-practice issues on a valid policy._",
             "",
             "## Issue Breakdown",
             f"**Total Issues:** {report.total_issues}",
