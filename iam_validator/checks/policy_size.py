@@ -2,12 +2,21 @@
 
 This check validates that IAM policies don't exceed AWS's maximum size limits.
 AWS enforces different size limits based on policy type:
-- Managed policies: 6,144 characters maximum
-- Inline policies for users: 2,048 characters maximum
-- Inline policies for groups: 5,120 characters maximum
-- Inline policies for roles: 10,240 characters maximum
 
-Note: AWS does not count whitespace when calculating policy size.
+- Managed policies: 6,144 bytes
+- Inline user policies: 2,048 bytes
+- Inline group policies: 5,120 bytes
+- Inline role policies: 10,240 bytes
+- Inline role trust policies: 2,048 bytes
+- Service Control Policies (SCP): 5,120 bytes
+- Resource Control Policies (RCP): 5,120 bytes
+
+Resource-based policies (S3 bucket, SQS, SNS, Lambda, etc.) vary by service and
+are not checked here unless the user configures an explicit limit.
+
+Size is measured as the compact JSON representation (no inter-token whitespace),
+counted in UTF-8 bytes — matching AWS's own measurement. Whitespace inside string
+values (SIDs, condition values) is counted, as AWS counts those characters.
 """
 
 import json
@@ -15,11 +24,23 @@ from typing import TYPE_CHECKING, ClassVar
 
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
-from iam_validator.core.constants import AWS_POLICY_SIZE_LIMITS
+from iam_validator.core.constants import AWS_POLICY_SIZE_LIMITS, AWS_POLICY_TYPE_TO_SIZE_KEY
 from iam_validator.core.models import ValidationIssue
 
 if TYPE_CHECKING:
     from iam_validator.core.models import IAMPolicy
+
+
+# Human-readable descriptions keyed by size-limit key
+_LIMIT_DESCRIPTIONS = {
+    "managed": "managed policy",
+    "inline_user": "inline policy for users",
+    "inline_group": "inline policy for groups",
+    "inline_role": "inline policy for roles",
+    "inline_role_trust": "inline role trust policy",
+    "scp": "Service Control Policy",
+    "rcp": "Resource Control Policy",
+}
 
 
 class PolicySizeCheck(PolicyCheck):
@@ -42,73 +63,88 @@ class PolicySizeCheck(PolicyCheck):
     ) -> list[ValidationIssue]:
         """Execute the policy size check on the entire policy.
 
-        This method calculates the policy size (excluding whitespace) and validates
-        it against AWS limits based on the configured policy type.
+        Calculates the policy's compact-JSON byte size (UTF-8) and validates it
+        against the AWS limit appropriate for the policy type. The limit is
+        resolved in this priority order:
+
+        1. YAML config ``checks.policy_size.config.policy_type`` (explicit
+           override for users who know the deployment target — e.g., a policy
+           headed for an inline user attachment rather than a managed policy).
+        2. The runtime ``policy_type`` kwarg (from ``--policy-type`` or
+           auto-detection) mapped through ``AWS_POLICY_TYPE_TO_SIZE_KEY``.
+        3. Fallback to ``managed`` (6,144 bytes).
 
         Args:
             policy: The complete IAM policy to validate
             policy_file: Path to the policy file (for context/reporting)
             fetcher: AWS service fetcher (unused for this check)
             config: Configuration for this check instance
+            **kwargs: May include ``policy_type`` (AWS policy type) and
+                ``raw_policy_dict`` (original parsed JSON/YAML, preferred for
+                accurate size measurement).
 
         Returns:
             List of ValidationIssue objects if policy exceeds size limits
         """
         del policy_file, fetcher  # Unused
-        issues = []
+        issues: list[ValidationIssue] = []
 
-        # Get the policy type from config (default to managed)
-        policy_type = config.config.get("policy_type", "managed")
-
-        # Get custom limits if provided in config, otherwise use defaults
+        # Resolve size-limit key in priority order.
         size_limits = config.config.get("size_limits", self.DEFAULT_LIMITS.copy())
+        explicit_key = config.config.get("policy_type")
+        if explicit_key is not None:
+            limit_key = explicit_key
+        else:
+            runtime_policy_type = kwargs.get("policy_type", "IDENTITY_POLICY")
+            limit_key = AWS_POLICY_TYPE_TO_SIZE_KEY.get(runtime_policy_type, "managed")
 
-        # Determine the applicable limit
-        limit_key = policy_type
         if limit_key not in size_limits:
-            # If custom policy_type not found, default to managed
+            # User supplied an unknown key — fall back rather than crash.
             limit_key = "managed"
 
         max_size = size_limits[limit_key]
 
-        # Convert policy to compact JSON and calculate size
-        # Compact JSON with separators=(',', ':') already removes inter-token whitespace.
-        # We don't strip whitespace inside string values (e.g. condition values, SIDs)
-        # as AWS counts those characters.
-        policy_json = policy.model_dump(by_alias=True, exclude_none=True)
-        policy_string = json.dumps(policy_json, separators=(",", ":"))
-        policy_size = len(policy_string)
+        # Prefer the raw parsed dict so we measure what AWS would actually
+        # receive, not Pydantic's re-serialized view. Fall back to model_dump.
+        raw_policy_dict = kwargs.get("raw_policy_dict")
+        if raw_policy_dict is not None:
+            policy_json = raw_policy_dict
+        else:
+            policy_json = policy.model_dump(by_alias=True, exclude_none=True)
 
-        # Check if policy exceeds the limit
-        if policy_size > max_size:
-            severity = self.get_severity(config)
+        # Compact JSON strips inter-token whitespace; UTF-8 byte length matches
+        # AWS's measurement (AWS counts bytes, not Unicode codepoints).
+        policy_string = json.dumps(policy_json, separators=(",", ":"), ensure_ascii=False)
+        policy_size = len(policy_string.encode("utf-8"))
 
-            # Calculate percentage over limit
-            percentage_over = ((policy_size - max_size) / max_size) * 100
+        if policy_size <= max_size:
+            return issues
 
-            # Determine policy type description
-            policy_type_desc = {
-                "managed": "managed policy",
-                "inline_user": "inline policy for users",
-                "inline_group": "inline policy for groups",
-                "inline_role": "inline policy for roles",
-            }.get(policy_type, policy_type)
+        severity = self.get_severity(config)
+        percentage_over = ((policy_size - max_size) / max_size) * 100
+        policy_type_desc = _LIMIT_DESCRIPTIONS.get(limit_key, limit_key)
 
-            issues.append(
-                ValidationIssue(
-                    severity=severity,
-                    statement_sid=None,  # Policy-level issue
-                    statement_index=-1,  # -1 indicates policy-level issue
-                    issue_type="policy_size_exceeded",
-                    message=f"Policy size ({policy_size:,} characters) exceeds AWS limit for {policy_type_desc} ({max_size:,} characters)",
-                    suggestion=f"The policy is {policy_size - max_size:,} characters over the limit ({percentage_over:.1f}% too large). Consider:\n"
+        issues.append(
+            ValidationIssue(
+                severity=severity,
+                statement_sid=None,
+                statement_index=-1,  # Policy-level issue
+                issue_type="policy_size_exceeded",
+                message=(
+                    f"Policy size ({policy_size:,} bytes) exceeds AWS limit for "
+                    f"{policy_type_desc} ({max_size:,} bytes)"
+                ),
+                suggestion=(
+                    f"The policy is {policy_size - max_size:,} bytes over the limit "
+                    f"({percentage_over:.1f}% too large). Consider:\n"
                     f"  1. Splitting the policy into multiple smaller policies\n"
                     f"  2. Using more concise action/resource patterns with wildcards\n"
                     f"  3. Removing unnecessary statements or conditions\n"
                     f"  4. For inline policies, consider using managed policies instead\n"
-                    f"\nNote: AWS does not count whitespace in the size calculation.",
-                    line_number=None,
-                )
+                    f"\nNote: AWS does not count whitespace in the size calculation."
+                ),
+                line_number=None,
             )
+        )
 
         return issues

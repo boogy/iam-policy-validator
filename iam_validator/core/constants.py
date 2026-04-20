@@ -32,17 +32,27 @@ MAX_ARN_LENGTH = 2048
 # These limits are enforced by AWS and policies exceeding them will be rejected
 # Note: AWS does not count whitespace when calculating policy size
 
-# Managed policy maximum size (characters, excluding whitespace)
+# Managed policy maximum size (bytes, excluding whitespace)
 MAX_MANAGED_POLICY_SIZE = 6144
 
-# Inline policy maximum size for IAM users (characters, excluding whitespace)
+# Inline policy maximum size for IAM users (bytes, excluding whitespace)
 MAX_INLINE_USER_POLICY_SIZE = 2048
 
-# Inline policy maximum size for IAM groups (characters, excluding whitespace)
+# Inline policy maximum size for IAM groups (bytes, excluding whitespace)
 MAX_INLINE_GROUP_POLICY_SIZE = 5120
 
-# Inline policy maximum size for IAM roles (characters, excluding whitespace)
+# Inline policy maximum size for IAM roles (bytes, excluding whitespace)
 MAX_INLINE_ROLE_POLICY_SIZE = 10240
+
+# Inline policy maximum size for IAM role trust policies (bytes, excluding whitespace).
+# Trust policies are the assume-role policies attached to IAM roles.
+MAX_INLINE_ROLE_TRUST_POLICY_SIZE = 2048
+
+# Service Control Policy maximum size (bytes, excluding whitespace)
+MAX_SCP_SIZE = 5120
+
+# Resource Control Policy maximum size (bytes, excluding whitespace)
+MAX_RCP_SIZE = 5120
 
 # Policy size limits dictionary (for backward compatibility and easy lookup)
 AWS_POLICY_SIZE_LIMITS = {
@@ -50,6 +60,22 @@ AWS_POLICY_SIZE_LIMITS = {
     "inline_user": MAX_INLINE_USER_POLICY_SIZE,
     "inline_group": MAX_INLINE_GROUP_POLICY_SIZE,
     "inline_role": MAX_INLINE_ROLE_POLICY_SIZE,
+    "inline_role_trust": MAX_INLINE_ROLE_TRUST_POLICY_SIZE,
+    "scp": MAX_SCP_SIZE,
+    "rcp": MAX_RCP_SIZE,
+}
+
+# Default mapping from runtime policy type (the `--policy-type` argument or
+# auto-detected type) to the size-limit key in AWS_POLICY_SIZE_LIMITS.
+# Users can override the chosen limit on a per-check basis by setting
+# `checks.policy_size.config.policy_type` in their YAML config (e.g. to use
+# `inline_user` instead of `managed` for an IDENTITY_POLICY).
+AWS_POLICY_TYPE_TO_SIZE_KEY = {
+    "IDENTITY_POLICY": "managed",
+    "RESOURCE_POLICY": "managed",  # conservative default; service-specific limits vary
+    "TRUST_POLICY": "inline_role_trust",
+    "SERVICE_CONTROL_POLICY": "scp",
+    "RESOURCE_CONTROL_POLICY": "rcp",
 }
 
 # ============================================================================
