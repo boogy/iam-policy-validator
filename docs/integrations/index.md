@@ -41,4 +41,12 @@ Integrate IAM Policy Validator into your CI/CD pipelines, AI assistants, and dev
 
     [:octicons-arrow-right-24: MCP Server](mcp-server.md)
 
+-   :material-console-line:{ .lg .middle } **Claude Code Skill**
+
+    ---
+
+    CLI-based Claude Code plugin (no MCP server required)
+
+    [:octicons-arrow-right-24: Claude Code Skill](claude-code-skill.md)
+
 </div>

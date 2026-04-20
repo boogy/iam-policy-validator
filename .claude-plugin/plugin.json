@@ -1,0 +1,20 @@
+{
+  "name": "iam-policy-validator",
+  "version": "1.19.0",
+  "description": "AWS IAM policy validation, analysis, and security auditing via the iam-policy-validator CLI (CLI-based alternative to the MCP server).",
+  "author": {
+    "name": "boogy"
+  },
+  "homepage": "https://boogy.github.io/iam-policy-validator/",
+  "repository": "https://github.com/boogy/iam-policy-validator",
+  "license": "MIT",
+  "keywords": [
+    "aws",
+    "iam",
+    "security",
+    "policy",
+    "validation",
+    "sarif",
+    "github-actions"
+  ]
+}
