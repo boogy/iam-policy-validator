@@ -168,19 +168,21 @@ SECONDS_PER_HOUR = 3600
 # ============================================================================
 
 # AWS services that support Resource Control Policies (RCP).
-# Expanded by AWS after the 2024 launch — as of the most recent update
-# accounts for the following IAM service prefixes:
+# Sourced from the official AWS Organizations documentation. Expanded beyond
+# the 2024 launch set; the current IAM service prefixes are:
 #
-#   - S3 (s3)
-#   - STS (sts)
-#   - SQS (sqs)
-#   - KMS (kms)
-#   - Secrets Manager (secretsmanager)
-#   - Cognito: User Pools (cognito-idp) and Identity Pools (cognito-identity)
-#   - DynamoDB (dynamodb)
-#   - ECR (ecr)
-#   - OpenSearch Service (es — the IAM prefix carried over from Elasticsearch)
-#   - CloudWatch Logs (logs)
+#   - Amazon S3 (s3)
+#   - AWS Security Token Service (sts)
+#   - Amazon SQS (sqs)
+#   - AWS Key Management Service (kms) — note: RCPs do NOT apply to
+#     `kms:RetireGrant` or to AWS-managed keys
+#   - AWS Secrets Manager (secretsmanager)
+#   - Amazon Cognito: User Pools (cognito-idp) and Identity Pools (cognito-identity)
+#   - Amazon DynamoDB (dynamodb)
+#   - Amazon Elastic Container Registry (ecr)
+#   - Amazon OpenSearch Serverless (aoss) — note: this is the serverless
+#     product, not Amazon OpenSearch Service (`es`), which is NOT covered
+#   - Amazon CloudWatch Logs (logs)
 #
 # Reference: https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_rcps.html
 RCP_SUPPORTED_SERVICES = frozenset(
@@ -194,7 +196,7 @@ RCP_SUPPORTED_SERVICES = frozenset(
         "cognito-identity",
         "dynamodb",
         "ecr",
-        "es",
+        "aoss",
         "logs",
     }
 )
