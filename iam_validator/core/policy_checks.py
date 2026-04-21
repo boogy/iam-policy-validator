@@ -78,26 +78,56 @@ def _resolve_policy_type(
     return "IDENTITY_POLICY", "default", None
 
 
+_ALLOWED_SOURCES: frozenset[str] = frozenset({"cli-flag", "config-glob", "auto-detect", "default"})
+_ALLOWED_POLICY_TYPES: frozenset[str] = frozenset(
+    {
+        "IDENTITY_POLICY",
+        "RESOURCE_POLICY",
+        "TRUST_POLICY",
+        "SERVICE_CONTROL_POLICY",
+        "RESOURCE_CONTROL_POLICY",
+    }
+)
+
+
 def _log_resolved_policy_type(policy_file: str, resolved_type: PolicyType, source: str, pattern: str | None) -> None:
     """Emit the single machine-greppable debug line per policy.
 
-    Logs only the filename (not the full path) to avoid leaking absolute
-    paths like ``/home/<user>/`` into debug output.
+    Every logged field is derived from a closed-set allowlist or an integer
+    length — this breaks CodeQL's taint flow from the YAML config into the
+    log sink so ``py/clear-text-logging-sensitive-data`` does not fire on
+    non-sensitive resolution metadata. The raw ``pattern`` glob is not
+    logged (users can inspect their own config); we log its length and a
+    presence flag instead.
 
     Format (one of):
-        policy_type=<TYPE> source=cli-flag file=<name>
-        policy_type=<TYPE> source=config-glob pattern='<pat>' file=<name>
-        policy_type=<TYPE> source=auto-detect file=<name>
-        policy_type=<TYPE> source=default file=<name>
+        policy_type=<TYPE> source=cli-flag file=<basename>
+        policy_type=<TYPE> source=config-glob pattern_present=true pattern_len=<n> file=<basename>
+        policy_type=<TYPE> source=auto-detect file=<basename>
+        policy_type=<TYPE> source=default file=<basename>
     """
     if not logger.isEnabledFor(logging.DEBUG):
         return
+
+    safe_type = resolved_type if resolved_type in _ALLOWED_POLICY_TYPES else "UNKNOWN"
+    safe_source = source if source in _ALLOWED_SOURCES else "unknown"
     file_name = Path(policy_file).name
-    if source == "config-glob" and pattern is not None:
-        message = f"policy_type={resolved_type} source={source} pattern='{pattern}' file={file_name}"
+
+    if safe_source == "config-glob" and pattern is not None:
+        logger.debug(
+            "policy_type=%s source=%s pattern_present=true pattern_len=%d file=%s",
+            safe_type,
+            safe_source,
+            len(pattern),
+            file_name,
+        )
     else:
-        message = f"policy_type={resolved_type} source={source} file={file_name}"
-    logger.debug(message)
+        logger.debug(
+            "policy_type=%s source=%s file=%s",
+            safe_type,
+            safe_source,
+            file_name,
+        )
 
 
 def _should_fail_on_issue(issue: ValidationIssue, fail_on_severities: list[str] | None = None) -> bool:

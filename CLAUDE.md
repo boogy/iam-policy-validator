@@ -60,12 +60,12 @@ Subdirectories contain specialized CLAUDE.md files that extend these rules.
 
 ### Commands (procedural workflows)
 
-| Command               | Purpose                                         |
-| --------------------- | ----------------------------------------------- |
-| `/create-pr`          | Stage commits and push a branch for a PR        |
-| `/create-version-tag` | Bump version in both files, create signed tag   |
-| `/update-changelog`   | Update CHANGELOG.md following Common Changelog  |
-| `/benchmark`          | Run performance benchmarks                      |
+| Command               | Purpose                                        |
+| --------------------- | ---------------------------------------------- |
+| `/create-pr`          | Stage commits and push a branch for a PR       |
+| `/create-version-tag` | Bump version in both files, create signed tag  |
+| `/update-changelog`   | Update CHANGELOG.md following Common Changelog |
+| `/benchmark`          | Run performance benchmarks                     |
 
 ### Skills (reasoning frameworks)
 
@@ -222,7 +222,7 @@ Formatter output (console|json|markdown|sarif|csv|html)
 - When omitted, each policy's type is resolved per-file from:
   `policy_types:` glob mapping → content auto-detect (trust/resource/identity)
   → default `IDENTITY_POLICY`.
-- `--log-level debug` prints one `policy_type=… source=cli-flag|config-glob|auto-detect|default file=…` line per policy for auditing.
+- `--log-level debug` prints one `policy_type=… source=cli-flag|config-glob|auto-detect|default file=<basename>` line per policy for auditing. `config-glob` lines also include `pattern_present=true pattern_len=<n>` (raw glob is not logged).
 
 ### AWS Service Fetcher
 

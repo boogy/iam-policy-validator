@@ -225,7 +225,7 @@ async def test_debug_log_for_auto_detect(tmp_path, caplog):
 
 @pytest.mark.asyncio
 async def test_debug_log_for_glob_match(tmp_path, caplog):
-    """Glob-matched file emits ``source=config-glob pattern='...'``."""
+    """Glob-matched file emits ``source=config-glob pattern_present=true pattern_len=N``."""
     policies_dir = tmp_path / "policies" / "scp"
     policies_dir.mkdir(parents=True)
     policy_file = policies_dir / "org.json"
@@ -249,7 +249,9 @@ async def test_debug_log_for_glob_match(tmp_path, caplog):
     assert len(matches) == 1
     msg = matches[0].getMessage()
     assert "policy_type=SERVICE_CONTROL_POLICY" in msg
-    assert "pattern='**/scp/*.json'" in msg
+    assert "pattern_present=true" in msg
+    assert f"pattern_len={len('**/scp/*.json')}" in msg
+    assert f"file={policy_file.name}" in msg
 
 
 @pytest.mark.asyncio

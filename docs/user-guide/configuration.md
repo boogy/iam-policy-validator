@@ -510,12 +510,12 @@ drives type-specific checks (for example `policy_size` limits and the
   one type of policy.
 - **If `--policy-type` is omitted** — the type is resolved per file in this
   priority order:
-    1. `policy_types:` glob mapping in the config (first match wins).
-    2. Content auto-detection: a trust-shaped statement (Principal + exact
-       `sts:AssumeRole*` action + `Effect: Allow` + no specific resource ARN)
-       resolves to `TRUST_POLICY`; any other Principal/NotPrincipal resolves
-       to `RESOURCE_POLICY`; otherwise `IDENTITY_POLICY`.
-    3. Default fallback: `IDENTITY_POLICY`.
+  1. `policy_types:` glob mapping in the config (first match wins).
+  2. Content auto-detection: a trust-shaped statement (Principal + exact
+     `sts:AssumeRole*` action + `Effect: Allow` + no specific resource ARN)
+     resolves to `TRUST_POLICY`; any other Principal/NotPrincipal resolves
+     to `RESOURCE_POLICY`; otherwise `IDENTITY_POLICY`.
+  3. Default fallback: `IDENTITY_POLICY`.
 
 SCP and RCP cannot be auto-detected from content alone (they look
 structurally identical to identity/resource policies). Use the glob mapping
@@ -545,14 +545,19 @@ Run with `--log-level debug` (or `--verbose`) to see exactly what type each
 policy got and why:
 
 ```
-policy_type=TRUST_POLICY source=cli-flag file=policies/trust.json
-policy_type=SERVICE_CONTROL_POLICY source=config-glob pattern='**/scp/*.json' file=policies/scp/org.json
-policy_type=RESOURCE_POLICY source=auto-detect file=policies/s3-bucket.json
-policy_type=IDENTITY_POLICY source=default file=policies/ro.json
+policy_type=TRUST_POLICY source=cli-flag file=trust.json
+policy_type=SERVICE_CONTROL_POLICY source=config-glob pattern_present=true pattern_len=14 file=org.json
+policy_type=RESOURCE_POLICY source=auto-detect file=s3-bucket.json
+policy_type=IDENTITY_POLICY source=default file=ro.json
 ```
 
-The `source=` token is the same on every line, so you can grep the output
-to audit a run: `iam-validator validate ... --verbose 2>&1 | rg 'source='`.
+Only the file basename is logged (not the absolute path) and the
+`config-glob` line reports `pattern_present=true` plus `pattern_len=<n>`
+instead of the raw glob — this keeps the debug output free of
+user-controlled content while still letting you grep by source:
+`iam-validator validate ... --verbose 2>&1 | rg 'source='`. The glob
+itself is already visible in your own `iam-validator.yaml`, so there is
+no information loss for auditing.
 
 ## Full Reference
 
