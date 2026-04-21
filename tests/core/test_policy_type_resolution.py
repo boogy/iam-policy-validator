@@ -192,7 +192,7 @@ async def test_debug_log_for_cli_flag(tmp_path, caplog):
     matches = [r for r in caplog.records if "source=cli-flag" in r.getMessage()]
     assert len(matches) == 1
     assert "policy_type=TRUST_POLICY" in matches[0].getMessage()
-    assert f"file={policy_file}" in matches[0].getMessage()
+    assert f"file={policy_file.name}" in matches[0].getMessage()
 
 
 @pytest.mark.asyncio

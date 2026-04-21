@@ -39,10 +39,8 @@ class MarkdownFormatter(OutputFormatter):
             "# IAM Policy Validation Report\n",
             "## Summary",
             f"**Total Policies:** {report.total_policies}",
-            f"**Policies with Errors (AWS-invalid):** {report.policies_with_errors} "
-            f"{'❌' if report.policies_with_errors > 0 else '✅'}",
-            f"**Policies with Findings:** {report.policies_with_findings} "
-            f"{'⚠️' if report.policies_with_findings > 0 else '✨'}",
+            f"**Policies with Errors (AWS-invalid):** {report.policies_with_errors} {'❌' if report.policies_with_errors > 0 else '✅'}",
+            f"**Policies with Findings:** {report.policies_with_findings} {'⚠️' if report.policies_with_findings > 0 else '✨'}",
             "",
             "_Invalid = structurally broken (AWS would reject). "
             + "Findings = security or best-practice issues on a valid policy._",

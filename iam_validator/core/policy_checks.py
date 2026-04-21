@@ -81,22 +81,23 @@ def _resolve_policy_type(
 def _log_resolved_policy_type(policy_file: str, resolved_type: PolicyType, source: str, pattern: str | None) -> None:
     """Emit the single machine-greppable debug line per policy.
 
+    Logs only the filename (not the full path) to avoid leaking absolute
+    paths like ``/home/<user>/`` into debug output.
+
     Format (one of):
-        policy_type=<TYPE> source=cli-flag file=<path>
-        policy_type=<TYPE> source=config-glob pattern='<pat>' file=<path>
-        policy_type=<TYPE> source=auto-detect file=<path>
-        policy_type=<TYPE> source=default file=<path>
+        policy_type=<TYPE> source=cli-flag file=<name>
+        policy_type=<TYPE> source=config-glob pattern='<pat>' file=<name>
+        policy_type=<TYPE> source=auto-detect file=<name>
+        policy_type=<TYPE> source=default file=<name>
     """
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+    file_name = Path(policy_file).name
     if source == "config-glob" and pattern is not None:
-        logger.debug(
-            "policy_type=%s source=%s pattern='%s' file=%s",
-            resolved_type,
-            source,
-            pattern,
-            policy_file,
-        )
+        message = f"policy_type={resolved_type} source={source} pattern='{pattern}' file={file_name}"
     else:
-        logger.debug("policy_type=%s source=%s file=%s", resolved_type, source, policy_file)
+        message = f"policy_type={resolved_type} source={source} file={file_name}"
+    logger.debug(message)
 
 
 def _should_fail_on_issue(issue: ValidationIssue, fail_on_severities: list[str] | None = None) -> bool:
