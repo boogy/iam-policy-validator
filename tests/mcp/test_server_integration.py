@@ -60,32 +60,36 @@ class TestMCPServer:
 class TestServerTools:
     """Test that all expected tools are registered."""
 
-    def test_validation_tools_registered(self):
+    @pytest.mark.asyncio
+    async def test_validation_tools_registered(self):
         """Validation tools should be registered."""
-        tool_names = [t.name for t in mcp._tool_manager._tools.values()]
+        tool_names = [t.name for t in await mcp.list_tools()]
         assert "validate_policy" in tool_names
         assert "quick_validate" in tool_names
         assert "validate_policies_batch" in tool_names
 
-    def test_generation_tools_registered(self):
+    @pytest.mark.asyncio
+    async def test_generation_tools_registered(self):
         """Generation tools should be registered."""
-        tool_names = [t.name for t in mcp._tool_manager._tools.values()]
+        tool_names = [t.name for t in await mcp.list_tools()]
         assert "generate_policy_from_template" in tool_names
         assert "build_minimal_policy" in tool_names
         assert "suggest_actions" in tool_names
         assert "list_templates" in tool_names
 
-    def test_query_tools_registered(self):
+    @pytest.mark.asyncio
+    async def test_query_tools_registered(self):
         """Query tools should be registered."""
-        tool_names = [t.name for t in mcp._tool_manager._tools.values()]
+        tool_names = [t.name for t in await mcp.list_tools()]
         assert "query_service_actions" in tool_names
         assert "query_action_details" in tool_names
         assert "expand_wildcard_action" in tool_names
         assert "list_checks" in tool_names
 
-    def test_org_config_tools_registered(self):
+    @pytest.mark.asyncio
+    async def test_org_config_tools_registered(self):
         """Organization config tools should be registered."""
-        tool_names = [t.name for t in mcp._tool_manager._tools.values()]
+        tool_names = [t.name for t in await mcp.list_tools()]
         assert "set_organization_config" in tool_names
         assert "get_organization_config" in tool_names
         assert "clear_organization_config" in tool_names
@@ -97,32 +101,25 @@ class TestServerResources:
     @pytest.mark.asyncio
     async def test_templates_resource(self):
         """Templates resource should return JSON list."""
-        # Get the resource function
-        resources = mcp._resource_manager._resources
-        templates_resource = None
-        for uri, resource in resources.items():
-            if "templates" in str(uri):
-                templates_resource = resource
-                break
-
-        if templates_resource:
-            content = await templates_resource.fn()
-            data = json.loads(content)
-            assert isinstance(data, list)
-            assert len(data) > 0
+        templates_resource = next(
+            (r for r in await mcp.list_resources() if "templates" in str(r.uri)),
+            None,
+        )
+        assert templates_resource is not None
+        content = await templates_resource.fn()
+        data = json.loads(content)
+        assert isinstance(data, list)
+        assert len(data) > 0
 
     @pytest.mark.asyncio
     async def test_checks_resource(self):
         """Checks resource should return JSON list."""
-        resources = mcp._resource_manager._resources
-        checks_resource = None
-        for uri, resource in resources.items():
-            if "checks" in str(uri):
-                checks_resource = resource
-                break
-
-        if checks_resource:
-            content = await checks_resource.fn()
-            data = json.loads(content)
-            assert isinstance(data, list)
-            assert len(data) >= 15
+        checks_resource = next(
+            (r for r in await mcp.list_resources() if "checks" in str(r.uri)),
+            None,
+        )
+        assert checks_resource is not None
+        content = await checks_resource.fn()
+        data = json.loads(content)
+        assert isinstance(data, list)
+        assert len(data) >= 15
