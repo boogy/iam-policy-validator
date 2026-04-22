@@ -78,7 +78,6 @@ def _resolve_policy_type(
     return "IDENTITY_POLICY", "default", None
 
 
-_ALLOWED_SOURCES: frozenset[str] = frozenset({"cli-flag", "config-glob", "auto-detect", "default"})
 _ALLOWED_POLICY_TYPES: frozenset[str] = frozenset(
     {
         "IDENTITY_POLICY",
@@ -110,24 +109,25 @@ def _log_resolved_policy_type(policy_file: str, resolved_type: PolicyType, sourc
         return
 
     safe_type = resolved_type if resolved_type in _ALLOWED_POLICY_TYPES else "UNKNOWN"
-    safe_source = source if source in _ALLOWED_SOURCES else "unknown"
     file_name = Path(policy_file).name
 
-    if safe_source == "config-glob" and pattern is not None:
+    if source == "cli-flag":
+        logger.debug("policy_type=%s source=cli-flag file=%s", safe_type, file_name)
+    elif source == "config-glob" and pattern is not None:
         logger.debug(
-            "policy_type=%s source=%s pattern_present=true pattern_len=%d file=%s",
+            "policy_type=%s source=config-glob pattern_present=true pattern_len=%d file=%s",
             safe_type,
-            safe_source,
             len(pattern),
             file_name,
         )
+    elif source == "config-glob":
+        logger.debug("policy_type=%s source=config-glob file=%s", safe_type, file_name)
+    elif source == "auto-detect":
+        logger.debug("policy_type=%s source=auto-detect file=%s", safe_type, file_name)
+    elif source == "default":
+        logger.debug("policy_type=%s source=default file=%s", safe_type, file_name)
     else:
-        logger.debug(
-            "policy_type=%s source=%s file=%s",
-            safe_type,
-            safe_source,
-            file_name,
-        )
+        logger.debug("policy_type=%s source=unknown file=%s", safe_type, file_name)
 
 
 def _should_fail_on_issue(issue: ValidationIssue, fail_on_severities: list[str] | None = None) -> bool:
