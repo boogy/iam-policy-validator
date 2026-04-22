@@ -24,6 +24,10 @@ class TestConditionKeyValidationCheck:
     def fetcher(self):
         mock = MagicMock(spec=AWSServiceFetcher)
         mock.validate_condition_key = AsyncMock()
+        # Default: all actions exist. Override in specific tests for non-existent actions.
+        mock.validate_actions_batch = AsyncMock(
+            side_effect=lambda actions, **_: {a: (True, None, False) for a in actions}
+        )
         return mock
 
     @pytest.fixture
@@ -97,6 +101,44 @@ class TestConditionKeyValidationCheck:
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
+
+    @pytest.mark.asyncio
+    async def test_skips_nonexistent_actions(self, check, fetcher, config):
+        """Non-existent actions are skipped — `action_validation` handles those."""
+        fetcher.validate_actions_batch = AsyncMock(
+            return_value={"apigateway:TagResource": (False, "Action not found", False)}
+        )
+        statement = Statement(
+            Sid="APIGatewayModify",
+            Effect="Allow",
+            Action=["apigateway:TagResource"],
+            Resource=["arn:aws:apigateway:*::/tags/*"],
+            Condition={"StringEquals": {"aws:ResourceTag/owner": "alice"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 0
+        fetcher.validate_condition_key.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mix_of_existing_and_nonexistent_actions(self, check, fetcher, config):
+        """Only real actions are validated; fake ones are silently skipped here."""
+        fetcher.validate_actions_batch = AsyncMock(
+            return_value={
+                "s3:GetObject": (True, None, False),
+                "s3:FakeAction": (False, "Action not found", False),
+            }
+        )
+        fetcher.validate_condition_key.return_value = ConditionKeyValidationResult(is_valid=True)
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject", "s3:FakeAction"],
+            Resource=["arn:aws:s3:::bucket/*"],
+            Condition={"StringEquals": {"s3:prefix": "documents/"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 0
+        fetcher.validate_condition_key.assert_awaited_once()
+        assert fetcher.validate_condition_key.await_args.args[0] == "s3:GetObject"
 
     @pytest.mark.asyncio
     async def test_global_condition_key_with_warning(self, check, fetcher, config):
@@ -284,6 +326,10 @@ class TestIfExistsFalsePositiveSuppression:
     def fetcher(self):
         mock = MagicMock(spec=AWSServiceFetcher)
         mock.validate_condition_key = AsyncMock()
+        # Default: all actions exist. Override in specific tests for non-existent actions.
+        mock.validate_actions_batch = AsyncMock(
+            side_effect=lambda actions, **_: {a: (True, None, False) for a in actions}
+        )
         return mock
 
     @pytest.fixture
@@ -397,6 +443,10 @@ class TestConditionKeyIssueAggregation:
     def fetcher(self):
         mock = MagicMock(spec=AWSServiceFetcher)
         mock.validate_condition_key = AsyncMock()
+        # Default: all actions exist. Override in specific tests for non-existent actions.
+        mock.validate_actions_batch = AsyncMock(
+            side_effect=lambda actions, **_: {a: (True, None, False) for a in actions}
+        )
         return mock
 
     @pytest.fixture

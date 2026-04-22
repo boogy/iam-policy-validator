@@ -38,6 +38,13 @@ class ConditionKeyValidationCheck(PolicyCheck):
         actions = statement.get_actions()
         resources = statement.get_resources()
 
+        # Skip actions that don't exist in AWS — `action_validation` already flags those,
+        # and running condition-key validation against a non-existent action produces
+        # misleading cascading findings (e.g. "key X not supported by action Y" when Y
+        # itself doesn't exist). Wildcard patterns that match at least one real action
+        # return is_valid=True and are preserved.
+        actions_to_check = await self._filter_existing_actions(actions, fetcher)
+
         # Extract all condition keys from all condition operators
         for operator, conditions in statement.condition.items():
             operator_has_ifexists = has_if_exists_suffix(operator)
@@ -48,7 +55,7 @@ class ConditionKeyValidationCheck(PolicyCheck):
                 first_warning_result = None
 
                 # Validate this condition key against each action in the statement
-                for action in actions:
+                for action in actions_to_check:
                     # Skip wildcard actions
                     if action == "*":
                         continue
@@ -123,6 +130,35 @@ class ConditionKeyValidationCheck(PolicyCheck):
                     )
 
         return self._aggregate_invalid_key_issues(issues)
+
+    @staticmethod
+    async def _filter_existing_actions(
+        actions: list[str],
+        fetcher: AWSServiceFetcher,
+    ) -> list[str]:
+        """Return only actions that exist in AWS (or are the bare `*` wildcard).
+
+        Non-existent actions are already flagged by `action_validation`. Passing them
+        to `validate_condition_key` produces cascading findings that blame the
+        condition key for a problem that belongs to the action itself.
+        """
+        if not actions:
+            return actions
+
+        non_wildcard = [a for a in actions if a != "*"]
+        if not non_wildcard:
+            return actions
+
+        results = await fetcher.validate_actions_batch(non_wildcard)
+        kept: list[str] = []
+        for action in actions:
+            if action == "*":
+                kept.append(action)
+                continue
+            is_valid, _error, _is_wildcard = results.get(action, (True, None, False))
+            if is_valid:
+                kept.append(action)
+        return kept
 
     @staticmethod
     def _condition_key_base(condition_key: str) -> str:
