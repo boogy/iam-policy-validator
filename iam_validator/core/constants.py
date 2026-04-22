@@ -32,17 +32,27 @@ MAX_ARN_LENGTH = 2048
 # These limits are enforced by AWS and policies exceeding them will be rejected
 # Note: AWS does not count whitespace when calculating policy size
 
-# Managed policy maximum size (characters, excluding whitespace)
+# Managed policy maximum size (bytes, excluding whitespace)
 MAX_MANAGED_POLICY_SIZE = 6144
 
-# Inline policy maximum size for IAM users (characters, excluding whitespace)
+# Inline policy maximum size for IAM users (bytes, excluding whitespace)
 MAX_INLINE_USER_POLICY_SIZE = 2048
 
-# Inline policy maximum size for IAM groups (characters, excluding whitespace)
+# Inline policy maximum size for IAM groups (bytes, excluding whitespace)
 MAX_INLINE_GROUP_POLICY_SIZE = 5120
 
-# Inline policy maximum size for IAM roles (characters, excluding whitespace)
+# Inline policy maximum size for IAM roles (bytes, excluding whitespace)
 MAX_INLINE_ROLE_POLICY_SIZE = 10240
+
+# Inline policy maximum size for IAM role trust policies (bytes, excluding whitespace).
+# Trust policies are the assume-role policies attached to IAM roles.
+MAX_INLINE_ROLE_TRUST_POLICY_SIZE = 2048
+
+# Service Control Policy maximum size (bytes, excluding whitespace)
+MAX_SCP_SIZE = 5120
+
+# Resource Control Policy maximum size (bytes, excluding whitespace)
+MAX_RCP_SIZE = 5120
 
 # Policy size limits dictionary (for backward compatibility and easy lookup)
 AWS_POLICY_SIZE_LIMITS = {
@@ -50,6 +60,22 @@ AWS_POLICY_SIZE_LIMITS = {
     "inline_user": MAX_INLINE_USER_POLICY_SIZE,
     "inline_group": MAX_INLINE_GROUP_POLICY_SIZE,
     "inline_role": MAX_INLINE_ROLE_POLICY_SIZE,
+    "inline_role_trust": MAX_INLINE_ROLE_TRUST_POLICY_SIZE,
+    "scp": MAX_SCP_SIZE,
+    "rcp": MAX_RCP_SIZE,
+}
+
+# Default mapping from runtime policy type (the `--policy-type` argument or
+# auto-detected type) to the size-limit key in AWS_POLICY_SIZE_LIMITS.
+# Users can override the chosen limit on a per-check basis by setting
+# `checks.policy_size.config.policy_type` in their YAML config (e.g. to use
+# `inline_user` instead of `managed` for an IDENTITY_POLICY).
+AWS_POLICY_TYPE_TO_SIZE_KEY = {
+    "IDENTITY_POLICY": "managed",
+    "RESOURCE_POLICY": "managed",  # conservative default; service-specific limits vary
+    "TRUST_POLICY": "inline_role_trust",
+    "SERVICE_CONTROL_POLICY": "scp",
+    "RESOURCE_CONTROL_POLICY": "rcp",
 }
 
 # ============================================================================
@@ -141,16 +167,37 @@ SECONDS_PER_HOUR = 3600
 # Policy Type Restrictions
 # ============================================================================
 
-# AWS services that support Resource Control Policies (RCP)
-# These services can have wildcard actions in RCP policy statements
+# AWS services that support Resource Control Policies (RCP).
+# Sourced from the official AWS Organizations documentation. Expanded beyond
+# the 2024 launch set; the current IAM service prefixes are:
+#
+#   - Amazon S3 (s3)
+#   - AWS Security Token Service (sts)
+#   - Amazon SQS (sqs)
+#   - AWS Key Management Service (kms) — note: RCPs do NOT apply to
+#     `kms:RetireGrant` or to AWS-managed keys
+#   - AWS Secrets Manager (secretsmanager)
+#   - Amazon Cognito: User Pools (cognito-idp) and Identity Pools (cognito-identity)
+#   - Amazon DynamoDB (dynamodb)
+#   - Amazon Elastic Container Registry (ecr)
+#   - Amazon OpenSearch Serverless (aoss) — note: this is the serverless
+#     product, not Amazon OpenSearch Service (`es`), which is NOT covered
+#   - Amazon CloudWatch Logs (logs)
+#
 # Reference: https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_rcps.html
 RCP_SUPPORTED_SERVICES = frozenset(
     {
         "s3",
         "sts",
         "sqs",
-        "secretsmanager",
         "kms",
+        "secretsmanager",
+        "cognito-idp",
+        "cognito-identity",
+        "dynamodb",
+        "ecr",
+        "aoss",
+        "logs",
     }
 )
 

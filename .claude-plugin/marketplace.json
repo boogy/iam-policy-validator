@@ -1,0 +1,24 @@
+{
+  "name": "iam-policy-validator",
+  "owner": {
+    "name": "boogy",
+    "url": "https://github.com/boogy"
+  },
+  "metadata": {
+    "description": "Claude Code skill for validating and auditing AWS IAM policies via the iam-policy-validator CLI.",
+    "version": "1.19.0"
+  },
+  "plugins": [
+    {
+      "name": "iam-policy-validator",
+      "source": "./",
+      "description": "AWS IAM policy validation, analysis, and security auditing. Provides a SKILL.md that teaches Claude Code how to use the iam-validator CLI to check policies against 22 built-in checks, run AWS Access Analyzer, query AWS service definitions, and post findings to GitHub PRs.",
+      "version": "1.19.0",
+      "author": {
+        "name": "boogy"
+      },
+      "homepage": "https://boogy.github.io/iam-policy-validator/",
+      "keywords": ["aws", "iam", "security", "policy", "validation"]
+    }
+  ]
+}

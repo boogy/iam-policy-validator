@@ -15,7 +15,6 @@ We appreciate responsible disclosure of security vulnerabilities. If you discove
 Instead, please report security issues via one of these methods:
 
 1. **GitHub Security Advisories** (Preferred)
-
    - Go to the [Security Advisories page](https://github.com/boogy/iam-policy-validator/security/advisories)
    - Click "Report a vulnerability"
    - Provide detailed information about the vulnerability

@@ -319,27 +319,29 @@ class HTMLFormatter(OutputFormatter):
     def _render_summary(self, report: ValidationReport, include_charts: bool) -> str:
         """Render summary section with statistics."""
         total_issues = report.total_issues
+        policies_with_errors = report.policies_with_errors
+        policies_with_findings = report.policies_with_findings
+        errors_color = "var(--error-color)" if policies_with_errors > 0 else "var(--success-color)"
+        findings_color = "var(--warning-color)" if policies_with_findings > 0 else "var(--success-color)"
 
         html_parts = [
             f"""
         <section class="summary">
             <h2>Summary</h2>
+            <p class="summary-note"><em>Errors = structurally broken (AWS would reject).
+            Findings = security or best-practice issues on a valid policy.</em></p>
             <div class="summary-grid">
                 <div class="stat-card">
                     <div class="stat-value">{report.total_policies}</div>
                     <div class="stat-label">Total Policies</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" style="color: var(--success-color)">{report.valid_policies}</div>
-                    <div class="stat-label">Valid (IAM)</div>
+                    <div class="stat-value" style="color: {errors_color}">{policies_with_errors}</div>
+                    <div class="stat-label">Policies with Errors (AWS-invalid)</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" style="color: var(--error-color)">{report.invalid_policies}</div>
-                    <div class="stat-label">Invalid (IAM)</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value" style="color: var(--warning-color)">{report.policies_with_security_issues}</div>
-                    <div class="stat-label">Security Findings</div>
+                    <div class="stat-value" style="color: {findings_color}">{policies_with_findings}</div>
+                    <div class="stat-label">Policies with Findings</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value">{total_issues}</div>

@@ -19,6 +19,7 @@
 - [What Does It Check?](#what-does-it-check)
 - [Installation & Usage](#installation--usage)
 - [MCP Server](#mcp-server)
+- [Claude Code Skill](#claude-code-skill)
 - [AWS Access Analyzer (Optional)](#aws-access-analyzer-optional)
 - [Comparison with Other Tools](#comparison-with-other-tools)
 - [Documentation](#documentation)
@@ -394,7 +395,10 @@ iam-validator validate --path policies/
 # With AWS Access Analyzer (requires AWS credentials)
 iam-validator analyze --path policies/ --run-all-checks
 
-# Different policy types
+# Policy type auto-detection (mix identity, trust, resource policies in one run)
+iam-validator validate --path policies/
+
+# Or pin a single policy type explicitly
 iam-validator validate --path trust-policies/ --policy-type TRUST_POLICY
 
 # Output formats
@@ -494,6 +498,19 @@ See the [MCP Server Documentation](https://boogy.github.io/iam-policy-validator/
 
 ---
 
+## Claude Code Skill
+
+Prefer the CLI over running an MCP server? Install the official [Claude Code](https://docs.claude.com/en/docs/claude-code) skill. It teaches Claude Code how to drive the `iam-validator` CLI for validation, analysis, and AWS service queries — no MCP process required.
+
+```text
+/plugin marketplace add boogy/iam-policy-validator
+/plugin install iam-policy-validator@iam-policy-validator
+```
+
+See the [Claude Code Skill Documentation](https://boogy.github.io/iam-policy-validator/integrations/claude-code-skill/) for details.
+
+---
+
 ## AWS Access Analyzer (Optional)
 
 Optionally enable AWS Access Analyzer to validate policy syntax, then perform security checks on top of that validation:
@@ -553,6 +570,7 @@ iam-validator analyze --path new-policy.json \
 - [GitHub Actions Guide](https://boogy.github.io/iam-policy-validator/integrations/github-actions/) - CI/CD integration
 - [Python Library Guide](https://boogy.github.io/iam-policy-validator/developer-guide/sdk/) - Use as Python package
 - [MCP Server Guide](https://boogy.github.io/iam-policy-validator/integrations/mcp-server/) - AI assistant integration
+- [Claude Code Skill Guide](https://boogy.github.io/iam-policy-validator/integrations/claude-code-skill/) - CLI-based Claude Code plugin
 - [Trust Policy Examples](https://github.com/boogy/iam-policy-validator/tree/main/examples/trust-policies) - Trust policy validation examples
 - [Configuration Examples](https://github.com/boogy/iam-policy-validator/tree/main/examples/configs) - Config file templates
 - [Custom Checks](https://boogy.github.io/iam-policy-validator/developer-guide/custom-checks/) - Add your own validation rules

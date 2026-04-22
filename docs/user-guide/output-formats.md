@@ -179,31 +179,21 @@ iam-validator validate --path policy.json --format markdown
 
 ## Summary
 
-| Metric           | Value |
-| ---------------- | ----- |
-| Total Policies   | 1     |
-| Valid Policies   | 0     |
-| Invalid Policies | 1     |
-| Total Issues     | 2     |
+**Total Policies:** 1
+**Policies with Errors (AWS-invalid):** 0 ✅
+**Policies with Findings:** 1 ⚠️
 
-## Results
+_Invalid = structurally broken (AWS would reject). Findings = security or best-practice issues on a valid policy._
 
-### policy.json
+## Issue Breakdown
 
-**Status:** Invalid
-
-#### Issues
-
-| Severity | Type              | Message                                                                   |
-| -------- | ----------------- | ------------------------------------------------------------------------- |
-| high     | service_wildcard  | Statement uses service wildcard 'iam:\*' which grants all IAM permissions |
-| medium   | wildcard_resource | Statement applies to all resources (\*)                                   |
-
-**Suggestions:**
-
-- Replace `iam:*` with specific actions needed for your use case
-- Replace wildcard with specific resource ARNs
+**Total Issues:** 2
+**Validity Issues:** 0 (error/warning/info)
+**Security Issues:** 2 (critical/high/medium/low)
 ```
+
+!!! note "Errors vs. Findings"
+    The summary separates **errors** (structurally invalid — AWS would reject the policy) from **findings** (security or best-practice issues on an otherwise valid policy). A policy can appear in both counts when it has issues of both kinds. The legacy `invalid_policies` and `policies_with_security_issues` fields remain on the `ValidationReport` JSON output for backward compatibility; new consumers should prefer `policies_with_errors` and `policies_with_findings`.
 
 **Use Cases:**
 

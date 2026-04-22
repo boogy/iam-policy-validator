@@ -158,18 +158,22 @@ class ReportGenerator:
         # Summary panel
         summary_text = Text()
         summary_text.append(f"Total Policies: {report.total_policies}\n")
-        summary_text.append(f"Valid: {report.valid_policies} ", style="green")
 
-        # Show invalid policies (IAM validity issues)
-        if report.invalid_policies > 0:
-            summary_text.append(f"Invalid: {report.invalid_policies} ", style="red")
+        policies_with_errors = report.policies_with_errors
+        policies_with_findings = report.policies_with_findings
+        # A "clean" policy has no issues at all (neither errors nor findings).
+        clean_policies = sum(1 for r in report.results if not r.issues)
 
-        # Show policies with security findings (separate from validity)
-        if report.policies_with_security_issues > 0:
-            summary_text.append(
-                f"Security Findings: {report.policies_with_security_issues} ",
-                style="yellow",
-            )
+        summary_text.append(f"Clean: {clean_policies} ", style="green")
+
+        # Policies with structural errors (AWS-invalid)
+        if policies_with_errors > 0:
+            summary_text.append(f"With Errors: {policies_with_errors} ", style="red")
+
+        # Policies with findings (security/best-practice non-error issues).
+        # May overlap with "With Errors" when a policy has both.
+        if policies_with_findings > 0:
+            summary_text.append(f"With Findings: {policies_with_findings} ", style="yellow")
 
         summary_text.append("\n")
 
@@ -200,15 +204,21 @@ class ReportGenerator:
             self._print_policy_result(result)
 
         # Final status
-        if report.invalid_policies == 0:
+        policies_with_errors = report.policies_with_errors
+        policies_with_findings = report.policies_with_findings
+        if policies_with_errors == 0 and policies_with_findings == 0:
+            self.console.print(f"\n[green]✓ All {report.total_policies} policies are clean![/green]")
+        elif policies_with_errors == 0:
             self.console.print(
-                f"\n[green]✓ All {report.valid_policies} policies are valid![/green]"
-                f"\n[yellow]⚠ Issues found: {report.total_issues}[/yellow]"
-                if report.total_issues > 0
-                else ""
+                f"\n[green]✓ All policies are structurally valid[/green]"
+                f"\n[yellow]⚠ {policies_with_findings} with findings · {report.total_issues} issues total[/yellow]"
             )
         else:
-            self.console.print(f"\n[red]✗ {report.invalid_policies} policies have issues[/red]")
+            parts = [f"\n[red]✗ {policies_with_errors} AWS-invalid (structural errors)[/red]"]
+            if policies_with_findings > 0:
+                parts.append(f"[yellow]⚠ {policies_with_findings} with findings[/yellow]")
+            parts.append(f"[dim]{report.total_issues} issues total[/dim]")
+            self.console.print("\n".join(parts))
 
     def _print_policy_result(self, result: PolicyValidationResult) -> None:
         """Print results for a single policy."""
@@ -483,13 +493,26 @@ class ReportGenerator:
         lines.append("")
 
         # Summary section
+        policies_with_errors = report.policies_with_errors
+        policies_with_findings = report.policies_with_findings
+
         lines.append("## 📊 Summary")
+        lines.append("")
+        lines.append(
+            "> _**Invalid** = structurally broken (AWS would reject)._ "
+            "_**Findings** = security or best-practice issues on a valid policy._"
+        )
         lines.append("")
         lines.append("| Metric | Count | Status |")
         lines.append("|--------|------:|:------:|")
         lines.append(f"| **Total Policies Analyzed** | {report.total_policies} | 📋 |")
-        lines.append(f"| **Valid Policies** | {report.valid_policies} | ✅ |")
-        lines.append(f"| **Invalid Policies** | {report.invalid_policies} | ❌ |")
+        lines.append(
+            f"| **Policies with Errors (AWS-invalid)** | {policies_with_errors} | "
+            f"{'❌' if policies_with_errors > 0 else '✅'} |"
+        )
+        lines.append(
+            f"| **Policies with Findings** | {policies_with_findings} | {'⚠️' if policies_with_findings > 0 else '✨'} |"
+        )
         lines.append(f"| **Total Issues Found** | {report.total_issues} | {'⚠️' if report.total_issues > 0 else '✨'} |")
         if ignored_count > 0:
             lines.append(f"| **Ignored Findings** | {ignored_count} | 🔕 |")
@@ -754,13 +777,26 @@ class ReportGenerator:
         lines.append("")
 
         # Summary section with enhanced table
+        policies_with_errors = report.policies_with_errors
+        policies_with_findings = report.policies_with_findings
+
         lines.append("## 📊 Summary")
+        lines.append("")
+        lines.append(
+            "> _**Invalid** = structurally broken (AWS would reject)._ "
+            "_**Findings** = security or best-practice issues on a valid policy._"
+        )
         lines.append("")
         lines.append("| Metric | Count | Status |")
         lines.append("|--------|------:|:------:|")
         lines.append(f"| **Total Policies Analyzed** | {report.total_policies} | 📋 |")
-        lines.append(f"| **Valid Policies** | {report.valid_policies} | ✅ |")
-        lines.append(f"| **Invalid Policies** | {report.invalid_policies} | ❌ |")
+        lines.append(
+            f"| **Policies with Errors (AWS-invalid)** | {policies_with_errors} | "
+            f"{'❌' if policies_with_errors > 0 else '✅'} |"
+        )
+        lines.append(
+            f"| **Policies with Findings** | {policies_with_findings} | {'⚠️' if policies_with_findings > 0 else '✨'} |"
+        )
         lines.append(f"| **Total Issues Found** | {report.total_issues} | {'⚠️' if report.total_issues > 0 else '✨'} |")
         if ignored_count > 0:
             lines.append(f"| **Ignored Findings** | {ignored_count} | 🔕 |")
@@ -837,7 +873,10 @@ class ReportGenerator:
         available_length = max_length - base_length
 
         # Detailed findings
-        if report.invalid_policies > 0:
+        # Gate on total_issues (not invalid_policies) so policies with only
+        # finding-severity issues (e.g., high/medium/low) also get their details
+        # rendered when fail_on_severities doesn't include those severities.
+        if report.total_issues > 0:
             details_lines = []
             details_lines.append("## 📝 Detailed Findings")
             details_lines.append("")

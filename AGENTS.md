@@ -33,18 +33,15 @@ plain markdown files that any AI agent can read and follow — not Claude Code s
 To use a workflow: read the corresponding file and follow its instructions, replacing
 `$ARGUMENTS` with the user's input.
 
-| Workflow            | File                                                                               | Purpose                                          |
-| ------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------ |
-| **Add Check**       | [`.claude/commands/add-check.md`](.claude/commands/add-check.md)                   | Scaffold a new IAM policy validation check       |
-| **Test Check**      | [`.claude/commands/test-check.md`](.claude/commands/test-check.md)                 | Run tests for a specific check                   |
-| **Debug Check**     | [`.claude/commands/debug-check.md`](.claude/commands/debug-check.md)               | Debug a specific check with verbose output       |
-| **Run Check**       | [`.claude/commands/run-check.md`](.claude/commands/run-check.md)                   | Validate a policy file                           |
-| **Review**          | [`.claude/commands/review.md`](.claude/commands/review.md)                         | Comprehensive code review of recent changes      |
-| **Fix Issue**       | [`.claude/commands/fix-issue.md`](.claude/commands/fix-issue.md)                   | Analyze and fix a GitHub issue                   |
-| **Create PR**       | [`.claude/commands/create-pr.md`](.claude/commands/create-pr.md)                   | Create a pull request with current changes       |
-| **Version Tag**     | [`.claude/commands/create-version-tag.md`](.claude/commands/create-version-tag.md) | Bump version and create annotated tag            |
-| **Benchmark**       | [`.claude/commands/benchmark.md`](.claude/commands/benchmark.md)                   | Run performance benchmarks                       |
-| **Generate Policy** | [`.claude/commands/generate-policy.md`](.claude/commands/generate-policy.md)       | Generate IAM policy from template or description |
+| Workflow        | File                                                                               | Purpose                                    |
+| --------------- | ---------------------------------------------------------------------------------- | ------------------------------------------ |
+| **Add Check**   | [`.claude/skills/add-check/SKILL.md`](.claude/skills/add-check/SKILL.md)           | Scaffold a new IAM policy validation check |
+| **Review**      | [`.claude/skills/review/SKILL.md`](.claude/skills/review/SKILL.md)                 | Comprehensive code review of recent changes |
+| **Fix Issue**   | [`.claude/skills/fix-issue/SKILL.md`](.claude/skills/fix-issue/SKILL.md)           | Analyze and fix a GitHub issue             |
+| **Create PR**   | [`.claude/commands/create-pr.md`](.claude/commands/create-pr.md)                   | Stage commits and push a branch for a PR   |
+| **Version Tag** | [`.claude/commands/create-version-tag.md`](.claude/commands/create-version-tag.md) | Bump version and create a signed tag       |
+| **Benchmark**   | [`.claude/commands/benchmark.md`](.claude/commands/benchmark.md)                   | Run performance benchmarks                 |
+| **Update CHANGELOG** | [`.claude/commands/update-changelog.md`](.claude/commands/update-changelog.md) | Update CHANGELOG.md following Common Changelog |
 
 **Example**: If the user asks "scaffold a new check called `vpc_restriction`", read
 `.claude/commands/add-check.md` and follow its steps with `$ARGUMENTS = vpc_restriction`.

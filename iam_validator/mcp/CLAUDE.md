@@ -11,7 +11,7 @@ The MCP (Model Context Protocol) module provides a FastMCP server that exposes t
 
 **Key Features**:
 
-- 25+ MCP tools across validation, generation, query, and organization config domains
+- 35+ MCP tools across validation, generation, query, and organization config domains
 - 10 built-in policy templates with variable substitution
 - 6 MCP Resources for static data (templates, checks, sensitive categories, org config)
 - Organization-wide policy configuration with session persistence
@@ -49,7 +49,7 @@ iam-validator-mcp
 iam-validator-mcp --org-config ./org-policy.yaml
 
 # Debug with MCP Inspector
-make mcp-inspector
+mise run mcp:inspector
 ```
 
 ### Claude Desktop Configuration
@@ -115,7 +115,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```
 iam_validator/mcp/
 ├── __init__.py            # Package exports (create_server, run_server, models)
-├── server.py              # FastMCP server with 25+ tool registrations + 6 resources
+├── server.py              # FastMCP server with 35+ tool registrations + 6 resources
 ├── models.py              # 5 Pydantic models for request/response types
 ├── session_config.py      # Session configuration manager (ValidatorConfig wrapper)
 ├── tools/
@@ -222,7 +222,7 @@ iam_validator/mcp/
 1. **Define implementation** in `tools/validation.py`, `tools/generation.py`, or `tools/query.py`
 2. **Register in server.py** with `@mcp.tool()` decorator
 3. **Add docstring** describing parameters and return value
-4. **Test** via Claude Desktop or `make mcp-inspector`
+4. **Test** via Claude Desktop or `mise run mcp:inspector`
 
 ```python
 # In tools/query.py
@@ -296,7 +296,7 @@ uv run pytest tests/mcp/test_org_config.py
 uv run pytest tests/mcp/test_templates.py
 
 # Debug with MCP Inspector
-make mcp-inspector
+mise run mcp:inspector
 ```
 
 ---

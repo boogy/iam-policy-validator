@@ -1,6 +1,6 @@
 # Checks Module - Check Development Guide
 
-**Purpose**: 21 built-in IAM policy validation checks
+**Purpose**: 22 built-in IAM policy validation checks
 **Parent Context**: Extends [../../CLAUDE.md](../../CLAUDE.md)
 
 ---

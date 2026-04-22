@@ -4,7 +4,7 @@
 
 settings:
   # Use local AWS service definitions instead of API calls
-  # Download services first: make download-aws-services
+  # Download services first: mise run download-aws-services
   aws_services_dir: ./aws_services
 
   # Disable API cache since we're using local files

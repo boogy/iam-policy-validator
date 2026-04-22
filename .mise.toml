@@ -1,0 +1,167 @@
+[tools]
+python = "3.13"
+uv = "latest"
+
+# ---------------------------------------------------------------------------
+# Installation
+# ---------------------------------------------------------------------------
+
+[tasks.install]
+description = "Install production dependencies"
+run = "uv sync --no-dev"
+
+[tasks.dev]
+description = "Install development dependencies (all extras: dev + docs + mcp)"
+run = "uv sync --all-extras"
+
+# ---------------------------------------------------------------------------
+# Dependency updates
+# ---------------------------------------------------------------------------
+
+[tasks.update]
+description = "Upgrade all packages in uv.lock and sync the environment with all extras"
+run = [
+    "uv lock --upgrade",
+    "uv sync --all-extras",
+]
+
+[tasks."update:package"]
+description = "Upgrade a single package (usage: mise run update:package -- <name>)"
+run = 'uv lock --upgrade-package "$1" && uv sync --all-extras'
+
+[tasks."update:dry-run"]
+description = "Preview what would be upgraded without modifying uv.lock"
+run = "uv lock --upgrade --dry-run"
+
+# ---------------------------------------------------------------------------
+# Clean
+# ---------------------------------------------------------------------------
+
+[tasks.clean]
+description = "Clean build artifacts and caches"
+run = """
+rm -rf build/ dist/ *.egg-info .pytest_cache/ .mypy_cache/ .ruff_cache/ .benchmarks
+find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+find . -type f -name "*.pyc" -delete
+find . -type f -name "*.pyo" -delete
+find . -type f -name "*.orig" -delete
+"""
+
+# ---------------------------------------------------------------------------
+# Quality
+# ---------------------------------------------------------------------------
+
+[tasks.test]
+description = "Run tests"
+run = "uv run --extra dev pytest tests/ -v"
+
+[tasks.lint]
+description = "Run linting checks (ruff + format check + prettier on markdown)"
+run = [
+    "uv run --extra dev ruff check .",
+    "uv run --extra dev ruff format --check .",
+    'prettier --write "**/*.md" --prose-wrap preserve',
+]
+
+[tasks.format]
+description = "Format code with ruff"
+run = [
+    "uv run --extra dev ruff format .",
+    "uv run --extra dev ruff check --fix .",
+]
+
+[tasks.ruff]
+description = "Alias for format"
+depends = ["format"]
+
+[tasks."type-check"]
+description = "Run mypy type checking"
+run = "uv run --extra dev mypy iam_validator/"
+
+[tasks.check]
+description = "Run lint + test (type-check is run separately; see `mise run type-check`)"
+depends = ["lint", "test"]
+run = "echo '✓ All checks passed!'"
+
+# ---------------------------------------------------------------------------
+# Build & Publish
+# ---------------------------------------------------------------------------
+
+[tasks.build]
+description = "Build distribution packages"
+depends = ["clean"]
+run = "uv build"
+
+[tasks.version]
+description = "Show current version"
+run = "grep '^version = ' pyproject.toml | cut -d'\"' -f2"
+
+[tasks."publish:test"]
+description = "Publish to TestPyPI"
+depends = ["build"]
+run = [
+    "echo 'Publishing to TestPyPI...'",
+    "uv publish --publish-url https://test.pypi.org/legacy/",
+]
+
+[tasks.publish]
+description = "Publish to PyPI (prompts for confirmation)"
+depends = ["build"]
+run = '''
+echo "Publishing to PyPI..."
+read -p "Are you sure you want to publish to PyPI? (yes/no): " confirm
+if [ "$confirm" = "yes" ]; then
+    uv publish
+else
+    echo "Publish cancelled."
+fi
+'''
+
+# ---------------------------------------------------------------------------
+# Examples
+# ---------------------------------------------------------------------------
+
+[tasks."validate:example"]
+description = "Run validator on example policy"
+run = "uv run iam-validator validate --path examples/iam-test-policies/sample_policy.json"
+
+[tasks."validate:invalid"]
+description = "Run validator on insecure example (expected to flag issues)"
+run = "uv run iam-validator validate --path examples/iam-test-policies/insecure_policy.json || true"
+
+# ---------------------------------------------------------------------------
+# AWS Services Backup
+# ---------------------------------------------------------------------------
+
+[tasks."download-aws-services"]
+description = "Download all AWS service definitions"
+run = "uv run python scripts/download_aws_services.py"
+
+# ---------------------------------------------------------------------------
+# CI simulation
+# ---------------------------------------------------------------------------
+
+[tasks.ci]
+description = "CI/CD simulation (check + build)"
+depends = ["check", "build"]
+run = "echo '✓ CI checks complete!'"
+
+# ---------------------------------------------------------------------------
+# Documentation
+# ---------------------------------------------------------------------------
+
+[tasks.docs]
+description = "Build documentation"
+run = "uv run --extra docs mkdocs build"
+
+[tasks."docs:serve"]
+description = "Serve documentation locally (http://localhost:8000)"
+run = "uv run --extra docs mkdocs serve -w docs/"
+
+# ---------------------------------------------------------------------------
+# MCP Server
+# ---------------------------------------------------------------------------
+
+[tasks."mcp:inspector"]
+description = "Start MCP Inspector for debugging"
+run = "npx @modelcontextprotocol/inspector uv run --directory $MISE_PROJECT_ROOT --extra mcp iam-validator-mcp"

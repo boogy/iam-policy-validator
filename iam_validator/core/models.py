@@ -6,7 +6,7 @@ IAM policies, and validation results.
 
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from iam_validator.core import constants
 
@@ -395,27 +395,67 @@ class ValidationReport(BaseModel):
 
     total_policies: int
     valid_policies: int
-    invalid_policies: int  # Policies with IAM validity issues (error/warning)
-    policies_with_security_issues: int = 0  # Policies with security findings (critical/high/medium/low)
+    invalid_policies: int  # Policies failing validation per fail_on_severities config
+    # Policies with security-categorized findings only (critical/high/medium/low).
+    # Excludes warning/info. Retained for backward compatibility with existing JSON
+    # consumers; new code should prefer `policies_with_findings`, which covers all
+    # non-error severities including warning/info.
+    policies_with_security_issues: int = 0
     total_issues: int
     validity_issues: int = 0  # Count of IAM validity issues (error/warning/info)
     security_issues: int = 0  # Count of security issues (critical/high/medium/low)
     results: list[PolicyValidationResult] = Field(default_factory=list)
     parsing_errors: list[tuple[str, str]] = Field(default_factory=list)  # (file_path, error_message)
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def policies_with_errors(self) -> int:
+        """Count of policies that are structurally invalid (AWS would reject).
+
+        A policy is AWS-invalid when it has at least one issue with severity
+        `error` (malformed structure, nonexistent action, invalid condition key,
+        etc.). Distinct from `invalid_policies`, which is gated by the
+        configurable `fail_on_severities` and so may also include policies that
+        only have security findings.
+        """
+        return sum(1 for r in self.results if any(i.severity == "error" for i in r.issues))
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def policies_with_findings(self) -> int:
+        """Count of policies that have at least one non-error finding.
+
+        A finding is any issue with severity other than `error` — i.e.,
+        `warning`, `info`, `critical`, `high`, `medium`, or `low`. Policies
+        whose only issues are structural errors are NOT counted here; those
+        are reported by `policies_with_errors`. A policy that has both
+        error- and finding-severity issues is counted in both properties.
+        """
+        return sum(1 for r in self.results if any(i.severity != "error" for i in r.issues))
+
     def get_summary(self) -> str:
         """Generate a human-readable summary."""
         parts = []
         parts.append(f"Validated {self.total_policies} policies:")
 
-        # Always show valid/invalid counts
-        parts.append(f"{self.valid_policies} valid")
+        policies_with_errors = self.policies_with_errors
+        policies_with_findings = self.policies_with_findings
 
-        if self.invalid_policies > 0:
-            parts.append(f"{self.invalid_policies} invalid (IAM validity)")
-
-        if self.policies_with_security_issues > 0:
-            parts.append(f"{self.policies_with_security_issues} with security findings")
+        if self.results:
+            clean_policies = sum(1 for r in self.results if not r.issues)
+            parts.append(f"{clean_policies} clean")
+            if policies_with_errors > 0:
+                parts.append(f"{policies_with_errors} with errors (AWS-invalid)")
+            if policies_with_findings > 0:
+                parts.append(f"{policies_with_findings} with findings")
+        else:
+            # Legacy callers may construct a report without attaching results
+            # (only the scalar counters). Use invalid_policies as the error
+            # count so we don't mis-report a failing run as fully clean.
+            clean_policies = max(0, self.total_policies - self.invalid_policies)
+            parts.append(f"{clean_policies} clean")
+            if self.invalid_policies > 0:
+                parts.append(f"{self.invalid_policies} with errors (AWS-invalid)")
 
         parts.append(f"{self.total_issues} total issues")
 

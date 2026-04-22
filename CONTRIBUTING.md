@@ -11,10 +11,10 @@ cd iam-policy-validator
 uv sync --extra dev
 
 # Run quality checks
-make check
+mise run check
 
 # Run tests
-make test
+mise run test
 ```
 
 ## Development Workflow
@@ -22,7 +22,7 @@ make test
 1. Fork and clone the repository
 2. Create a feature branch: `git checkout -b feature/your-feature`
 3. Make changes and add tests
-4. Run `make check` to verify
+4. Run `mise run check` to verify
 5. Submit a pull request
 
 ## Commit Convention

@@ -140,6 +140,7 @@ nav:
       - GitLab CI: integrations/gitlab-ci.md
       - Pre-commit: integrations/pre-commit.md
       - MCP Server: integrations/mcp-server.md
+      - Claude Code Skill: integrations/claude-code-skill.md
   - Developer Guide:
       - developer-guide/index.md
       - SDK:

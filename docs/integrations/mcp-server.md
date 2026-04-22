@@ -1346,17 +1346,14 @@ The MCP server provides comprehensive instructions to AI assistants for proper I
 The MCP server enforces security best practices:
 
 1. **Blocks dangerous patterns**
-
    - `Action: "*"` is always blocked
    - `Resource: "*"` with write actions is blocked
 
 2. **Auto-adds conditions**
-
    - `iam:PassedToService` for `iam:PassRole`
    - `aws:SecureTransport` for S3 operations
 
 3. **Sensitive action tracking**
-
    - 490+ sensitive actions across 4 categories
    - Automatic warnings and condition recommendations
 
@@ -1743,18 +1740,15 @@ uv sync --extra mcp
 **Solutions**:
 
 1. **Verify config file location**:
-
    - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
    - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
    - Linux: `~/.config/Claude/claude_desktop_config.json`
 
 2. **Check JSON syntax**:
-
    - Use a JSON validator to ensure the config file is valid
    - Common mistakes: missing commas, trailing commas, unescaped backslashes in Windows paths
 
 3. **Restart Claude Desktop completely**:
-
    - Quit the application (not just close the window)
    - Wait a few seconds
    - Reopen Claude Desktop
@@ -1780,7 +1774,6 @@ uv sync --extra mcp
    ```
 
 2. **Use absolute paths** (not relative):
-
    - ❌ `"./config.yaml"`
    - ✓ `"/Users/you/config.yaml"`
 
@@ -1878,17 +1871,14 @@ uv sync --extra mcp
 **Common ARN Mistakes**:
 
 1. **S3 bucket ARN with region/account**:
-
    - ❌ `arn:aws:s3:us-east-1:123456789012:my-bucket`
    - ✓ `arn:aws:s3:::my-bucket`
 
 2. **S3 object ARN without bucket**:
-
    - ❌ `arn:aws:s3:::file.txt`
    - ✓ `arn:aws:s3:::my-bucket/file.txt`
 
 3. **Missing account ID**:
-
    - ❌ `arn:aws:dynamodb:us-east-1::table/MyTable`
    - ✓ `arn:aws:dynamodb:us-east-1:123456789012:table/MyTable`
 
@@ -1983,7 +1973,6 @@ uv sync --extra mcp
    ```
 
 2. **Review policy structure**:
-
    - Trust policies must have `sts:AssumeRole` action
    - Resource policies must have `Principal` field
    - Identity policies have neither
@@ -2160,17 +2149,14 @@ Common parameters:
 **Causes and Solutions**:
 
 1. **Large policy (many statements)**:
-
    - Normal for policies with 50+ statements
    - Consider using `quick_validate` for fast pass/fail checks
 
 2. **Wildcard expansion**:
-
    - Actions like `s3:*` expand to 150+ specific actions
    - Use more specific wildcards (e.g., `s3:Get*`, `s3:Put*`)
 
 3. **First-time AWS service fetch**:
-
    - First validation may be slower while fetching AWS service definitions
    - Subsequent validations use cached data (7-day TTL)
 
@@ -2194,7 +2180,6 @@ Common parameters:
    ```
 
 2. **Reduce action count**:
-
    - Be specific instead of requesting many actions
    - Use templates and modify as needed
 
@@ -2215,12 +2200,10 @@ Common parameters:
 **Solutions**:
 
 1. **Be explicit about validation**:
-
    - ❌ "What do you think of this policy?"
    - ✓ "Validate this policy: <JSON>"
 
 2. **Request specific tools**:
-
    - ❌ "Tell me about S3 actions"
    - ✓ "Show me all S3 actions" (calls `query_service_actions`)
 
@@ -2235,12 +2218,10 @@ Common parameters:
 **Causes and Solutions**:
 
 1. **Vague requirements**:
-
    - ❌ "Create an S3 policy"
    - ✓ "Create a policy allowing read-write access to S3 bucket my-bucket"
 
 2. **Missing resource details**:
-
    - ❌ "Allow Lambda to read from S3"
    - ✓ "Allow Lambda to read from S3 bucket data-bucket, prefix incoming/"
 

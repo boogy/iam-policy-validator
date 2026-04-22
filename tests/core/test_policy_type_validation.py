@@ -366,7 +366,7 @@ class TestRCPValidation:
 
     @pytest.mark.asyncio
     async def test_rcp_supported_services(self):
-        """RCPs support s3, sts, sqs, secretsmanager, kms."""
+        """RCPs support s3, sts, sqs, kms, secretsmanager, cognito, dynamodb, ecr, aoss, logs."""
         policy = IAMPolicy(
             version="2012-10-17",
             statement=[
@@ -377,8 +377,14 @@ class TestRCPValidation:
                         "s3:*",
                         "sts:AssumeRole",
                         "sqs:SendMessage",
-                        "secretsmanager:GetSecretValue",
                         "kms:Decrypt",
+                        "secretsmanager:GetSecretValue",
+                        "cognito-idp:AdminInitiateAuth",
+                        "cognito-identity:GetCredentialsForIdentity",
+                        "dynamodb:GetItem",
+                        "ecr:GetDownloadUrlForLayer",
+                        "aoss:APIAccessAll",
+                        "logs:PutLogEvents",
                     ],
                     resource=["*"],
                 )

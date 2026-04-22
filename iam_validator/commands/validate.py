@@ -140,8 +140,13 @@ Examples:
                 "SERVICE_CONTROL_POLICY",
                 "RESOURCE_CONTROL_POLICY",
             ],
-            default="IDENTITY_POLICY",
-            help="Type of IAM policy being validated (default: IDENTITY_POLICY). "
+            default=None,
+            help="Type of IAM policy being validated. When omitted, each "
+            "policy's type is resolved per-file: config `policy_types:` glob "
+            "mapping first, then content auto-detection (trust vs resource "
+            "vs identity), then a fallback to IDENTITY_POLICY. When supplied, "
+            "this value is applied to every policy in the run and "
+            "auto-detection is skipped. "
             "IDENTITY_POLICY: Attached to users/groups/roles | "
             "RESOURCE_POLICY: S3/SNS/SQS policies | "
             "TRUST_POLICY: Role assumption policies | "
@@ -307,7 +312,11 @@ Examples:
         config_path = getattr(args, "config", None)
         custom_checks_dir = getattr(args, "custom_checks_dir", None)
         aws_services_dir = getattr(args, "aws_services_dir", None)
-        policy_type = cast(PolicyType, getattr(args, "policy_type", "IDENTITY_POLICY"))
+        # None means "user didn't pass --policy-type" → orchestrator runs
+        # per-file resolution (glob → auto-detect → default). Only cast when
+        # the user actually supplied a value.
+        policy_type_arg = getattr(args, "policy_type", None)
+        policy_type: PolicyType | None = cast(PolicyType, policy_type_arg) if policy_type_arg else None
         results = await validate_policies(
             policies,
             config_path=config_path,
@@ -618,11 +627,17 @@ Examples:
                 generator = ReportGenerator()
                 mini_report = generator.generate_report([result])
 
-                # Post line-specific comments (skip cleanup - runs at end of streaming)
+                # Post line-specific comments (skip cleanup - runs at end of streaming).
+                # Labels must NOT be managed per-file: each mini-report only sees
+                # one file's severities, so a file with no findings would
+                # incorrectly remove labels that another file just added.
+                # Label management happens once in _run_final_review_cleanup
+                # against the full aggregated report.
                 await commenter.post_findings_to_pr(
                     mini_report,
                     create_review=True,
                     add_summary_comment=False,  # Summary comes later
+                    manage_labels=False,
                 )
         except Exception as e:
             logging.warning(f"Failed to post review for {result.policy_file}: {e}")
@@ -695,6 +710,7 @@ Examples:
                 config_path = getattr(args, "config", None)
                 config = ConfigLoader.load_config(config_path)
                 fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+                severity_labels = config.get_setting("severity_labels", {})
 
                 # Get ignore settings
                 ignore_settings = config.get_setting("ignore_settings", {})
@@ -711,6 +727,7 @@ Examples:
                     github,
                     cleanup_old_comments=True,  # Enable cleanup for final pass
                     fail_on_severities=fail_on_severities,
+                    severity_labels=severity_labels,
                     enable_codeowners_ignore=enable_ignore,
                     allowed_ignore_users=allowed_users,
                     off_diff_comment_mode=off_diff_mode,
@@ -721,13 +738,16 @@ Examples:
                 full_report = generator.generate_report(all_results)
 
                 # Post with create_review=True to run the full update/create/delete logic
-                # but pass all_validated_files so cleanup knows the full scope
+                # but pass all_validated_files so cleanup knows the full scope.
+                # Labels are managed here (once, against the aggregated report)
+                # so they correctly reflect the full set of findings rather
+                # than any single file's mini-report.
                 logging.info("Running final comment cleanup...")
                 await commenter.post_findings_to_pr(
                     full_report,
                     create_review=True,
                     add_summary_comment=False,
-                    manage_labels=False,  # Labels are managed separately
+                    manage_labels=bool(severity_labels),
                     process_ignores=False,  # Already processed per-file
                 )
 
@@ -756,24 +776,29 @@ Examples:
             summary_parts = []
 
             # Header with status
+            policies_with_errors = report.policies_with_errors
             if report.total_issues == 0:
                 summary_parts.append("# ✅ IAM Policy Validation - Passed")
-            elif report.invalid_policies > 0:
-                summary_parts.append("# ❌ IAM Policy Validation - Failed")
+            elif policies_with_errors > 0:
+                summary_parts.append("# ❌ IAM Policy Validation - Failed (AWS-invalid policies)")
             else:
-                summary_parts.append("# ⚠️ IAM Policy Validation - Security Issues Found")
+                summary_parts.append("# ⚠️ IAM Policy Validation - Findings Reported")
 
             summary_parts.append("")
 
             # Summary table
             summary_parts.append("## Summary")
             summary_parts.append("")
+            summary_parts.append(
+                "> _**Invalid** = structurally broken (AWS would reject)._ "
+                "_**Findings** = security or best-practice issues on a valid policy._"
+            )
+            summary_parts.append("")
             summary_parts.append("| Metric | Count |")
             summary_parts.append("|--------|-------|")
             summary_parts.append(f"| Total Policies | {report.total_policies} |")
-            summary_parts.append(f"| Valid Policies | {report.valid_policies} |")
-            summary_parts.append(f"| Invalid Policies | {report.invalid_policies} |")
-            summary_parts.append(f"| Policies with Security Issues | {report.policies_with_security_issues} |")
+            summary_parts.append(f"| Policies with Errors (AWS-invalid) | {policies_with_errors} |")
+            summary_parts.append(f"| Policies with Findings | {report.policies_with_findings} |")
             summary_parts.append(f"| **Total Issues** | **{report.total_issues}** |")
 
             # Issue breakdown by severity if there are issues
@@ -852,6 +877,6 @@ Examples:
             logging.warning(f"Failed to generate enhanced output: {e}")
             print("\nValidation Summary:")
             print(f"  Total policies: {report.total_policies}")
-            print(f"  Valid: {report.valid_policies}")
-            print(f"  Invalid: {report.invalid_policies}")
+            print(f"  With errors (AWS-invalid): {report.policies_with_errors}")
+            print(f"  With findings: {report.policies_with_findings}")
             print(f"  Total issues: {report.total_issues}\n")

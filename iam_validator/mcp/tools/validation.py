@@ -79,66 +79,40 @@ def _temp_config_file(
             _temp_files_to_cleanup.discard(temp_path)
 
 
-# Trust policy actions (case-insensitive prefixes for matching)
-_TRUST_POLICY_ACTIONS = frozenset(
-    [
-        "sts:assumerole",
-        "sts:assumerolewithwebidentity",
-        "sts:assumerolewithsaml",
-    ]
-)
-
-
-def _is_trust_action(action: str) -> bool:
-    """Check if an action indicates a trust policy (case-insensitive)."""
-    action_lower = action.lower()
-    # Check exact match or if it's a wildcard that would include assume role
-    return action_lower in _TRUST_POLICY_ACTIONS or action_lower in ("sts:*", "*")
+# Map canonical PolicyType literals to the short strings this MCP tool
+# exposes to callers (kept for API stability).
+_POLICY_TYPE_SHORT_FORM: dict[str, str] = {
+    "IDENTITY_POLICY": "identity",
+    "RESOURCE_POLICY": "resource",
+    "TRUST_POLICY": "trust",
+    "SERVICE_CONTROL_POLICY": "scp",
+    "RESOURCE_CONTROL_POLICY": "rcp",
+}
 
 
 def _detect_policy_type(policy: dict[str, Any]) -> str:
-    """Auto-detect policy type from structure.
+    """Auto-detect policy type from a raw dict.
 
-    Analyzes ALL statements in the policy to determine the appropriate policy type
-    based on AWS IAM policy patterns. Uses case-insensitive matching for actions.
+    Thin wrapper around ``iam_validator.checks.policy_structure.detect_policy_type``
+    so the MCP tool and the CLI orchestrator agree on what each policy is. The
+    canonical detector returns a ``PolicyType`` literal (e.g. ``TRUST_POLICY``);
+    this wrapper maps it back to the short string form (``"trust"``,
+    ``"resource"``, ``"identity"``, etc.) that the MCP API exposes.
 
-    Args:
-        policy: IAM policy dictionary to analyze
-
-    Returns:
-        - "trust" if ANY statement contains sts:AssumeRole* actions with Principal
-        - "resource" if ANY statement contains Principal/NotPrincipal without trust actions
-        - "identity" otherwise (default, identity-based policy)
+    If the dict cannot be parsed into an ``IAMPolicy`` (malformed input), falls
+    back to ``"identity"`` so the caller still gets a reasonable default.
     """
-    statements = policy.get("Statement", [])
-    if isinstance(statements, dict):
-        statements = [statements]
+    # Local import to avoid import cycles at module load time.
+    from iam_validator.checks.policy_structure import (  # pylint: disable=import-outside-toplevel
+        detect_policy_type as _canonical_detect,
+    )
 
-    has_principal = False
-    has_trust_action = False
+    try:
+        iam_policy = IAMPolicy(**policy)
+    except Exception:  # pragma: no cover - malformed policy dicts
+        return "identity"
 
-    for stmt in statements:
-        # Check for Principal in any statement
-        if "Principal" in stmt or "NotPrincipal" in stmt:
-            has_principal = True
-
-            # Check for trust policy actions (case-insensitive)
-            actions = stmt.get("Action", [])
-            if isinstance(actions, str):
-                actions = [actions]
-
-            for action in actions:
-                if _is_trust_action(action):
-                    has_trust_action = True
-                    break
-
-    # Determine type based on all statements
-    if has_principal:
-        if has_trust_action:
-            return "trust"
-        return "resource"
-
-    return "identity"
+    return _POLICY_TYPE_SHORT_FORM.get(_canonical_detect(iam_policy), "identity")
 
 
 async def validate_policy(

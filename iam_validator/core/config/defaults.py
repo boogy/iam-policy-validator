@@ -149,17 +149,26 @@ DEFAULT_CONFIG = {
     # ========================================================================
     # 2. POLICY SIZE
     # ========================================================================
-    # Validate policy size against AWS limits
-    # Policy type determines which AWS limit to enforce:
-    #   - managed: 6144 characters (excluding whitespace)
-    #   - inline_user: 2048 characters
-    #   - inline_group: 5120 characters
-    #   - inline_role: 10240 characters
+    # Validate policy size against AWS limits. When no explicit policy_type is
+    # set here, the check derives the correct AWS limit from the runtime
+    # --policy-type (IDENTITY_POLICY → managed, TRUST_POLICY → inline_role_trust,
+    # SERVICE_CONTROL_POLICY → scp, RESOURCE_CONTROL_POLICY → rcp).
+    #
+    # Override by setting `policy_type` here when you know the deployment target
+    # is more specific than the runtime type — e.g. an identity policy that will
+    # actually be attached inline to an IAM user:
+    #
+    #   policy_size:
+    #     config:
+    #       policy_type: inline_user  # 2048 bytes
+    #
+    # Valid keys: managed (6144), inline_user (2048), inline_group (5120),
+    #             inline_role (10240), inline_role_trust (2048), scp (5120),
+    #             rcp (5120).
     "policy_size": {
         "enabled": True,
         "severity": "error",  # IAM validity error
         "description": "Validates that IAM policies don't exceed AWS size limits",
-        "policy_type": "managed",  # Change based on your policy type
     },
     # ========================================================================
     # 3. ACTION VALIDATION

@@ -146,42 +146,32 @@ def is_trust_policy(policy: IAMPolicy) -> bool:
 def detect_policy_type(policy: IAMPolicy) -> PolicyType:
     """Auto-detect policy type based on statement structure.
 
-    Detection logic (simple and safe - avoids false positives):
-    1. If any statement has Principal/NotPrincipal → RESOURCE_POLICY
-    2. Otherwise → IDENTITY_POLICY (default, also covers SCPs)
+    Detection logic (ordered for safety — conservative checks first):
+    1. If ``is_trust_policy()`` matches → ``TRUST_POLICY``. The trust detector
+       is deliberately strict (requires Principal, an exact ``sts:AssumeRole*``
+       action, ``Effect: Allow``, and no specific resource ARNs), so a true
+       match is high-confidence.
+    2. If any statement has Principal/NotPrincipal → ``RESOURCE_POLICY``.
+    3. Otherwise → ``IDENTITY_POLICY`` (default).
 
-    Note: The following policy types require EXPLICIT specification via --policy-type flag
-    and are NOT auto-detected to avoid false positives and confusing errors:
-
-    - TRUST_POLICY: Requires explicit flag to enable trust-specific validation
-      and suppress irrelevant warnings (missing Resource field, etc.)
-      Use: --policy-type TRUST_POLICY
-
-    - SERVICE_CONTROL_POLICY: SCPs have the same structure as identity policies
-      and cannot be reliably distinguished without context
-      Use: --policy-type SERVICE_CONTROL_POLICY
-
-    - RESOURCE_CONTROL_POLICY: RCPs have strict requirements that require explicit
-      validation mode to avoid false positives
-      Use: --policy-type RESOURCE_CONTROL_POLICY
-
-    Auto-detection only distinguishes between:
-    - IDENTITY_POLICY (no Principal element) - most common
-    - RESOURCE_POLICY (has Principal element) - S3, SNS, SQS, etc.
+    SCP and RCP cannot be reliably detected from content alone — they share
+    the identity-policy shape. Users must either set ``--policy-type`` or a
+    ``policy_types:`` glob mapping in the config file to drive those types.
+    Auto-detection will fall through to ``IDENTITY_POLICY`` for them.
 
     Args:
         policy: IAM policy to analyze
 
     Returns:
-        Detected PolicyType (IDENTITY_POLICY or RESOURCE_POLICY only)
+        Detected PolicyType (TRUST_POLICY, RESOURCE_POLICY, or IDENTITY_POLICY).
     """
-    # Check if any statement has Principal/NotPrincipal (indicates resource policy)
+    if is_trust_policy(policy):
+        return "TRUST_POLICY"
+
     for statement in policy.statement or []:
         if statement.principal is not None or statement.not_principal is not None:
             return "RESOURCE_POLICY"
 
-    # Default to identity policy (most common case)
-    # SCPs have the same structure and will be detected as IDENTITY_POLICY
     return "IDENTITY_POLICY"
 
 

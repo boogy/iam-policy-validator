@@ -31,7 +31,7 @@ This guide covers everything you need to know to use IAM Policy Validator effect
 
     ---
 
-    All 21 built-in checks explained
+    All 22 built-in checks explained
 
     [:octicons-arrow-right-24: Checks](checks/index.md)
 

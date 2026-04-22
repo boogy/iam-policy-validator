@@ -8,7 +8,7 @@ validation tasks without requiring deep knowledge of the internal API.
 import json
 from pathlib import Path
 
-from iam_validator.core.models import PolicyValidationResult, ValidationIssue
+from iam_validator.core.models import PolicyType, PolicyValidationResult, ValidationIssue
 from iam_validator.core.policy_checks import validate_policies
 from iam_validator.core.policy_loader import PolicyLoader
 
@@ -16,6 +16,7 @@ from iam_validator.core.policy_loader import PolicyLoader
 async def validate_file(
     file_path: str | Path,
     config_path: str | None = None,
+    policy_type: PolicyType | None = None,
 ) -> PolicyValidationResult:
     """
     Validate a single IAM policy file.
@@ -23,6 +24,10 @@ async def validate_file(
     Args:
         file_path: Path to the policy file (JSON or YAML)
         config_path: Optional path to configuration file
+        policy_type: Explicit policy type. When ``None`` (default), the
+            orchestrator resolves the type per-file via the config
+            ``policy_types:`` glob list, then content auto-detection, then a
+            fallback to ``IDENTITY_POLICY``.
 
     Returns:
         PolicyValidationResult for the policy
@@ -44,6 +49,7 @@ async def validate_file(
     results = await validate_policies(
         policies,
         config_path=config_path,
+        policy_type=policy_type,
     )
 
     return (
@@ -61,6 +67,7 @@ async def validate_directory(
     dir_path: str | Path,
     config_path: str | None = None,
     recursive: bool = True,
+    policy_type: PolicyType | None = None,
 ) -> list[PolicyValidationResult]:
     """
     Validate all IAM policies in a directory.
@@ -69,6 +76,9 @@ async def validate_directory(
         dir_path: Path to directory containing policy files
         config_path: Optional path to configuration file
         recursive: Whether to search subdirectories (default: True)
+        policy_type: Explicit policy type applied to *every* policy in the
+            directory. When ``None`` (default), each policy's type is
+            resolved per-file (config glob → content auto-detect → default).
 
     Returns:
         List of PolicyValidationResults for all policies found
@@ -87,6 +97,7 @@ async def validate_directory(
     return await validate_policies(
         policies,
         config_path=config_path,
+        policy_type=policy_type,
     )
 
 
@@ -94,6 +105,7 @@ async def validate_json(
     policy_json: dict | str,
     policy_name: str = "inline-policy",
     config_path: str | None = None,
+    policy_type: PolicyType | None = None,
 ) -> PolicyValidationResult:
     """
     Validate an IAM policy from a Python dictionary or JSON string.
@@ -141,6 +153,7 @@ async def validate_json(
     results = await validate_policies(
         [(policy_name, policy)],
         config_path=config_path,
+        policy_type=policy_type,
     )
 
     return (
@@ -157,6 +170,7 @@ async def validate_json(
 async def quick_validate(
     policy: str | Path | dict,
     config_path: str | None = None,
+    policy_type: PolicyType | None = None,
 ) -> bool:
     """
     Quick validation returning just True/False.
@@ -166,6 +180,8 @@ async def quick_validate(
     Args:
         policy: File path, directory path, or policy dict
         config_path: Optional path to configuration file
+        policy_type: Explicit policy type. When ``None`` (default), the
+            orchestrator auto-detects (config glob → content → default).
 
     Returns:
         True if all policies are valid, False otherwise
@@ -178,7 +194,7 @@ async def quick_validate(
     """
     # If dict, validate as JSON
     if isinstance(policy, dict):
-        result = await validate_json(policy, config_path=config_path)
+        result = await validate_json(policy, config_path=config_path, policy_type=policy_type)
         return result.is_valid
 
     # Convert to Path for easier handling
@@ -189,11 +205,11 @@ async def quick_validate(
 
     # If directory, validate all files in it
     if policy_path.is_dir():
-        results = await validate_directory(policy_path, config_path=config_path)
+        results = await validate_directory(policy_path, config_path=config_path, policy_type=policy_type)
         return all(r.is_valid for r in results)
 
     # Otherwise, validate single file
-    result = await validate_file(policy_path, config_path=config_path)
+    result = await validate_file(policy_path, config_path=config_path, policy_type=policy_type)
     return result.is_valid
 
 

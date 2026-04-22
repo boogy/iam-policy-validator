@@ -342,7 +342,7 @@ Each check can be configured at the top level using its `check_id`:
 
 ### Built-in Checks
 
-All 21 built-in checks with their default settings:
+All 22 built-in checks with their default settings:
 
 #### AWS Validation Checks
 
@@ -497,6 +497,67 @@ policy_size:
 
 !!! note "SCP Size Validation"
 When using `--policy-type SERVICE_CONTROL_POLICY`, the SCP-specific size limit of 5,120 characters is enforced separately, which is stricter than the managed policy limit of 6,144 characters.
+
+## Policy Type Resolution
+
+When the validator runs, each policy file gets a resolved `PolicyType` that
+drives type-specific checks (for example `policy_size` limits and the
+`policy_type_validation` rules). There are two mutually exclusive modes:
+
+- **If `--policy-type` is supplied on the CLI** — that value is applied to
+  every policy in the run, full stop. Auto-detection and the `policy_types:`
+  glob mapping are skipped. Use this when your pipeline only ever validates
+  one type of policy.
+- **If `--policy-type` is omitted** — the type is resolved per file in this
+  priority order:
+  1. `policy_types:` glob mapping in the config (first match wins).
+  2. Content auto-detection: a trust-shaped statement (Principal + exact
+     `sts:AssumeRole*` action + `Effect: Allow` + no specific resource ARN)
+     resolves to `TRUST_POLICY`; any other Principal/NotPrincipal resolves
+     to `RESOURCE_POLICY`; otherwise `IDENTITY_POLICY`.
+  3. Default fallback: `IDENTITY_POLICY`.
+
+SCP and RCP cannot be auto-detected from content alone (they look
+structurally identical to identity/resource policies). Use the glob mapping
+or the explicit flag to drive those types.
+
+### `policy_types:` — per-file glob mapping
+
+```yaml
+policy_types:
+  - pattern: "**/scp/*.json"
+    type: SERVICE_CONTROL_POLICY
+  - pattern: "**/rcp/*.json"
+    type: RESOURCE_CONTROL_POLICY
+  - pattern: "**/trust-policies/*.json"
+    type: TRUST_POLICY
+```
+
+- Patterns are matched against the POSIX form of each policy file path.
+- A leading `**/` is stripped automatically so `**/scp/*.json` also matches
+  `scp/org.json` at the top of the scan.
+- First match wins; the list is only consulted when `--policy-type` is not
+  provided on the CLI.
+
+### Debugging the resolved type
+
+Run with `--log-level debug` (or `--verbose`) to see exactly what type each
+policy got and why:
+
+```
+policy_type=TRUST_POLICY source=cli-flag file=trust.json
+policy_type=SERVICE_CONTROL_POLICY source=config-glob pattern_present=true pattern_len=14 file=org.json
+policy_type=RESOURCE_POLICY source=auto-detect file=s3-bucket.json
+policy_type=IDENTITY_POLICY source=default file=ro.json
+```
+
+Only the file basename is logged (not the absolute path) and the
+`config-glob` line reports `pattern_present=true` plus `pattern_len=<n>`
+instead of the raw glob — this keeps the debug output free of
+user-controlled content while still letting you grep by source:
+`iam-validator validate ... --verbose 2>&1 | rg 'source='`. The glob
+itself is already visible in your own `iam-validator.yaml`, so there is
+no information loss for auditing.
 
 ## Full Reference
 

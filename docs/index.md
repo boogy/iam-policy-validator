@@ -25,7 +25,7 @@ description: Stop IAM misconfigurations before they become breaches
 
     [:octicons-arrow-right-24: GitHub Actions](integrations/github-actions.md)
 
--   :material-shield-check:{ .lg .middle } **21 Built-in Checks**
+-   :material-shield-check:{ .lg .middle } **22 Built-in Checks**
 
     ---
 
