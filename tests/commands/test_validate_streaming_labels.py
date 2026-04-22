@@ -104,9 +104,7 @@ async def test_final_cleanup_enables_label_management_when_configured(sample_res
 
     mock_commenter.post_findings_to_pr.assert_awaited_once()
     kwargs = mock_commenter.post_findings_to_pr.await_args.kwargs
-    assert kwargs.get("manage_labels") is True, (
-        "Final cleanup must manage labels when severity_labels is configured."
-    )
+    assert kwargs.get("manage_labels") is True, "Final cleanup must manage labels when severity_labels is configured."
 
 
 @pytest.mark.asyncio
