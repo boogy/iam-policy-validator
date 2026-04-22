@@ -155,6 +155,11 @@ class LabelManager:
         labels_to_apply = self._determine_labels_to_apply(found_severities)
         labels_to_remove = self._determine_labels_to_remove(found_severities)
 
+        # If a label maps to multiple severities and at least one of them is
+        # still found, keep the label — don't let the "severity-not-found" side
+        # of the mapping trigger a removal.
+        labels_to_remove = labels_to_remove - labels_to_apply
+
         logger.debug(f"Labels to apply: {labels_to_apply}")
         logger.debug(f"Labels to remove: {labels_to_remove}")
 

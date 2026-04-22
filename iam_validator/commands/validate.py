@@ -627,11 +627,17 @@ Examples:
                 generator = ReportGenerator()
                 mini_report = generator.generate_report([result])
 
-                # Post line-specific comments (skip cleanup - runs at end of streaming)
+                # Post line-specific comments (skip cleanup - runs at end of streaming).
+                # Labels must NOT be managed per-file: each mini-report only sees
+                # one file's severities, so a file with no findings would
+                # incorrectly remove labels that another file just added.
+                # Label management happens once in _run_final_review_cleanup
+                # against the full aggregated report.
                 await commenter.post_findings_to_pr(
                     mini_report,
                     create_review=True,
                     add_summary_comment=False,  # Summary comes later
+                    manage_labels=False,
                 )
         except Exception as e:
             logging.warning(f"Failed to post review for {result.policy_file}: {e}")
@@ -704,6 +710,7 @@ Examples:
                 config_path = getattr(args, "config", None)
                 config = ConfigLoader.load_config(config_path)
                 fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+                severity_labels = config.get_setting("severity_labels", {})
 
                 # Get ignore settings
                 ignore_settings = config.get_setting("ignore_settings", {})
@@ -720,6 +727,7 @@ Examples:
                     github,
                     cleanup_old_comments=True,  # Enable cleanup for final pass
                     fail_on_severities=fail_on_severities,
+                    severity_labels=severity_labels,
                     enable_codeowners_ignore=enable_ignore,
                     allowed_ignore_users=allowed_users,
                     off_diff_comment_mode=off_diff_mode,
@@ -730,13 +738,16 @@ Examples:
                 full_report = generator.generate_report(all_results)
 
                 # Post with create_review=True to run the full update/create/delete logic
-                # but pass all_validated_files so cleanup knows the full scope
+                # but pass all_validated_files so cleanup knows the full scope.
+                # Labels are managed here (once, against the aggregated report)
+                # so they correctly reflect the full set of findings rather
+                # than any single file's mini-report.
                 logging.info("Running final comment cleanup...")
                 await commenter.post_findings_to_pr(
                     full_report,
                     create_review=True,
                     add_summary_comment=False,
-                    manage_labels=False,  # Labels are managed separately
+                    manage_labels=bool(severity_labels),
                     process_ignores=False,  # Already processed per-file
                 )
 

@@ -555,3 +555,170 @@ class TestLabelManager:
         severities = manager._get_severities_in_results(results, is_issue_ignored=is_ignored)
         # critical from admin.json should be excluded
         assert severities == {"error"}
+
+    # ========== Tests for shared-label handling ==========
+
+    @pytest.mark.asyncio
+    async def test_shared_label_kept_when_any_mapped_severity_found(self, mock_github):
+        """A label mapped to multiple severities must be kept when any of them is found.
+
+        Regression test: previously the per-severity remove-set included the
+        shared label whenever at least one mapped severity was absent, and the
+        remove step ran after add, leaving the PR without a label that was
+        still warranted.
+        """
+        shared_config = {
+            "error": "iam-issue",
+            "critical": "iam-issue",
+            "warning": "iam-issue",
+        }
+        manager = LabelManager(mock_github, shared_config)
+        # Label was applied on a previous run when 'critical' was found.
+        mock_github.get_labels = AsyncMock(return_value=["iam-issue"])
+
+        # Only warning remains — same label still applies.
+        results = [
+            PolicyValidationResult(
+                policy_file="policy.json",
+                policy_name="TestPolicy",
+                is_valid=True,
+                issues=[
+                    ValidationIssue(
+                        severity="warning",
+                        statement_index=0,
+                        issue_type="mfa_antipattern",
+                        message="Warning-level finding",
+                    ),
+                ],
+            )
+        ]
+
+        success, added, removed = await manager.manage_labels_from_results(results)
+
+        assert success is True
+        assert added == 0  # Already present
+        assert removed == 0  # Must NOT be removed — warning still maps to it
+        mock_github.add_labels.assert_not_called()
+        mock_github.remove_label.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_shared_label_removed_when_no_mapped_severity_found(self, mock_github):
+        """A shared label must be removed when none of its mapped severities are found."""
+        shared_config = {
+            "error": "iam-issue",
+            "critical": "iam-issue",
+            "warning": "iam-issue",
+        }
+        manager = LabelManager(mock_github, shared_config)
+        mock_github.get_labels = AsyncMock(return_value=["iam-issue"])
+
+        # No issues at all — label is no longer warranted.
+        results = [
+            PolicyValidationResult(
+                policy_file="policy.json",
+                policy_name="TestPolicy",
+                is_valid=True,
+                issues=[],
+            )
+        ]
+
+        success, added, removed = await manager.manage_labels_from_results(results)
+
+        assert success is True
+        assert added == 0
+        assert removed == 1
+        mock_github.remove_label.assert_called_once_with("iam-issue")
+
+    @pytest.mark.asyncio
+    async def test_shared_label_kept_with_list_mapping(self, mock_github):
+        """Shared-label dedup works when severities map to overlapping label lists."""
+        overlapping_config = {
+            "error": ["iam-issue", "needs-fix"],
+            "warning": ["iam-issue"],
+        }
+        manager = LabelManager(mock_github, overlapping_config)
+        mock_github.get_labels = AsyncMock(return_value=["iam-issue", "needs-fix"])
+
+        # Only warning remains; 'iam-issue' must stay, 'needs-fix' (error-only) must go.
+        results = [
+            PolicyValidationResult(
+                policy_file="policy.json",
+                policy_name="TestPolicy",
+                is_valid=True,
+                issues=[
+                    ValidationIssue(
+                        severity="warning",
+                        statement_index=0,
+                        issue_type="mfa_antipattern",
+                        message="Warning-level finding",
+                    ),
+                ],
+            )
+        ]
+
+        success, added, removed = await manager.manage_labels_from_results(results)
+
+        assert success is True
+        assert added == 0
+        assert removed == 1
+        mock_github.remove_label.assert_called_once_with("needs-fix")
+
+    # ========== Tests for findings-fixed → labels-removed cycle ==========
+
+    @pytest.mark.asyncio
+    async def test_findings_fixed_removes_labels(self, mock_github, severity_labels):
+        """Full lifecycle: findings trigger labels, then fixing them removes labels.
+
+        Simulates two successive runs: first run adds labels for severities found;
+        second run (after findings are fixed) removes every label that was applied.
+        """
+        manager = LabelManager(mock_github, severity_labels)
+
+        # --- Run 1: findings exist, PR starts with no labels
+        mock_github.get_labels = AsyncMock(return_value=[])
+        run1_results = [
+            PolicyValidationResult(
+                policy_file="policy.json",
+                policy_name="TestPolicy",
+                is_valid=False,
+                issues=[
+                    ValidationIssue(
+                        severity="critical",
+                        statement_index=0,
+                        issue_type="full_wildcard",
+                        message="Full wildcard",
+                    ),
+                    ValidationIssue(
+                        severity="error",
+                        statement_index=0,
+                        issue_type="invalid_action",
+                        message="Invalid action",
+                    ),
+                ],
+            )
+        ]
+        success, added, removed = await manager.manage_labels_from_results(run1_results)
+        assert success is True
+        assert added == 2
+        assert removed == 0
+        added_labels = set(mock_github.add_labels.call_args[0][0])
+        assert added_labels == {"iam-validity-error", "security-critical"}
+
+        # --- Run 2: findings fixed, PR carries the labels from Run 1
+        mock_github.add_labels.reset_mock()
+        mock_github.remove_label.reset_mock()
+        mock_github.get_labels = AsyncMock(return_value=["iam-validity-error", "security-critical"])
+        run2_results = [
+            PolicyValidationResult(
+                policy_file="policy.json",
+                policy_name="TestPolicy",
+                is_valid=True,
+                issues=[],
+            )
+        ]
+        success, added, removed = await manager.manage_labels_from_results(run2_results)
+        assert success is True
+        assert added == 0
+        assert removed == 2
+        removed_labels = {call.args[0] for call in mock_github.remove_label.call_args_list}
+        assert removed_labels == {"iam-validity-error", "security-critical"}
