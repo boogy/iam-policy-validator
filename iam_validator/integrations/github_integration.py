@@ -588,6 +588,12 @@ class GitHubIntegration:
                     success = False
 
         # 2. Delete orphans — existing comments past the new target length.
+        # Orphan deletion is best-effort cleanup: the user-visible "latest scan"
+        # state is already correct via the update above. A 404 here means the
+        # comment was already gone (concurrent run / manual delete) — that's
+        # the desired end state, not a failure. Other delete errors are logged
+        # at WARNING but don't flip `success` to False, since the next run will
+        # retry deletion.
         if len(existing) > len(full_bodies):
             orphan_ids = [c["id"] for c in existing[len(full_bodies) :]]
             logger.info(f"Deleting {len(orphan_ids)} stale comment(s) no longer relevant to this scan")
@@ -597,8 +603,7 @@ class GitHubIntegration:
             )
             for oid, res in zip(orphan_ids, delete_results, strict=False):
                 if isinstance(res, Exception) or res is None:
-                    logger.warning(f"Failed to delete stale comment {oid}")
-                    success = False
+                    logger.warning(f"Could not delete stale comment {oid} (already gone or transient error)")
 
         return success
 
@@ -1209,16 +1214,17 @@ class GitHubIntegration:
             # This ensures we clean up comments for files that were validated but have no findings
             files_in_scope = validated_files if validated_files is not None else files_with_findings
 
-            # Get current PR files to detect removed files
-            # Note: get_pr_files() returns [] on error, so we check for non-empty result
+            # Get current PR files to detect removed files. `get_pr_files()`
+            # returns `None` on API failure and `[]` for a genuinely empty PR
+            # — we must distinguish them: only the API-failure case should fall
+            # back to validated-files-only cleanup. An empty PR with stale
+            # bot comments still needs aggressive cleanup.
             pr_files = await self.get_pr_files()
-            if pr_files:
-                current_pr_files: set[str] | None = {f["filename"] for f in pr_files}
-            else:
-                # Empty result could be an API error - fall back to batch-only cleanup
-                # to avoid accidentally deleting valid comments
+            if pr_files is None:
                 logger.debug("Could not fetch PR files for cleanup, using batch-only mode")
-                current_pr_files = None
+                current_pr_files: set[str] | None = None
+            else:
+                current_pr_files = {f["filename"] for f in pr_files}
 
             def should_delete_comment(existing_path: str) -> bool:
                 """Check if a comment should be deleted based on file status.
@@ -1454,17 +1460,19 @@ class GitHubIntegration:
         self._pr_info_loaded = True
         return result
 
-    async def get_pr_files(self) -> list[dict[str, Any]]:
+    async def get_pr_files(self) -> list[dict[str, Any]] | None:
         """Get list of files changed in the PR.
 
         Returns:
-            List of file information dicts
+            List of file dicts (possibly empty for a genuinely empty PR), or
+            ``None`` when the API call failed. Callers must distinguish these
+            two cases — treating an API failure like an empty PR causes
+            aggressive comment cleanup paths to skip work that should be done.
         """
         result = await self._make_request("GET", f"pulls/{self.pr_number}/files")
-
-        if result and isinstance(result, list):
+        if isinstance(result, list):
             return result
-        return []
+        return None
 
     async def get_pr_commits(self) -> list[dict[str, Any]]:
         """Get list of commits in the PR.

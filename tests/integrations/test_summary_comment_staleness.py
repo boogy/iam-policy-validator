@@ -85,6 +85,37 @@ class TestUpdateOrCreateCommentLifecycle:
         assert delete_calls == []
 
     @pytest.mark.asyncio
+    async def test_orphan_delete_failure_does_not_fail_overall(self, gh):
+        """A 404 / transient failure on orphan delete must NOT flip success.
+
+        The canonical comment was updated successfully — the user-visible state
+        is correct. A 404 typically means the orphan was already deleted by
+        a concurrent run, which is the desired end state.
+        """
+        existing = [
+            {"id": 10, "body": IDENTIFIER + "\nold canonical", "created_at": "2026-04-01T10:00:00Z"},
+            {"id": 11, "body": IDENTIFIER + "\nold orphan", "created_at": "2026-04-01T10:00:01Z"},
+        ]
+
+        # _make_request returns None on 4xx / errors — simulate that for the orphan delete.
+        async def make_request_404(method, path, *args, **kwargs):
+            if method == "DELETE" and path.endswith("/11"):
+                return None  # 404
+            return {}
+
+        with (
+            patch.object(gh, "_make_paginated_request", AsyncMock(return_value=existing)),
+            patch.object(gh, "_update_comment", AsyncMock(return_value=True)) as mock_update,
+            patch.object(gh, "_make_request", AsyncMock(side_effect=make_request_404)),
+        ):
+            ok = await gh.update_or_create_comment("fresh body", IDENTIFIER)
+
+        # Canonical (id=10) updated — that's what matters.
+        assert ok is True
+        mock_update.assert_awaited_once()
+        assert mock_update.await_args.args[0] == 10
+
+    @pytest.mark.asyncio
     async def test_orphan_cleanup_after_multipart_to_single(self, gh):
         """Bug A: previous run was multi-part; this run is single-part."""
         existing = [

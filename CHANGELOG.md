@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix `action_resource_matching` rejecting `s3vectors` `VectorBucket` ARNs (and any future service whose resource-type name contains `bucket` and whose pattern uses `bucket/${Name}`). The no-slash rule now keys on the ARN pattern itself, not the resource-type name
 - Fix the PR summary comment becoming stale on busy PRs (lookup wasn't paginated) and after multi-part → single-part transitions (orphans left behind). Both paths now share `_sync_comments_with_identifier`, which paginates lookup, updates oldest-first, and deletes only the surplus
 - Fix trust-policy SAML/OIDC validation rejecting GovCloud, China, and ISO partitions — the provider patterns previously hardcoded `arn:aws:`
+- Fix `get_pr_files()` conflating API failure with an empty PR — both returned `[]`, causing the inline-review-comment cleanup phase to silently skip aggressive deletion on a transient 5xx. It now returns `None` on failure and `[]` only for genuinely empty PRs
+- Fix `_sync_comments_with_identifier` reporting `success=False` when an orphan delete returned 404 — the canonical comment was already updated, so the user-visible state is correct. 404 / transient orphan-delete errors now log a warning without failing the overall operation
 
 ---
 
