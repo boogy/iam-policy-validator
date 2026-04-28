@@ -206,33 +206,6 @@ jobs:
             gh release edit "$TAG" --draft=false --latest
           fi
 
-      # Step 5: Move rolling v<MAJOR> and v<MAJOR>.<MINOR> tags to this
-      # release's commit. These are plain git refs with no GitHub Release
-      # attached, so they are NOT affected by immutable releases (which
-      # only freezes tags tied to a published Release). Skipped for
-      # pre-releases so alpha/beta/rc builds cannot accidentally promote
-      # the rolling references.
-      - name: Update rolling major/minor tags
-        if: steps.get_version.outputs.is_prerelease == 'false'
-        run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-          MAJOR=$(echo "$VERSION" | cut -d. -f1)
-          MINOR=$(echo "$VERSION" | cut -d. -f1-2)
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # Annotated tag (bots cannot sign, but these rolling refs are
-          # consumed as major/minor pointers only — the immutable
-          # v<version> tag remains signed and authoritative).
-          git tag -fa "v$MAJOR" -m "Update v$MAJOR -> v$VERSION"
-          git tag -fa "v$MINOR" -m "Update v$MINOR -> v$VERSION"
-
-          git push --force origin "v$MAJOR"
-          git push --force origin "v$MINOR"
-
-          echo "Moved rolling tags: v$MAJOR -> v$VERSION, v$MINOR -> v$VERSION"
-
       - name: Create Release Summary
         if: always()
         run: |
@@ -261,12 +234,12 @@ jobs:
           $(if [ "$IS_PRERELEASE" = "false" ]; then echo "- ✅ Published to [PyPI](https://pypi.org/project/${PYPI_PROJECT}/)"; else echo "- ⏭️ Skipped (pre-release version)"; fi)
 
           ### Rolling Tags
-          $(if [ "$IS_PRERELEASE" = "false" ]; then
-            echo "- 🏷️ \`v$MAJOR\` -> \`v$VERSION\`"
-            echo "- 🏷️ \`v$MINOR\` -> \`v$VERSION\`"
-          else
-            echo "- ⏭️ Skipped (pre-release version)"
-          fi)
+          - ⚠️ Run manually after this release:
+          \`\`\`bash
+          git fetch --tags
+          git tag -f v$MAJOR v$VERSION && git tag -f v$MINOR v$VERSION
+          git push --force origin v$MAJOR v$MINOR
+          \`\`\`
           - 🏷️ Immutable tag: \`v$VERSION\`
 
           ## 🔗 Quick Links
