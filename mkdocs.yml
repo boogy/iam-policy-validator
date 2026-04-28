@@ -12,6 +12,14 @@ edit_uri: edit/main/docs/
 # Copyright
 copyright: Copyright &copy; 2025 boogy
 
+# Files excluded from the documentation build.
+# - CLAUDE.md: Claude Code instructions, not user-facing docs (and links outside docs/).
+# - includes/abbreviations.md: snippet auto-appended via pymdownx.snippets, not a page.
+exclude_docs: |
+  CLAUDE.md
+  **/CLAUDE.md
+  includes/abbreviations.md
+
 # Theme configuration
 theme:
   name: material
