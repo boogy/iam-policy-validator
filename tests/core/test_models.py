@@ -232,6 +232,54 @@ class TestValidationIssue:
         assert expected_icon in comment
         assert expected_label in comment
 
+    def test_to_pr_comment_includes_check_id(self):
+        """check_id appears with separator in PR comment output."""
+        issue = ValidationIssue(
+            severity="error",
+            statement_index=0,
+            issue_type="invalid_action",
+            message="Invalid action 's3:GetObjekt' does not exist",
+            check_id="action_validation",
+        )
+
+        comment = issue.to_pr_comment(include_identifier=False)
+
+        assert "*Check: `action_validation`*" in comment
+        assert "---" in comment
+
+    def test_to_pr_comment_without_check_id(self):
+        """No check_id section when check_id is None."""
+        issue = ValidationIssue(
+            severity="error",
+            statement_index=0,
+            issue_type="invalid_action",
+            message="Invalid action",
+            check_id=None,
+        )
+
+        comment = issue.to_pr_comment(include_identifier=False)
+
+        assert "*Check:" not in comment
+
+    def test_to_pr_comment_check_id_after_details_section(self):
+        """check_id is rendered AFTER the closing </details> tag."""
+        issue = ValidationIssue(
+            severity="error",
+            statement_index=0,
+            issue_type="invalid_action",
+            message="Invalid action",
+            action="s3:GetObjekt",
+            suggestion="Use s3:GetObject instead",
+            check_id="action_validation",
+        )
+
+        comment = issue.to_pr_comment(include_identifier=False)
+
+        details_end = comment.find("</details>")
+        check_id_pos = comment.find("*Check: `action_validation`*")
+        assert details_end != -1
+        assert check_id_pos > details_end
+
 
 class TestPolicyValidationResult:
     """Test the PolicyValidationResult model."""

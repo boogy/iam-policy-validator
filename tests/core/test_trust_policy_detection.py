@@ -247,6 +247,74 @@ class TestTrustPolicyDetection:
         assert is_trust_policy(policy) is False
         assert detect_policy_type(policy) == "IDENTITY_POLICY"
 
+    def test_multiple_assume_statements_all_valid(self):
+        """Multi-statement trust policy with several assume actions is detected."""
+        policy = IAMPolicy(
+            Version="2012-10-17",
+            Statement=[
+                Statement(
+                    Sid="AllowLambda",
+                    Effect="Allow",
+                    Principal={"Service": "lambda.amazonaws.com"},
+                    Action="sts:AssumeRole",
+                ),
+                Statement(
+                    Sid="AllowEC2",
+                    Effect="Allow",
+                    Principal={"Service": "ec2.amazonaws.com"},
+                    Action="sts:AssumeRole",
+                ),
+                Statement(
+                    Sid="AllowTagging",
+                    Effect="Allow",
+                    Principal={"AWS": "arn:aws:iam::123:root"},
+                    Action="sts:TagSession",
+                ),
+            ],
+        )
+        assert is_trust_policy(policy) is True
+
+    def test_mixed_assume_and_tag_session(self):
+        """Combination of AssumeRoleWithWebIdentity and TagSession in one statement."""
+        policy = IAMPolicy(
+            Version="2012-10-17",
+            Statement=[
+                Statement(
+                    Effect="Allow",
+                    Principal={"Federated": "arn:aws:iam::123:oidc-provider/accounts.google.com"},
+                    Action=["sts:AssumeRoleWithWebIdentity", "sts:TagSession"],
+                ),
+            ],
+        )
+        assert is_trust_policy(policy) is True
+
+    def test_all_three_assume_types_combined(self):
+        """Policy mixing AssumeRole, AssumeRoleWithSAML, AssumeRoleWithWebIdentity."""
+        policy = IAMPolicy(
+            Version="2012-10-17",
+            Statement=[
+                Statement(
+                    Sid="AllowStandardAssume",
+                    Effect="Allow",
+                    Principal={"AWS": "arn:aws:iam::123:root"},
+                    Action="sts:AssumeRole",
+                ),
+                Statement(
+                    Sid="AllowSAML",
+                    Effect="Allow",
+                    Principal={"Federated": "arn:aws:iam::123:saml-provider/Corp"},
+                    Action="sts:AssumeRoleWithSAML",
+                ),
+                Statement(
+                    Sid="AllowOIDC",
+                    Effect="Allow",
+                    Principal={"Federated": "arn:aws:iam::123:oidc-provider/accounts.google.com"},
+                    Action="sts:AssumeRoleWithWebIdentity",
+                ),
+            ],
+        )
+        assert is_trust_policy(policy) is True
+
 
 class TestDetectPolicyType:
     """Unit tests for ``detect_policy_type`` per the auto-detection plan."""

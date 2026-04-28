@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from iam_validator.core.constants import IGNORED_FINDINGS_IDENTIFIER
 from iam_validator.core.ignored_findings import (
     STORAGE_VERSION,
     IgnoredFinding,
@@ -113,7 +114,7 @@ class TestIgnoredFindingsStoreFormat:
         store = IgnoredFindingsStore(mock_github)
         body = store._format_comment({})
 
-        assert "<!-- iam-policy-validator-ignored-findings -->" in body
+        assert IGNORED_FINDINGS_IDENTIFIER in body
         assert "Ignored Findings (0)" in body
         assert '"ignored_findings": []' in body
 
@@ -141,7 +142,9 @@ class TestIgnoredFindingsStoreFormat:
     def test_parse_comment_valid(self, mock_github):
         """Test parsing valid comment."""
         store = IgnoredFindingsStore(mock_github)
-        body = """<!-- iam-policy-validator-ignored-findings -->
+        body = (
+            IGNORED_FINDINGS_IDENTIFIER
+            + """
 ```json
 {
   "version": 1,
@@ -151,6 +154,7 @@ class TestIgnoredFindingsStoreFormat:
 }
 ```
 """
+        )
         data = store._parse_comment(body)
 
         assert data["version"] == 1
@@ -160,11 +164,14 @@ class TestIgnoredFindingsStoreFormat:
     def test_parse_comment_invalid_json(self, mock_github):
         """Test parsing invalid JSON returns empty structure."""
         store = IgnoredFindingsStore(mock_github)
-        body = """<!-- iam-policy-validator-ignored-findings -->
+        body = (
+            IGNORED_FINDINGS_IDENTIFIER
+            + """
 ```json
 {invalid json}
 ```
 """
+        )
         data = store._parse_comment(body)
 
         assert data["version"] == STORAGE_VERSION
@@ -173,7 +180,7 @@ class TestIgnoredFindingsStoreFormat:
     def test_parse_comment_no_json_block(self, mock_github):
         """Test parsing comment without JSON block."""
         store = IgnoredFindingsStore(mock_github)
-        body = "<!-- iam-policy-validator-ignored-findings -->"
+        body = IGNORED_FINDINGS_IDENTIFIER
 
         data = store._parse_comment(body)
 
@@ -209,7 +216,8 @@ class TestIgnoredFindingsStoreOperations:
             return_value=[
                 {
                     "id": 12345,
-                    "body": """<!-- iam-policy-validator-ignored-findings -->
+                    "body": IGNORED_FINDINGS_IDENTIFIER
+                    + """
 ```json
 {
   "version": 1,
@@ -237,7 +245,8 @@ class TestIgnoredFindingsStoreOperations:
             return_value=[
                 {
                     "id": 1,
-                    "body": """<!-- iam-policy-validator-ignored-findings -->
+                    "body": IGNORED_FINDINGS_IDENTIFIER
+                    + """
 ```json
 {
   "version": 1,
@@ -263,7 +272,8 @@ class TestIgnoredFindingsStoreOperations:
             return_value=[
                 {
                     "id": 1,
-                    "body": """<!-- iam-policy-validator-ignored-findings -->
+                    "body": IGNORED_FINDINGS_IDENTIFIER
+                    + """
 ```json
 {
   "version": 1,
@@ -312,7 +322,8 @@ class TestIgnoredFindingsStoreOperations:
             return_value=[
                 {
                     "id": 12345,
-                    "body": """<!-- iam-policy-validator-ignored-findings -->
+                    "body": IGNORED_FINDINGS_IDENTIFIER
+                    + """
 ```json
 {
   "version": 1,
@@ -362,7 +373,8 @@ class TestIgnoredFindingsStoreOperations:
             return_value=[
                 {
                     "id": 12345,
-                    "body": """<!-- iam-policy-validator-ignored-findings -->
+                    "body": IGNORED_FINDINGS_IDENTIFIER
+                    + """
 ```json
 {
   "version": 1,

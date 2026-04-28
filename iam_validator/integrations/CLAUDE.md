@@ -1,144 +1,74 @@
-# Integrations Module - External Service Integration
+# Integrations Module
 
-**Purpose**: GitHub PR commenting and MS Teams notifications
-**Parent Context**: Extends [../../CLAUDE.md](../../CLAUDE.md)
-
----
-
-## Module Overview
-
-```
-integrations/
-├── __init__.py                # Package exports
-├── github_integration.py      # GitHub API client for PR commenting
-└── ms_teams.py                # Microsoft Teams webhook notifications
-```
+GitHub PR commenting + MS Teams webhooks. Extends [../../CLAUDE.md](../../CLAUDE.md).
 
 ---
 
-## GitHub Integration (`github_integration.py`)
+## `github_integration.py`
 
-Full-featured GitHub API client for posting validation results to PRs.
+The single GitHub API client. Use it instead of raw `httpx` calls so retry, rate
+limiting, pagination, and identifier-based comment management stay consistent.
 
-### Key Class: `GitHubIntegration`
+Surface organized by concern:
 
-```python
-from iam_validator.integrations.github_integration import GitHubIntegration
+- **General comments** — `post_comment`, `update_or_create_comment`, `post_multipart_comments`
+- **Inline review comments** — `create_review_comment`, `create_file_level_comment`,
+  `create_review_with_comments`, `update_or_create_review_comments`,
+  `cleanup_bot_review_comments`
+- **Comment lifecycle helpers** — `_sync_comments_with_identifier` (used by both
+  general and multi-part summary paths), `_find_all_comments_with_identifier` (paginated)
+- **Deduplication** — `_get_bot_comments_by_fingerprint`, `_extract_finding_id`
+- **Labels** — `add_labels`, `remove_label`, `get_labels`, `set_labels`
+- **PR info** — `get_pr_info`, `get_pr_files`, `get_pr_commits`
+- **Status checks** — `set_commit_status`
+- **CODEOWNERS** — `get_codeowners_content`, `get_team_members`, `is_user_codeowner`
+- **Ignore commands** — `scan_for_ignore_commands`, `extract_finding_id`, `extract_ignore_reason`
 
-async with GitHubIntegration(
-    token="ghp_...",
-    repository="owner/repo",
-    pr_number=123,
-) as gh:
-    # Post a comment
-    await gh.post_comment("Validation results: ...")
+Retry: `MAX_RETRIES`, `INITIAL_BACKOFF_SECONDS` constants on the module. Errors:
+`GitHubRateLimitError`, `GitHubRetryableError`. Concurrency cap:
+`MAX_CONCURRENT_API_CALLS`. Pagination: `_make_paginated_request`.
 
-    # Post inline review comments
-    await gh.create_review_with_comments(comments=[...])
-
-    # Manage labels
-    await gh.add_labels(["iam-validated", "security-review"])
-
-    # Get PR metadata
-    pr_info = await gh.get_pr_info()
-    files = await gh.get_pr_files()
-```
-
-### Capabilities
-
-| Category               | Methods                                                                             |
-| ---------------------- | ----------------------------------------------------------------------------------- |
-| **Comments**           | `post_comment`, `update_or_create_comment`, `post_multipart_comments`               |
-| **Review Comments**    | `create_review_comment`, `create_file_level_comment`, `create_review_with_comments` |
-| **Comment Management** | `update_or_create_review_comments`, `cleanup_bot_review_comments`                   |
-| **Deduplication**      | `_get_bot_comments_by_fingerprint`, `_extract_finding_id`                           |
-| **Labels**             | `add_labels`, `remove_label`, `get_labels`, `set_labels`                            |
-| **PR Info**            | `get_pr_info`, `get_pr_files`, `get_pr_commits`                                     |
-| **Status**             | `set_commit_status`                                                                 |
-| **CODEOWNERS**         | `get_codeowners_content`, `get_team_members`, `is_user_codeowner`                   |
-| **Ignore Commands**    | `scan_for_ignore_commands`, `extract_finding_id`, `extract_ignore_reason`           |
-
-### Retry & Rate Limiting
-
-- Automatic retry with exponential backoff (configurable `MAX_RETRIES`, `INITIAL_BACKOFF_SECONDS`)
-- `GitHubRateLimitError` raised when rate limit exceeded
-- `GitHubRetryableError` for transient failures
-- `MAX_CONCURRENT_API_CALLS` controls parallel request limit
-- Paginated request support via `_make_paginated_request`
-
-### Error Classes
-
-| Class                  | Purpose                     |
-| ---------------------- | --------------------------- |
-| `GitHubRateLimitError` | API rate limit exceeded     |
-| `GitHubRetryableError` | Transient HTTP errors (5xx) |
-
-### Enums
-
-| Enum          | Values                             |
-| ------------- | ---------------------------------- |
-| `PRState`     | PR lifecycle states                |
-| `ReviewEvent` | Review event types (APPROVE, etc.) |
+Enums: `PRState`, `ReviewEvent`.
 
 ---
 
-## MS Teams Integration (`ms_teams.py`)
+## Comment-lifecycle invariants (must not regress)
 
-Sends validation results to Microsoft Teams channels via incoming webhooks.
+Both summary and inline paths follow the same principle: **update in place,
+post only the surplus, delete only what is no longer relevant**. Concretely:
 
-### Key Class: `MSTeamsIntegration`
+- `update_or_create_review_comments` matches existing comments by fingerprint
+  first, then by `(path, line, issue_type)` location. A comment with an unchanged
+  body must NOT trigger a `PATCH`. Comments on files outside the PR must NOT be
+  deleted.
+- `_sync_comments_with_identifier` (used by `post_multipart_comments` and
+  `update_or_create_comment`) reconciles oldest-first: updates the canonical comment
+  in place, posts only the surplus parts, deletes only orphans past the new count.
+- `protected_fingerprints` skips deletion for off-diff comments managed by the
+  context-issue pipeline.
 
-```python
-from iam_validator.integrations.ms_teams import MSTeamsIntegration
+Tests pinning these invariants live in `tests/integrations/test_review_comment_noise.py`
+and `test_summary_comment_staleness.py`.
 
-async with MSTeamsIntegration(webhook_url="https://...") as teams:
-    # Send validation report
-    await teams.send_validation_report(results)
+All HTML comment markers come from `iam_validator.core.constants` — never hardcode
+them in either production or tests.
 
-    # Send PR notification
-    await teams.send_pr_notification(pr_number=123, results=results)
+---
 
-    # Send alert
-    await teams.send_alert("Critical finding detected", theme=CardTheme.DANGER)
-```
+## `ms_teams.py`
 
-### Features
-
-- Adaptive Card format for rich message rendering
-- Configurable card themes (`CardTheme`: SUCCESS, WARNING, DANGER, INFO)
-- Message types (`MessageType`): validation reports, PR notifications, alerts
-- Webhook URL validation on initialization
+`MSTeamsIntegration` posts Adaptive Cards via incoming webhook. Methods:
+`send_validation_report`, `send_pr_notification`, `send_alert`. Themes:
+`CardTheme.{SUCCESS,WARNING,DANGER,INFO}`. Webhook URL is validated on init.
 
 ---
 
 ## Testing
 
-```bash
-# Run integration tests
-uv run pytest tests/integrations/
+Mock the API surface — no real HTTP. See `tests/integrations/`:
 
-# Specific test files
-uv run pytest tests/integrations/test_github_pagination.py
-uv run pytest tests/integrations/test_label_manager.py
-uv run pytest tests/integrations/test_comment_deduplication.py
-```
-
-**Key**: All tests mock the GitHub/Teams APIs - no real HTTP requests.
-
----
-
-## Quick Search
-
-```bash
-# Find GitHub API methods
-rg -n "async def " iam_validator/integrations/github_integration.py
-
-# Find Teams methods
-rg -n "async def " iam_validator/integrations/ms_teams.py
-
-# Find retry/rate limit logic
-rg -n "retry|rate_limit|backoff" iam_validator/integrations/
-
-# Find tests
-rg -n "test.*github|test.*teams" tests/integrations/
-```
+- `test_github_pagination.py` — paginated request behaviour
+- `test_label_manager.py` — severity → label mapping
+- `test_comment_deduplication.py` — fingerprint and location matching
+- `test_review_comment_noise.py` — inline noise-minimization invariants
+- `test_summary_comment_staleness.py` — summary lifecycle (paginated find, orphan cleanup)

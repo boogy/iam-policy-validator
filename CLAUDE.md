@@ -1,466 +1,206 @@
 # IAM Policy Validator - Claude Code Instructions
 
-## Overview
+Python 3.10–3.14 CLI + GitHub Action + Python SDK + MCP server for validating AWS IAM
+policies. Plugin-based check system with async parallel execution. uv, Pydantic v2,
+httpx (HTTP/2), boto3, Rich, FastMCP.
 
-- **Type**: Python CLI tool + GitHub Action for AWS IAM policy validation
-- **Stack**: Python 3.10-3.14, uv, Pydantic v2, httpx (HTTP/2), boto3, Rich, FastMCP
-- **Architecture**: Plugin-based check system with async parallel execution
-- **Interfaces**: CLI (`iam-validator` or `iam-policy-validator`), Python SDK, MCP Server, GitHub Action
-
-This CLAUDE.md is the authoritative source for development guidelines.
-Subdirectories contain specialized CLAUDE.md files that extend these rules.
+This file is authoritative. Subdirectory `CLAUDE.md` files extend it.
 
 ---
 
 ## CRITICAL RULES (MUST)
 
-- **MUST** write plans in .claude/plans/ folder
-- **MUST** use `git push --force-with-lease` instead of `git push --force`
-- **MUST** always format markdown files using prettier
+### Process
+
+- **MUST** write plans to `.claude/plans/`
+- **MUST** ask for explicit consent before `git push` (and use `--force-with-lease`, never `--force` to main)
+- **MUST** create PRs instead of pushing directly to `main`
+- **MUST** sign commits (`-s -S`) and tags (`-s`, never `git tag -a`)
+- **MUST NOT** add `Co-Authored-By: Claude` or `Generated with Claude Code` footers
+- **MUST** update `CHANGELOG.md` and the relevant `CLAUDE.md` files when behavior or structure changes
+- **MUST** format markdown with prettier
 - **MUST** use `rg` and `fd` for searching
 
-### Git & Push Safety
+### Code
 
-- **MUST** ask for explicit user consent before `git push`
-- **MUST** create pull requests instead of pushing to `main` directly
-- **MUST** sign all commits with `-s -S` (sign-off + GPG/SSH)
-- **MUST** sign all git tags with `-s` (never use `git tag -a`)
-- **MUST NOT** add Claude as co-author (`Co-Authored-By: Claude`)
-- **MUST NOT** add `Generated with [Claude Code]` footers
-- **MUST NOT** use `git push --force` to main/master
+- **MUST** run `uv run ruff check` and `uv run pytest` before committing
+- **MUST** type-hint all public functions; no `any` without justification
+- **MUST NOT** commit secrets, credentials, or `.env*` files
+- **MUST NOT** disable security checks without documenting why
+- Use modern Python type syntax: `list[T]`, `dict[K, V]`, `T | None` (no `Optional`/`List`/`Dict`)
 
-### Documentation (MUST)
+### Versioning
 
-- **MUST** update `CHANGELOG.md` when making changes and committing
-- **MUST** update relevant `CLAUDE.md` files when project structure, checks, or patterns change
-
-### Version File Synchronization
-
-- **MUST** update BOTH files when changing version:
-  - `iam_validator/__version__.py` (line 6)
-  - `pyproject.toml` (line 3 via hatch dynamic version)
-- **MUST** use `/create-version-tag` slash command for version bumps
-
-### Code Quality (MUST)
-
-- **MUST** run `uv run ruff check` before committing
-- **MUST** run `uv run pytest` for changes to core logic
-- **MUST** use type hints for all public functions
-- **MUST NOT** introduce `any` type without explicit justification
-
-### Security (MUST NOT)
-
-- **MUST NOT** commit secrets, API keys, or AWS credentials
-- **MUST NOT** edit `.env*` files without explicit user consent
-- **MUST NOT** disable security checks without documenting reason
+- Version lives only in `iam_validator/__version__.py` (line 6). `pyproject.toml` reads
+  it dynamically via hatch — do not duplicate it there.
+- Use `/create-version-tag` to bump and tag.
 
 ---
 
 ## Slash Commands
 
-### Commands (procedural workflows)
+### Procedural
 
-| Command               | Purpose                                        |
-| --------------------- | ---------------------------------------------- |
-| `/create-pr`          | Stage commits and push a branch for a PR       |
-| `/create-version-tag` | Bump version in both files, create signed tag  |
-| `/update-changelog`   | Update CHANGELOG.md following Common Changelog |
-| `/benchmark`          | Run performance benchmarks                     |
+| Command               | Purpose                                  |
+| --------------------- | ---------------------------------------- |
+| `/create-pr`          | Stage commits and push a branch for a PR |
+| `/create-version-tag` | Bump version + create signed tag         |
+| `/update-changelog`   | Append entry following Common Changelog  |
+| `/benchmark`          | Run performance benchmarks               |
 
-### Skills (reasoning frameworks)
+### Reasoning skills
 
-| Skill               | Purpose                                        |
-| ------------------- | ---------------------------------------------- |
-| `/add-check`        | Check patterns, architecture, and templates    |
-| `/review`           | Code review evaluation criteria and checklists |
-| `/fix-issue`        | Analyze and plan fixes for GitHub issues       |
-| `/update-claude-md` | CLAUDE.md quality and structure reasoning      |
+| Skill               | Purpose                                |
+| ------------------- | -------------------------------------- |
+| `/add-check`        | Scaffold a new validation check        |
+| `/review`           | Code-review checklist                  |
+| `/fix-issue`        | Analyze and plan a GitHub issue fix    |
+| `/update-claude-md` | CLAUDE.md quality + structure guidance |
 
 ---
 
 ## Development Commands
 
-### Quick Reference
-
 ```bash
 # Setup
-uv sync                          # Install dependencies
-uv sync --extra dev              # Install with dev deps
-uv sync --extra mcp              # Install MCP server support
+uv sync                          # install
+uv sync --extra dev              # +dev tools
+uv sync --extra mcp              # +MCP server
 
 # Quality
-uv run ruff format .             # Format code
-uv run ruff check --fix .        # Lint + auto-fix
-uv run mypy iam_validator/       # Type check
-mise run check                   # All checks (lint + type + test)
+uv run ruff format .
+uv run ruff check --fix .
+uv run mypy iam_validator/
+mise run check                   # format + lint + type + test
 
 # Testing
-uv run pytest                    # Run all tests
-uv run pytest -k "wildcard"      # Pattern match
-uv run pytest -m "not slow"      # Skip slow tests
-uv run pytest -m "not benchmark" # Skip benchmarks
-uv run pytest --cov=iam_validator --cov-report=html  # Coverage
+uv run pytest
+uv run pytest -k "wildcard"
+uv run pytest -m "not benchmark and not slow"   # default for fast iteration
+uv run pytest --cov=iam_validator --cov-report=html
 
-# Validation
+# Run the validator
 uv run iam-validator validate --path policy.json
 uv run iam-validator validate --path ./policies/ --config config.yaml
 uv run iam-validator analyze --path policy.json   # AWS Access Analyzer
 
-# MCP Server
-iam-validator-mcp                # Start MCP server (stdio)
-mise run mcp:inspector           # Debug MCP with inspector
+# MCP server
+iam-validator-mcp                # stdio
+mise run mcp:inspector           # debug
 ```
 
-### Test Markers
-
-- `benchmark` - Performance tests (skip: `-m "not benchmark"`)
-- `slow` - Long-running tests (skip: `-m "not slow"`)
-- `integration` - External resource tests
+Test markers: `benchmark` (perf), `slow` (long), `integration` (external resources).
+`asyncio_mode = "auto"` is set in `pyproject.toml`.
 
 ---
 
-## Project Structure
+## Project Map
 
 ```
-iam-policy-auditor/
-├── iam_validator/               # Main package
-│   ├── __version__.py          # Version (sync with pyproject.toml!)
-│   ├── core/                   # Validation engine ([CLAUDE.md](iam_validator/core/CLAUDE.md))
-│   │   ├── cli.py             # CLI entry point
-│   │   ├── check_registry.py  # Check plugin system
-│   │   ├── models.py          # Pydantic data models
-│   │   ├── policy_loader.py   # JSON/YAML policy loading
-│   │   ├── policy_checks.py   # Validation orchestrator
-│   │   ├── pr_commenter.py    # PR comment posting + diff filtering
-│   │   ├── report.py          # Report generation (summary, context issues)
-│   │   ├── aws_service/       # AWS API integration
-│   │   ├── config/            # Configuration system
-│   │   └── formatters/        # Output formatters (7 formats)
-│   ├── checks/                 # 22 built-in checks ([CLAUDE.md](iam_validator/checks/CLAUDE.md))
-│   ├── commands/               # 8 CLI commands ([CLAUDE.md](iam_validator/commands/CLAUDE.md))
-│   ├── mcp/                    # MCP server ([CLAUDE.md](iam_validator/mcp/CLAUDE.md))
-│   ├── sdk/                    # Public SDK API ([CLAUDE.md](iam_validator/sdk/CLAUDE.md))
-│   └── integrations/           # GitHub, MS Teams ([CLAUDE.md](iam_validator/integrations/CLAUDE.md))
-├── tests/                       # Test suite ([CLAUDE.md](tests/CLAUDE.md))
-├── examples/                    # Usage examples
-│   ├── custom_checks/          # Example custom checks
-│   ├── iam-test-policies/      # Test policies
-│   └── configs/                # Example configs
-├── docs/                        # MkDocs documentation ([CLAUDE.md](docs/CLAUDE.md))
-└── .claude/                     # Claude Code config
-    ├── settings.json           # Hooks configuration
-    └── commands/               # Slash commands
+iam_validator/
+├── __version__.py            # single source of truth for version
+├── core/                     # validation engine — see core/CLAUDE.md
+│   ├── cli.py                # CLI entry point
+│   ├── check_registry.py     # PolicyCheck ABC + registry
+│   ├── models.py             # IAMPolicy, Statement, ValidationIssue
+│   ├── policy_loader.py      # JSON/YAML loading + auto-detect
+│   ├── policy_checks.py      # validation orchestrator
+│   ├── pr_commenter.py       # PR comment posting + diff filtering
+│   ├── report.py             # report generation
+│   ├── constants.py          # centralized HTML markers, ARN patterns, size limits
+│   ├── aws_service/          # AWS Service Reference fetcher (cache: memory LRU + disk TTL)
+│   ├── config/               # YAML config + sensitive_actions / condition_requirements
+│   └── formatters/           # console / json / markdown / sarif / csv / html
+├── checks/                   # 22 built-in checks — see checks/CLAUDE.md
+├── commands/                 # 8 CLI commands — see commands/CLAUDE.md
+├── mcp/                      # MCP server (35+ tools, 15 templates) — see mcp/CLAUDE.md
+├── sdk/                      # public Python API — see sdk/CLAUDE.md
+└── integrations/             # GitHub PR + MS Teams — see integrations/CLAUDE.md
+
+tests/                        # mirrors source tree — see tests/CLAUDE.md
+examples/                     # custom_checks/, iam-test-policies/, configs/
+docs/                         # MkDocs site — see docs/CLAUDE.md
+.claude/                      # commands/, skills/, settings.json, plans/
 ```
 
-### Key Files
+### Key files
 
-| Purpose    | File                                         | Notes                                       |
-| ---------- | -------------------------------------------- | ------------------------------------------- |
-| CLI Entry  | `iam_validator/core/cli.py`                  | Argparse-based CLI                          |
-| Check Base | `iam_validator/core/check_registry.py`       | `PolicyCheck` ABC                           |
-| Models     | `iam_validator/core/models.py`               | `IAMPolicy`, `Statement`, `ValidationIssue` |
-| SDK API    | `iam_validator/sdk/__init__.py`              | Public library interface                    |
-| Version    | `iam_validator/__version__.py`               | Keep in sync with pyproject.toml            |
-| Config     | `iam_validator/core/config/config_loader.py` | YAML config loader                          |
-| MCP Server | `iam_validator/mcp/server.py`                | FastMCP server with 35+ tools               |
-| Action     | `action.yaml`                                | GitHub Action definition                    |
-
----
-
-## Architecture Patterns
-
-### Check Plugin System
-
-All checks inherit from `PolicyCheck` in `core/check_registry.py`:
-
-```python
-from typing import ClassVar
-from iam_validator.core.check_registry import CheckConfig, PolicyCheck
-from iam_validator.core.models import Statement, ValidationIssue
-
-class MyCheck(PolicyCheck):
-    check_id: ClassVar[str] = "my_check"
-    description: ClassVar[str] = "What this check validates"
-    default_severity: ClassVar[str] = "medium"  # low|medium|high|critical
-
-    async def execute(
-        self,
-        statement: Statement,
-        statement_idx: int,
-        fetcher: AWSServiceFetcher,
-        config: CheckConfig,
-    ) -> list[ValidationIssue]:
-        issues = []
-        # Statement-level validation logic
-        return issues
-```
-
-**Real example**: See `iam_validator/checks/wildcard_action.py`
-
-### Policy Processing Pipeline
-
-```
-PolicyLoader.load_from_file()
-    ↓
-validate_policies() in policy_checks.py
-    ↓
-_resolve_policy_type() per file [cli-flag > config-glob > auto-detect > default]
-    ↓
-CheckRegistry.execute_policy_checks() [policy-level]
-    ↓
-CheckRegistry.execute_checks_parallel() [statement-level, parallel async]
-    ↓
-ReportGenerator.generate_report()
-    ↓
-Formatter output (console|json|markdown|sarif|csv|html)
-```
-
-### Policy Type Resolution
-
-- `--policy-type`/SDK `policy_type=` kwarg, when supplied, applies to every
-  policy in the run (auto-detection skipped).
-- When omitted, each policy's type is resolved per-file from:
-  `policy_types:` glob mapping → content auto-detect (trust/resource/identity)
-  → default `IDENTITY_POLICY`.
-- `--log-level debug` prints one `policy_type=… source=cli-flag|config-glob|auto-detect|default file=<basename>` line per policy for auditing. `config-glob` lines also include `pattern_present=true pattern_len=<n>` (raw glob is not logged).
-
-### AWS Service Fetcher
-
-```python
-from iam_validator.core.aws_service import AWSServiceFetcher
-
-async with AWSServiceFetcher() as fetcher:
-    # Validate action exists
-    is_valid, error, is_wildcard = await fetcher.validate_action("s3:GetObject")
-
-    # Expand wildcards
-    actions = await fetcher.expand_wildcard_action("s3:Get*")
-
-    # Fetch service definition
-    s3_service = await fetcher.fetch_service_by_name("s3")
-```
-
-**Caching**: Memory LRU + disk TTL (7 days). Platform-specific paths.
+| Purpose        | File                                         |
+| -------------- | -------------------------------------------- |
+| CLI entry      | `iam_validator/core/cli.py`                  |
+| Check ABC      | `iam_validator/core/check_registry.py`       |
+| Constants      | `iam_validator/core/constants.py`            |
+| SDK public API | `iam_validator/sdk/__init__.py`              |
+| Config loader  | `iam_validator/core/config/config_loader.py` |
+| MCP server     | `iam_validator/mcp/server.py`                |
+| GitHub Action  | `action.yaml`                                |
 
 ---
 
-## Quick Search Commands
+## Centralized Constants (read this before adding literals)
 
-```bash
-# Find check by ID
-rg -n "check_id.*=.*\"wildcard" iam_validator/checks/
+`iam_validator/core/constants.py` is the single source of truth for cross-module
+literals. Add a constant there before introducing any of these inline:
 
-# Find where model is used
-rg -n "ValidationIssue" iam_validator/
+- HTML comment markers (`SUMMARY_IDENTIFIER`, `REVIEW_IDENTIFIER`,
+  `IGNORED_FINDINGS_IDENTIFIER`, `ANALYZER_IDENTIFIER`, `BOT_IDENTIFIER`)
+- Body-part markers (`ISSUE_TYPE_MARKER_FORMAT/PATTERN`, `FINDING_ID_MARKER_FORMAT`,
+  `FINDING_ID_STRICT_PATTERN` for the canonical 16-char hash, `FINDING_ID_LOOSE_PATTERN`
+  for legacy ids)
+- ARN partitions (`ARN_PARTITION_REGEX` covers commercial, `aws-cn`, `aws-us-gov`,
+  `aws-eusc`, all `aws-iso*`) — sourced by `DEFAULT_ARN_VALIDATION_PATTERN` and the
+  trust-policy SAML/OIDC patterns
+- AWS policy size limits (`MAX_MANAGED_POLICY_SIZE`, etc.)
+- GitHub comment limits (`GITHUB_COMMENT_HARD_LIMIT = 65536`,
+  `GITHUB_MAX_COMMENT_LENGTH = 65000`, `GITHUB_COMMENT_SPLIT_LIMIT = 60000`)
 
-# Find CLI command handler
-rg -n "class.*Command" iam_validator/commands/
-
-# Find config option
-rg -n "config.get\(" iam_validator/
-
-# Find test for specific check
-rg -n "test.*wildcard" tests/
-
-# Find SDK function
-rg -n "^def |^async def " iam_validator/sdk/
-
-# Find MCP tools
-rg -n "@mcp.tool" iam_validator/mcp/server.py
-```
+Tests must also import from constants — never duplicate marker strings.
 
 ---
 
-## Adding New Components
+## Adding new components
 
-### New Check
+### Check
 
-1. Create `iam_validator/checks/my_check.py` (copy from `wildcard_action.py`)
-2. Add import to `iam_validator/checks/__init__.py`
-3. Register in `iam_validator/core/check_registry.py:create_default_registry()`
-4. Add test in `tests/checks/test_my_check.py`
+`/add-check my_check_name` scaffolds. Manual:
 
-**Use**: `/add-check my_check_name` to scaffold automatically
+1. `iam_validator/checks/my_check.py` (copy `wildcard_action.py` as the canonical small example)
+2. Register in `iam_validator/checks/__init__.py` and
+   `iam_validator/core/check_registry.py:create_default_registry()`
+3. Test in `tests/checks/test_my_check.py`
 
-### New CLI Command
+### CLI command
 
-1. Create `iam_validator/commands/my_command.py` (inherit from `Command`)
-2. Add to `ALL_COMMANDS` list in `iam_validator/commands/__init__.py`
-3. Add test in `tests/commands/test_my_command.py`
-4. Add completions in `iam_validator/commands/completion.py`
+1. `iam_validator/commands/my_command.py` inheriting from `Command`
+2. Add to `ALL_COMMANDS` in `iam_validator/commands/__init__.py`
+3. Add to `iam_validator/commands/completion.py`
+4. Test in `tests/commands/test_my_command.py`
 
-### New Output Formatter
+### Output formatter
 
-1. Create `iam_validator/core/formatters/my_format.py` (inherit from `BaseFormatter`)
-2. Register in formatter selection logic
-
----
-
-## Built-in Checks (22)
-
-| Check ID                       | Category | Severity | Description                          |
-| ------------------------------ | -------- | -------- | ------------------------------------ |
-| `action_validation`            | AWS      | error    | Actions exist in AWS                 |
-| `condition_key_validation`     | AWS      | error    | Condition keys are valid             |
-| `condition_type_mismatch`      | AWS      | error    | Operator-value type match            |
-| `resource_validation`          | AWS      | error    | Resource ARN format                  |
-| `principal_validation`         | AWS      | high     | Principal format (resource policies) |
-| `policy_structure`             | AWS      | error    | Required fields, valid values        |
-| `policy_size`                  | AWS      | error    | Character size limits                |
-| `policy_type_validation`       | AWS      | error    | Policy-type-specific requirements    |
-| `sid_uniqueness`               | AWS      | warning  | Unique SIDs across statements        |
-| `set_operator_validation`      | AWS      | error    | ForAllValues/ForAnyValue usage       |
-| `ifexists_condition_usage`     | AWS      | warning  | IfExists condition validation        |
-| `mfa_condition_antipattern`    | AWS      | warning  | MFA anti-pattern detection           |
-| `trust_policy_validation`      | AWS      | high     | Trust policy + confused deputy       |
-| `not_principal_validation`     | AWS      | warning  | NotPrincipal usage patterns          |
-| `action_resource_matching`     | AWS      | medium   | Actions match resource types         |
-| `wildcard_action`              | Security | medium   | `Action: "*"` detection              |
-| `wildcard_resource`            | Security | medium   | `Resource: "*"` detection            |
-| `full_wildcard`                | Security | critical | `Action + Resource: "*"` detection   |
-| `service_wildcard`             | Security | high     | `s3:*` style wildcards               |
-| `sensitive_action`             | Security | medium   | 490+ privilege escalation actions    |
-| `not_action_not_resource`      | Security | high     | Dangerous NotAction/NotResource      |
-| `action_condition_enforcement` | Security | high     | Sensitive actions require conditions |
+1. `iam_validator/core/formatters/my_format.py` inheriting from `BaseFormatter`
+2. Wire into the formatter selection logic
 
 ---
 
-## CLI Commands (8)
+## Policy Type Resolution (gotcha)
 
-| Command         | Purpose                            |
-| --------------- | ---------------------------------- |
-| `validate`      | Validate IAM policies              |
-| `analyze`       | AWS Access Analyzer integration    |
-| `post-to-pr`    | Post results to GitHub PR          |
-| `cache`         | Manage AWS service cache           |
-| `sync-services` | Download AWS definitions offline   |
-| `query`         | Query AWS service definitions      |
-| `completion`    | Shell completion scripts           |
-| `mcp`           | Start MCP server for AI assistants |
-
----
-
-## Testing Guidelines
-
-- Tests mirror source structure in `tests/`
-- Use `pytest-asyncio` for async tests (`asyncio_mode = "auto"`)
-- Mock AWS API calls - don't make real requests
-- Example policies in `examples/iam-test-policies/`
-- Colocate fixtures with test files or in `conftest.py`
-
-```python
-# Test pattern
-import pytest
-from iam_validator.checks.my_check import MyCheck
-
-@pytest.mark.asyncio
-async def test_my_check_detects_issue():
-    check = MyCheck()
-    statement = Statement(...)
-    issues = await check.execute(statement, 0, mock_fetcher, config)
-    assert len(issues) == 1
-    assert issues[0].severity == "high"
-```
+- `--policy-type` / SDK `policy_type=` kwarg, when supplied, applies to **every**
+  policy (auto-detection skipped).
+- When omitted: per-file resolution via `policy_types:` glob mapping →
+  content auto-detect (trust / resource / identity) → default `IDENTITY_POLICY`.
+- `--log-level debug` emits one
+  `policy_type=… source=cli-flag|config-glob|auto-detect|default file=<basename>` line
+  per policy. `config-glob` lines also include `pattern_present=true pattern_len=<n>`
+  (raw glob is not logged for security).
+- SCP / RCP share the identity-policy shape and still need an explicit flag or glob mapping.
 
 ---
 
-## Git Conventions
+## Git conventions
 
-**Commit format** (Conventional Commits):
+Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`).
+Branches: `feature/`, `fix/<issue>-`, `docs/`.
 
-- `feat:` New features
-- `fix:` Bug fixes
-- `docs:` Documentation
-- `refactor:` Code refactoring
-- `test:` Test changes
-- `chore:` Build/tooling
-
-**Branch naming**:
-
-- `feature/description`
-- `fix/issue-number-description`
-- `docs/what-changed`
-
----
-
-## CI/CD Workflows
-
-| Workflow                  | Trigger         | Purpose                            |
-| ------------------------- | --------------- | ---------------------------------- |
-| `ci.yml`                  | push/PR         | Lint, test (3.10-3.14), build      |
-| `release.yml`             | tag v\*.\*.\*   | Build + publish to PyPI            |
-| `pre-release.yml`         | manual dispatch | Create alpha/beta/rc pre-releases  |
-| `cleanup-prereleases.yml` | daily / manual  | Delete pre-releases older than 30d |
-| `docs.yml`                | push to main    | Build + deploy MkDocs to Pages     |
-| `codeql.yml`              | weekly + push   | Security analysis                  |
-| `scorecard.yml`           | weekly          | OpenSSF Scorecard                  |
-
----
-
-## Releasing
-
-Use `/create-version-tag` command, or manually:
-
-1. Update both version files
-2. `git tag -s v1.x.x -m "Release v1.x.x"`
-3. `git push origin v1.x.x`
-4. GitHub Actions auto-publishes to PyPI (trusted publishing)
-
----
-
-## Security
-
-- Never commit secrets or credentials
-- `.env*` files are gitignored
-- Use AWS IAM roles in CI, not access keys
-- Trusted publishing for PyPI (no stored tokens)
-- CodeQL + Scorecard run weekly
-
----
-
-## MCP Server Integration
-
-```bash
-# Quick start with uvx (recommended)
-uvx --from "iam-policy-validator[mcp]" iam-validator-mcp
-
-# Local development
-uv sync --extra mcp && iam-validator-mcp
-
-# Debug with MCP Inspector
-mise run mcp:inspector
-```
-
-**35+ tools** across validation, generation, query, and org config categories.
-See [iam_validator/mcp/CLAUDE.md](iam_validator/mcp/CLAUDE.md) for full tool reference, Claude Desktop config, and development guide.
-
----
-
-## Tool Permissions
-
-| Tool               | Permission | Notes                     |
-| ------------------ | ---------- | ------------------------- |
-| Read any file      | ✅ Allowed | Full codebase access      |
-| Write Python files | ✅ Allowed | Auto-formatted with ruff  |
-| Run tests/linting  | ✅ Allowed | `pytest`, `ruff`, `mypy`  |
-| Edit .env files    | ❌ Blocked | Requires explicit consent |
-| Force push         | ❌ Blocked | Safety hook prevents      |
-| Push to main       | ⚠️ Warning | Prompts for PR creation   |
-| Delete files       | ⚠️ Caution | `rm -rf /` blocked        |
-
----
-
-## Subdirectory Context
-
-| Directory                     | CLAUDE.md Purpose                    |
-| ----------------------------- | ------------------------------------ |
-| `iam_validator/core/`         | Core architecture details            |
-| `iam_validator/checks/`       | Check development patterns           |
-| `iam_validator/mcp/`          | MCP server tools and templates       |
-| `iam_validator/sdk/`          | SDK usage and extension              |
-| `iam_validator/commands/`     | CLI command patterns                 |
-| `iam_validator/integrations/` | GitHub PR posting, MS Teams          |
-| `tests/`                      | Testing patterns and fixtures        |
-| `docs/`                       | MkDocs documentation and conventions |
-
-When working in these directories, their CLAUDE.md files provide specific guidance.
+CI workflows in `.github/workflows/`: `ci.yml` (lint/test 3.10-3.14), `release.yml`
+(tag → PyPI via trusted publishing), `docs.yml`, `codeql.yml`, `scorecard.yml`.

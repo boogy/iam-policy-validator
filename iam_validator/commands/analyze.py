@@ -4,6 +4,7 @@ import argparse
 import logging
 
 from iam_validator.commands.base import Command
+from iam_validator.core import constants
 from iam_validator.core.access_analyzer import (
     AccessAnalyzerReport,
     PolicyType,
@@ -454,10 +455,10 @@ Examples:
         markdown_content = formatter.generate_markdown_report(report)
 
         # Add identifier for updating existing comments
-        identifier = "<!-- iam-access-analyzer-validator -->"
+        identifier = constants.ANALYZER_IDENTIFIER
 
         # Check if content is too large for single comment
-        if len(markdown_content) > 60000:
+        if len(markdown_content) > constants.GITHUB_COMMENT_SPLIT_LIMIT:
             # Split into multiple parts
             # For simplicity, we use a basic split for Access Analyzer reports
             # TODO: Implement proper multi-part splitting for Access Analyzer reports

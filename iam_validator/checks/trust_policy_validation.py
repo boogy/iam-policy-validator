@@ -43,6 +43,7 @@ from typing import Any, ClassVar
 from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
+from iam_validator.core.constants import ARN_PARTITION_REGEX
 from iam_validator.core.models import Statement, ValidationIssue
 
 
@@ -75,13 +76,13 @@ class TrustPolicyValidationCheck(PolicyCheck):
         },
         "sts:AssumeRoleWithSAML": {
             "allowed_principal_types": ["Federated"],
-            "provider_pattern": r"^arn:aws:iam::\d{12}:saml-provider/[\w+=,.@-]+$",
+            "provider_pattern": rf"^arn:{ARN_PARTITION_REGEX}:iam::\d{{12}}:saml-provider/[\w+=,.@-]+$",
             "required_conditions": ["SAML:aud"],
             "description": "SAML-based federated role assumption",
         },
         "sts:AssumeRoleWithWebIdentity": {
             "allowed_principal_types": ["Federated"],
-            "provider_pattern": r"^arn:aws:iam::\d{12}:oidc-provider/[\w./-]+$",
+            "provider_pattern": rf"^arn:{ARN_PARTITION_REGEX}:iam::\d{{12}}:oidc-provider/[\w./-]+$",
             "required_conditions": ["*:aud"],  # Require audience condition (provider-specific key)
             "description": "OIDC-based federated role assumption",
         },

@@ -4,7 +4,30 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from iam_validator.core.constants import (
+    BOT_IDENTIFIER,
+    FINDING_ID_MARKER_FORMAT,
+    ISSUE_TYPE_MARKER_FORMAT,
+    REVIEW_IDENTIFIER,
+)
 from iam_validator.integrations.github_integration import GitHubIntegration, ReviewEvent
+
+
+def _build_review_body(*, finding_id: str, issue_type: str, message: str) -> str:
+    """Build a review-comment body matching what production constructs.
+
+    Mirrors the format produced by `ValidationIssue.to_github_comment_body()`
+    in iam_validator/core/models.py so test fixtures cannot drift from the
+    real wire format. Uses centralized constants — changing a marker in
+    constants.py updates all tests automatically.
+    """
+    return (
+        f"{REVIEW_IDENTIFIER}\n"
+        f"{BOT_IDENTIFIER}\n"
+        f"{ISSUE_TYPE_MARKER_FORMAT.format(issue_type=issue_type)}\n"
+        f"{FINDING_ID_MARKER_FORMAT.format(finding_id=finding_id)}\n"
+        f"{message}"
+    )
 
 
 class TestCommentDeduplication:
@@ -38,12 +61,10 @@ class TestCommentDeduplication:
                 "id": 100,
                 "path": "policy.json",
                 "line": 5,
-                "body": (
-                    "<!-- iam-validator-review -->\n"
-                    "<!-- iam-policy-validator-bot -->\n"
-                    "<!-- issue-type: invalid_action -->\n"
-                    "<!-- finding-id: aaaa111122223333 -->\n"  # Old fingerprint
-                    "Error: Invalid action"
+                "body": _build_review_body(
+                    finding_id="aaaa111122223333",  # old fingerprint
+                    issue_type="invalid_action",
+                    message="Error: Invalid action",
                 ),
             }
         ]
@@ -53,17 +74,14 @@ class TestCommentDeduplication:
             {
                 "path": "policy.json",
                 "line": 5,
-                "body": (
-                    "<!-- iam-validator-review -->\n"
-                    "<!-- iam-policy-validator-bot -->\n"
-                    "<!-- issue-type: invalid_action -->\n"
-                    "<!-- finding-id: bbbb444455556666 -->\n"  # New fingerprint (different!)
-                    "Error: Invalid action (updated message)"
+                "body": _build_review_body(
+                    finding_id="bbbb444455556666",  # new fingerprint (different!)
+                    issue_type="invalid_action",
+                    message="Error: Invalid action (updated message)",
                 ),
             }
         ]
 
-        # Mock the methods
         github_integration.get_review_comments = AsyncMock(return_value=existing_comments)
         github_integration.update_review_comment = AsyncMock(return_value=True)
         github_integration.create_review_with_comments = AsyncMock(return_value=True)
@@ -73,7 +91,7 @@ class TestCommentDeduplication:
             comments=new_comments,
             body="",
             event=ReviewEvent.COMMENT,
-            identifier="<!-- iam-policy-validator-bot -->",
+            identifier=REVIEW_IDENTIFIER,
             validated_files={"policy.json"},
         )
 
@@ -92,12 +110,10 @@ class TestCommentDeduplication:
                 "id": 100,
                 "path": "policy.json",
                 "line": 5,
-                "body": (
-                    f"<!-- iam-validator-review -->\n"
-                    f"<!-- iam-policy-validator-bot -->\n"
-                    f"<!-- issue-type: invalid_action -->\n"
-                    f"<!-- finding-id: {fingerprint} -->\n"
-                    "Error: Invalid action"
+                "body": _build_review_body(
+                    finding_id=fingerprint,
+                    issue_type="invalid_action",
+                    message="Error: Invalid action",
                 ),
             }
         ]
@@ -105,13 +121,11 @@ class TestCommentDeduplication:
         new_comments = [
             {
                 "path": "policy.json",
-                "line": 5,  # Same line
-                "body": (
-                    f"<!-- iam-validator-review -->\n"
-                    f"<!-- iam-policy-validator-bot -->\n"
-                    f"<!-- issue-type: invalid_action -->\n"
-                    f"<!-- finding-id: {fingerprint} -->\n"  # SAME fingerprint
-                    "Error: Invalid action (updated)"
+                "line": 5,  # same line
+                "body": _build_review_body(
+                    finding_id=fingerprint,  # same fingerprint
+                    issue_type="invalid_action",
+                    message="Error: Invalid action (updated)",
                 ),
             }
         ]
@@ -125,7 +139,7 @@ class TestCommentDeduplication:
             comments=new_comments,
             body="",
             event=ReviewEvent.COMMENT,
-            identifier="<!-- iam-policy-validator-bot -->",
+            identifier=REVIEW_IDENTIFIER,
             validated_files={"policy.json"},
         )
 
@@ -136,24 +150,20 @@ class TestCommentDeduplication:
     @pytest.mark.asyncio
     async def test_resolved_issue_comment_deleted(self, github_integration):
         """Test that comments for resolved issues are deleted."""
-        # Existing comment for an issue that no longer exists
         existing_comments = [
             {
                 "id": 100,
                 "path": "policy.json",
                 "line": 5,
-                "body": (
-                    "<!-- iam-validator-review -->\n"
-                    "<!-- iam-policy-validator-bot -->\n"
-                    "<!-- issue-type: invalid_action -->\n"
-                    "<!-- finding-id: aaaa111122223333 -->\n"
-                    "Error: Invalid action"
+                "body": _build_review_body(
+                    finding_id="aaaa111122223333",
+                    issue_type="invalid_action",
+                    message="Error: Invalid action",
                 ),
             }
         ]
 
-        # No new comments (issue was fixed)
-        new_comments = []
+        new_comments: list[dict] = []  # no new comments — issue was fixed
 
         github_integration.get_review_comments = AsyncMock(return_value=existing_comments)
         github_integration.delete_review_comment = AsyncMock(return_value=True)
@@ -164,30 +174,26 @@ class TestCommentDeduplication:
             comments=new_comments,
             body="",
             event=ReviewEvent.COMMENT,
-            identifier="<!-- iam-policy-validator-bot -->",
+            identifier=REVIEW_IDENTIFIER,
             validated_files={"policy.json"},
         )
 
         assert result is True
-        # Should delete the stale comment
         github_integration.delete_review_comment.assert_called_once_with(100)
 
     @pytest.mark.asyncio
     async def test_new_comment_created_for_new_issue(self, github_integration):
         """Test that new issues get new comments created."""
-        # No existing comments
-        existing_comments = []
+        existing_comments: list[dict] = []
 
         new_comments = [
             {
                 "path": "policy.json",
                 "line": 10,
-                "body": (
-                    "<!-- iam-validator-review -->\n"
-                    "<!-- iam-policy-validator-bot -->\n"
-                    "<!-- issue-type: invalid_action -->\n"
-                    "<!-- finding-id: aaaa111122223333 -->\n"
-                    "Error: New issue"
+                "body": _build_review_body(
+                    finding_id="aaaa111122223333",
+                    issue_type="invalid_action",
+                    message="Error: New issue",
                 ),
             }
         ]
@@ -200,7 +206,7 @@ class TestCommentDeduplication:
             comments=new_comments,
             body="",
             event=ReviewEvent.COMMENT,
-            identifier="<!-- iam-policy-validator-bot -->",
+            identifier=REVIEW_IDENTIFIER,
             validated_files={"policy.json"},
         )
 
@@ -219,24 +225,20 @@ class TestCommentDeduplication:
                 "id": 100,
                 "path": "policy.json",
                 "line": 5,
-                "body": (
-                    "<!-- iam-validator-review -->\n"
-                    "<!-- iam-policy-validator-bot -->\n"
-                    "<!-- issue-type: invalid_action -->\n"
-                    "<!-- finding-id: aaaa111122223333 -->\n"
-                    "Error: Invalid action"
+                "body": _build_review_body(
+                    finding_id="aaaa111122223333",
+                    issue_type="invalid_action",
+                    message="Error: Invalid action",
                 ),
             },
             {
                 "id": 101,
                 "path": "policy.json",
                 "line": 5,
-                "body": (
-                    "<!-- iam-validator-review -->\n"
-                    "<!-- iam-policy-validator-bot -->\n"
-                    "<!-- issue-type: resource_mismatch -->\n"  # Different issue type
-                    "<!-- finding-id: bbbb444455556666 -->\n"
-                    "Error: Resource mismatch"
+                "body": _build_review_body(
+                    finding_id="bbbb444455556666",
+                    issue_type="resource_mismatch",  # different issue type
+                    message="Error: Resource mismatch",
                 ),
             },
         ]
@@ -246,12 +248,10 @@ class TestCommentDeduplication:
             {
                 "path": "policy.json",
                 "line": 5,
-                "body": (
-                    "<!-- iam-validator-review -->\n"
-                    "<!-- iam-policy-validator-bot -->\n"
-                    "<!-- issue-type: invalid_action -->\n"
-                    "<!-- finding-id: aaaa111122223333 -->\n"
-                    "Error: Invalid action (still there)"
+                "body": _build_review_body(
+                    finding_id="aaaa111122223333",
+                    issue_type="invalid_action",
+                    message="Error: Invalid action (still there)",
                 ),
             },
         ]
@@ -266,7 +266,7 @@ class TestCommentDeduplication:
             comments=new_comments,
             body="",
             event=ReviewEvent.COMMENT,
-            identifier="<!-- iam-policy-validator-bot -->",
+            identifier=REVIEW_IDENTIFIER,
             validated_files={"policy.json"},
         )
 
@@ -292,12 +292,10 @@ class TestCommentDeduplication:
                 "id": 100,
                 "path": "policy.json",
                 "line": 5,
-                "body": (
-                    "<!-- iam-validator-review -->\n"
-                    "<!-- iam-policy-validator-bot -->\n"
-                    "<!-- issue-type: invalid_action -->\n"
-                    f"<!-- finding-id: {old_fingerprint} -->\n"
-                    "Error: Invalid action"
+                "body": _build_review_body(
+                    finding_id=old_fingerprint,
+                    issue_type="invalid_action",
+                    message="Error: Invalid action",
                 ),
             }
         ]
@@ -307,12 +305,10 @@ class TestCommentDeduplication:
             {
                 "path": "policy.json",
                 "line": 5,
-                "body": (
-                    "<!-- iam-validator-review -->\n"
-                    "<!-- iam-policy-validator-bot -->\n"
-                    "<!-- issue-type: invalid_action -->\n"
-                    f"<!-- finding-id: {new_fingerprint} -->\n"
-                    "Error: Invalid action (updated)"
+                "body": _build_review_body(
+                    finding_id=new_fingerprint,
+                    issue_type="invalid_action",
+                    message="Error: Invalid action (updated)",
                 ),
             }
         ]
@@ -327,7 +323,7 @@ class TestCommentDeduplication:
             comments=new_comments,
             body="",
             event=ReviewEvent.COMMENT,
-            identifier="<!-- iam-policy-validator-bot -->",
+            identifier=REVIEW_IDENTIFIER,
             validated_files={"policy.json"},
         )
 

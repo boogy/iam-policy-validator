@@ -56,16 +56,20 @@ def arn_matches(
     if arn_pattern == "*" or arn == "*":
         return True
 
-    # Special case for S3 buckets - no "/" allowed
-    if resource_type and "bucket" in resource_type.lower():
-        # Strip variables like ${aws:username} before checking
-        arn_without_vars = _strip_variables_from_arn(arn)
-        if "/" in arn_without_vars:
-            return False
-
     # Parse ARN into parts
     pattern_parts = arn_pattern.split(":")
     arn_parts = arn.split(":")
+
+    # Special case for bucket-style resource types whose ARN pattern has no
+    # path separator (e.g. S3: arn:*:s3:::*). These do not allow "/" in the
+    # resource id. Services like s3vectors use bucket/${BucketName}, so the
+    # pattern itself contains "/" — those legitimately allow "/" in the ARN.
+    if resource_type and "bucket" in resource_type.lower() and len(pattern_parts) >= 6:
+        pattern_id = ":".join(pattern_parts[5:])
+        if "/" not in pattern_id:
+            arn_without_vars = _strip_variables_from_arn(arn)
+            if "/" in arn_without_vars:
+                return False
 
     # ARN must have at least 6 parts: arn:partition:service:region:account:resource
     if len(pattern_parts) < 6 or len(arn_parts) < 6:
