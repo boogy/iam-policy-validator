@@ -9,6 +9,7 @@ from rich.table import Table
 from rich.text import Text
 
 from iam_validator.__version__ import __version__
+from iam_validator.core import constants
 from iam_validator.core.access_analyzer import (
     AccessAnalyzerFinding,
     AccessAnalyzerReport,
@@ -261,12 +262,18 @@ class AccessAnalyzerReportFormatter:
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(json_content)
 
-    def generate_markdown_report(self, report: AccessAnalyzerReport, max_length: int = 65000) -> str:
+    def generate_markdown_report(
+        self,
+        report: AccessAnalyzerReport,
+        max_length: int = constants.GITHUB_MAX_COMMENT_LENGTH,
+    ) -> str:
         """Generate Markdown report.
 
         Args:
             report: Access Analyzer validation report
-            max_length: Maximum character length (GitHub limit is 65536, we use 65000 for safety)
+            max_length: Maximum character length. Defaults to
+                ``constants.GITHUB_MAX_COMMENT_LENGTH`` (the safety-margin
+                limit below GitHub's hard ``GITHUB_COMMENT_HARD_LIMIT``).
 
         Returns:
             Markdown string

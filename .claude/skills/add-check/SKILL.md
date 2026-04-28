@@ -67,9 +67,9 @@ uv run pytest tests/checks/test_{check_name}_check.py -v
 
 ### 9. Update Documentation
 
-- **CHANGELOG.md**: Add entry under `### Added`
-- **Root CLAUDE.md**: Add to "Built-in Checks" table
-- **`iam_validator/checks/CLAUDE.md`**: Add to "File Reference" table
+- **CHANGELOG.md**: Add entry under `### Added` for the in-progress version
+- **`iam_validator/checks/CLAUDE.md`**: Add a row to the "Built-in checks" table
+- **docs/user-guide/checks/**: Add a page if user-facing
 
 ## Reference Checks by Type
 

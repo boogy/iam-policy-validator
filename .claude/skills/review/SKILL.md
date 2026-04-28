@@ -13,8 +13,8 @@ Perform a comprehensive code review of recent changes.
 
 ```bash
 git status
-git diff --name-only HEAD~5
-git log --oneline -10
+git diff --name-only main...HEAD     # branch-scoped (fall back to HEAD~N if not on a branch)
+git log --oneline main..HEAD
 ```
 
 Categorize modified files by type (check, command, core, tests, docs).
@@ -35,8 +35,8 @@ Categorize modified files by type (check, command, core, tests, docs).
 
 ```bash
 uv run ruff check iam_validator/
-uv run mypy iam_validator/ --ignore-missing-imports
-uv run pytest tests/ -v --tb=short
+uv run mypy iam_validator/
+uv run pytest -m "not benchmark and not slow"
 ```
 
 ### 4. Output Format

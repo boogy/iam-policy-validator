@@ -5,6 +5,25 @@ All notable changes to IAM Policy Validator are documented in this file.
 The format is based on [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.1] - 2026-04-28
+
+### Changed
+
+- Reuse PR comments to minimize timeline noise — summary and inline review comments now update existing comments in place by id, post only the surplus, and delete only stale leftovers. Same part count across runs produces zero `POST`/`DELETE` calls
+- Centralize HTML comment markers in `iam_validator/core/constants.py` (`ANALYZER_IDENTIFIER`, `ISSUE_TYPE_MARKER_FORMAT/PATTERN`, `FINDING_ID_MARKER_FORMAT`, `FINDING_ID_STRICT/LOOSE_PATTERN`) and route every producer/parser through them. Default identifier params on `update_or_create_comment` / `post_multipart_comments` now resolve to `SUMMARY_IDENTIFIER` instead of an orphan literal
+- Centralize GitHub comment-size limits: add `GITHUB_COMMENT_HARD_LIMIT = 65536` and use the existing `GITHUB_MAX_COMMENT_LENGTH` / `GITHUB_COMMENT_SPLIT_LIMIT` from the call sites that previously inlined literals
+- Extract `ARN_PARTITION_REGEX` and source it from `DEFAULT_ARN_VALIDATION_PATTERN` and the trust-policy SAML/OIDC provider patterns so all AWS partitions (`aws`, `aws-cn`, `aws-us-gov`, `aws-eusc`, `aws-iso*`) validate consistently
+
+### Fixed
+
+- Fix `action_resource_matching` rejecting `s3vectors` `VectorBucket` ARNs (and any future service whose resource-type name contains `bucket` and whose pattern uses `bucket/${Name}`). The no-slash rule now keys on the ARN pattern itself, not the resource-type name
+- Fix the PR summary comment becoming stale on busy PRs (lookup wasn't paginated) and after multi-part → single-part transitions (orphans left behind). Both paths now share `_sync_comments_with_identifier`, which paginates lookup, updates oldest-first, and deletes only the surplus
+- Fix trust-policy SAML/OIDC validation rejecting GovCloud, China, and ISO partitions — the provider patterns previously hardcoded `arn:aws:`
+- Fix `get_pr_files()` conflating API failure with an empty PR — both returned `[]`, causing the inline-review-comment cleanup phase to silently skip aggressive deletion on a transient 5xx. It now returns `None` on failure and `[]` only for genuinely empty PRs
+- Fix `_sync_comments_with_identifier` reporting `success=False` when an orphan delete returned 404 — the canonical comment was already updated, so the user-visible state is correct. 404 / transient orphan-delete errors now log a warning without failing the overall operation
+
+---
+
 ## [1.19.0] - 2026-04-22
 
 ### Added
@@ -556,6 +575,7 @@ _First release._
 
 ---
 
+[1.19.1]: https://github.com/boogy/iam-policy-validator/compare/v1.19.0...v1.19.1
 [1.19.0]: https://github.com/boogy/iam-policy-validator/compare/v1.18.2...v1.19.0
 [1.18.2]: https://github.com/boogy/iam-policy-validator/compare/v1.18.1...v1.18.2
 [1.18.1]: https://github.com/boogy/iam-policy-validator/compare/v1.18.0...v1.18.1

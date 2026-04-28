@@ -15,12 +15,16 @@ References:
 # ============================================================================
 
 # ARN Validation Pattern
-# This pattern is specifically designed for validation and allows wildcards (*) in region and account fields
-# Unlike the parsing pattern in CompiledPatterns, this is more lenient for validation purposes
-# Supports all AWS partitions: aws, aws-cn, aws-us-gov, aws-eusc, aws-iso*
-DEFAULT_ARN_VALIDATION_PATTERN = (
-    r"^arn:(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f):[a-z0-9\-]+:[a-z0-9\-*]*:[0-9*]*:.+$"
-)
+# Every place that validates an ARN must source the partition alternation from
+# ARN_PARTITION_REGEX so the supported partitions stay in lockstep. Adding a
+# new partition (e.g., a future AWS region split) is then a one-line change.
+# Covers commercial, China, GovCloud, Europe sovereign, and all ISO partitions.
+ARN_PARTITION_REGEX = r"(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f)"
+
+# Lenient ARN format used by `resource_validation` — allows wildcards (*) in
+# region and account fields. Stricter than the structural parser in
+# CompiledPatterns but tolerant enough for policy-author conveniences.
+DEFAULT_ARN_VALIDATION_PATTERN = rf"^arn:{ARN_PARTITION_REGEX}:[a-z0-9\-]+:[a-z0-9\-*]*:[0-9*]*:.+$"
 
 # Maximum allowed ARN length to prevent ReDoS attacks
 # AWS maximum ARN length is approximately 2048 characters
@@ -127,10 +131,26 @@ BOT_IDENTIFIER = "🤖 IAM Policy Validator"
 SUMMARY_IDENTIFIER = "<!-- iam-policy-validator-summary -->"
 REVIEW_IDENTIFIER = "<!-- iam-policy-validator-review -->"
 IGNORED_FINDINGS_IDENTIFIER = "<!-- iam-policy-validator-ignored-findings -->"
+ANALYZER_IDENTIFIER = "<!-- iam-access-analyzer-validator -->"
+
+# Structural markers embedded inside review-comment bodies. Centralized so
+# producers (body-builders in models.py) and consumers (parsers in
+# github_integration.py / ignore_processor.py) cannot drift apart.
+ISSUE_TYPE_MARKER_FORMAT = "<!-- issue-type: {issue_type} -->"
+ISSUE_TYPE_MARKER_PATTERN = r"<!-- issue-type: (\w+) -->"
+FINDING_ID_MARKER_FORMAT = "<!-- finding-id: {finding_id} -->"
+# Strict pattern: the canonical 16-char hex hash produced by
+# compute_finding_hash(). Used by the bot's own comment lifecycle.
+FINDING_ID_STRICT_PATTERN = r"<!-- finding-id: ([a-f0-9]{16}) -->"
+# Loose pattern: accepts any hex length. Used by extract_finding_id() when
+# parsing user-authored ignore commands that may reference legacy ids.
+FINDING_ID_LOOSE_PATTERN = r"<!-- finding-id: ([a-f0-9]+) -->"
 
 # GitHub comment size limits
-# GitHub's actual limit is 65536 characters, but we use a smaller limit for safety
-GITHUB_MAX_COMMENT_LENGTH = 65000  # Maximum single comment length
+# GITHUB_COMMENT_HARD_LIMIT is GitHub's actual API ceiling — exceeding it
+# returns a 422. The other two limits are our internal safety margins.
+GITHUB_COMMENT_HARD_LIMIT = 65536  # GitHub-enforced absolute maximum
+GITHUB_MAX_COMMENT_LENGTH = 65000  # Maximum single comment length (safety margin)
 GITHUB_COMMENT_SPLIT_LIMIT = 60000  # Target size when splitting into multiple parts
 
 # Comment size estimation parameters (used for multi-part comment splitting)

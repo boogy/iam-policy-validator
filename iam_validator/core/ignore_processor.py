@@ -11,6 +11,7 @@ import re
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from iam_validator.core import constants
 from iam_validator.core.codeowners import CodeOwnersParser
 from iam_validator.core.ignored_findings import IgnoredFinding, IgnoredFindingsStore
 
@@ -263,7 +264,7 @@ class IgnoreCommandProcessor:
         Returns:
             Issue type or empty string
         """
-        match = re.search(r"<!-- issue-type: (\w+) -->", body)
+        match = re.search(constants.ISSUE_TYPE_MARKER_PATTERN, body)
         return match.group(1) if match else ""
 
 

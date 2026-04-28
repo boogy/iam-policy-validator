@@ -271,7 +271,7 @@ class ValidationIssue(BaseModel):
             parts.append(f"{constants.REVIEW_IDENTIFIER}\n")
             parts.append(f"{constants.BOT_IDENTIFIER}\n")
             # Add issue type identifier to allow multiple issues at same line
-            parts.append(f"<!-- issue-type: {self.issue_type} -->\n")
+            parts.append(constants.ISSUE_TYPE_MARKER_FORMAT.format(issue_type=self.issue_type) + "\n")
             # Add finding ID for ignore tracking
             if file_path:
                 from iam_validator.core.finding_fingerprint import compute_finding_hash
@@ -286,7 +286,7 @@ class ValidationIssue(BaseModel):
                     resource=self.resource,
                     condition_key=self.condition_key,
                 )
-                parts.append(f"<!-- finding-id: {finding_hash} -->\n")
+                parts.append(constants.FINDING_ID_MARKER_FORMAT.format(finding_id=finding_hash) + "\n")
 
         # Main issue header with severity, action guidance, and risk category
         parts.append(f"{emoji} **{self.severity.upper()}** - {action}{risk_icon}")

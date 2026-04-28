@@ -97,7 +97,7 @@ class TestTrustPolicyValidationCheck:
         assert "Federated" in issues[0].message
 
     @pytest.mark.asyncio
-    async def test_assume_role_with_saml_invalid_provider_arn(self, check, fetcher, config):
+    async def test_assume_role_with_saml_invalid_provider_format(self, check, fetcher, config):
         """Test that AssumeRoleWithSAML with OIDC provider is invalid."""
         statement = Statement(
             Effect="Allow",
@@ -474,3 +474,69 @@ class TestConfusedDeputyDetection:
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert not any(i.issue_type == "confused_deputy_risk" for i in issues)
+
+
+class TestTrustPolicyPartitionCoverage:
+    """Trust-policy SAML/OIDC providers must validate across all AWS partitions.
+
+    Regression: provider_pattern previously hardcoded ``arn:aws:`` so a
+    GovCloud / China / ISO trust policy was wrongly rejected. Now sources the
+    partition alternation from ``constants.ARN_PARTITION_REGEX``.
+    """
+
+    @pytest.mark.parametrize(
+        "saml_arn",
+        [
+            "arn:aws:iam::123456789012:saml-provider/MyProvider",
+            "arn:aws-us-gov:iam::123456789012:saml-provider/GovIdP",
+            "arn:aws-cn:iam::123456789012:saml-provider/CNIdP",
+            "arn:aws-iso:iam::123456789012:saml-provider/IsoIdP",
+            "arn:aws-iso-b:iam::123456789012:saml-provider/IsoBIdP",
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_saml_valid_across_partitions(self, check, fetcher, config, saml_arn):
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Federated": saml_arn},
+            Action=["sts:AssumeRoleWithSAML"],
+            Condition={"StringEquals": {"SAML:aud": "https://signin.aws.amazon.com/saml"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert not any(i.issue_type == "invalid_provider_format" for i in issues), (
+            f"SAML provider ARN rejected for partition: {saml_arn}"
+        )
+
+    @pytest.mark.parametrize(
+        "oidc_arn",
+        [
+            "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+            "arn:aws-us-gov:iam::123456789012:oidc-provider/oidc.eks.us-gov-west-1.amazonaws.com/id/abc",
+            "arn:aws-cn:iam::123456789012:oidc-provider/sts.amazonaws.com.cn",
+            "arn:aws-iso-f:iam::123456789012:oidc-provider/iso-f-issuer",
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_oidc_valid_across_partitions(self, check, fetcher, config, oidc_arn):
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Federated": oidc_arn},
+            Action=["sts:AssumeRoleWithWebIdentity"],
+            Condition={"StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert not any(i.issue_type == "invalid_provider_format" for i in issues), (
+            f"OIDC provider ARN rejected for partition: {oidc_arn}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_saml_rejects_unknown_partition(self, check, fetcher, config):
+        """Unknown partition values are still rejected."""
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Federated": "arn:aws-fake:iam::123456789012:saml-provider/X"},
+            Action=["sts:AssumeRoleWithSAML"],
+            Condition={"StringEquals": {"SAML:aud": "https://x"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert any(i.issue_type == "invalid_provider_format" for i in issues)

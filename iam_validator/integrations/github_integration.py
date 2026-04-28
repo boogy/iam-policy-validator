@@ -526,172 +526,186 @@ class GitHubIntegration:
             return True
         return False
 
-    async def update_or_create_comment(
-        self, comment_body: str, identifier: str = "<!-- iam-policy-validator -->"
-    ) -> bool:
+    async def update_or_create_comment(self, comment_body: str, identifier: str = constants.SUMMARY_IDENTIFIER) -> bool:
         """Update an existing comment or create a new one.
 
-        This method will look for an existing comment with the identifier
-        and update it, or create a new comment if none exists.
+        Thin wrapper around `_sync_comments_with_identifier` for the common
+        single-comment case. After this call, exactly one comment with
+        `identifier` remains on the PR.
 
         Args:
-            comment_body: The markdown content to post
+            comment_body: The markdown content to post (identifier is prepended)
             identifier: HTML comment identifier to find existing comments
 
         Returns:
             True if successful, False otherwise
         """
-        # Add identifier to comment body
-        full_body = f"{identifier}\n{comment_body}"
+        return await self._sync_comments_with_identifier([f"{identifier}\n{comment_body}"], identifier)
 
-        # Try to find and update existing comment
-        existing_comment_id = await self._find_existing_comment(identifier)
+    async def _sync_comments_with_identifier(self, full_bodies: list[str], identifier: str) -> bool:
+        """Reconcile the PR's comments-with-identifier set against a target list.
 
-        if existing_comment_id:
-            return await self._update_comment(existing_comment_id, full_body)
-        else:
-            return await self.post_comment(full_body)
+        Strategy (minimal PR-timeline noise):
+          - For each target body at index i:
+              * if an existing comment exists at index i → UPDATE in place
+                (preserves comment id, email-thread, and timeline history;
+                 only generates an "edited" event)
+              * else → POST a new comment
+          - Any existing comments past `len(full_bodies)` are stale orphans
+            (e.g., previous run was multi-part, this run has fewer parts) and
+            are DELETED.
+
+        Existing comments are sorted oldest-first so update-in-place targets
+        the longest-lived comment, keeping the canonical one stable across
+        runs. Lookup is paginated so summaries on page 2+ of busy PRs are
+        not missed.
+
+        Args:
+            full_bodies: List of fully-assembled comment bodies (each must
+                already include the identifier).
+            identifier: HTML comment identifier used to locate existing
+                comments to reconcile against.
+
+        Returns:
+            True if every update/post/delete succeeded, False if any failed.
+        """
+        if not full_bodies:
+            return True
+
+        existing = await self._find_all_comments_with_identifier(identifier)
+        success = True
+
+        # 1. Update-in-place for the overlap; POST for any extras.
+        for i, body in enumerate(full_bodies):
+            if i < len(existing):
+                comment_id = existing[i]["id"]
+                if not await self._update_comment(comment_id, body):
+                    logger.error(f"Failed to update comment {comment_id} (slot {i + 1}/{len(full_bodies)})")
+                    success = False
+            else:
+                if not await self.post_comment(body):
+                    logger.error(f"Failed to post comment (slot {i + 1}/{len(full_bodies)})")
+                    success = False
+
+        # 2. Delete orphans — existing comments past the new target length.
+        # Orphan deletion is best-effort cleanup: the user-visible "latest scan"
+        # state is already correct via the update above. A 404 here means the
+        # comment was already gone (concurrent run / manual delete) — that's
+        # the desired end state, not a failure. Other delete errors are logged
+        # at WARNING but don't flip `success` to False, since the next run will
+        # retry deletion.
+        if len(existing) > len(full_bodies):
+            orphan_ids = [c["id"] for c in existing[len(full_bodies) :]]
+            logger.info(f"Deleting {len(orphan_ids)} stale comment(s) no longer relevant to this scan")
+            delete_results = await asyncio.gather(
+                *(self._make_request("DELETE", f"issues/comments/{oid}") for oid in orphan_ids),
+                return_exceptions=True,
+            )
+            for oid, res in zip(orphan_ids, delete_results, strict=False):
+                if isinstance(res, Exception) or res is None:
+                    logger.warning(f"Could not delete stale comment {oid} (already gone or transient error)")
+
+        return success
 
     async def post_multipart_comments(
         self,
         comment_parts: list[str],
-        identifier: str = "<!-- iam-policy-validator -->",
+        identifier: str = constants.SUMMARY_IDENTIFIER,
     ) -> bool:
-        """Post or update multiple related comments (for large reports).
+        """Reconcile a set of related summary comments on the PR.
 
-        For single-part comments (most common case), this will UPDATE the
-        existing comment in place rather than delete and recreate it.
-        This preserves comment history and avoids PR timeline noise.
+        Builds the full comment bodies (with identifier, optional part
+        indicator, and size-limit truncation) and delegates to
+        `_sync_comments_with_identifier`, which:
 
-        For multi-part comments:
-        1. Delete all old comments with the identifier
-        2. Post new comments in sequence with part indicators
-        3. Validate each part stays under GitHub's limit
+          - UPDATES existing comments in place where possible (no delete +
+            repost churn — same comment id is preserved across runs)
+          - POSTS new comments only for parts that exceed the existing count
+          - DELETES any leftover comments past the new part count
+
+        Result: zero PR-timeline noise when the part count is unchanged
+        (only "edited" events on each comment); minimal noise otherwise.
 
         Args:
-            comment_parts: List of comment bodies to post (split into parts)
-            identifier: HTML comment identifier to find/manage existing comments
+            comment_parts: List of comment bodies to post. For a 1-element
+                list, no part indicator is added. For 2+ elements, each gets
+                a "(Part i/N)" header.
+            identifier: HTML comment identifier used to locate existing
+                comments to reconcile against.
 
         Returns:
-            True if all parts posted successfully, False otherwise
+            True if every update / post / delete succeeded, False otherwise.
         """
-        # GitHub's actual limit
-        github_comment_limit = 65536
-
+        github_comment_limit = constants.GITHUB_COMMENT_HARD_LIMIT
         total_parts = len(comment_parts)
 
-        # Optimization: For single-part comments, use update-or-create
-        # This preserves the existing comment and avoids PR timeline noise
-        if total_parts == 1:
-            part_body = comment_parts[0]
-            full_body = f"{identifier}\n\n{part_body}"
+        if total_parts == 0:
+            return True
 
-            # Safety check: ensure we don't exceed GitHub's limit
-            if len(full_body) > github_comment_limit:
-                logger.error(
-                    f"Comment exceeds GitHub's limit ({len(full_body)} > {github_comment_limit} chars). "
-                    f"Comment will be truncated."
-                )
-                available_space = github_comment_limit - 500
-                truncated_body = part_body[:available_space]
-                truncation_warning = (
-                    "\n\n---\n\n"
-                    "> ⚠️ **This comment was truncated to fit GitHub's size limit**\n"
-                    ">\n"
-                    "> Download the full report using `--output report.json` or "
-                    "`--format markdown --output report.md`\n"
-                )
-                full_body = f"{identifier}\n\n{truncated_body}{truncation_warning}"
-
-            success = await self.update_or_create_comment(full_body, identifier)
-            if success:
-                logger.info("Successfully updated summary comment")
-            return success
-
-        # Multi-part: Delete all existing comments with this identifier first
-        await self._delete_comments_with_identifier(identifier)
-
-        # Post each part
-        success = True
-
-        for part_num, part_body in enumerate(comment_parts, 1):
-            # Add identifier and part indicator
-            part_indicator = f"**(Part {part_num}/{total_parts})**"
-            full_body = f"{identifier}\n{part_indicator}\n\n{part_body}"
-
-            # Safety check: ensure we don't exceed GitHub's limit
-            if len(full_body) > github_comment_limit:
-                logger.error(
-                    f"Part {part_num}/{total_parts} exceeds GitHub's comment limit "
-                    f"({len(full_body)} > {github_comment_limit} chars). "
-                    f"This part will be truncated."
-                )
-                # Truncate with warning message
-                available_space = github_comment_limit - 500  # Reserve space for truncation message
-                truncated_body = part_body[:available_space]
-                truncation_warning = (
-                    "\n\n---\n\n"
-                    "> ⚠️ **This comment was truncated to fit GitHub's size limit**\n"
-                    ">\n"
-                    "> Download the full report using `--output report.json` or "
-                    "`--format markdown --output report.md`\n"
-                )
-                full_body = f"{identifier}\n{part_indicator}\n\n{truncated_body}{truncation_warning}"
-
-            if not await self.post_comment(full_body):
-                logger.error(f"Failed to post comment part {part_num}/{total_parts}")
-                success = False
+        full_bodies: list[str] = []
+        for idx, part_body in enumerate(comment_parts, 1):
+            if total_parts == 1:
+                header = f"{identifier}\n\n"
             else:
-                logger.debug(f"Posted part {part_num}/{total_parts} ({len(full_body):,} characters)")
+                header = f"{identifier}\n**(Part {idx}/{total_parts})**\n\n"
 
+            full_body = f"{header}{part_body}"
+
+            if len(full_body) > github_comment_limit:
+                label = "Comment" if total_parts == 1 else f"Part {idx}/{total_parts}"
+                logger.error(
+                    f"{label} exceeds GitHub's comment limit "
+                    f"({len(full_body)} > {github_comment_limit} chars). It will be truncated."
+                )
+                available_space = github_comment_limit - len(header) - 500
+                truncated_body = part_body[:available_space]
+                truncation_warning = (
+                    "\n\n---\n\n"
+                    "> ⚠️ **This comment was truncated to fit GitHub's size limit**\n"
+                    ">\n"
+                    "> Download the full report using `--output report.json` or "
+                    "`--format markdown --output report.md`\n"
+                )
+                full_body = f"{header}{truncated_body}{truncation_warning}"
+
+            full_bodies.append(full_body)
+
+        success = await self._sync_comments_with_identifier(full_bodies, identifier)
         if success:
-            logger.info(f"Successfully posted {total_parts} comment part(s)")
-
+            if total_parts == 1:
+                logger.info("Successfully synced summary comment")
+            else:
+                logger.info(f"Successfully synced {total_parts} summary comment part(s)")
         return success
 
-    async def _delete_comments_with_identifier(self, identifier: str) -> int:
-        """Delete all comments with the given identifier.
+    async def _find_all_comments_with_identifier(self, identifier: str) -> list[dict[str, Any]]:
+        """Find all comments containing the given identifier, oldest first.
 
-        Uses paginated request to ensure all comments are found on large PRs.
+        Uses paginated lookup so comments past the first page are not missed
+        on busy PRs. Sorts by GitHub's `created_at` (ISO-8601 sorts lexically),
+        falling back to `id` order to keep results stable when timestamps are
+        missing or equal.
 
         Args:
-            identifier: HTML comment identifier to find comments
+            identifier: HTML comment identifier to search for
 
         Returns:
-            Number of comments deleted
+            List of comment dicts (oldest first). Empty if none match.
         """
         all_comments = await self._make_paginated_request(f"issues/{self.pr_number}/comments")
 
-        deleted_count = 0
+        matches: list[dict[str, Any]] = []
         for comment in all_comments:
             if not isinstance(comment, dict):
                 continue
+            if identifier not in str(comment.get("body", "")):
+                continue
+            if not isinstance(comment.get("id"), int):
+                continue
+            matches.append(comment)
 
-            body = comment.get("body", "")
-            comment_id = comment.get("id")
-
-            if identifier in str(body) and isinstance(comment_id, int):
-                delete_result = await self._make_request("DELETE", f"issues/comments/{comment_id}")
-                if delete_result is not None:
-                    deleted_count += 1
-
-        if deleted_count > 0:
-            logger.info(f"Deleted {deleted_count} old comments")
-
-        return deleted_count
-
-    async def _find_existing_comment(self, identifier: str) -> int | None:
-        """Find an existing comment with the given identifier."""
-        result = await self._make_request("GET", f"issues/{self.pr_number}/comments")
-
-        if result and isinstance(result, list):
-            for comment in result:
-                if isinstance(comment, dict) and identifier in str(comment.get("body", "")):
-                    comment_id = comment.get("id")
-                    if isinstance(comment_id, int):
-                        return comment_id
-
-        return None
+        matches.sort(key=lambda c: (c.get("created_at") or "", c.get("id") or 0))
+        return matches
 
     async def _update_comment(self, comment_id: int, comment_body: str) -> bool:
         """Update an existing GitHub comment."""
@@ -754,7 +768,7 @@ class GitHubIntegration:
                 and isinstance(line, int)
             ):
                 # Extract issue type from HTML comment
-                issue_type_match = re.search(r"<!-- issue-type: (\w+) -->", body)
+                issue_type_match = re.search(constants.ISSUE_TYPE_MARKER_PATTERN, body)
                 issue_type = issue_type_match.group(1) if issue_type_match else "unknown"
 
                 key = (path, line, issue_type)
@@ -1145,7 +1159,7 @@ class GitHubIntegration:
             # This handles both:
             # 1. Legacy comments without fingerprints
             # 2. Comments with fingerprints that don't match (e.g., path changed)
-            issue_type_match = re.search(r"<!-- issue-type: (\w+) -->", new_body)
+            issue_type_match = re.search(constants.ISSUE_TYPE_MARKER_PATTERN, new_body)
             issue_type = issue_type_match.group(1) if issue_type_match else "unknown"
             location = (path, line, issue_type)
             seen_locations.add(location)
@@ -1200,16 +1214,17 @@ class GitHubIntegration:
             # This ensures we clean up comments for files that were validated but have no findings
             files_in_scope = validated_files if validated_files is not None else files_with_findings
 
-            # Get current PR files to detect removed files
-            # Note: get_pr_files() returns [] on error, so we check for non-empty result
+            # Get current PR files to detect removed files. `get_pr_files()`
+            # returns `None` on API failure and `[]` for a genuinely empty PR
+            # — we must distinguish them: only the API-failure case should fall
+            # back to validated-files-only cleanup. An empty PR with stale
+            # bot comments still needs aggressive cleanup.
             pr_files = await self.get_pr_files()
-            if pr_files:
-                current_pr_files: set[str] | None = {f["filename"] for f in pr_files}
-            else:
-                # Empty result could be an API error - fall back to batch-only cleanup
-                # to avoid accidentally deleting valid comments
+            if pr_files is None:
                 logger.debug("Could not fetch PR files for cleanup, using batch-only mode")
-                current_pr_files = None
+                current_pr_files: set[str] | None = None
+            else:
+                current_pr_files = {f["filename"] for f in pr_files}
 
             def should_delete_comment(existing_path: str) -> bool:
                 """Check if a comment should be deleted based on file status.
@@ -1309,7 +1324,7 @@ class GitHubIntegration:
         Returns:
             16-character finding ID hash, or None if not found
         """
-        match = re.search(r"<!-- finding-id: ([a-f0-9]{16}) -->", body)
+        match = re.search(constants.FINDING_ID_STRICT_PATTERN, body)
         return match.group(1) if match else None
 
     async def _get_bot_comments_by_fingerprint(self, identifier: str) -> dict[str, dict[str, Any]]:
@@ -1445,17 +1460,19 @@ class GitHubIntegration:
         self._pr_info_loaded = True
         return result
 
-    async def get_pr_files(self) -> list[dict[str, Any]]:
+    async def get_pr_files(self) -> list[dict[str, Any]] | None:
         """Get list of files changed in the PR.
 
         Returns:
-            List of file information dicts
+            List of file dicts (possibly empty for a genuinely empty PR), or
+            ``None`` when the API call failed. Callers must distinguish these
+            two cases — treating an API failure like an empty PR causes
+            aggressive comment cleanup paths to skip work that should be done.
         """
         result = await self._make_request("GET", f"pulls/{self.pr_number}/files")
-
-        if result and isinstance(result, list):
+        if isinstance(result, list):
             return result
-        return []
+        return None
 
     async def get_pr_commits(self) -> list[dict[str, Any]]:
         """Get list of commits in the PR.
@@ -1842,7 +1859,7 @@ class GitHubIntegration:
         Returns:
             Finding ID hash, or None if not found
         """
-        match = re.search(r"<!-- finding-id: ([a-f0-9]+) -->", comment_body)
+        match = re.search(constants.FINDING_ID_LOOSE_PATTERN, comment_body)
         return match.group(1) if match else None
 
     @staticmethod

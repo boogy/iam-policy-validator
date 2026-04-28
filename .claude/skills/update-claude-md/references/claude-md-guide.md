@@ -138,7 +138,6 @@ bun dev          # Start dev server
 bun test         # Run tests
 bun typecheck    # Type checking
 ```
-````
 
 ## Architecture
 

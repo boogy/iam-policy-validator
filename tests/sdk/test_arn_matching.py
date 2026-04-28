@@ -90,6 +90,54 @@ class TestArnMatches:
     def test_bucket_resource_type_valid(self):
         assert arn_matches("arn:*:s3:::*", "arn:aws:s3:::mybucket", resource_type="bucket") is True
 
+    def test_s3vectors_bucket_allows_slash(self):
+        # s3vectors uses pattern arn:*:s3vectors:*:*:bucket/* — the "/" after
+        # "bucket" is part of the resource id, not an S3 object separator.
+        # The "no slash in bucket" rule must NOT trigger when the pattern
+        # itself contains "/".
+        assert (
+            arn_matches(
+                "arn:*:s3vectors:*:*:bucket/*",
+                "arn:aws:s3vectors:eu-central-1:123456789012:bucket/ai-ticket-prod",
+                resource_type="bucket",
+            )
+            is True
+        )
+
+    def test_s3_bucket_with_template_var_no_slash(self):
+        # S3 bucket with a Terraform/CloudFormation template variable — the
+        # variable expansion must not be confused with an object path separator.
+        assert (
+            arn_matches(
+                "arn:*:s3:::*",
+                "arn:aws:s3:::${aws_account_id}-mybucket",
+                resource_type="bucket",
+            )
+            is True
+        )
+
+    def test_s3_bucket_wildcard_name_no_slash(self):
+        # Wildcard in bucket name is fine; "/" still rejected.
+        assert (
+            arn_matches(
+                "arn:*:s3:::*",
+                "arn:aws:s3:::prod-*",
+                resource_type="bucket",
+            )
+            is True
+        )
+
+    def test_s3_object_arn_against_bucket_pattern_rejected(self):
+        # Object ARN must not match a bucket pattern (regression).
+        assert (
+            arn_matches(
+                "arn:*:s3:::*",
+                "arn:aws:s3:::mybucket/key.txt",
+                resource_type="bucket",
+            )
+            is False
+        )
+
     def test_invalid_arn_format_short(self):
         assert arn_matches("arn:aws", "arn:aws:s3:::bucket") is False
 
@@ -131,6 +179,19 @@ class TestArnStrictlyValid:
             arn_strictly_valid(
                 "arn:*:iam::*:role/*",
                 "arn:aws:iam::123456789012:role/my-role",
+            )
+            is True
+        )
+
+    def test_s3vectors_bucket_strict_valid(self):
+        # Regression: s3vectors bucket ARN (pattern bucket/${BucketName}) with
+        # wildcard suffix should pass strict validation. Previously rejected
+        # because resource_type="bucket" triggered S3's no-slash rule.
+        assert (
+            arn_strictly_valid(
+                "arn:*:s3vectors:*:*:bucket/*",
+                "arn:aws:s3vectors:eu-central-1:123456789012:bucket/ai-ticket-*",
+                resource_type="bucket",
             )
             is True
         )
