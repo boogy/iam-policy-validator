@@ -6,37 +6,15 @@ Extends [../../CLAUDE.md](../../CLAUDE.md).
 
 ---
 
-## Run
+## Run (dev)
 
 ```bash
-# End users (zero install)
-uvx --from "iam-policy-validator[mcp]" iam-validator-mcp
-
-# Local dev
 uv sync --extra mcp && iam-validator-mcp
-mise run mcp:inspector              # debug with MCP Inspector
-
-# With pre-loaded organization config
-iam-validator-mcp --org-config ./org-policy.yaml
+mise run mcp:inspector                          # debug with MCP Inspector
+iam-validator-mcp --org-config ./org-policy.yaml  # pre-load org config
 ```
 
-### Claude Desktop config
-
-`~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "iam-policy-validator": {
-      "command": "uvx",
-      "args": ["--from", "iam-policy-validator[mcp]", "iam-validator-mcp"]
-    }
-  }
-}
-```
-
-For local checkouts, swap to `uv run --directory /path --extra mcp iam-validator-mcp`.
-Pass `--org-config /path/to/org-policy.yaml` in `args` to pre-load organization config.
+End-user install + Claude Desktop config: see `docs/integrations/mcp-server.md`.
 
 ---
 

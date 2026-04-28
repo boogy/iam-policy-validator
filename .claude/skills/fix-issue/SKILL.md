@@ -14,7 +14,7 @@ Given the issue number: $ARGUMENTS
 ### 1. Get Issue Details
 
 ```bash
-gh issue view $ARGUMENTS
+gh issue view $ARGUMENTS              # add `--repo <owner>/<name>` if upstream is not the default remote
 ```
 
 Understand: problem/feature, expected vs actual behavior, reproduction steps.

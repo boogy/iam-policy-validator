@@ -110,7 +110,7 @@ iam_validator/
 │   ├── constants.py          # centralized HTML markers, ARN patterns, size limits
 │   ├── aws_service/          # AWS Service Reference fetcher (cache: memory LRU + disk TTL)
 │   ├── config/               # YAML config + sensitive_actions / condition_requirements
-│   └── formatters/           # console / json / markdown / sarif / csv / html
+│   └── formatters/           # console / enhanced / json / markdown / sarif / csv / html
 ├── checks/                   # 22 built-in checks — see checks/CLAUDE.md
 ├── commands/                 # 8 CLI commands — see commands/CLAUDE.md
 ├── mcp/                      # MCP server (35+ tools, 15 templates) — see mcp/CLAUDE.md
@@ -160,26 +160,9 @@ Tests must also import from constants — never duplicate marker strings.
 
 ## Adding new components
 
-### Check
-
-`/add-check my_check_name` scaffolds. Manual:
-
-1. `iam_validator/checks/my_check.py` (copy `wildcard_action.py` as the canonical small example)
-2. Register in `iam_validator/checks/__init__.py` and
-   `iam_validator/core/check_registry.py:create_default_registry()`
-3. Test in `tests/checks/test_my_check.py`
-
-### CLI command
-
-1. `iam_validator/commands/my_command.py` inheriting from `Command`
-2. Add to `ALL_COMMANDS` in `iam_validator/commands/__init__.py`
-3. Add to `iam_validator/commands/completion.py`
-4. Test in `tests/commands/test_my_command.py`
-
-### Output formatter
-
-1. `iam_validator/core/formatters/my_format.py` inheriting from `BaseFormatter`
-2. Wire into the formatter selection logic
+See subdirectory `CLAUDE.md`: checks → `iam_validator/checks/CLAUDE.md`,
+commands → `iam_validator/commands/CLAUDE.md`, formatters / config →
+`iam_validator/core/CLAUDE.md`, MCP tools/templates → `iam_validator/mcp/CLAUDE.md`.
 
 ---
 

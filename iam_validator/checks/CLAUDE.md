@@ -44,7 +44,7 @@ A single class may implement both (see `action_condition_enforcement.py`).
 is_valid, err, is_wildcard = await fetcher.validate_action("s3:GetObject")
 expanded = await fetcher.expand_wildcard_action("s3:Get*")
 service = await fetcher.fetch_service_by_name("s3")  # .actions, .resources, .condition_keys
-is_valid = await fetcher.validate_condition_key("s3", "s3:x-amz-acl")
+result = await fetcher.validate_condition_key("s3:GetObject", "s3:prefix")
 ```
 
 Cached: memory LRU + disk TTL (7 days). Tests must mock — never hit the real API.
