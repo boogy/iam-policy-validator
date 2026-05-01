@@ -220,6 +220,14 @@ class PolicyCheck(ABC):
     #: Subclasses may override. Defaults to "warning".
     default_severity: ClassVar[str] = "warning"
 
+    #: Check IDs whose findings this check supersedes when matches() returns True.
+    supersedes: ClassVar[frozenset[str]] = frozenset()
+
+    def matches(self, statement: Statement) -> bool:
+        """True if this check dominates the statement (enables suppression of supersedes set).
+        Only relevant when supersedes is non-empty."""
+        return True
+
     def __getattr__(self, name: str) -> Any:
         """Raise NotImplementedError for required attributes not defined by subclass."""
         if name in ("check_id", "description"):
@@ -347,16 +355,19 @@ class CheckRegistry:
         issues = await registry.execute_checks_parallel(statement, idx, fetcher)
     """
 
-    def __init__(self, enable_parallel: bool = True):
+    def __init__(self, enable_parallel: bool = True, suppress_superseded: bool = False):
         """
         Initialize the registry.
 
         Args:
             enable_parallel: If True, execute checks in parallel (default: True)
+            suppress_superseded: If True, suppress redundant findings when a superseding
+                check fires (default: False here; config layer enables it by default)
         """
         self._checks: dict[str, PolicyCheck] = {}
         self._configs: dict[str, CheckConfig] = {}
         self.enable_parallel = enable_parallel
+        self.suppress_superseded = suppress_superseded
 
     def register(self, check: PolicyCheck) -> None:
         """
@@ -477,6 +488,37 @@ class CheckRegistry:
             and config.should_show_severity(issue.severity)
         ]
 
+    def _apply_supersedes(
+        self,
+        statement: Statement,
+        enabled_checks: list[PolicyCheck],
+        issues_map: dict[str, list[ValidationIssue]],
+    ) -> dict[str, list[ValidationIssue]]:
+        """Post-process issues to suppress redundant findings when a superseding check fired.
+
+        Suppresses ALL other checks that produced issues for this statement — not just
+        the hardcoded supersedes set — so custom checks are automatically covered.
+        """
+        superseding = [
+            (check, issues_map.get(check.check_id, []))
+            for check in enabled_checks
+            if check.supersedes and check.matches(statement) and issues_map.get(check.check_id)
+        ]
+        if not superseding:
+            return issues_map
+        superseder_ids = {check.check_id for check, _ in superseding}
+        suppressed_ids = set(issues_map.keys()) - superseder_ids
+        if not suppressed_ids:
+            return issues_map
+        for _, s_issues in superseding:
+            for issue in s_issues:
+                issue.message = (
+                    issue.message + f"\n\n**{len(suppressed_ids)} checks suppressed** for this statement "
+                    f"({', '.join(sorted(suppressed_ids))}). "
+                    "Scope the statement and re-run to see remaining findings."
+                )
+        return {check_id: issues for check_id, issues in issues_map.items() if check_id not in suppressed_ids}
+
     async def execute_checks_parallel(
         self,
         statement: Statement,
@@ -506,13 +548,15 @@ class CheckRegistry:
 
         if not self.enable_parallel or len(enabled_checks) == 1:
             # Run sequentially if parallel disabled or only one check
-            all_issues = []
+            issues_map: dict[str, list[ValidationIssue]] = {}
             for check in enabled_checks:
                 config = self.get_config(check.check_id)
                 if config:
                     issues = await check.execute(statement, statement_idx, fetcher, config)
-                    all_issues.extend(self._process_issues(issues, check, config, filepath))
-            return all_issues
+                    issues_map[check.check_id] = self._process_issues(issues, check, config, filepath)
+            if self.suppress_superseded:
+                issues_map = self._apply_supersedes(statement, enabled_checks, issues_map)
+            return [issue for issues in issues_map.values() for issue in issues]
 
         # Execute all checks in parallel
         tasks = []
@@ -529,16 +573,19 @@ class CheckRegistry:
         # Wait for all checks to complete
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Collect all issues, handling any exceptions and applying filters
-        all_issues = []
+        # Build issues_map, handling exceptions and applying filters
+        issues_map = {}
         for idx, result in enumerate(results):
             if isinstance(result, Exception):
-                # Log error but continue with other checks
                 logger.warning("Check '%s' failed: %s", task_checks[idx].check_id, result)
             elif isinstance(result, list):
-                all_issues.extend(self._process_issues(result, task_checks[idx], configs[idx], filepath))
+                processed = self._process_issues(result, task_checks[idx], configs[idx], filepath)
+                issues_map[task_checks[idx].check_id] = processed
 
-        return all_issues
+        if self.suppress_superseded:
+            issues_map = self._apply_supersedes(statement, enabled_checks, issues_map)
+
+        return [issue for issues in issues_map.values() for issue in issues]
 
     async def execute_checks_sequential(
         self,
@@ -561,19 +608,22 @@ class CheckRegistry:
         Returns:
             List of all ValidationIssue objects from all checks
         """
-        all_issues = []
         enabled_checks = self.get_enabled_checks()
+        issues_map: dict[str, list[ValidationIssue]] = {}
 
         for check in enabled_checks:
             config = self.get_config(check.check_id)
             if config:
                 try:
                     issues = await check.execute(statement, statement_idx, fetcher, config)
-                    all_issues.extend(self._process_issues(issues, check, config, filepath))
+                    issues_map[check.check_id] = self._process_issues(issues, check, config, filepath)
                 except Exception as e:  # pylint: disable=broad-exception-caught
                     logger.warning("Check '%s' failed: %s", check.check_id, e)
 
-        return all_issues
+        if self.suppress_superseded:
+            issues_map = self._apply_supersedes(statement, enabled_checks, issues_map)
+
+        return [issue for issues in issues_map.values() for issue in issues]
 
     async def execute_policy_checks(
         self,
@@ -654,7 +704,11 @@ class CheckRegistry:
         return all_issues
 
 
-def create_default_registry(enable_parallel: bool = True, include_builtin_checks: bool = True) -> CheckRegistry:
+def create_default_registry(
+    enable_parallel: bool = True,
+    include_builtin_checks: bool = True,
+    suppress_superseded: bool = False,
+) -> CheckRegistry:
     """
     Create a registry with all built-in checks registered.
 
@@ -664,11 +718,13 @@ def create_default_registry(enable_parallel: bool = True, include_builtin_checks
     Args:
         enable_parallel: If True, checks will execute in parallel (default: True)
         include_builtin_checks: If True, register built-in checks (default: True)
+        suppress_superseded: If True, suppress redundant findings when a superseding
+            check fires (default: False here; config layer enables it by default)
 
     Returns:
         CheckRegistry with all built-in checks registered (if include_builtin_checks=True)
     """
-    registry = CheckRegistry(enable_parallel=enable_parallel)
+    registry = CheckRegistry(enable_parallel=enable_parallel, suppress_superseded=suppress_superseded)
 
     if include_builtin_checks:
         # Import and register built-in checks

@@ -69,3 +69,45 @@ class TestFullWildcardCheck:
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
         assert issues[0].severity == "critical"
+
+
+class TestFullWildcardCheckSupersedes:
+    """Tests for FullWildcardCheck.supersedes and matches()."""
+
+    def test_supersedes_contains_expected_ids(self):
+        check = FullWildcardCheck()
+        expected = {
+            "wildcard_action",
+            "wildcard_resource",
+            "service_wildcard",
+            "action_resource_matching",
+            "sensitive_action",
+            "action_condition_enforcement",
+            "mfa_condition_antipattern",
+        }
+        assert check.supersedes == expected
+
+    def test_matches_bare_allow_star_star(self):
+        check = FullWildcardCheck()
+        statement = Statement(Effect="Allow", Action="*", Resource="*")
+        assert check.matches(statement) is True
+
+    def test_matches_true_for_condition(self):
+        check = FullWildcardCheck()
+        statement = Statement(
+            Effect="Allow",
+            Action="*",
+            Resource="*",
+            Condition={"Bool": {"aws:MultiFactorAuthPresent": "true"}},
+        )
+        assert check.matches(statement) is True
+
+    def test_matches_false_for_deny(self):
+        check = FullWildcardCheck()
+        statement = Statement(Effect="Deny", Action="*", Resource="*")
+        assert check.matches(statement) is False
+
+    def test_matches_false_for_not_action(self):
+        check = FullWildcardCheck()
+        statement = Statement(Effect="Allow", NotAction="*", Resource="*")
+        assert check.matches(statement) is False

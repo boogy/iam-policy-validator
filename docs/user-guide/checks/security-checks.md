@@ -39,6 +39,39 @@ Replace with specific actions and resources:
 }
 ```
 
+### Noise Reduction (suppress_superseded_findings)
+
+A bare `Allow */*` statement would normally trigger many redundant checks —
+`wildcard_action`, `wildcard_resource`, `service_wildcard`, `sensitive_action`,
+`action_condition_enforcement`, and any custom checks you have loaded. All of those
+findings say the same thing: the statement is too permissive. The fix is always
+identical: scope the wildcard.
+
+By default (`suppress_superseded_findings: true`), the validator short-circuits this:
+when `full_wildcard` fires on a statement, **all other findings for that statement are
+suppressed** and a note is appended to the `full_wildcard` finding listing every check
+that was silenced. Sibling statements still receive the full check set.
+
+```
+CRITICAL — Statement allows all actions on all resources - CRITICAL SECURITY RISK
+
+**20 checks suppressed** for this statement (abac_enforcement,
+action_condition_enforcement, action_resource_matching, …).
+Scope the statement and re-run to see remaining findings.
+```
+
+!!! note "Conditions do not prevent suppression"
+    `Allow Action:* Resource:* + Condition: {...}` still triggers suppression. The
+    presence of a condition (ABAC tag, MFA, IP) does not change the root cause or
+    the fix: the wildcard needs to be scoped down.
+
+To restore the full finding list, set:
+
+```yaml
+settings:
+  suppress_superseded_findings: false
+```
+
 ---
 
 ## wildcard_action

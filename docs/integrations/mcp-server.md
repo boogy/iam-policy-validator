@@ -376,18 +376,21 @@ principal_validation:
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `generate_policy_from_template` | Generate a policy from a built-in secure template                                                                                                                            |
 | `build_minimal_policy`          | Build a least-privilege policy from actions and resources. Automatically applies required conditions for sensitive actions (e.g., `iam:PassedToService` for `iam:PassRole`). |
-| `build_arn`                     | Build a valid ARN from components (service, resource type, resource name, region, account) with format validation                                                            |
-| `list_templates`                | List all available policy templates                                                                                                                                          |
+| `build_arn`                     | Build a valid ARN from the live AWS service reference. Pass `placeholders={...}` for resource-specific tokens. (`resource_name=` is deprecated.)                             |
 | `suggest_actions`               | Suggest AWS actions based on natural language description                                                                                                                    |
 | `get_required_conditions`       | Get recommended conditions for sensitive actions                                                                                                                             |
 | `check_sensitive_actions`       | Check if actions are in the sensitive actions catalog                                                                                                                        |
 
+!!! info "list_templates is now a resource"
+    Fetch `iam://templates` instead of calling `list_templates` (demoted in v1.20.0).
+
 ### Analysis Tools
 
-| Tool               | Description                                                                                                            |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `explain_policy`   | Generate a human-readable explanation of what a policy allows or denies, including security concerns and services used |
-| `compare_policies` | Compare two IAM policies and highlight differences in permissions, actions added/removed, and resource scope changes   |
+| Tool                            | Description                                                                                                            |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `explain_policy`                | Generate a human-readable explanation of what a policy allows or denies, including security concerns and services used |
+| `compare_policies`              | Compare two IAM policies and highlight differences in permissions, actions added/removed, and resource scope changes   |
+| `aws_access_analyzer_validate`  | Run AWS Access Analyzer ValidatePolicy (live AWS API — needs credentials). Surfaces AWS-only checks beyond the local validator. |
 
 ### Query Tools
 
@@ -399,12 +402,13 @@ principal_validation:
 | `expand_wildcard_action`                | Expand patterns like `s3:Get*` to specific actions                                       |
 | `query_condition_keys`                  | Get condition keys for a service                                                         |
 | `query_arn_formats`                     | Get ARN format patterns for a service                                                    |
-| `list_checks`                           | List all available validation checks                                                     |
-| `get_check_details`                     | Get full documentation for a specific check including examples and configuration options |
 | `get_policy_summary`                    | Analyze a policy's structure                                                             |
-| `list_sensitive_actions`                | List sensitive actions by category                                                       |
 | `check_actions_batch`                   | Validate and check sensitivity for multiple actions in one call                          |
 | `get_condition_requirements_for_action` | Get required conditions for a specific action based on sensitivity and best practices    |
+
+!!! info "list_checks, get_check_details, list_sensitive_actions are now resources"
+    Fetch via the resource URI instead of calling these tools (demoted in v1.20.0):
+    `iam://checks`, `iam://checks/{check_id}`, `iam://sensitive-actions/{category}`.
 
 ### Fix and Help Tools
 
@@ -431,6 +435,59 @@ principal_validation:
 | `set_custom_instructions`   | Set custom organization-specific instructions for policy generation |
 | `get_custom_instructions`   | Get the current custom instructions                                 |
 | `clear_custom_instructions` | Clear custom instructions, reverting to defaults                    |
+
+## Profiles (`--profile`)
+
+Tag-based gating restricts which tools the MCP server advertises. Smaller
+catalog = fewer tokens spent on tool descriptions per turn. The CLI flag
+applies the profile at startup; clients see a server with that subset of tools.
+
+| Profile              | Tools | When to use                                                     |
+| -------------------- | ----- | --------------------------------------------------------------- |
+| `full` (default)     | 33    | Dev assistant, exploratory work — full surface area             |
+| `validate-only`      | 5     | CI / audit scripts that only need to check policies pass        |
+| `validate-and-query` | 13    | Validation + AWS reference lookups, but no live AWS API         |
+| `no-generation`      | 28    | Exclude template/build tools when policies come from elsewhere  |
+| `read-only`          | 28    | Block tools that mutate session state — sandbox/CI integrations |
+
+```bash
+iam-validator-mcp --list-profiles            # print taxonomy and exit
+iam-validator-mcp --profile validate-only    # CI-friendly minimal set
+```
+
+Claude Desktop config example for a CI-style read-only profile with offline AWS data:
+
+```json
+{
+  "mcpServers": {
+    "iam-policy-validator": {
+      "command": "iam-validator-mcp",
+      "args": [
+        "--profile",
+        "read-only",
+        "--aws-services-dir",
+        "/var/cache/iam-validator/services"
+      ]
+    }
+  }
+}
+```
+
+!!! note "Profiles take effect on server start"
+    MCP clients cache the tool catalog per session. Switch profiles by
+    restarting the server.
+
+## CLI Parity Flags
+
+| Flag                  | Purpose                                                                        |
+| --------------------- | ------------------------------------------------------------------------------ |
+| `--config`            | Load YAML config (settings + check overrides + custom_instructions)            |
+| `--instructions`      | Inline custom LLM instructions                                                 |
+| `--instructions-file` | File path containing custom instructions (markdown/text)                       |
+| `--custom-checks-dir` | Directory with custom Python `PolicyCheck` modules to auto-discover            |
+| `--aws-services-dir`  | Pre-downloaded AWS service definitions for offline mode (`sync-services`)      |
+| `--profile`           | Tool visibility profile (see above)                                            |
+| `--list-profiles`     | Print profile taxonomy and exit                                                |
 
 ## Usage Examples
 

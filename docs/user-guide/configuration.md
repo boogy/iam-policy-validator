@@ -90,6 +90,65 @@ wildcard_resource:
   hide_severities: [low]
 ```
 
+### suppress_superseded_findings
+
+When a statement contains `Action: "*"` and `Resource: "*"` with no conditions, every
+other check produces a redundant finding — the root cause and the fix are always the
+same: scope down the wildcard. This setting collapses all of that noise into one
+`critical` finding from `full_wildcard`.
+
+```yaml
+settings:
+  suppress_superseded_findings: true # default: true
+```
+
+**What gets suppressed**
+
+When `full_wildcard` fires on a statement, all other findings for **that statement
+only** are dropped — both statement-level checks (built-in and custom) and policy-level
+check findings that reference that statement index. The suppressed check IDs are listed
+inside the `full_wildcard` finding message so nothing is lost silently:
+
+```
+Statement allows all actions on all resources - CRITICAL SECURITY RISK
+
+**20 checks suppressed** for this statement (abac_enforcement,
+action_condition_enforcement, action_resource_matching, …).
+Scope the statement and re-run to see remaining findings.
+```
+
+**What is never suppressed**
+
+| Statement                             | Suppression                                      |
+| ------------------------------------- | ------------------------------------------------ |
+| `Deny */*`                            | No — `full_wildcard` only fires on `Allow`       |
+| `Allow NotAction: "*"`                | No — inverted semantics require full analysis    |
+| Sibling statements in the same policy | No — only the `*/*` statement is short-circuited |
+| `full_wildcard` itself                | Never suppressed                                 |
+
+!!! note "Conditions do not prevent suppression"
+    `Allow */* + Condition: {...}` is still treated as a full-wildcard statement.
+    The condition does not change the root cause or the fix, so suppression still
+    applies. The `full_wildcard` finding lists all suppressed checks so nothing is
+    lost silently.
+
+**Custom checks**
+
+Custom checks loaded via `--custom-checks-dir` are suppressed automatically — no
+changes to the check code required.
+
+**Opt out**
+
+```yaml
+settings:
+  suppress_superseded_findings: false
+```
+
+!!! warning "PR comment fingerprint churn"
+Switching from `false` to `true` (or vice versa) causes a one-time churn of
+existing PR comments anchored to the now-suppressed (or now-visible) check IDs.
+Re-run the validator once after changing this setting to refresh comment state.
+
 ## Check Configuration
 
 ### Disable a Check
@@ -272,6 +331,9 @@ settings:
   hide_severities:
     null # Hide these severities from output
     # Example: [low, info]
+
+  # Noise reduction
+  suppress_superseded_findings: true # Collapse */* noise into one finding (default: true)
 
   # AWS service definitions
   aws_services_dir: null # Path to offline service definitions

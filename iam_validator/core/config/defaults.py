@@ -128,6 +128,8 @@ DEFAULT_CONFIG = {
         # individual: Post each as an individual review comment
         # modified_statements_only: Individual comments for modified statements only
         "off_diff_comment_mode": "summary_only",
+        # Suppress redundant findings for statements already flagged by full_wildcard.
+        "suppress_superseded_findings": True,
     },
     # ========================================================================
     # AWS IAM Validation Checks (17 checks total)

@@ -15,12 +15,41 @@ from typing import Any
 
 import yaml
 
-from iam_validator.core.models import IAMPolicy
+from iam_validator.core.models import IAMPolicy, ValidationIssue
 from iam_validator.core.policy_checks import validate_policies
 from iam_validator.mcp.models import ValidationResult
 
 # Track temp files for cleanup on exit (safety net for abnormal termination)
 _temp_files_to_cleanup: set[Path] = set()
+
+
+def issue_to_dict(issue: ValidationIssue, *, verbose: bool = False) -> dict[str, Any]:
+    """Map a ``ValidationIssue`` to the JSON shape MCP tools return.
+
+    Single source of truth for the verbose-vs-lean projection so every
+    validation/generation tool reports identical fields.
+    """
+    if not verbose:
+        return {
+            "severity": issue.severity,
+            "message": issue.message,
+            "suggestion": issue.suggestion,
+            "check_id": issue.check_id,
+        }
+    return {
+        "severity": issue.severity,
+        "message": issue.message,
+        "suggestion": issue.suggestion,
+        "example": issue.example,
+        "check_id": issue.check_id,
+        "statement_index": issue.statement_index,
+        "action": getattr(issue, "action", None),
+        "resource": getattr(issue, "resource", None),
+        "field_name": getattr(issue, "field_name", None),
+        "risk_explanation": issue.risk_explanation,
+        "documentation_url": issue.documentation_url,
+        "remediation_steps": issue.remediation_steps,
+    }
 
 
 def _cleanup_temp_files() -> None:
@@ -183,8 +212,21 @@ async def validate_policy(
     # Normalize the policy type
     normalized_type = policy_type_mapping.get(effective_policy_type.lower(), "IDENTITY_POLICY")
 
-    # Parse the dict into an IAMPolicy model
-    iam_policy = IAMPolicy(**policy)
+    # Parse the dict into an IAMPolicy model. Surface schema errors as a clean
+    # ToolError instead of letting Pydantic's ValidationError stacktrace leak
+    # through the MCP protocol.
+    from fastmcp.exceptions import ToolError
+    from pydantic import ValidationError as _PydanticValidationError
+
+    try:
+        iam_policy = IAMPolicy(**policy)
+    except _PydanticValidationError as e:
+        raise ToolError(
+            f"Malformed IAM policy: {e.error_count()} validation error(s). "
+            "First error: " + (e.errors()[0].get("msg", "unknown") if e.errors() else "unknown")
+        ) from e
+    except (TypeError, ValueError) as e:
+        raise ToolError(f"Malformed IAM policy: {e}") from e
 
     # Determine config path and session_config to use
     session_config = None
@@ -193,6 +235,12 @@ async def validate_policy(
         from iam_validator.mcp.session_config import SessionConfigManager
 
         session_config = SessionConfigManager.get_config()
+
+    # Pull CLI-supplied paths (--custom-checks-dir / --aws-services-dir) so the
+    # MCP tool reaches feature parity with the CLI's `iam-validator validate`.
+    from iam_validator.mcp.session_config import SessionConfigManager
+
+    custom_dir, services_dir = SessionConfigManager.get_paths()
 
     # Use context manager for temp file to ensure cleanup
     with _temp_config_file(session_config) as temp_path:
@@ -204,6 +252,8 @@ async def validate_policy(
             policies=[("inline-policy", iam_policy)],
             config_path=effective_config_path,
             policy_type=normalized_type,  # type: ignore
+            custom_checks_dir=custom_dir,
+            aws_services_dir=services_dir,
         )
 
     # Get the first (and only) result
@@ -334,8 +384,15 @@ async def quick_validate(policy: dict[str, Any]) -> dict[str, Any]:
         if issue.check_id == "sensitive_action":
             sensitive_actions_count += 1
 
-        # Detect wildcard issues
-        if issue.check_id in {"wildcard_action", "wildcard_resource", "service_wildcard"}:
+        # Detect wildcard issues — keep this set in lockstep with the wildcard
+        # checks registered in core/check_registry.py. Missing one here causes
+        # `wildcards_detected` to silently lie (1.20.0 fix: include full_wildcard).
+        if issue.check_id in {
+            "wildcard_action",
+            "wildcard_resource",
+            "service_wildcard",
+            "full_wildcard",
+        }:
             wildcards_detected = True
 
     # Return simplified result with enhanced fields

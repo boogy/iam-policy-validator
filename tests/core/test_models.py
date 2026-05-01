@@ -422,3 +422,53 @@ class TestValidationReport:
         assert "1 clean" in summary
         assert "2 with errors" in summary
         assert "2 with findings" in summary
+
+
+class TestIsFullWildcardAllow:
+    """Tests for Statement.is_full_wildcard_allow()."""
+
+    def test_allow_star_star_returns_true(self):
+        s = Statement(Effect="Allow", Action="*", Resource="*")
+        assert s.is_full_wildcard_allow() is True
+
+    def test_allow_list_star_list_star_returns_true(self):
+        s = Statement(Effect="Allow", Action=["*"], Resource=["*"])
+        assert s.is_full_wildcard_allow() is True
+
+    def test_allow_duplicate_star_returns_true(self):
+        s = Statement(Effect="Allow", Action=["*", "*"], Resource=["*", "*"])
+        assert s.is_full_wildcard_allow() is True
+
+    def test_allow_star_action_list_resource_returns_true(self):
+        s = Statement(Effect="Allow", Action="*", Resource=["*"])
+        assert s.is_full_wildcard_allow() is True
+
+    def test_deny_star_star_returns_false(self):
+        s = Statement(Effect="Deny", Action="*", Resource="*")
+        assert s.is_full_wildcard_allow() is False
+
+    def test_allow_star_star_with_condition_returns_true(self):
+        s = Statement(
+            Effect="Allow", Action="*", Resource="*", Condition={"Bool": {"aws:MultiFactorAuthPresent": "true"}}
+        )
+        assert s.is_full_wildcard_allow() is True
+
+    def test_allow_not_action_returns_false(self):
+        s = Statement(Effect="Allow", NotAction="*", Resource="*")
+        assert s.is_full_wildcard_allow() is False
+
+    def test_allow_not_resource_returns_false(self):
+        s = Statement(Effect="Allow", Action="*", NotResource="*")
+        assert s.is_full_wildcard_allow() is False
+
+    def test_allow_star_mixed_resources_returns_false(self):
+        s = Statement(Effect="Allow", Action=["*"], Resource=["*", "arn:aws:s3:::bucket"])
+        assert s.is_full_wildcard_allow() is False
+
+    def test_allow_star_action_absent_resource_returns_false(self):
+        s = Statement(Effect="Allow", Action="*")
+        assert s.is_full_wildcard_allow() is False
+
+    def test_allow_absent_action_star_resource_returns_false(self):
+        s = Statement(Effect="Allow", Resource="*")
+        assert s.is_full_wildcard_allow() is False

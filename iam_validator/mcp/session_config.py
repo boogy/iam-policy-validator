@@ -42,7 +42,42 @@ class SessionConfigManager:
 
     _session_config: ValidatorConfig | None = None
     _config_source: str = "none"
+    _custom_checks_dir: str | None = None
+    _aws_services_dir: str | None = None
     _lock: threading.Lock = threading.Lock()
+
+    @classmethod
+    def set_paths(
+        cls,
+        custom_checks_dir: str | None = None,
+        aws_services_dir: str | None = None,
+    ) -> None:
+        """Store CLI-supplied paths (custom checks dir, offline AWS services dir).
+
+        Args:
+            custom_checks_dir: Directory of Python modules with custom PolicyCheck
+                subclasses to auto-discover (CLI parity with --custom-checks-dir).
+            aws_services_dir: Directory of pre-downloaded AWS service definitions
+                for offline mode (CLI parity with --aws-services-dir).
+        """
+        with cls._lock:
+            if custom_checks_dir is not None:
+                cls._custom_checks_dir = custom_checks_dir
+            if aws_services_dir is not None:
+                cls._aws_services_dir = aws_services_dir
+
+    @classmethod
+    def get_paths(cls) -> tuple[str | None, str | None]:
+        """Return (custom_checks_dir, aws_services_dir) snapshot."""
+        with cls._lock:
+            return cls._custom_checks_dir, cls._aws_services_dir
+
+    @classmethod
+    def clear_paths(cls) -> None:
+        """Clear both CLI-supplied paths (used by tests for isolation)."""
+        with cls._lock:
+            cls._custom_checks_dir = None
+            cls._aws_services_dir = None
 
     @classmethod
     def set_config(cls, config_dict: dict[str, Any], source: str = "session") -> ValidatorConfig:

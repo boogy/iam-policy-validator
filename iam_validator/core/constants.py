@@ -31,6 +31,35 @@ DEFAULT_ARN_VALIDATION_PATTERN = rf"^arn:{ARN_PARTITION_REGEX}:[a-z0-9\-]+:[a-z0
 MAX_ARN_LENGTH = 2048
 
 # ============================================================================
+# IAM Policy Version Literals
+# ============================================================================
+# Centralized so MCP, fix tools, and templates can't drift. AWS recognises two
+# IAM policy language versions: "2012-10-17" (current) and "2008-10-17" (legacy).
+# New policies should always use "2012-10-17".
+IAM_POLICY_VERSION_CURRENT = "2012-10-17"
+IAM_POLICY_VERSION_LEGACY = "2008-10-17"
+IAM_POLICY_VERSIONS_VALID: frozenset[str] = frozenset({IAM_POLICY_VERSION_CURRENT, IAM_POLICY_VERSION_LEGACY})
+
+# ============================================================================
+# Default region per AWS partition
+# ============================================================================
+# AWS service endpoints are partition-specific. `us-east-1` is only valid in
+# the commercial partition. Any tool calling boto3 with a partition other than
+# `aws` MUST use a region that exists in that partition or the SDK rejects the
+# request before it leaves the box. Centralized so MCP, CLI, and tests
+# converge on the same defaults.
+PARTITION_DEFAULT_REGION: dict[str, str] = {
+    "aws": "us-east-1",
+    "aws-cn": "cn-north-1",
+    "aws-us-gov": "us-gov-west-1",
+    "aws-eusc": "eusc-de-east-1",
+    "aws-iso": "us-iso-east-1",
+    "aws-iso-b": "us-isob-east-1",
+    "aws-iso-e": "eu-isoe-west-1",
+    "aws-iso-f": "us-isof-south-1",
+}
+
+# ============================================================================
 # AWS IAM Policy Size Limits
 # ============================================================================
 # These limits are enforced by AWS and policies exceeding them will be rejected
