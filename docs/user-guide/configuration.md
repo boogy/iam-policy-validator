@@ -349,6 +349,13 @@ settings:
     critical: "iam-security-critical"
     high: "iam-security-high"
 
+  # Optional run scope tag (1-32 chars, [A-Za-z0-9._-]) appended to PR
+  # summary, review, analyzer, and ignored-findings markers. Set this
+  # when you run the validator multiple times against the same PR (e.g.
+  # one run per policy type) so each run keeps its own comment thread
+  # instead of overwriting the others. Unset by default.
+  comment_tag: null
+
   # Custom checks
   custom_checks_dir: null # Auto-discover checks from directory
 

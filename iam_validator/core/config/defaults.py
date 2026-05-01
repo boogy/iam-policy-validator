@@ -128,6 +128,11 @@ DEFAULT_CONFIG = {
         # individual: Post each as an individual review comment
         # modified_statements_only: Individual comments for modified statements only
         "off_diff_comment_mode": "summary_only",
+        # Optional run scope tag (1-32 chars, [A-Za-z0-9._-]) appended to the
+        # PR summary, review, ignored-findings, and analyzer markers. Allows
+        # multiple runs on the same PR (e.g. one per policy type) to keep
+        # independent comment threads. None preserves legacy un-scoped markers.
+        "comment_tag": None,
         # Suppress redundant findings for statements already flagged by full_wildcard.
         "suppress_superseded_findings": True,
     },

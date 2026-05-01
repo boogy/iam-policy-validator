@@ -248,12 +248,25 @@ class ValidationIssue(BaseModel):
         """Check if this issue uses IAM validity severity levels (error/warning/info)."""
         return self.severity in {"error", "warning", "info"}
 
-    def to_pr_comment(self, include_identifier: bool = True, file_path: str = "") -> str:
+    def to_pr_comment(
+        self,
+        include_identifier: bool = True,
+        file_path: str = "",
+        review_identifier: str | None = None,
+    ) -> str:
         """Format issue as a PR comment.
 
         Args:
             include_identifier: Whether to include bot identifier (for cleanup)
             file_path: Relative path to the policy file (for finding ID)
+            review_identifier: HTML marker embedded at the top of the body so
+                the GitHub integration's ``identifier in body`` lookups can
+                find this comment again on subsequent runs. Defaults to the
+                un-scoped :data:`iam_validator.core.constants.REVIEW_IDENTIFIER`.
+                Pass ``PRCommenter.REVIEW_IDENTIFIER`` (which carries the
+                optional ``comment_tag`` scope) so producer and consumer
+                stay in lockstep when the validator runs in parallel for
+                multiple policy types on the same PR.
 
         Returns:
             Formatted comment string
@@ -278,7 +291,7 @@ class ValidationIssue(BaseModel):
 
         # Add identifier for bot comment cleanup (HTML comment - not visible to users)
         if include_identifier:
-            parts.append(f"{constants.REVIEW_IDENTIFIER}\n")
+            parts.append(f"{review_identifier or constants.REVIEW_IDENTIFIER}\n")
             parts.append(f"{constants.BOT_IDENTIFIER}\n")
             # Add issue type identifier to allow multiple issues at same line
             parts.append(constants.ISSUE_TYPE_MARKER_FORMAT.format(issue_type=self.issue_type) + "\n")

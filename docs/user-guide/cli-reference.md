@@ -69,13 +69,14 @@ iam-validator validate [OPTIONS]
 
 **GitHub Integration:**
 
-| Option                 | Description                                              | Default |
-| ---------------------- | -------------------------------------------------------- | ------- |
-| `--github-comment`     | Post summary comment to PR conversation                  | `false` |
-| `--github-review`      | Create line-specific review comments on PR files         | `false` |
-| `--github-summary`     | Write summary to GitHub Actions job summary              | `false` |
-| `--allow-owner-ignore` | Allow CODEOWNERS to ignore findings by replying 'ignore' | `true`  |
-| `--no-owner-ignore`    | Disable CODEOWNERS ignore feature                        | `false` |
+| Option                 | Description                                                                | Default |
+| ---------------------- | -------------------------------------------------------------------------- | ------- |
+| `--github-comment`     | Post summary comment to PR conversation                                    | `false` |
+| `--github-review`      | Create line-specific review comments on PR files                           | `false` |
+| `--github-summary`     | Write summary to GitHub Actions job summary                                | `false` |
+| `--allow-owner-ignore` | Allow CODEOWNERS to ignore findings by replying 'ignore'                   | `true`  |
+| `--no-owner-ignore`    | Disable CODEOWNERS ignore feature                                          | `false` |
+| `--comment-tag`        | Run scope tag (1-32 chars, `[A-Za-z0-9._-]`) for parallel runs on same PR  | unset   |
 
 **CI Mode:**
 

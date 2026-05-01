@@ -106,15 +106,20 @@ class IgnoredFindingsStore:
         ```
     """
 
-    def __init__(self, github: GitHubIntegration) -> None:
+    def __init__(self, github: GitHubIntegration, comment_tag: str | None = None) -> None:
         """Initialize the store.
 
         Args:
             github: GitHub integration instance
+            comment_tag: Optional run scope. When set, the storage marker is
+                scoped via :func:`iam_validator.core.constants.scoped_marker`
+                so concurrent runs (e.g. one per policy type) maintain
+                independent ignore stores instead of overwriting each other.
         """
         self.github = github
         self._cache: dict[str, IgnoredFinding] | None = None
         self._comment_id: int | None = None
+        self._marker = constants.scoped_marker(constants.IGNORED_FINDINGS_IDENTIFIER, comment_tag)
 
     async def load(self) -> dict[str, IgnoredFinding]:
         """Load ignored findings from PR comment.
@@ -269,7 +274,7 @@ class IgnoredFindingsStore:
             if not isinstance(comment, dict):
                 continue
             body = comment.get("body", "")
-            if constants.IGNORED_FINDINGS_IDENTIFIER in str(body):
+            if self._marker in str(body):
                 return comment
 
         return None
@@ -317,7 +322,7 @@ class IgnoredFindingsStore:
 
         json_str = json.dumps(data, indent=2, sort_keys=True)
 
-        return f"""{constants.IGNORED_FINDINGS_IDENTIFIER}
+        return f"""{self._marker}
 <!-- DO NOT EDIT: This comment tracks ignored validation findings -->
 <!-- Last updated: {now} -->
 <!-- Findings can be ignored by CODEOWNERS replying "ignore" to validation comments -->

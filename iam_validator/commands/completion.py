@@ -282,17 +282,17 @@ _iam_validator_completion() {{
             return 0
             ;;
         validate)
-            opts="--path -p --stdin --format -f --output -o --no-recursive --fail-on-warnings --policy-type -t --github-comment --github-review --github-summary --verbose -v --config -c --custom-checks-dir --aws-services-dir --stream --batch-size --summary --severity-breakdown --allow-owner-ignore --no-owner-ignore --ci --ci-output --off-diff-comment-mode"
+            opts="--path -p --stdin --format -f --output -o --no-recursive --fail-on-warnings --policy-type -t --github-comment --github-review --github-summary --verbose -v --config -c --custom-checks-dir --aws-services-dir --stream --batch-size --summary --severity-breakdown --allow-owner-ignore --no-owner-ignore --ci --ci-output --off-diff-comment-mode --comment-tag"
             COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
             return 0
             ;;
         post-to-pr)
-            opts="--report -r --create-review --no-review --add-summary --no-summary --config -c --off-diff-comment-mode"
+            opts="--report -r --create-review --no-review --add-summary --no-summary --config -c --off-diff-comment-mode --comment-tag"
             COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
             return 0
             ;;
         analyze)
-            opts="--path -p --policy-type -t --region --profile --format -f --output -o --no-recursive --fail-on-warnings --github-comment --github-review --github-summary --run-all-checks --check-access-not-granted --check-access-resources --check-no-new-access --check-no-public-access --public-access-resource-type --off-diff-comment-mode --verbose -v"
+            opts="--path -p --policy-type -t --region --profile --format -f --output -o --no-recursive --fail-on-warnings --github-comment --github-review --github-summary --run-all-checks --check-access-not-granted --check-access-resources --check-no-new-access --check-no-public-access --public-access-resource-type --off-diff-comment-mode --comment-tag --verbose -v"
             COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
             return 0
             ;;
@@ -441,7 +441,8 @@ _iam_validator() {{
                         '--no-owner-ignore[Disable CODEOWNERS ignore feature]' \\
                         '--ci[CI mode - print enhanced output, write JSON to file]' \\
                         '--ci-output[Output file for JSON report in CI mode]:file:_files' \\
-                        '--off-diff-comment-mode[How to handle findings on unchanged lines]:mode:(summary_only individual modified_statements_only)'
+                        '--off-diff-comment-mode[How to handle findings on unchanged lines]:mode:(summary_only individual modified_statements_only)' \\
+                        '--comment-tag[Run scope tag for PR comment markers (1-32 chars, [A-Za-z0-9._-])]:tag:'
                     ;;
                 post-to-pr)
                     _arguments \\
@@ -451,7 +452,8 @@ _iam_validator() {{
                         '--add-summary[Add summary comment]' \\
                         '--no-summary[Do not add summary comment]' \\
                         '(--config -c)'{{--config,-c}}'[Configuration file]:file:_files' \\
-                        '--off-diff-comment-mode[How to handle findings on unchanged lines]:mode:(summary_only individual modified_statements_only)'
+                        '--off-diff-comment-mode[How to handle findings on unchanged lines]:mode:(summary_only individual modified_statements_only)' \\
+                        '--comment-tag[Run scope tag for PR comment markers]:tag:'
                     ;;
                 analyze)
                     _arguments \\
@@ -474,6 +476,7 @@ _iam_validator() {{
                         '--check-no-public-access[Check that resource policy does not allow public access]' \\
                         '*--public-access-resource-type[Resource type for public access check]:resource type:' \\
                         '--off-diff-comment-mode[How to handle findings on unchanged lines]:mode:(summary_only individual modified_statements_only)' \\
+                        '--comment-tag[Run scope tag for PR comment markers (1-32 chars, [A-Za-z0-9._-])]:tag:' \\
                         '(--verbose -v)'{{--verbose,-v}}'[Enable verbose logging]'
                     ;;
                 cache)

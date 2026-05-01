@@ -10,6 +10,8 @@ References:
 - AWS ARN Format: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference-arns.html
 """
 
+import re
+
 # ============================================================================
 # ARN Validation
 # ============================================================================
@@ -161,6 +163,63 @@ SUMMARY_IDENTIFIER = "<!-- iam-policy-validator-summary -->"
 REVIEW_IDENTIFIER = "<!-- iam-policy-validator-review -->"
 IGNORED_FINDINGS_IDENTIFIER = "<!-- iam-policy-validator-ignored-findings -->"
 ANALYZER_IDENTIFIER = "<!-- iam-access-analyzer-validator -->"
+
+# Tag scoping for the markers above. When the user runs the validator
+# multiple times against the same PR (e.g. one run per policy type),
+# every run must address its own canonical comment instead of overwriting
+# the others. `scoped_marker(base, tag)` rewrites the marker to embed
+# the tag, e.g. `<!-- iam-policy-validator-summary:role -->`. With no
+# tag the marker is unchanged, preserving the existing comment lifecycle
+# and matching legacy comments stored before the tagging feature shipped.
+#
+# Tag charset is intentionally narrow so it is safe to splice into an
+# HTML comment, into the `body in identifier` substring matching used by
+# `_sync_comments_with_identifier`, and into shell command lines coming
+# from the GitHub Action's `comment-tag` input.
+COMMENT_TAG_PATTERN = r"^[A-Za-z0-9._-]{1,32}$"
+# Pre-compiled once at module load — `scoped_marker` is hot-pathed during
+# every PRCommenter / IgnoredFindingsStore construction, and the config
+# loader's `validate_comment_tag` reuses the same regex.
+_COMMENT_TAG_RE = re.compile(COMMENT_TAG_PATTERN)
+
+
+def scoped_marker(base: str, tag: str | None) -> str:
+    """Return ``base`` with ``tag`` spliced before the closing ``-->``.
+
+    With ``tag`` ``None`` or empty the base marker is returned unchanged
+    so existing PR comments and tests keep working without modification.
+
+    Args:
+        base: One of the module-level identifier constants
+            (``SUMMARY_IDENTIFIER``, ``REVIEW_IDENTIFIER``,
+            ``IGNORED_FINDINGS_IDENTIFIER``, ``ANALYZER_IDENTIFIER``)
+            or any string ending in ``-->``.
+        tag: Optional run scope. Must match :data:`COMMENT_TAG_PATTERN`
+            (letters, digits, ``.``, ``_``, ``-``; 1-32 chars).
+            ``None`` and ``""`` are accepted and result in the base
+            marker being returned unchanged.
+
+    Returns:
+        The scoped marker, e.g.
+        ``"<!-- iam-policy-validator-summary:role -->"``.
+
+    Raises:
+        ValueError: When ``tag`` is non-empty but does not match
+            :data:`COMMENT_TAG_PATTERN`.
+    """
+    if not tag:
+        return base
+    if not _COMMENT_TAG_RE.fullmatch(tag):
+        raise ValueError(
+            f"Invalid comment tag: {tag!r}. Must match {COMMENT_TAG_PATTERN} "
+            "(letters, digits, '.', '_', '-', 1-32 chars)."
+        )
+    if not base.endswith(" -->"):
+        # Defensive: every identifier in this module ends with " -->",
+        # but stay correct if a caller passes a hand-rolled marker.
+        return f"{base}:{tag}"
+    return f"{base[:-4]}:{tag} -->"
+
 
 # Structural markers embedded inside review-comment bodies. Centralized so
 # producers (body-builders in models.py) and consumers (parsers in

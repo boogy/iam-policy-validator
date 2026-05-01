@@ -19,7 +19,11 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from iam_validator.core.check_registry import CheckConfig, CheckRegistry, PolicyCheck
 from iam_validator.core.config.defaults import get_default_config
-from iam_validator.core.constants import DEFAULT_CONFIG_FILENAMES
+from iam_validator.core.constants import (
+    _COMMENT_TAG_RE,
+    COMMENT_TAG_PATTERN,
+    DEFAULT_CONFIG_FILENAMES,
+)
 from iam_validator.core.models import PolicyType
 
 # Valid PolicyType literal values (derived from the Literal in models.py so we
@@ -163,6 +167,7 @@ class SettingsSchema(BaseModel):
     documentation: DocumentationSettingsSchema = DocumentationSettingsSchema()
     hide_severities: list[str] | None = None  # Global severity filtering
     off_diff_comment_mode: str = "summary_only"
+    comment_tag: str | None = None
 
     @field_validator("off_diff_comment_mode")
     @classmethod
@@ -170,6 +175,19 @@ class SettingsSchema(BaseModel):
         valid_modes = {"summary_only", "individual", "modified_statements_only"}
         if v not in valid_modes:
             raise ValueError(f"Invalid off_diff_comment_mode: {v}. Must be one of: {sorted(valid_modes)}")
+        return v
+
+    @field_validator("comment_tag")
+    @classmethod
+    def validate_comment_tag(cls, v: str | None) -> str | None:
+        # ``None`` and empty string disable scoping (legacy markers).
+        if not v:
+            return None
+        if not _COMMENT_TAG_RE.fullmatch(v):
+            raise ValueError(
+                f"Invalid comment_tag: {v!r}. Must match {COMMENT_TAG_PATTERN} "
+                "(letters, digits, '.', '_', '-', 1-32 chars)."
+            )
         return v
 
     @field_validator("fail_on_severity")
