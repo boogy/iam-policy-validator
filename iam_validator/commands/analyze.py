@@ -231,6 +231,17 @@ Examples:
         )
 
         parser.add_argument(
+            "--comment-tag",
+            default=None,
+            metavar="TAG",
+            help="Optional run scope (1-32 chars, [A-Za-z0-9._-]) for PR "
+            "summary, review, analyzer, and ignored-findings comments. "
+            "When set, the HTML markers are suffixed with ':<TAG>' so "
+            "multiple analyze/validate runs on the same PR maintain "
+            "independent comment threads instead of overwriting each other.",
+        )
+
+        parser.add_argument(
             "--verbose",
             "-v",
             action="store_true",
@@ -278,7 +289,9 @@ Examples:
             # Post to GitHub if configured
             if args.github_comment:
                 async with GitHubIntegration() as github:
-                    success = await self._post_to_github(github, report, formatter)
+                    success = await self._post_to_github(
+                        github, report, formatter, comment_tag=getattr(args, "comment_tag", None)
+                    )
                     if not success:
                         logging.error("Failed to post Access Analyzer results to GitHub PR")
 
@@ -412,6 +425,7 @@ Examples:
             off_diff_mode = getattr(args, "off_diff_comment_mode", None) or config.get_setting(
                 "off_diff_comment_mode", "summary_only"
             )
+            comment_tag = getattr(args, "comment_tag", None) or config.get_setting("comment_tag", None)
 
             async with GitHubIntegration() as github:
                 commenter = PRCommenter(
@@ -421,6 +435,7 @@ Examples:
                     enable_codeowners_ignore=enable_ignore,
                     allowed_ignore_users=allowed_users,
                     off_diff_comment_mode=off_diff_mode,
+                    comment_tag=comment_tag,
                 )
                 success = await commenter.post_findings_to_pr(
                     validation_report,
@@ -441,8 +456,18 @@ Examples:
         github: GitHubIntegration,
         report: AccessAnalyzerReport,
         formatter: AccessAnalyzerReportFormatter,
+        comment_tag: str | None = None,
     ) -> bool:
-        """Post Access Analyzer results to GitHub PR."""
+        """Post Access Analyzer results to GitHub PR.
+
+        Args:
+            github: GitHub integration instance.
+            report: Access Analyzer findings.
+            formatter: Markdown formatter for the report.
+            comment_tag: Optional run scope; when set, the analyzer marker is
+                suffixed via :func:`scoped_marker` so concurrent analyze runs
+                on the same PR keep independent comment threads.
+        """
         if not github.is_configured():
             logging.error(
                 "GitHub integration not configured. "
@@ -454,8 +479,9 @@ Examples:
         # Generate markdown comment (single part for now)
         markdown_content = formatter.generate_markdown_report(report)
 
-        # Add identifier for updating existing comments
-        identifier = constants.ANALYZER_IDENTIFIER
+        # Add identifier for updating existing comments. Scoped via the
+        # optional ``comment_tag`` so parallel analyze runs do not collide.
+        identifier = constants.scoped_marker(constants.ANALYZER_IDENTIFIER, comment_tag)
 
         # Check if content is too large for single comment
         if len(markdown_content) > constants.GITHUB_COMMENT_SPLIT_LIMIT:

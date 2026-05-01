@@ -312,6 +312,9 @@ iam-validator validate --path policies/ --aws-services-dir ./aws-services
 - **Line-specific feedback**: Inline comments on policy files with exact line numbers
 - **Smart cleanup**: Updates existing comments, removes stale ones
 - **Severity-based reviews**: Auto-approve or request changes based on findings
+- **Parallel-run safe**: Pass a `comment-tag` per matrix job (e.g. one
+  per policy type) so independent runs keep independent comment threads
+  on the same PR instead of overwriting each other
 
 **Multiple output formats:** Console, JSON, SARIF (GitHub Code Scanning), Markdown, HTML, CSV
 
@@ -324,6 +327,7 @@ iam-validator validate --path policies/ --aws-services-dir ./aws-services
     create-review: true # Inline PR comments
     github-summary: true # Actions summary tab
     config-file: .iam-validator.yaml # fail_on_severity set in config
+    comment-tag: identity # Required only when running >1 validator on the same PR
 ```
 
 ---

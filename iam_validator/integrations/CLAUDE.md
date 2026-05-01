@@ -53,6 +53,14 @@ and `test_summary_comment_staleness.py`.
 All HTML comment markers come from `iam_validator.core.constants` — never hardcode
 them in either production or tests.
 
+When the caller passes a `comment_tag` (issue #103, parallel runs on the
+same PR), the marker is rewritten via `constants.scoped_marker(base, tag)`
+before any lookup or write. Resolve identifiers per-instance in
+`__init__` (see `PRCommenter.SUMMARY_IDENTIFIER` / `REVIEW_IDENTIFIER`) and
+forward the tag to `IgnoredFindingsStore` / `IgnoreCommandProcessor` —
+otherwise the storage helpers and the commenter will read different
+canonical comments and the bug from issue #103 returns.
+
 ---
 
 ## `ms_teams.py`

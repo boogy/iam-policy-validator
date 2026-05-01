@@ -45,13 +45,14 @@ jobs:
 
 ### GitHub Integration
 
-| Input                | Description                                              | Default               |
-| -------------------- | -------------------------------------------------------- | --------------------- |
-| `post-comment`       | Post validation results as PR comment                    | `true`                |
-| `create-review`      | Create line-specific review comments on PR files         | `true`                |
-| `allow-owner-ignore` | Allow CODEOWNERS to ignore findings by replying 'ignore' | `true`                |
-| `github-summary`     | Write summary to GitHub Actions job summary              | `false`               |
-| `github-token`       | GitHub token for posting comments and reviews            | `${{ github.token }}` |
+| Input                | Description                                                                          | Default               |
+| -------------------- | ------------------------------------------------------------------------------------ | --------------------- |
+| `post-comment`       | Post validation results as PR comment                                                | `true`                |
+| `create-review`      | Create line-specific review comments on PR files                                     | `true`                |
+| `allow-owner-ignore` | Allow CODEOWNERS to ignore findings by replying 'ignore'                             | `true`                |
+| `github-summary`     | Write summary to GitHub Actions job summary                                          | `false`               |
+| `github-token`       | GitHub token for posting comments and reviews                                        | `${{ github.token }}` |
+| `comment-tag`        | Run scope tag (1-32 chars, `[A-Za-z0-9._-]`) for parallel runs on the same PR        | (unset)               |
 
 ### Output Options
 
@@ -254,7 +255,9 @@ Validate policies from different directories:
 
 ### Different Policy Types (Matrix Strategy)
 
-Validate different policy types in parallel:
+Validate different policy types in parallel. Pass a unique `comment-tag`
+per matrix entry so each run posts its own PR summary, review thread,
+and ignored-findings store instead of overwriting siblings (issue #103).
 
 ```yaml
 name: Validate All Policy Types
@@ -272,19 +275,35 @@ jobs:
         include:
           - path: ./identity-policies/
             type: IDENTITY_POLICY
+            tag: identity
           - path: ./trust-policies/
             type: TRUST_POLICY
+            tag: trust
           - path: ./resource-policies/
             type: RESOURCE_POLICY
+            tag: resource
           - path: ./scps/
             type: SERVICE_CONTROL_POLICY
+            tag: scp
     steps:
       - uses: actions/checkout@v4
       - uses: boogy/iam-policy-validator@v1
         with:
           path: ${{ matrix.path }}
           policy-type: ${{ matrix.type }}
+          comment-tag: ${{ matrix.tag }}
 ```
+
+!!! tip "Why `comment-tag` is required for parallel runs"
+
+    The validator updates the same canonical PR comment on every run so
+    repeated pushes don't spam the timeline. Without a `comment-tag`,
+    every parallel matrix job targets the same comment — the second
+    job overwrites the first. Set a stable, distinct tag per scope
+    (`identity`, `trust`, `${{ matrix.tag }}`, `${{ github.job }}`)
+    and each job updates its own thread on subsequent runs.
+
+    Tags must match `[A-Za-z0-9._-]{1,32}`.
 
 ### Large Repositories (Streaming Mode)
 

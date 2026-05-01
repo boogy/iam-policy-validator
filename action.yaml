@@ -36,6 +36,13 @@ inputs:
     required: false
     default: "summary_only"
 
+  comment-tag:
+    description: >
+      Optional run scope (1-32 chars, [A-Za-z0-9._-]) appended to PR summary, review, analyzer, and ignored-findings markers. Use a different tag per parallel run on the same PR (e.g. 'policy',
+      'role', 'scp') so comments do not overwrite each other.
+    required: false
+    default: ""
+
   allow-owner-ignore:
     description: "Allow CODEOWNERS to ignore findings by replying 'ignore' to review comments"
     required: false
@@ -133,7 +140,8 @@ inputs:
     default: "false"
 
   public-access-resource-type:
-    description: "Resource type(s) for public access check. Use 'all' to check all 29 types, or specify space-separated types. Options: all, AWS::S3::Bucket, AWS::Lambda::Function, AWS::KMS::Key, AWS::SNS::Topic, AWS::SQS::Queue, etc."
+    description: "Resource type(s) for public access check. Use 'all' to check all 29 types, or specify space-separated types. Options: all, AWS::S3::Bucket, AWS::Lambda::Function, AWS::KMS::Key,
+      AWS::SNS::Topic, AWS::SQS::Queue, etc."
     required: false
     default: "AWS::S3::Bucket"
 
@@ -144,7 +152,8 @@ inputs:
     default: ""
 
   aws-services-dir:
-    description: "Path to directory containing pre-downloaded AWS service definitions for offline mode (relative to repository root). Use 'iam-validator download-services' to create this directory. When specified, disables automatic caching and API calls."
+    description: "Path to directory containing pre-downloaded AWS service definitions for offline mode (relative to repository root). Use 'iam-validator download-services' to create this directory. When
+      specified, disables automatic caching and API calls."
     required: false
     default: ""
 
@@ -504,6 +513,12 @@ runs:
         # Add off-diff comment mode (only add flag when not the default)
         if [ -n "${{ inputs.off-diff-comment-mode }}" ] && [ "${{ inputs.off-diff-comment-mode }}" != "summary_only" ]; then
           ARGS="$ARGS --off-diff-comment-mode ${{ inputs.off-diff-comment-mode }}"
+        fi
+
+        # Add comment-tag (scope marker for parallel runs on the same PR)
+        # Validated downstream by the CLI; only enforce non-empty here.
+        if [ -n "${{ inputs.comment-tag }}" ]; then
+          ARGS="$ARGS --comment-tag ${{ inputs.comment-tag }}"
         fi
 
         # Create temp file for JSON metrics extraction
