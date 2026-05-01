@@ -207,6 +207,8 @@ class AccessAnalyzerValidator:
         region: str = "us-east-1",
         policy_type: PolicyType = PolicyType.IDENTITY_POLICY,
         profile: str | None = None,
+        *,
+        session: "boto3.Session | None" = None,
     ):
         """Initialize the Access Analyzer validator.
 
@@ -214,6 +216,10 @@ class AccessAnalyzerValidator:
             region: AWS region to use for Access Analyzer API calls
             policy_type: Type of policy to validate
             profile: AWS profile name to use (optional)
+            session: Optional pre-built boto3.Session. When supplied, the
+                region/profile arguments are ignored for session construction
+                (the client is created from the supplied session). The MCP
+                lifespan caches sessions per (region, profile) key for reuse.
         """
         self.region = region
         self.policy_type = policy_type
@@ -221,11 +227,11 @@ class AccessAnalyzerValidator:
         self.logger = logging.getLogger(__name__)
 
         try:
-            session_kwargs: dict[str, Any] = {"region_name": region}
-            if profile:
-                session_kwargs["profile_name"] = profile
-
-            session = boto3.Session(**session_kwargs)
+            if session is None:
+                session_kwargs: dict[str, Any] = {"region_name": region}
+                if profile:
+                    session_kwargs["profile_name"] = profile
+                session = boto3.Session(**session_kwargs)
             self.client = session.client("accessanalyzer")
             self.logger.info(f"Initialized Access Analyzer client in region {region}")
         except NoCredentialsError:

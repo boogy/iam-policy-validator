@@ -5,6 +5,154 @@ All notable changes to IAM Policy Validator are documented in this file.
 The format is based on [Common Changelog](https://common-changelog.org/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] - Unreleased
+
+### Added
+
+- `suppress_superseded_findings` setting (default `true`): when a bare
+  `Allow Action:* Resource:*` statement is detected, a single `critical` finding from
+  `full_wildcard` is surfaced and all redundant statement-level and policy-level
+  findings for that statement are suppressed — including custom checks. Sibling
+  statements are unaffected. Set to `false` to restore the previous behaviour.
+- `Statement.is_full_wildcard_allow()` predicate and `PolicyCheck.supersedes` /
+  `PolicyCheck.matches()` extension points (zero-cost defaults for existing checks).
+- Centralized `IAM_POLICY_VERSION_CURRENT` / `IAM_POLICY_VERSION_LEGACY` /
+  `IAM_POLICY_VERSIONS_VALID` in `iam_validator/core/constants.py` so MCP, fix tools,
+  and templates source the IAM policy language version from one place.
+- `iam_validator/mcp/check_metadata.py` — curated examples and fix steps for 12
+  built-in checks. MCP `get_issue_guidance` and `get_check_details` now return
+  registry-driven defaults for any registered check (previously hardcoded for
+  5–6 checks).
+- MCP `--custom-checks-dir` and `--aws-services-dir` flags (CLI parity). Paths
+  are stored on `SessionConfigManager` and forwarded to `validate_policies()`
+  by the validation tools.
+- MCP `aws_access_analyzer_validate` tool — wraps AWS Access Analyzer
+  ValidatePolicy in `asyncio.to_thread`. Lifespan caches `boto3.Session`
+  instances per `(region, profile)` to amortise the ~50 ms session-construction
+  cost across calls.
+- `AccessAnalyzerValidator(session=...)` keyword argument so MCP can pass a
+  shared boto3 session instead of reconstructing one per call.
+- MCP `--profile {full,validate-only,validate-and-query,no-generation,read-only}`
+  flag for token-efficient sessions (FastMCP tag-based gating). `--list-profiles`
+  prints the taxonomy and exits.
+- MCP `get_active_profile` tool — introspect the active profile and the tools
+  it currently exposes.
+- MCP `ToolAnnotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`,
+  `openWorldHint`) on every registered tool so MCP clients can reason about
+  side-effects without parsing names.
+- Parameterised resources `iam://sensitive-actions/{category}` and
+  `iam://checks/{check_id}` (replace the demoted tools — see Compatibility).
+- FastMCP in-process `Client` transport tests (`tests/mcp/test_transport.py`)
+  for protocol-level coverage of tool registration, annotations, profiles,
+  and tool errors.
+
+### Changed
+
+- MCP `build_arn` validates the `partition` argument against `ARN_PARTITION_REGEX`
+  and rejects unknown partitions instead of silently accepting them. Supported
+  partitions: `aws`, `aws-cn`, `aws-us-gov`, `aws-eusc`, `aws-iso`, `aws-iso-b`,
+  `aws-iso-e`, `aws-iso-f`.
+- MCP `get_issue_guidance` / `get_check_details` now source description and
+  default severity from the check registry. Curated examples / fix steps live in
+  `iam_validator/mcp/check_metadata.py`. The `related_tools` field has been
+  renamed to `related` (covers both tools and resource URIs).
+- MCP `build_arn` now consults the live AWS service reference (cached) instead
+  of a hardcoded 9-service map. Supports all partitions in `ARN_PARTITION_REGEX`
+  (incl. `aws-eusc`, `aws-iso*`) and multi-placeholder ARN templates via a new
+  `placeholders` dict argument. Returns `{arn, valid, notes, format_template,
+  unfilled_placeholders}`. The `resource_name` argument is deprecated (removal
+  target v1.21.0) — pass `placeholders={...}` instead.
+- Single-call MCP query tools (`query_service_actions`, `query_action_details`,
+  `expand_wildcard_action`, `query_condition_keys`, `query_arn_formats`) now
+  reuse the lifespan-managed `AWSServiceFetcher` instead of constructing a new
+  one per call. Fewer HTTP connections, warmer cache. `validate_policy` /
+  `validate_policies_batch` continue to construct their fetcher inside
+  `validate_policies()` — see follow-up issue for fetcher reuse there.
+- `validate_policies_batch` accepts a `max_concurrency` parameter (default 10)
+  and uses an `asyncio.Semaphore` to cap parallel validations.
+- `get_shared_fetcher` log noise demoted from WARNING to DEBUG.
+- FastMCP minimum bumped from `>=2.14.1` to `>=3.2,<4` — we now rely on v3
+  `enable(only=True)` semantics for tag-based gating.
+- MCP `BASE_INSTRUCTIONS` slimmed from ~2.6 KB to ~700 chars: per-tool
+  guardrails relocated to individual tool docstrings; the server-level
+  instructions retain only Core Principles, Absolute Rules, the Validation
+  Loop Prevention guardrail, and resource pointers.
+- MCP `explain_policy` now sources access-level classification from the live
+  AWS service reference (Read/Write/List/Tagging/Permissions management)
+  instead of a name-prefix heuristic. Surfaces `NotAction`/`NotResource`/
+  `Principal:*`/`NotPrincipal` as explicit security concerns. Effect comparison
+  is case-insensitive.
+- MCP `compare_policies` now uses canonical statement signatures (effect +
+  sorted actions/resources/principals + canonical-JSON conditions) instead of
+  positional indexing. Reports added/removed `NotAction`, `NotResource`,
+  `Principal`, `NotPrincipal`, and condition keys independently. No more
+  phantom diffs from re-ordering Sid-less statements.
+- MCP `aws_access_analyzer_validate` adds a `partition` argument and defaults
+  `region` to the canonical region per partition (e.g. `aws-cn` → `cn-north-1`,
+  `aws-us-gov` → `us-gov-west-1`). Adds `timeout_seconds` (default 30s) so a
+  hung AWS endpoint cannot block the MCP server. Centralized in
+  `core/constants.PARTITION_DEFAULT_REGION`.
+- MCP `fix_policy_issues` action-case normalization now also handles
+  `NotAction` (previously only `Action`). `unfixed_issues` always returns a
+  list; `unfixed_count` is exposed separately for clients that want the count.
+- MCP `quick_validate` `wildcards_detected` now correctly fires for
+  `full_wildcard` issues (previously missed; only the three lower-severity
+  wildcard checks were in the set).
+- MCP DRY: extracted `issue_to_dict()` helper in `mcp/tools/validation.py`.
+  `validate_policy`, `validate_policies_batch`, `generate_policy_from_template`,
+  `build_minimal_policy`, and `fix_policy_issues` all use it — single source of
+  truth for the verbose-vs-lean issue projection.
+
+### Fixed (P0 — accuracy)
+
+- MCP `validate_policy` (and every wrapper that calls it) now wraps malformed
+  input in a clean `ToolError` instead of letting Pydantic's `ValidationError`
+  stack trace leak through the MCP protocol.
+- MCP `--instructions` and `--instructions-file` are now in an argparse
+  mutually-exclusive group. Previously `--instructions` was silently ignored
+  if both were supplied.
+
+### Removed (demoted to resources)
+
+- `list_templates`, `list_checks`, `list_sensitive_actions`, `get_check_details`
+  are no longer registered as MCP tools. Fetch them via the resource URIs:
+  - `iam://templates`
+  - `iam://checks`
+  - `iam://sensitive-actions/{category}`
+  - `iam://checks/{check_id}`
+
+### Token cost (per profile, instructions + tool descriptions, characters)
+
+| Profile              | Tools | Instr | Tool descs | Total | % full |
+| -------------------- | ----- | ----- | ---------- | ----- | ------ |
+| `full`               | 33    | 1128  | 3900       | 5028  | 100%   |
+| `validate-only`      | 5     | 1128  | 481        | 1609  | 32%    |
+| `validate-and-query` | 13    | 1128  | 1045       | 2173  | 43%    |
+| `no-generation`      | 28    | 1128  | 3306       | 4434  | 88%    |
+| `read-only`          | 28    | 1128  | 3444       | 4572  | 90%    |
+
+### Compatibility
+
+- Default MCP profile is `full` — existing Claude Desktop / Cursor configs see
+  no behavioural change unless they explicitly pass `--profile`.
+- `--profile` requires a server restart to take effect — MCP clients cache
+  tool catalogs per session.
+- `build_arn(resource_name=...)` is **deprecated** and emits a warning. Prefer
+  `placeholders={...}`. Removal target: v1.21.0.
+- `list_templates`, `list_checks`, `list_sensitive_actions`, `get_check_details`
+  are **demoted from tools to resources**. MCP clients that previously called
+  these tools must switch to fetching the corresponding resource URI.
+- FastMCP minimum bumped to `>=3.2,<4`. Users on `fastmcp<3` must upgrade
+  via `uv sync --extra mcp`.
+
+### Notes
+
+- **Breaking (noise reduction):** existing PR comments anchored to the suppressed
+  check IDs become orphans on the next run and are cleaned up automatically. Set
+  `suppress_superseded_findings: false` to restore all findings.
+
+---
+
 ## [1.19.1] - 2026-04-28
 
 ### Changed

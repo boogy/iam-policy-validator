@@ -70,21 +70,29 @@ class TestServerTools:
 
     @pytest.mark.asyncio
     async def test_generation_tools_registered(self):
-        """Generation tools should be registered."""
+        """Generation tools should be registered.
+
+        Note: list_templates was demoted to the iam://templates resource in
+        v1.20.0 — it must NOT appear as a tool.
+        """
         tool_names = [t.name for t in await mcp.list_tools()]
         assert "generate_policy_from_template" in tool_names
         assert "build_minimal_policy" in tool_names
         assert "suggest_actions" in tool_names
-        assert "list_templates" in tool_names
+        assert "list_templates" not in tool_names
 
     @pytest.mark.asyncio
     async def test_query_tools_registered(self):
-        """Query tools should be registered."""
+        """Query tools should be registered.
+
+        Note: list_checks was demoted to the iam://checks resource in v1.20.0 —
+        it must NOT appear as a tool.
+        """
         tool_names = [t.name for t in await mcp.list_tools()]
         assert "query_service_actions" in tool_names
         assert "query_action_details" in tool_names
         assert "expand_wildcard_action" in tool_names
-        assert "list_checks" in tool_names
+        assert "list_checks" not in tool_names
 
     @pytest.mark.asyncio
     async def test_org_config_tools_registered(self):

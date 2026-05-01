@@ -178,7 +178,12 @@ async def validate_policies(
     enable_parallel = config.get_setting("parallel_execution", True)
     enable_builtin_checks = config.get_setting("enable_builtin_checks", True)
 
-    registry = create_default_registry(enable_parallel=enable_parallel, include_builtin_checks=enable_builtin_checks)
+    suppress_superseded = config.get_setting("suppress_superseded_findings", False)
+    registry = create_default_registry(
+        enable_parallel=enable_parallel,
+        include_builtin_checks=enable_builtin_checks,
+        suppress_superseded=suppress_superseded,
+    )
 
     if not enable_builtin_checks:
         logger.info("Built-in checks disabled - using only custom checks")
@@ -290,11 +295,27 @@ async def _validate_policy_with_registry(
     policy_type_issues = await policy_type_validation.execute_policy(policy, policy_file, policy_type=policy_type)
     result.issues.extend(policy_type_issues)  # pylint: disable=no-member
 
+    # Pre-scan for full-wildcard statements so policy-level findings for those
+    # statement indices can be suppressed below (same logic as statement-level).
+    suppressed_statement_indices: set[int] = set()
+    if registry.suppress_superseded and registry.is_enabled("full_wildcard"):
+        for idx, statement in enumerate(policy.statement or []):
+            if statement.is_full_wildcard_allow():
+                suppressed_statement_indices.add(idx)
+
     # Run policy-level checks first (checks that need to see the entire policy)
     # These checks examine relationships between statements, not individual statements
     policy_level_issues = await registry.execute_policy_checks(
         policy, policy_file, fetcher, policy_type, raw_policy_dict=raw_policy_dict
     )
+
+    # Drop policy-level findings that reference a suppressed statement — they are
+    # redundant when full_wildcard already flags the entire statement as */*.
+    if suppressed_statement_indices:
+        policy_level_issues = [
+            issue for issue in policy_level_issues if issue.statement_index not in suppressed_statement_indices
+        ]
+
     result.issues.extend(policy_level_issues)  # pylint: disable=no-member
 
     # Execute all statement-level checks for each statement

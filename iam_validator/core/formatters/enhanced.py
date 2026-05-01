@@ -445,11 +445,14 @@ class EnhancedFormatter(OutputFormatter):
             # Structurally valid policies but may have security/best-practice findings
             has_critical = any(i.severity in constants.HIGH_SEVERITY_LEVELS for r in report.results for i in r.issues)
 
+            _p = lambda n, word: f"{n} {word}" + ("" if n == 1 else "s")  # noqa: E731
             if has_critical:
                 status = Text("⚠️ All Policies Structurally Valid (with findings)", style="bold red")
                 message = Text(
                     f"All {report.total_policies} policies are structurally valid (AWS-accepted), but "
-                    f"{policies_with_findings} have {report.total_issues} finding(s) that must be addressed.",
+                    f"{_p(policies_with_findings, 'policy')} "
+                    f"{'has' if policies_with_findings == 1 else 'have'} "
+                    f"{_p(report.total_issues, 'finding')} that must be addressed.",
                     style="red",
                 )
                 border_color = "red"
@@ -457,8 +460,9 @@ class EnhancedFormatter(OutputFormatter):
                 status = Text("✅ All Policies Structurally Valid (with advisories)", style="bold yellow")
                 message = Text(
                     f"All {report.total_policies} policies are structurally valid, but "
-                    f"{policies_with_findings} have {report.total_issues} advisory finding(s) "
-                    f"that should be reviewed.",
+                    f"{_p(policies_with_findings, 'policy')} "
+                    f"{'has' if policies_with_findings == 1 else 'have'} "
+                    f"{_p(report.total_issues, 'advisory finding')} that should be reviewed.",
                     style="yellow",
                 )
                 border_color = "yellow"

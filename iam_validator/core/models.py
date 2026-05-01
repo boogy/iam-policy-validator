@@ -142,6 +142,16 @@ class Statement(BaseModel):
             return []
         return [self.not_resource] if isinstance(self.not_resource, str) else self.not_resource
 
+    def is_full_wildcard_allow(self) -> bool:
+        """True if this statement grants Allow */* (conditions do not prevent suppression)."""
+        if self.effect != "Allow":
+            return False
+        if self.not_action or self.not_resource:
+            return False
+        actions = self.get_actions()
+        resources = self.get_resources()
+        return bool(actions) and bool(resources) and set(actions) == {"*"} and set(resources) == {"*"}
+
 
 class IAMPolicy(BaseModel):
     """IAM policy document."""

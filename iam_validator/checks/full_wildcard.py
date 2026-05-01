@@ -14,6 +14,21 @@ class FullWildcardCheck(PolicyCheck):
     description: ClassVar[str] = "Checks for both action and resource wildcards together (critical risk)"
     default_severity: ClassVar[str] = "critical"
 
+    supersedes: ClassVar[frozenset[str]] = frozenset(
+        {
+            "wildcard_action",
+            "wildcard_resource",
+            "service_wildcard",
+            "action_resource_matching",
+            "sensitive_action",
+            "action_condition_enforcement",
+            "mfa_condition_antipattern",
+        }
+    )
+
+    def matches(self, statement: Statement) -> bool:
+        return statement.is_full_wildcard_allow()
+
     async def execute(
         self,
         statement: Statement,
