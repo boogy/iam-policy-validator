@@ -144,6 +144,12 @@ Examples:
         )
 
         parser.add_argument(
+            "--github-comment-id",
+            help="Optional unique identifier for this validation run (e.g. 'policy', 'role'). "
+            "Use this in parallel jobs to prevent PR comments from overwriting each other.",
+        )
+
+        parser.add_argument(
             "--run-all-checks",
             action="store_true",
             help="Run full validation checks if Access Analyzer passes",
@@ -275,10 +281,12 @@ Examples:
                 else:
                     print(formatter.generate_markdown_report(report))
 
-            # Post to GitHub if configured
+            # Post results if configured
             if args.github_comment:
                 async with GitHubIntegration() as github:
-                    success = await self._post_to_github(github, report, formatter)
+                    success = await self._post_to_github(
+                        github, report, formatter, getattr(args, "github_comment_id", None)
+                    )
                     if not success:
                         logging.error("Failed to post Access Analyzer results to GitHub PR")
 
@@ -421,6 +429,7 @@ Examples:
                     enable_codeowners_ignore=enable_ignore,
                     allowed_ignore_users=allowed_users,
                     off_diff_comment_mode=off_diff_mode,
+                    comment_id=getattr(args, "github_comment_id", None),
                 )
                 success = await commenter.post_findings_to_pr(
                     validation_report,
@@ -441,6 +450,7 @@ Examples:
         github: GitHubIntegration,
         report: AccessAnalyzerReport,
         formatter: AccessAnalyzerReportFormatter,
+        comment_id: str | None = None,
     ) -> bool:
         """Post Access Analyzer results to GitHub PR."""
         if not github.is_configured():
@@ -456,6 +466,8 @@ Examples:
 
         # Add identifier for updating existing comments
         identifier = constants.ANALYZER_IDENTIFIER
+        if comment_id:
+            identifier = identifier.replace(" -->", f"-{comment_id} -->")
 
         # Check if content is too large for single comment
         if len(markdown_content) > constants.GITHUB_COMMENT_SPLIT_LIMIT:

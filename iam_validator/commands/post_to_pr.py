@@ -84,6 +84,12 @@ Examples:
             "'modified_statements_only' posts only for modified statements",
         )
 
+        parser.add_argument(
+            "--comment-id",
+            help="Optional unique identifier for this validation run (e.g. 'policy', 'role'). "
+            "Use this in parallel jobs to prevent PR comments from overwriting each other.",
+        )
+
     async def execute(self, args: argparse.Namespace) -> int:
         """Execute the post-to-pr command."""
         success = await post_report_to_pr(
@@ -92,6 +98,7 @@ Examples:
             add_summary=args.add_summary,
             config_path=getattr(args, "config", None),
             off_diff_comment_mode=getattr(args, "off_diff_comment_mode", None),
+            comment_id=getattr(args, "comment_id", None),
         )
 
         return 0 if success else 1

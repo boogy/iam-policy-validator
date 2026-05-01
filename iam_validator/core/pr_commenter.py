@@ -71,6 +71,7 @@ class PRCommenter:
         enable_codeowners_ignore: bool = True,
         allowed_ignore_users: list[str] | None = None,
         off_diff_comment_mode: str = "summary_only",
+        comment_id: str | None = None,
     ):
         """Initialize PR commenter.
 
@@ -93,6 +94,8 @@ class PRCommenter:
                                   "summary_only" (default): All off-diff issues in summary only.
                                   "individual": Post each as an individual review comment.
                                   "modified_statements_only": Individual comments for modified statements only.
+            comment_id: Optional unique identifier to distinguish between different validation runs
+                        (e.g. "policy", "role"). Prevents parallel runs from overwriting each other.
         """
         self.github = github
         self.cleanup_old_comments = cleanup_old_comments
@@ -101,6 +104,18 @@ class PRCommenter:
         self.enable_codeowners_ignore = enable_codeowners_ignore
         self.allowed_ignore_users = allowed_ignore_users or []
         self.off_diff_comment_mode = off_diff_comment_mode
+
+        # Customize identifiers if comment_id is provided
+        if comment_id:
+            # We append the ID to the HTML comment content
+            # e.g. <!-- iam-policy-validator-summary-policy -->
+            suffix = f"-{comment_id}"
+            self.SUMMARY_IDENTIFIER = SUMMARY_IDENTIFIER.replace(" -->", f"{suffix} -->")
+            self.REVIEW_IDENTIFIER = REVIEW_IDENTIFIER.replace(" -->", f"{suffix} -->")
+        else:
+            self.SUMMARY_IDENTIFIER = SUMMARY_IDENTIFIER
+            self.REVIEW_IDENTIFIER = REVIEW_IDENTIFIER
+
         # Track issues in modified statements that are on unchanged lines
         self._context_issues: list[ContextIssue] = []
         # Track ignored finding IDs for the current run
@@ -907,6 +922,7 @@ async def post_report_to_pr(
     add_summary: bool = True,
     config_path: str | None = None,
     off_diff_comment_mode: str | None = None,
+    comment_id: str | None = None,
 ) -> bool:
     """Post a JSON report to a PR.
 
@@ -916,6 +932,7 @@ async def post_report_to_pr(
         add_summary: Whether to add summary comment
         config_path: Optional path to config file (to get fail_on_severity)
         off_diff_comment_mode: How to handle findings on unchanged lines (overrides config)
+        comment_id: Optional unique identifier to distinguish between different validation runs
 
     Returns:
         True if successful, False otherwise
@@ -953,6 +970,7 @@ async def post_report_to_pr(
                 enable_codeowners_ignore=enable_codeowners_ignore,
                 allowed_ignore_users=allowed_ignore_users,
                 off_diff_comment_mode=off_diff_mode,
+                comment_id=comment_id,
             )
             return await commenter.post_findings_to_pr(
                 report,
