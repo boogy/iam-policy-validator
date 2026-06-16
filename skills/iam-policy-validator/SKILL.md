@@ -1,6 +1,7 @@
 ---
 name: iam-policy-validator
 description: Validate, analyze, and query AWS IAM policies using the iam-policy-validator CLI. Use this skill when the user asks to check, validate, lint, audit, or find security issues in IAM policies, trust policies, SCPs, RCPs, or resource policies; when they mention wildcard actions, privilege escalation, sensitive actions, confused deputy, or overly permissive policies; when they want to run AWS IAM Access Analyzer, generate a SARIF/Markdown/HTML report from policies, query which AWS actions or condition keys exist for a service, or post IAM findings to a GitHub PR. This is the CLI-based alternative to running the MCP server.
+argument-hint: "[validate|query|analyze] <policy-path|dir> [--config <file>] [--export-json <file>]"
 ---
 
 # IAM Policy Validator (CLI)
@@ -8,6 +9,27 @@ description: Validate, analyze, and query AWS IAM policies using the iam-policy-
 Use the `iam-validator` CLI to validate AWS IAM policies against 22 built-in checks (AWS correctness + security best practices) and to query AWS service definitions.
 
 Home page: https://github.com/boogy/iam-policy-validator · Docs: https://boogy.github.io/iam-policy-validator/
+
+## Invocation arguments
+
+`argument-hint`: `[validate|query|analyze] <policy-path|dir> [--config <file>] [--export-json <file>]`
+
+Interpret the arguments passed to this skill and translate them to real CLI flags. `--export-json` is a skill-level argument (not a CLI flag); map it as shown.
+
+| Skill argument         | Meaning                                                        | Maps to CLI                                                                      |
+| ---------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `validate` (default)   | Validate policies — the default verb when none is given        | `iam-validator validate ...`                                                     |
+| `query`                | Look up actions / ARNs / condition keys (no policy needed)     | `iam-validator query ...` — see [references/querying.md](references/querying.md) |
+| `analyze`              | Run AWS IAM Access Analyzer                                    | `iam-validator analyze ...`                                                      |
+| `<policy-path\|dir>`   | File or directory to validate                                  | `--path <policy-path\|dir>`                                                      |
+| `--config <file>`      | Path to a YAML config file                                     | `--config <file>` (forwarded verbatim)                                           |
+| `--export-json <file>` | Export findings as JSON for the PR-review handoff; do NOT post | `--format json --output <file>` (and skip `--github-*`/`post-to-pr`)             |
+
+Rules:
+
+- No verb → default to `validate`.
+- `--config <file>` present → always forward it to the CLI.
+- `--export-json <file>` present → follow the handoff workflow in [references/pr-review-handoff.md](references/pr-review-handoff.md); never post PR comments yourself with the validator.
 
 ## Installation
 
@@ -103,21 +125,18 @@ iam-validator validate --path role-trust.json --policy-type TRUST_POLICY
 
 The `trust_policy_validation` check flags missing `aws:SourceArn` / `aws:SourceAccount` on service principals.
 
-**GitHub PR posting (from CI)**
+**GitHub PR posting**
 
-Two paths:
+Default to the **two-layer** flow: export findings as JSON, then let a _separate_ reviewing agent verify and post. Do not post directly from this skill.
 
 ```bash
-# 1. One-shot: validate and post in a single invocation
-iam-validator validate --path ./policies/ \
-  --github-comment --github-review --github-summary
-
-# 2. Two-phase: generate a JSON report, then post it
-iam-validator validate --path ./policies/ --format json --output report.json
-iam-validator post-to-pr --report report.json
+# Export only — no posting. Hand findings.json to a reviewing agent.
+iam-validator validate --path ./policies/ --format json --output findings.json
 ```
 
-Both require `GITHUB_TOKEN` and a PR context (standard in GitHub Actions).
+The JSON carries the same suggestion/example/remediation content the validator shows in comments. See [references/pr-review-handoff.md](references/pr-review-handoff.md) for the schema, verification checklist, comment-render recipe, and `gh` posting commands.
+
+The validator _can_ also post directly (`--github-comment --github-review --github-summary`, or `post-to-pr --report findings.json`) — use that only when the user explicitly wants the validator to be the poster and no second-layer review is required. Both direct paths need `GITHUB_TOKEN` and a PR context.
 
 **AWS Access Analyzer**
 
@@ -128,6 +147,8 @@ iam-validator analyze --path policy.json
 Requires AWS credentials with `access-analyzer:ValidatePolicy` permission.
 
 **Query the AWS service catalog (no policy file needed)**
+
+For the full query reference — access-level / resource-type filtering, the action↔condition intersection, and using queries to verify a finding — see [references/querying.md](references/querying.md).
 
 `query` has three subcommands: `action`, `arn`, `condition`.
 
@@ -180,8 +201,10 @@ Condition keys can be service-scoped (`s3:ResourceAccount`, `kms:ViaService`) or
 For details, read only what's needed:
 
 - [references/checks.md](references/checks.md) — the 22 built-in checks with IDs, categories, and severities
+- [references/querying.md](references/querying.md) — query actions / ARNs / condition keys and the action↔condition intersection
 - [references/configuration.md](references/configuration.md) — YAML config (disabling checks, ignore patterns, severity overrides)
 - [references/output-formats.md](references/output-formats.md) — console / json / markdown / sarif / csv / html / enhanced
+- [references/pr-review-handoff.md](references/pr-review-handoff.md) — export JSON, verify findings, render + post PR comments from a second agent
 - [references/troubleshooting.md](references/troubleshooting.md) — cache, offline mode, rate limits, common errors
 
 When the user wants authoritative per-check detail beyond check IDs, point them at https://boogy.github.io/iam-policy-validator/user-guide/checks/ rather than inventing specifics.
@@ -192,3 +215,4 @@ When the user wants authoritative per-check detail beyond check IDs, point them 
 - Don't claim a check catches something without looking at [references/checks.md](references/checks.md) or the live docs.
 - When editing a user's policy based on findings, show them the finding first; don't silently rewrite.
 - If the CLI isn't installed and installing would change the user's environment, ask first; prefer `uvx iam-policy-validator ...` to avoid installing globally.
+- When findings are headed to a PR, prefer exporting JSON and handing off to a reviewing agent ([references/pr-review-handoff.md](references/pr-review-handoff.md)). Post directly with the validator only when the user explicitly asks for it.

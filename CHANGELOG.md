@@ -4,6 +4,12 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `iam-policy-validator` skill (`skills/iam-policy-validator/`): added `argument-hint`, a deep querying reference (actions/conditions/ARNs and the action↔condition intersection), and a JSON-export → verify → PR-comment handoff reference so a second agent reviews findings before posting instead of the validator commenting directly.
+
 ## [1.21.0] - 2026-05-01
 
 ### Added
