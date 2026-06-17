@@ -2,6 +2,13 @@
 
 When findings will land on a pull request, **do not** let the validator post them. Skip `--github-comment`, `--github-review`, `--github-summary`, and `post-to-pr`. Instead export JSON and hand it to a separate reviewing agent that verifies each finding and posts the surviving ones. This inserts a human-style second check between detection and publication.
 
+## Agent roles
+
+- **Producer agent** — runs the validator, verifies each finding (Step 3), and exports the JSON. Owns Steps 1–3. Never posts.
+- **Poster agent** — consumes the JSON, renders comment bodies (Step 4, ideally via the bundled script), and posts them (Step 5). Owns Steps 4–5. Never re-runs detection.
+
+The contract between them is the JSON in Step 2 — nothing else is shared. Either role can be a different agent, model, or process.
+
 ## Step 1 — export JSON
 
 ```bash
@@ -78,7 +85,20 @@ Only findings that survive this pass get posted.
 
 ## Step 4 — render a comment from a finding
 
-Reproduce the validator's native comment layout (source of truth: `ValidationIssue.to_pr_comment()` in `iam_validator/core/models.py`). Omit the validator's hidden HTML bot/identifier markers — those are only for the validator's own comment cleanup. Build the body in this order:
+**Recommended (deterministic):** use the bundled renderer — stdlib-only Python, no install, no dependency on the validator's source tree:
+
+```bash
+# Ready-to-post objects: [{policy_file, line_number, check_id, severity, ..., body}]
+python3 scripts/render_pr_comments.py findings.json --format json > comments.json
+
+# Or a human-readable preview of every comment body
+python3 scripts/render_pr_comments.py findings.json
+# Filter low-noise findings: --min-severity high
+```
+
+`render_pr_comments.py` reproduces the layout below and omits the validator's hidden HTML bot/identifier markers (those exist only for the validator's own comment-cleanup lifecycle and are unwanted when another agent posts). The `body` field is ready to post verbatim.
+
+**Manual layout (the spec the script implements** — for porting to another language, or rendering by hand). Build the body in this order:
 
 ````markdown
 {severity-emoji} **{SEVERITY}** - {action-guidance}{ | risk-category}
@@ -122,26 +142,29 @@ _Check: `{check_id}`_ | [📖 Documentation]({documentation_url})
 
 Include only the sub-blocks whose fields are non-null. The `<details>` block appears only if at least one of action/resource/condition_key/suggestion/example/remediation_steps is present.
 
+> Maintainers: the canonical layout lives in `ValidationIssue.to_pr_comment()` and the severity/risk maps in `core/constants.py` (`SEVERITY_CONFIG`) and `core/config/check_documentation.py` (`RISK_CATEGORY_ICONS`). Keep `scripts/render_pr_comments.py` in sync if those change.
+
 ## Step 5 — post with `gh` (concrete recipe)
 
-After verification, post from the reviewing agent (requires `gh auth` and a PR context):
+After verification, post from the poster agent (requires `gh auth` and a PR context). Drive it straight from the renderer's `comments.json`:
 
 ```bash
-# One summary comment
-gh pr comment "$PR_NUMBER" --body-file verified-summary.md
+# One inline review comment per finding that has a line number
+jq -c '.[] | select(.line_number != null)' comments.json | while read -r c; do
+  gh api --method POST "repos/$OWNER/$REPO/pulls/$PR_NUMBER/comments" \
+    -f body="$(jq -r '.body' <<<"$c")" \
+    -f commit_id="$HEAD_SHA" \
+    -f path="$(jq -r '.policy_file' <<<"$c")" \
+    -F line="$(jq -r '.line_number' <<<"$c")" \
+    -f side="RIGHT"
+done
 
-# Per-finding inline review comments (when you have file + line)
-gh api \
-  --method POST \
-  "repos/$OWNER/$REPO/pulls/$PR_NUMBER/comments" \
-  -f body="$(cat finding-1.md)" \
-  -f commit_id="$HEAD_SHA" \
-  -f path="$POLICY_PATH" \
-  -F line="$LINE_NUMBER" \
-  -f side="RIGHT"
+# Or a single summary comment built from all bodies
+jq -r '.[].body' comments.json > verified-summary.md
+gh pr comment "$PR_NUMBER" --body-file verified-summary.md
 ```
 
-Build each `*.md` body with the Step 4 recipe from the verified finding.
+Each `body` already follows the Step 4 layout, so no further formatting is needed.
 
 ## Tool-agnostic contract
 
