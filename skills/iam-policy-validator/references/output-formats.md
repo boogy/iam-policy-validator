@@ -33,3 +33,5 @@ iam-validator validate --path ./policies/ \
 - SARIF is the right pick for CI → GitHub Security tab.
 - Markdown is what the `post-to-pr` subcommand emits; if you already use `post-to-pr` you don't need to generate it separately.
 - `json` output is stable enough to parse with `jq`; schema docs: https://boogy.github.io/iam-policy-validator/user-guide/output-formats/
+
+For the JSON-export → verify → PR-comment workflow (and the per-finding JSON schema), see [pr-review-handoff.md](pr-review-handoff.md).
