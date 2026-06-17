@@ -4,17 +4,6 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Changed
-
-- `iam-policy-validator` skill (`skills/iam-policy-validator/`): added `argument-hint`, a deep querying reference (actions/conditions/ARNs and the action↔condition intersection), and a JSON-export → verify → PR-comment handoff reference so a second agent reviews findings before posting instead of the validator commenting directly.
-- `iam-policy-validator` skill: made portable and agent-friendly — trimmed `SKILL.md` to under 100 lines, rewrote the description as a single capability + "Use when" trigger sentence, and formalized explicit producer/poster agent roles for the PR handoff (the validator never posts). The skill is now self-contained (CLI via `uvx` + `python3` only; no dependency on the validator source tree).
-
-### Added
-
-- `skills/iam-policy-validator/scripts/render_pr_comments.py`: stdlib-only renderer that turns validator JSON findings into ready-to-post PR-comment markdown (matching `ValidationIssue.to_pr_comment()`), with `--format json` for downstream posting agents and `--min-severity` filtering. Lets a poster agent post identical comments without re-implementing the layout.
-
 ## [1.21.0] - 2026-05-01
 
 ### Added

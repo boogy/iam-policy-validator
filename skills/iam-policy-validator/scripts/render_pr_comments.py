@@ -162,7 +162,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    raw = sys.stdin.read() if args.input == "-" else open(args.input, encoding="utf-8").read()
+    if args.input == "-":
+        raw = sys.stdin.read()
+    else:
+        with open(args.input, encoding="utf-8") as infile:
+            raw = infile.read()
     try:
         report = json.loads(raw)
     except json.JSONDecodeError as exc:
