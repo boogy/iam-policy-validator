@@ -1,5 +1,27 @@
 # Troubleshooting
 
+## Requirements
+
+Python 3.10+ is required. Check with `python3 --version`.
+
+## First run is slow / AWS fetch is slow
+
+The validator fetches AWS service definitions on first use (~10-30s depending on network). Subsequent runs use a local cache. For CI or air-gapped environments:
+
+```bash
+# Pre-download once (committed to a folder you ship with CI)
+iam-validator sync-services --output-dir ./aws_services/
+
+# Use it
+iam-validator validate --path ./policies/ --aws-services-dir ./aws_services/
+```
+
+See "Cache management" below for controlling the local cache.
+
+## Validator reports 0 findings
+
+This means the policy passed all enabled checks. The policy is clean — do not invent or hallucinate findings. Report it as valid and move on.
+
 ## "Command not found: iam-validator"
 
 The package isn't installed in the current environment. Options:
@@ -8,18 +30,6 @@ The package isn't installed in the current environment. Options:
 uvx iam-policy-validator validate --path policy.json   # no install
 uv add iam-policy-validator                            # per project
 pipx install iam-policy-validator                      # user-wide
-```
-
-## AWS fetch is slow / rate-limited / offline environment
-
-The validator fetches AWS service definitions on first use and caches them. For CI or air-gapped environments:
-
-```bash
-# Pre-download once (committed to a folder you ship with CI)
-iam-validator sync-services --output-dir ./aws_services/
-
-# Use it
-iam-validator validate --path ./policies/ --aws-services-dir ./aws_services/
 ```
 
 ## Cache management
@@ -56,7 +66,7 @@ Trust-policy files routinely trigger identity-policy checks when scanned without
 
 ## Exit code behavior
 
-By default the validator exits non-zero on **errors** (broken JSON, AWS API failure, error-severity findings). Warnings do not fail the run. Use `--fail-on-warnings` to make warnings fail too. Check stderr when the exit code surprises you.
+Exit `0` = no error-severity findings (warnings may still exist). Non-zero = error-severity findings, or `--fail-on-warnings` was set and warnings exist, or the CLI itself errored (bad path, parse failure). Check stderr and the findings when the exit code surprises you.
 
 ## Got an unexpected error or bug
 

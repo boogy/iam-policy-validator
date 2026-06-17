@@ -1,6 +1,9 @@
 # Exporting findings for PR review (second verification layer)
 
-When findings will land on a pull request, **do not** let the validator post them. Skip `--github-comment`, `--github-review`, `--github-summary`, and `post-to-pr`. Instead export JSON and hand it to a separate reviewing agent that verifies each finding and posts the surviving ones. This inserts a human-style second check between detection and publication.
+When findings will land on a pull request, prefer a two-step flow over single-command posting. Two options:
+
+1. **Native `post-to-pr`** — validate to JSON, then `iam-validator post-to-pr --report report.json`. Simpler, but posts all findings without agent verification.
+2. **JSON handoff** (recommended for agent workflows) — validate to JSON, verify each finding with `query` (see [verification-protocol.md](verification-protocol.md)), then render and post from a separate agent. This inserts a second check between detection and publication.
 
 ## Agent roles
 
@@ -73,19 +76,20 @@ A finding's example may live in the `example` field **or** be embedded inside `s
 
 ## Step 3 — verification checklist (the second layer)
 
-For each finding, before posting:
-
-1. **Confirm the premise** with `query` (see [querying.md](querying.md)): does the action exist? does it support the suggested condition key? is the ARN format real?
-2. **Drop false positives** — if the query contradicts the finding (e.g. the action _does_ support the condition the check says to add), discard or downgrade it and note why.
-3. **Dedupe** identical findings across statements/files.
-4. **Sanity-check severity** against the actual blast radius; keep the validator's severity unless the query evidence justifies a change.
-5. **Keep the evidence** — record the query and result so the PR comment can cite it.
-
-Only findings that survive this pass get posted.
+Follow the full checklist in [verification-protocol.md](verification-protocol.md). In short: confirm each finding's premise with `query`, drop false positives, dedupe, sanity-check severity, and record evidence. Only findings that survive this pass get posted.
 
 ## Step 4 — render a comment from a finding
 
-**Recommended (deterministic):** use the bundled renderer — stdlib-only Python, no install, no dependency on the validator's source tree:
+**Recommended (deterministic):** use the bundled renderer — stdlib-only Python (3.10+), no install, no dependency on the validator's source tree.
+
+If you installed via `uvx` or `pip` and don't have the skill repo on disk, fetch the script:
+
+```bash
+curl -sL https://raw.githubusercontent.com/boogy/iam-policy-validator/main/skills/iam-policy-validator/scripts/render_pr_comments.py \
+  -o render_pr_comments.py
+```
+
+Usage:
 
 ```bash
 # Ready-to-post objects: [{policy_file, line_number, check_id, severity, ..., body}]

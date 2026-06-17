@@ -83,11 +83,9 @@ Condition keys are either **service-scoped** (`s3:ResourceAccount`, `kms:ViaServ
 
 ## Using queries to verify a finding
 
-Before acting on a validation issue, confirm its premises with `query`:
+Before acting on a validation issue, confirm its premises with `query`. The full verification checklist (8 steps) is in [verification-protocol.md](verification-protocol.md). Quick examples:
 
-- **"Action does not exist"** → `iam-validator query action --name <svc:Action>`. Empty/none result corroborates the finding.
-- **"Add condition X"** → `iam-validator query action --name <svc:Action> --has-condition-key <X>`. If the action is absent from the result, X cannot apply — the suggestion is wrong for that action.
-- **"Resource ARN is malformed"** → `iam-validator query arn --service <svc> --name <resource-type>` to get the canonical format template.
-- **Wildcard scope** → `iam-validator query action --name "<svc:Prefix*>"` to see exactly which actions a wildcard expands to.
-
-Record the query you ran and its result alongside the finding when handing off for PR review (see [pr-review-handoff.md](pr-review-handoff.md)).
+- **"Action does not exist"** → `iam-validator query action --name <svc:Action>`
+- **"Add condition X"** → `iam-validator query action --name <svc:Action> --has-condition-key <X>`
+- **"Resource ARN is malformed"** → `iam-validator query arn --service <svc> --name <resource-type>`
+- **Wildcard scope** → `iam-validator query action --name "<svc:Prefix*>"`
