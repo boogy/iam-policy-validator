@@ -132,7 +132,7 @@ Any one of `aws:SourceArn`, `aws:SourceAccount`, `aws:SourceOrgID`, or `aws:Sour
 }
 ```
 
-**Warning:** Trust policy allows service principal `sns.amazonaws.com` without `aws:SourceArn` or `aws:SourceAccount` condition. This may be vulnerable to confused deputy attacks.
+**Warning:** Statement allows service principal `sns.amazonaws.com` without an `aws:SourceArn`, `aws:SourceAccount`, `aws:SourceOrgID`, or `aws:SourceOrgPaths` condition. This may be vulnerable to confused deputy attacks.
 
 #### Secure Example
 
@@ -252,7 +252,7 @@ The validator supports different policy types and validates policies match their
 ### SCP Rules
 
 - No `Principal` / `NotPrincipal` (errors `invalid_principal` / `invalid_not_principal`)
-- 5,120-character size limit (`scp_size_exceeded`)
+- 5,120-byte size limit, enforced by the `policy_size` check (`policy_size_exceeded`)
 - Allow statements may use `Condition`, scoped resource ARNs, `NotAction` and
   `NotResource` — AWS Organizations supports the full IAM policy language in
   SCPs since 2025-09-19, so these are no longer flagged

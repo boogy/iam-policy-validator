@@ -206,38 +206,8 @@ async def execute_policy(
 
     # Service Control Policies (SCPs) should not have Principal
     elif policy_type == "SERVICE_CONTROL_POLICY":
-        # SCP size limit validation (5,120 bytes, different from identity policies)
-        import json
-        import re
-
-        raw_policy_dict = kwargs.get("raw_policy_dict")
-        if raw_policy_dict:
-            policy_string = json.dumps(raw_policy_dict, separators=(",", ":"))
-            policy_size = len(re.sub(r"\s+", "", policy_string))
-            scp_max_size = 5120
-            if policy_size > scp_max_size:
-                percentage_over = ((policy_size - scp_max_size) / scp_max_size) * 100
-                issues.append(
-                    ValidationIssue(
-                        severity="error",
-                        issue_type="scp_size_exceeded",
-                        message=(
-                            f"Service Control Policy size ({policy_size:,} characters) exceeds "
-                            f"the SCP limit of {scp_max_size:,} characters. "
-                            "SCPs have a stricter size limit than identity policies."
-                        ),
-                        statement_index=-1,
-                        statement_sid=None,
-                        line_number=None,
-                        suggestion=(
-                            f"The SCP is {policy_size - scp_max_size:,} characters over the limit "
-                            f"({percentage_over:.1f}% too large). Consider:\n"
-                            "  1. Splitting the SCP into multiple smaller policies\n"
-                            "  2. Using more concise action patterns with wildcards\n"
-                            "  3. Removing unnecessary statements or conditions"
-                        ),
-                    )
-                )
+        # NOTE: the SCP 5,120-byte size limit is enforced by PolicySizeCheck
+        # (policy_size.py via AWS_POLICY_TYPE_TO_SIZE_KEY) — not duplicated here.
 
         for idx, statement in enumerate(policy.statement):
             # Check for Principal element (SCPs don't use Principal - it's implicit)
@@ -489,5 +459,4 @@ class PolicyTypeValidationCheck(PolicyCheck):
             policy_file,
             policy_type=kwargs.get("policy_type", "IDENTITY_POLICY"),
             additional_rcp_services=config.config.get("additional_rcp_services", []),
-            raw_policy_dict=kwargs.get("raw_policy_dict"),
         )
