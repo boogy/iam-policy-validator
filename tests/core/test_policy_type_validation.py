@@ -454,25 +454,24 @@ class TestRCPValidation:
 
 
 class TestSCPAllowStatementValidity:
-    """Allow SCP statements support only Resource: "*" and no Condition.
+    """SCPs support the full IAM policy language since 2025-09-19.
 
-    Per AWS Organizations SCP syntax, anything else is rejected by AWS —
-    a validity error, not merely "ineffective".
+    Allow statements may use Condition, scoped resource ARNs, NotAction and
+    NotResource — the old Resource:"*"-only / no-Condition restrictions must
+    NOT be flagged anymore.
     """
 
     @pytest.mark.asyncio
-    async def test_allow_scp_with_scoped_resource_is_error(self):
+    async def test_allow_scp_with_scoped_resource_is_clean(self):
         policy = IAMPolicy(
             version="2012-10-17",
             statement=[Statement(effect="Allow", action=["s3:*"], resource=["arn:aws:s3:::x"])],
         )
         issues = await execute_policy(policy, "test.json", policy_type="SERVICE_CONTROL_POLICY")
-        resource_issues = [i for i in issues if i.issue_type == "invalid_scp_allow_resource"]
-        assert len(resource_issues) == 1
-        assert resource_issues[0].severity == "error"
+        assert not [i for i in issues if i.issue_type.startswith("invalid_scp_allow")]
 
     @pytest.mark.asyncio
-    async def test_allow_scp_with_condition_is_error(self):
+    async def test_allow_scp_with_condition_is_clean(self):
         policy = IAMPolicy(
             version="2012-10-17",
             statement=[
@@ -485,22 +484,19 @@ class TestSCPAllowStatementValidity:
             ],
         )
         issues = await execute_policy(policy, "test.json", policy_type="SERVICE_CONTROL_POLICY")
-        condition_issues = [i for i in issues if i.issue_type == "invalid_scp_allow_condition"]
-        assert len(condition_issues) == 1
-        assert condition_issues[0].severity == "error"
+        assert not [i for i in issues if i.issue_type.startswith("invalid_scp_allow")]
 
     @pytest.mark.asyncio
-    async def test_allow_scp_wildcard_resource_no_condition_is_clean(self):
+    async def test_allow_scp_with_not_resource_is_clean(self):
         policy = IAMPolicy(
             version="2012-10-17",
-            statement=[Statement(effect="Allow", action=["s3:*"], resource=["*"])],
+            statement=[Statement(effect="Allow", action=["s3:*"], not_resource=["arn:aws:s3:::x"])],
         )
         issues = await execute_policy(policy, "test.json", policy_type="SERVICE_CONTROL_POLICY")
         assert not [i for i in issues if i.issue_type.startswith("invalid_scp_allow")]
 
     @pytest.mark.asyncio
     async def test_deny_scp_with_scoped_resource_and_condition_is_clean(self):
-        """Deny statements may scope resources and use conditions."""
         policy = IAMPolicy(
             version="2012-10-17",
             statement=[
@@ -516,20 +512,118 @@ class TestSCPAllowStatementValidity:
         assert not [i for i in issues if i.issue_type.startswith("invalid_scp_allow")]
 
     @pytest.mark.asyncio
-    async def test_allow_scp_missing_resource_is_error(self):
+    async def test_scp_with_principal_still_error(self):
+        """Principal/NotPrincipal remain unsupported in SCPs."""
         policy = IAMPolicy(
             version="2012-10-17",
-            statement=[Statement(effect="Allow", action=["s3:*"], not_resource=["arn:aws:s3:::x"])],
+            statement=[Statement(effect="Deny", principal="*", action=["s3:*"], resource=["*"])],
         )
         issues = await execute_policy(policy, "test.json", policy_type="SERVICE_CONTROL_POLICY")
-        assert [i for i in issues if i.issue_type == "invalid_scp_allow_resource"]
+        assert [i for i in issues if i.issue_type == "invalid_principal"]
+
+
+class TestRCPSupportedServices:
+    """RCP supported-service list (expanded to 26 prefixes, verified 2026-07-20)."""
+
+    @staticmethod
+    def _rcp_policy(action: str) -> IAMPolicy:
+        return IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Deny",
+                    principal="*",
+                    action=[action],
+                    resource=["*"],
+                )
+            ],
+        )
 
     @pytest.mark.asyncio
-    async def test_identity_policy_allow_scoped_resource_unaffected(self):
-        """The rule only applies to SERVICE_CONTROL_POLICY."""
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "codebuild:*",
+            "codecommit:GitPush",
+            "textract:*",
+            "signin:*",
+            "autoscaling:*",
+            "dax:*",
+            "kinesisvideo:GetMedia",
+            "support:*",
+        ],
+    )
+    async def test_newly_supported_services_accepted(self, action):
+        issues = await execute_policy(self._rcp_policy(action), "test.json", policy_type="RESOURCE_CONTROL_POLICY")
+        assert not [i for i in issues if i.issue_type == "unsupported_rcp_service"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("action", ["ec2:RunInstances", "lambda:InvokeFunction", "es:ESHttpGet"])
+    async def test_unsupported_services_still_error(self, action):
+        issues = await execute_policy(self._rcp_policy(action), "test.json", policy_type="RESOURCE_CONTROL_POLICY")
+        assert [i for i in issues if i.issue_type == "unsupported_rcp_service"]
+
+    @pytest.mark.asyncio
+    async def test_additional_rcp_services_config_extends_list(self):
+        """Users can accept newer AWS launches without a validator release."""
+        policy = self._rcp_policy("newservice:DoThing")
+        issues = await execute_policy(policy, "test.json", policy_type="RESOURCE_CONTROL_POLICY")
+        assert [i for i in issues if i.issue_type == "unsupported_rcp_service"]
+
+        issues = await execute_policy(
+            policy,
+            "test.json",
+            policy_type="RESOURCE_CONTROL_POLICY",
+            additional_rcp_services=["newservice"],
+        )
+        assert not [i for i in issues if i.issue_type == "unsupported_rcp_service"]
+
+
+class TestRCPShapeHint:
+    """Un-declared policies matching the customer-RCP shape get a hint."""
+
+    @staticmethod
+    def _rcp_shaped_policy() -> IAMPolicy:
+        return IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Deny",
+                    principal="*",
+                    action=["s3:*"],
+                    resource=["*"],
+                    condition={"StringNotEqualsIfExists": {"aws:PrincipalOrgID": "o-example"}},
+                )
+            ],
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("policy_type", ["IDENTITY_POLICY", "RESOURCE_POLICY"])
+    async def test_rcp_shape_hint_emitted(self, policy_type):
+        issues = await execute_policy(self._rcp_shaped_policy(), "test.json", policy_type=policy_type)
+        hints = [i for i in issues if i.issue_type == "policy_type_hint"]
+        assert len(hints) == 1
+        assert "RESOURCE_CONTROL_POLICY" in hints[0].message
+
+    @pytest.mark.asyncio
+    async def test_no_hint_for_scoped_resource_deny_policy(self):
+        """Deny-style resource policies with scoped ARNs (e.g. S3 TLS-only) don't hint."""
         policy = IAMPolicy(
             version="2012-10-17",
-            statement=[Statement(effect="Allow", action=["s3:GetObject"], resource=["arn:aws:s3:::x/*"])],
+            statement=[
+                Statement(
+                    effect="Deny",
+                    principal="*",
+                    action=["s3:*"],
+                    resource=["arn:aws:s3:::my-bucket", "arn:aws:s3:::my-bucket/*"],
+                    condition={"Bool": {"aws:SecureTransport": "false"}},
+                )
+            ],
         )
-        issues = await execute_policy(policy, "test.json", policy_type="IDENTITY_POLICY")
-        assert not [i for i in issues if i.issue_type.startswith("invalid_scp_allow")]
+        issues = await execute_policy(policy, "test.json", policy_type="RESOURCE_POLICY")
+        assert not [i for i in issues if i.issue_type == "policy_type_hint"]
+
+    @pytest.mark.asyncio
+    async def test_no_hint_when_declared_as_rcp(self):
+        issues = await execute_policy(self._rcp_shaped_policy(), "test.json", policy_type="RESOURCE_CONTROL_POLICY")
+        assert not [i for i in issues if i.issue_type == "policy_type_hint"]

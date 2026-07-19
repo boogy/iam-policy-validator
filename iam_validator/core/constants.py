@@ -378,8 +378,9 @@ SECONDS_PER_HOUR = 3600
 # ============================================================================
 
 # AWS services that support Resource Control Policies (RCP).
-# Sourced from the official AWS Organizations documentation. Expanded beyond
-# the 2024 launch set; the current IAM service prefixes are:
+# Sourced from the official AWS Organizations documentation (verified
+# 2026-07-20). Expanded well beyond the 2024 launch set (s3, sts, kms, sqs,
+# secretsmanager); the current IAM service prefixes are:
 #
 #   - Amazon S3 (s3)
 #   - AWS Security Token Service (sts)
@@ -389,25 +390,57 @@ SECONDS_PER_HOUR = 3600
 #   - AWS Secrets Manager (secretsmanager)
 #   - Amazon Cognito: User Pools (cognito-idp) and Identity Pools (cognito-identity)
 #   - Amazon DynamoDB (dynamodb)
+#   - DynamoDB Accelerator (dax)
 #   - Amazon Elastic Container Registry (ecr)
 #   - Amazon OpenSearch Serverless (aoss) — note: this is the serverless
 #     product, not Amazon OpenSearch Service (`es`), which is NOT covered
 #   - Amazon CloudWatch Logs (logs)
+#   - AWS AppConfig (appconfig)
+#   - Amazon AppStream (appstream)
+#   - Amazon EC2 Auto Scaling (autoscaling)
+#   - AWS CodeBuild (codebuild)
+#   - AWS CodeCommit (codecommit)
+#   - Amazon Comprehend (comprehend)
+#   - Amazon Comprehend Medical (comprehendmedical)
+#   - AWS Health (health)
+#   - Amazon Kinesis Video Streams (kinesisvideo)
+#   - AWS Sign-In (signin)
+#   - AWS Support (support)
+#   - Amazon Textract (textract)
+#   - Amazon Transcribe (transcribe)
+#   - Amazon Translate (translate)
 #
+# New AWS launches can be accepted without a validator release via the
+# `additional_rcp_services` config option of the `policy_type_validation` check.
 # Reference: https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_rcps.html
 RCP_SUPPORTED_SERVICES = frozenset(
     {
-        "s3",
-        "sts",
-        "sqs",
-        "kms",
-        "secretsmanager",
-        "cognito-idp",
+        "aoss",
+        "appconfig",
+        "appstream",
+        "autoscaling",
+        "codebuild",
+        "codecommit",
         "cognito-identity",
+        "cognito-idp",
+        "comprehend",
+        "comprehendmedical",
+        "dax",
         "dynamodb",
         "ecr",
-        "aoss",
+        "health",
+        "kinesisvideo",
+        "kms",
         "logs",
+        "s3",
+        "secretsmanager",
+        "signin",
+        "sqs",
+        "sts",
+        "support",
+        "textract",
+        "transcribe",
+        "translate",
     }
 )
 

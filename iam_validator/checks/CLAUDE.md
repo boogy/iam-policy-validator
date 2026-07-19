@@ -1,6 +1,6 @@
 # Checks Module
 
-22 built-in IAM policy validation checks, plugin-based via `PolicyCheck`.
+23 built-in IAM policy validation checks, plugin-based via `PolicyCheck`.
 Extends [../../CLAUDE.md](../../CLAUDE.md).
 
 ---
@@ -84,8 +84,9 @@ Cached: memory LRU + disk TTL (7 days). Tests must mock — never hit the real A
 | `principal_validation.py`         | `principal_validation`         | high     | resource policies                                  |
 | `policy_structure.py`             | `policy_structure`             | error    | required fields                                    |
 | `policy_size.py`                  | `policy_size`                  | error    | per-type byte limits                               |
-| `policy_type_validation.py`       | `policy_type_validation`       | error    | type-specific rules                                |
-| `sid_uniqueness.py`               | `sid_uniqueness`               | warning  | policy-level                                       |
+| `policy_type_validation.py`       | `policy_type_validation`       | error    | type-specific rules + RCP shape hint               |
+| `rcp_best_practices.py`           | `rcp_best_practices`           | medium   | RCP blanket denies + service carve-outs            |
+| `sid_uniqueness.py`               | `sid_uniqueness`               | error    | policy-level                                       |
 | `set_operator_validation.py`      | `set_operator_validation`      | error    | ForAllValues/ForAnyValue                           |
 | `ifexists_condition_check.py`     | `ifexists_condition_usage`     | warning  | IfExists patterns                                  |
 | `mfa_condition_check.py`          | `mfa_condition_antipattern`    | warning  | MFA anti-patterns                                  |

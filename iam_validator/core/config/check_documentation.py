@@ -290,7 +290,27 @@ CheckDocumentationRegistry.register(
         remediation_steps=[
             "Identity policies: Don't include `Principal` element",
             "Resource policies: Include `Principal` element",
-            "SCPs: Use only `Allow` statements with specific conditions",
+            "SCPs: No `Principal`/`NotPrincipal`; stay under the 5,120-character limit",
+            'RCPs: `Effect: Deny`, `Principal: "*"`, actions from RCP-supported services only',
+        ],
+        risk_category="configuration",
+    )
+)
+
+CheckDocumentationRegistry.register(
+    CheckDocumentation(
+        check_id="rcp_best_practices",
+        short_description="RCP Best Practice",
+        risk_explanation=(
+            "An RCP deny without conditions blocks every principal including your own "
+            "admins; an org-boundary deny without an `aws:PrincipalIsAWSService` "
+            "carve-out can break AWS service-to-service calls."
+        ),
+        documentation_url=("https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_rcps.html"),
+        remediation_steps=[
+            "Confirm blanket denies are intended (they also block your own organization)",
+            'Pair org-boundary conditions with `"BoolIfExists": {"aws:PrincipalIsAWSService": "false"}`',
+            "Consider `aws:SourceOrgID` conditions for the service-call path",
         ],
         risk_category="configuration",
     )
