@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeRemainingColumn
 
 from iam_validator.commands.base import Command
+from iam_validator.core.aws_service.storage import service_filename
 from iam_validator.core.config import AWS_SERVICE_REFERENCE_BASE_URL
 
 logger = logging.getLogger(__name__)
@@ -211,8 +212,15 @@ This command is useful for:
 
             for service_name, data in results:
                 if data is not None:
-                    # Normalize filename (lowercase, safe characters)
-                    filename = f"{service_name.lower().replace(' ', '_')}.json"
+                    # Normalize filename (lowercase, path-safe). Service names
+                    # come from the remote _services.json — sanitizing prevents
+                    # a compromised response from writing outside output_dir.
+                    try:
+                        filename = service_filename(service_name)
+                    except ValueError:
+                        console.print(f"[yellow]Skipping service with invalid name: {service_name!r}[/yellow]")
+                        failed += 1
+                        continue
                     service_file = output_dir / filename
 
                     with open(service_file, "w") as f:

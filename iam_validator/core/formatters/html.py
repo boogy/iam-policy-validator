@@ -307,12 +307,19 @@ class HTMLFormatter(OutputFormatter):
     </style>
         """
 
+    # Chart.js is version-pinned with Subresource Integrity so a compromised
+    # CDN cannot serve arbitrary script into generated reports. When bumping
+    # the version, recompute the hash:
+    #   curl -fsSL <url> | openssl dgst -sha384 -binary | openssl base64 -A
+    CHART_JS_URL = "https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js"
+    CHART_JS_SRI = "sha384-XcdcwHqIPULERb2yDEM4R0XaQKU3YnDsrTmjACBZyfdVVqjh6xQ4/DCMd7XLcA6Y"
+
     def _get_scripts(self, include_charts: bool) -> str:
         """Get JavaScript dependencies."""
         scripts = ""
         if include_charts:
-            scripts += """
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            scripts += f"""
+    <script src="{self.CHART_JS_URL}" integrity="{self.CHART_JS_SRI}" crossorigin="anonymous"></script>
             """
         return scripts
 

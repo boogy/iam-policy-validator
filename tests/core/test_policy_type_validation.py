@@ -451,3 +451,85 @@ class TestRCPValidation:
         assert "invalid_rcp_effect" in issue_types
         assert "invalid_rcp_wildcard_action" in issue_types
         assert "missing_rcp_principal" in issue_types
+
+
+class TestSCPAllowStatementValidity:
+    """Allow SCP statements support only Resource: "*" and no Condition.
+
+    Per AWS Organizations SCP syntax, anything else is rejected by AWS —
+    a validity error, not merely "ineffective".
+    """
+
+    @pytest.mark.asyncio
+    async def test_allow_scp_with_scoped_resource_is_error(self):
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[Statement(effect="Allow", action=["s3:*"], resource=["arn:aws:s3:::x"])],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="SERVICE_CONTROL_POLICY")
+        resource_issues = [i for i in issues if i.issue_type == "invalid_scp_allow_resource"]
+        assert len(resource_issues) == 1
+        assert resource_issues[0].severity == "error"
+
+    @pytest.mark.asyncio
+    async def test_allow_scp_with_condition_is_error(self):
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Allow",
+                    action=["s3:*"],
+                    resource=["*"],
+                    condition={"StringEquals": {"aws:RequestedRegion": "us-east-1"}},
+                )
+            ],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="SERVICE_CONTROL_POLICY")
+        condition_issues = [i for i in issues if i.issue_type == "invalid_scp_allow_condition"]
+        assert len(condition_issues) == 1
+        assert condition_issues[0].severity == "error"
+
+    @pytest.mark.asyncio
+    async def test_allow_scp_wildcard_resource_no_condition_is_clean(self):
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[Statement(effect="Allow", action=["s3:*"], resource=["*"])],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="SERVICE_CONTROL_POLICY")
+        assert not [i for i in issues if i.issue_type.startswith("invalid_scp_allow")]
+
+    @pytest.mark.asyncio
+    async def test_deny_scp_with_scoped_resource_and_condition_is_clean(self):
+        """Deny statements may scope resources and use conditions."""
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Deny",
+                    action=["s3:DeleteBucket"],
+                    resource=["arn:aws:s3:::prod-*"],
+                    condition={"StringNotEquals": {"aws:PrincipalOrgID": "o-example"}},
+                )
+            ],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="SERVICE_CONTROL_POLICY")
+        assert not [i for i in issues if i.issue_type.startswith("invalid_scp_allow")]
+
+    @pytest.mark.asyncio
+    async def test_allow_scp_missing_resource_is_error(self):
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[Statement(effect="Allow", action=["s3:*"], not_resource=["arn:aws:s3:::x"])],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="SERVICE_CONTROL_POLICY")
+        assert [i for i in issues if i.issue_type == "invalid_scp_allow_resource"]
+
+    @pytest.mark.asyncio
+    async def test_identity_policy_allow_scoped_resource_unaffected(self):
+        """The rule only applies to SERVICE_CONTROL_POLICY."""
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[Statement(effect="Allow", action=["s3:GetObject"], resource=["arn:aws:s3:::x/*"])],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="IDENTITY_POLICY")
+        assert not [i for i in issues if i.issue_type.startswith("invalid_scp_allow")]

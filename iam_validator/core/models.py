@@ -287,6 +287,14 @@ class ValidationIssue(BaseModel):
                 category_display = self.risk_category.replace("_", " ").title()
                 risk_icon = f" | {icon} {category_display}"
 
+        # Policy-derived fields (Sid, action, resource, messages that embed
+        # them, …) are attacker-controlled in a PR context. Sanitize at the
+        # render boundary so crafted values cannot forge the bot's HTML
+        # markers or break out of the surrounding markdown. The finding
+        # fingerprint above is computed from the RAW values — never sanitize
+        # hash inputs or finding IDs drift across releases.
+        sanitize = constants.sanitize_untrusted_comment_text
+
         parts = []
 
         # Add identifier for bot comment cleanup (HTML comment - not visible to users)
@@ -318,7 +326,8 @@ class ValidationIssue(BaseModel):
         # Build statement context for better navigation
         statement_context = f"Statement[{self.statement_index}]"
         if self.statement_sid:
-            statement_context = f"`{self.statement_sid}` ({statement_context})"
+            safe_sid = sanitize(self.statement_sid, neutralize_backticks=True)
+            statement_context = f"`{safe_sid}` ({statement_context})"
         if self.line_number:
             statement_context = f"{statement_context} (line {self.line_number})"
 
@@ -327,12 +336,12 @@ class ValidationIssue(BaseModel):
         parts.append("")
 
         # Show message immediately (not collapsed)
-        parts.append(self.message)
+        parts.append(sanitize(self.message))
 
         # Add risk explanation if present (shown prominently)
         if self.risk_explanation:
             parts.append("")
-            parts.append(f"> **Why this matters:** {self.risk_explanation}")
+            parts.append(f"> **Why this matters:** {sanitize(self.risk_explanation)}")
 
         # Put additional details in collapsible section if there are any
         has_details = bool(
@@ -355,32 +364,32 @@ class ValidationIssue(BaseModel):
             if self.action or self.resource or self.condition_key:
                 parts.append("**Affected Fields:**")
                 if self.action:
-                    parts.append(f"  - Action: `{self.action}`")
+                    parts.append(f"  - Action: `{sanitize(self.action, neutralize_backticks=True)}`")
                 if self.resource:
-                    parts.append(f"  - Resource: `{self.resource}`")
+                    parts.append(f"  - Resource: `{sanitize(self.resource, neutralize_backticks=True)}`")
                 if self.condition_key:
-                    parts.append(f"  - Condition Key: `{self.condition_key}`")
+                    parts.append(f"  - Condition Key: `{sanitize(self.condition_key, neutralize_backticks=True)}`")
                 parts.append("")
 
             # Add remediation steps if present
             if self.remediation_steps:
                 parts.append("**🔧 How to Fix:**")
                 for i, step in enumerate(self.remediation_steps, 1):
-                    parts.append(f"  {i}. {step}")
+                    parts.append(f"  {i}. {sanitize(step)}")
                 parts.append("")
 
             # Add suggestion if present
             if self.suggestion:
                 parts.append("**💡 Suggested Fix:**")
                 parts.append("")
-                parts.append(self.suggestion)
+                parts.append(sanitize(self.suggestion))
                 parts.append("")
 
             # Add example if present (formatted as JSON code block for GitHub)
             if self.example:
                 parts.append("**Example:**")
                 parts.append("```json")
-                parts.append(self.example)
+                parts.append(sanitize(self.example, neutralize_fences=True))
                 parts.append("```")
 
             parts.append("")

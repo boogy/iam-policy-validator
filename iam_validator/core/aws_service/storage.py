@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sys
 import tempfile
 import time
@@ -17,6 +18,36 @@ from typing import Any
 from iam_validator.core.models import ServiceDetail, ServiceInfo
 
 logger = logging.getLogger(__name__)
+
+# Characters allowed in a service-derived filename. Everything else is
+# replaced so a remote-controlled service name cannot smuggle path
+# separators or traversal sequences into a write/read path.
+_SERVICE_NAME_UNSAFE_RE = re.compile(r"[^a-z0-9._-]")
+
+
+def service_filename(service_name: str) -> str:
+    """Map an AWS service name to a safe local filename (basename only).
+
+    Service names come from remote data (`_services.json`) on the write path
+    and from policy actions on the read path — both untrusted. Normalizes to
+    lowercase, replaces spaces with underscores, strips path separators and
+    leading dots so the result can never escape the target directory.
+
+    Args:
+        service_name: Raw service name.
+
+    Returns:
+        Sanitized ``<name>.json`` basename.
+
+    Raises:
+        ValueError: If nothing safe remains after sanitization.
+    """
+    normalized = service_name.lower().replace(" ", "_")
+    normalized = _SERVICE_NAME_UNSAFE_RE.sub("_", normalized)
+    normalized = normalized.lstrip(".")
+    if not normalized.strip("_"):
+        raise ValueError(f"Invalid service name: {service_name!r}")
+    return f"{normalized}.json"
 
 
 class ServiceFileStorage:
@@ -278,8 +309,8 @@ class ServiceFileStorage:
         if not self.aws_services_dir:
             raise ValueError("aws_services_dir is not set")
 
-        # Normalize filename (lowercase, replace spaces with underscores)
-        filename = f"{service_name.lower().replace(' ', '_')}.json"
+        # Normalize filename (lowercase, spaces to underscores, path-safe)
+        filename = service_filename(service_name)
         service_file = self.aws_services_dir / filename
 
         if not service_file.exists():

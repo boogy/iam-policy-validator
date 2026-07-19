@@ -282,7 +282,7 @@ _iam_validator_completion() {{
             return 0
             ;;
         validate)
-            opts="--path -p --stdin --format -f --output -o --no-recursive --fail-on-warnings --policy-type -t --github-comment --github-review --github-summary --verbose -v --config -c --custom-checks-dir --aws-services-dir --stream --batch-size --summary --severity-breakdown --allow-owner-ignore --no-owner-ignore --ci --ci-output --off-diff-comment-mode --comment-tag"
+            opts="--path -p --stdin --format -f --output -o --no-recursive --fail-on-warnings --policy-type -t --github-comment --github-review --github-summary --verbose -v --config -c --custom-checks-dir --allow-config-custom-checks --aws-services-dir --stream --batch-size --summary --severity-breakdown --allow-owner-ignore --no-owner-ignore --ci --ci-output --off-diff-comment-mode --comment-tag"
             COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
             return 0
             ;;

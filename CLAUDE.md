@@ -146,7 +146,10 @@ literals. Add a constant there before introducing any of these inline:
   `IGNORED_FINDINGS_IDENTIFIER`, `ANALYZER_IDENTIFIER`, `BOT_IDENTIFIER`).
   When emitting or matching one of these for a tagged run, route through
   `scoped_marker(base, comment_tag)` (validates the tag against
-  `COMMENT_TAG_PATTERN`) — never splice the suffix manually.
+  `COMMENT_TAG_PATTERN`) — never splice the suffix manually. When _matching_
+  markers in comment bodies, use `body_has_anchored_marker(body, identifier)`
+  (not `identifier in body`); when rendering untrusted policy text into comment
+  bodies, route it through `sanitize_untrusted_comment_text()`.
 - Body-part markers (`ISSUE_TYPE_MARKER_FORMAT/PATTERN`, `FINDING_ID_MARKER_FORMAT`,
   `FINDING_ID_STRICT_PATTERN` for the canonical 16-char hash, `FINDING_ID_LOOSE_PATTERN`
   for legacy ids)

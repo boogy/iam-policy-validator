@@ -52,12 +52,13 @@ jobs:
         id: pr_info
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         run: |
-          PR_DATA=$(gh pr view ${{ inputs.pr_number }} --repo ${{ github.repository }} --json headRefName,title,state)
+          PR_DATA=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefName,title,state)
 
           STATE=$(echo "$PR_DATA" | jq -r '.state')
           if [ "$STATE" != "OPEN" ]; then
-            echo "❌ PR #${{ inputs.pr_number }} is not open (state: $STATE)"
+            echo "❌ PR #$PR_NUMBER is not open (state: $STATE)"
             exit 1
           fi
 
@@ -66,7 +67,7 @@ jobs:
 
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           echo "title=$TITLE" >> $GITHUB_OUTPUT
-          echo "✅ PR #${{ inputs.pr_number }}: $TITLE (branch: $BRANCH)"
+          echo "✅ PR #$PR_NUMBER: $TITLE (branch: $BRANCH)"
 
       - name: Checkout PR branch
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -143,6 +144,11 @@ jobs:
 
       - name: Generate pre-release notes
         id: release_notes
+        env:
+          # PR title/branch are attacker-influenced; pass via env so the unquoted
+          # heredoc cannot command-substitute their content.
+          PR_TITLE: ${{ steps.pr_info.outputs.title }}
+          PR_BRANCH: ${{ steps.pr_info.outputs.branch }}
         run: |
           cat > PRERELEASE_NOTES.md << EOF
           # Pre-Release: ${{ steps.version.outputs.tag }}
@@ -154,8 +160,8 @@ jobs:
           **⚠️ Not recommended for production use.**
 
           ### PR Information
-          - **PR**: #${{ inputs.pr_number }} - ${{ steps.pr_info.outputs.title }}
-          - **Branch**: \`${{ steps.pr_info.outputs.branch }}\`
+          - **PR**: #${{ inputs.pr_number }} - ${PR_TITLE}
+          - **Branch**: \`${PR_BRANCH}\`
           - **Base Version**: \`${{ steps.version.outputs.base_version }}\`
           - **Pre-release**: \`${{ inputs.release_type }}.${{ inputs.pre_release_number }}\`
 
@@ -197,8 +203,9 @@ jobs:
       - name: Comment on PR
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         run: |
-          gh pr comment ${{ inputs.pr_number }} --repo ${{ github.repository }} --body \
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body \
           "## 🚀 Pre-Release Created
 
           A **${{ inputs.release_type }}** pre-release has been created from this PR.
@@ -216,6 +223,9 @@ jobs:
 
       - name: Create Summary
         if: always()
+        env:
+          PR_TITLE: ${{ steps.pr_info.outputs.title }}
+          PR_BRANCH: ${{ steps.pr_info.outputs.branch }}
         run: |
           cat >> $GITHUB_STEP_SUMMARY << EOF
           # 🧪 Pre-Release Summary
@@ -224,8 +234,8 @@ jobs:
           - **Type**: ${{ inputs.release_type }}
           - **Version**: \`${{ steps.version.outputs.version }}\`
           - **Tag**: \`${{ steps.version.outputs.tag }}\`
-          - **PR**: [#${{ inputs.pr_number }}](https://github.com/${{ github.repository }}/pull/${{ inputs.pr_number }}) - ${{ steps.pr_info.outputs.title }}
-          - **Branch**: \`${{ steps.pr_info.outputs.branch }}\`
+          - **PR**: [#${{ inputs.pr_number }}](https://github.com/${{ github.repository }}/pull/${{ inputs.pr_number }}) - ${PR_TITLE}
+          - **Branch**: \`${PR_BRANCH}\`
 
           ## 🔗 Links
           - [📦 GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }})

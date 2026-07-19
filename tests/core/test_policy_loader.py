@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from iam_validator.core import constants
 from iam_validator.core.models import IAMPolicy
 from iam_validator.core.policy_loader import PolicyLoader
 
@@ -382,3 +383,102 @@ class TestPolicyLoader:
             # Should only load the valid policy
             assert len(policies) == 1
             assert isinstance(policies[0][1], IAMPolicy)
+
+
+class TestLoaderRobustness:
+    """Parsing failures must be RECORDED, never silently skipped (CI bypass)."""
+
+    @pytest.fixture
+    def loader(self):
+        return PolicyLoader()
+
+    @pytest.fixture
+    def valid_policy_dict(self):
+        return {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::b/*"}],
+        }
+
+    def test_unexpected_error_records_parsing_error(self, loader, valid_policy_dict, monkeypatch):
+        """The generic except branch must append to parsing_errors."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "policy.json"
+            path.write_text(json.dumps(valid_policy_dict))
+
+            def boom(*args, **kwargs):
+                raise RecursionError("maximum recursion depth exceeded")
+
+            monkeypatch.setattr("iam_validator.core.policy_loader.json.loads", boom)
+            result = loader.load_from_file(str(path))
+
+            assert result is None
+            assert len(loader.parsing_errors) == 1
+            assert loader.parsing_errors[0][0] == str(path)
+            assert "RecursionError" in loader.parsing_errors[0][1]
+
+    def test_deeply_nested_json_records_clean_parsing_error(self, loader):
+        """Pathological nesting yields a parsing error, not an uncaught exception."""
+        depth = constants.MAX_JSON_NESTING_DEPTH + 10
+        nested = "[" * depth + "]" * depth
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "deep.json"
+            path.write_text(f'{{"Version": "2012-10-17", "Statement": {nested}}}')
+
+            result = loader.load_from_file(str(path))
+
+            assert result is None
+            assert len(loader.parsing_errors) == 1
+            assert "nesting depth" in loader.parsing_errors[0][1]
+
+    def test_nesting_depth_ignores_brackets_inside_strings(self, loader, valid_policy_dict):
+        policy = dict(valid_policy_dict)
+        policy["Statement"][0]["Sid"] = "[" * 200
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "policy.json"
+            path.write_text(json.dumps(policy))
+
+            result = loader.load_from_file(str(path))
+
+            assert result is not None
+            assert loader.parsing_errors == []
+
+    def test_explicit_oversize_file_records_parsing_error(self, valid_policy_dict):
+        """A file targeted directly via load_from_path fails the run when too big."""
+        loader = PolicyLoader(max_file_size_mb=0)  # every non-empty file is too big
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "big.json"
+            path.write_text(json.dumps(valid_policy_dict))
+
+            policies = loader.load_from_path(str(path))
+
+            assert policies == []
+            assert len(loader.parsing_errors) == 1
+            assert "maximum size" in loader.parsing_errors[0][1]
+
+    def test_directory_scan_oversize_file_is_logged_skip_only(self, valid_policy_dict):
+        """Recursive scans may contain large unrelated YAML — skip, don't fail."""
+        loader = PolicyLoader(max_file_size_mb=0)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "big.json"
+            path.write_text(json.dumps(valid_policy_dict))
+
+            policies = loader.load_from_directory(temp_dir)
+
+            assert policies == []
+            assert loader.parsing_errors == []
+
+    def test_parse_policy_string_depth_guard(self):
+        depth = constants.MAX_JSON_NESTING_DEPTH + 10
+        nested = "[" * depth + "]" * depth
+        assert PolicyLoader.parse_policy_string(f'{{"Statement": {nested}}}') is None
+
+    def test_parse_policy_string_size_guard(self):
+        huge = '{"Version": "2012-10-17", "Statement": [%s]}' % (
+            " " * (constants.DEFAULT_MAX_POLICY_FILE_SIZE_MB * 1024 * 1024)
+        )
+        assert PolicyLoader.parse_policy_string(huge) is None
+
+    def test_parse_policy_string_normal_policy_still_parses(self, valid_policy_dict):
+        policy = PolicyLoader.parse_policy_string(json.dumps(valid_policy_dict))
+        assert policy is not None
+        assert policy.version == "2012-10-17"

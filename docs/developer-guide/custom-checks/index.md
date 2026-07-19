@@ -61,11 +61,23 @@ class MFARequiredCheck(PolicyCheck):
 Enable custom checks in `iam-validator.yaml`:
 
 ```yaml
-settings:
-  custom_checks_dir: "./my-checks"
+custom_checks_dir: "./my-checks"
 
 checks:
   mfa_required:
     enabled: true
     severity: high
 ```
+
+!!! danger "Custom check directories execute arbitrary Python"
+
+    Every `.py` file in the directory is imported and executed. Only point
+    `custom_checks_dir` / `--custom-checks-dir` at code you trust, and never
+    enable custom checks in workflows that run on untrusted forks (e.g.
+    `pull_request_target`), where an attacker can modify the checked-out code.
+
+    A `custom_checks_dir` set **only** in the YAML config file is ignored
+    unless you also pass `--allow-config-custom-checks` (or an explicit
+    `--custom-checks-dir`) — the config file often lives in the same
+    repository as the untrusted policies being validated, so its presence
+    alone is not treated as consent to execute code.

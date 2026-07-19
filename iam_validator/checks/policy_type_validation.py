@@ -214,6 +214,66 @@ async def execute_policy(
                     )
                 )
 
+            # Allow statements in SCPs support only `Resource: "*"` and no
+            # Condition — anything else is rejected by AWS Organizations.
+            # (Deny statements may scope Resource and use Condition freely.)
+            if statement.effect and statement.effect.lower() == "allow":
+                resources = statement.get_resources()
+                if resources != ["*"]:
+                    issues.append(
+                        ValidationIssue(
+                            severity="error",
+                            issue_type="invalid_scp_allow_resource",
+                            message='Service Control Policy `Allow` statement must have `Resource: "*"`. '
+                            "AWS Organizations rejects Allow statements with a scoped or missing "
+                            "`Resource` (or `NotResource`) — only Deny statements may scope resources.",
+                            statement_index=idx,
+                            statement_sid=statement.sid,
+                            line_number=statement.line_number,
+                            suggestion='Set `Resource` to `"*"` on this Allow statement, or convert the '
+                            "statement to `Effect: Deny` if you need to scope specific resources.\n"
+                            "Example:\n"
+                            "```json\n"
+                            "{\n"
+                            '  "Effect": "Allow",\n'
+                            '  "Action": "s3:*",\n'
+                            '  "Resource": "*"\n'
+                            "}\n"
+                            "```",
+                            field_name="resource",
+                        )
+                    )
+
+                if statement.condition is not None:
+                    issues.append(
+                        ValidationIssue(
+                            severity="error",
+                            issue_type="invalid_scp_allow_condition",
+                            message="Service Control Policy `Allow` statement must not contain a "
+                            "`Condition` element. AWS Organizations rejects Allow statements with "
+                            "conditions — only Deny statements support `Condition`.",
+                            statement_index=idx,
+                            statement_sid=statement.sid,
+                            line_number=statement.line_number,
+                            suggestion="Remove the `Condition` from this Allow statement, or convert it "
+                            "to a `Deny` statement with an inverted condition.\n"
+                            "Example:\n"
+                            "```json\n"
+                            "{\n"
+                            '  "Effect": "Deny",\n'
+                            '  "Action": "ec2:*",\n'
+                            '  "Resource": "*",\n'
+                            '  "Condition": {\n'
+                            '    "StringNotEquals": {\n'
+                            '      "aws:RequestedRegion": ["us-east-1"]\n'
+                            "    }\n"
+                            "  }\n"
+                            "}\n"
+                            "```",
+                            field_name="condition",
+                        )
+                    )
+
     # Resource Control Policies (RCPs) have very strict requirements
     elif policy_type == "RESOURCE_CONTROL_POLICY":
         # Use the centralized list of RCP supported services from constants

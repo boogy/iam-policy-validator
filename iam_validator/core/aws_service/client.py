@@ -55,7 +55,10 @@ class AWSServiceClient:
         """Setup httpx client with HTTP/2 and connection pooling."""
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(self.timeout),
-            follow_redirects=True,
+            # The AWS Service Reference API is a fixed host that never
+            # redirects; following redirects would let a compromised or
+            # spoofed response steer requests to an arbitrary host.
+            follow_redirects=False,
             limits=httpx.Limits(
                 max_keepalive_connections=self.keepalive_connections,
                 max_connections=self.connection_pool_size,

@@ -45,14 +45,14 @@ jobs:
 
 ### GitHub Integration
 
-| Input                | Description                                                                          | Default               |
-| -------------------- | ------------------------------------------------------------------------------------ | --------------------- |
-| `post-comment`       | Post validation results as PR comment                                                | `true`                |
-| `create-review`      | Create line-specific review comments on PR files                                     | `true`                |
-| `allow-owner-ignore` | Allow CODEOWNERS to ignore findings by replying 'ignore'                             | `true`                |
-| `github-summary`     | Write summary to GitHub Actions job summary                                          | `false`               |
-| `github-token`       | GitHub token for posting comments and reviews                                        | `${{ github.token }}` |
-| `comment-tag`        | Run scope tag (1-32 chars, `[A-Za-z0-9._-]`) for parallel runs on the same PR        | (unset)               |
+| Input                | Description                                                                   | Default               |
+| -------------------- | ----------------------------------------------------------------------------- | --------------------- |
+| `post-comment`       | Post validation results as PR comment                                         | `true`                |
+| `create-review`      | Create line-specific review comments on PR files                              | `true`                |
+| `allow-owner-ignore` | Allow CODEOWNERS to ignore findings by replying 'ignore'                      | `true`                |
+| `github-summary`     | Write summary to GitHub Actions job summary                                   | `false`               |
+| `github-token`       | GitHub token for posting comments and reviews                                 | `${{ github.token }}` |
+| `comment-tag`        | Run scope tag (1-32 chars, `[A-Za-z0-9._-]`) for parallel runs on the same PR | (unset)               |
 
 ### Output Options
 
@@ -328,6 +328,14 @@ Use organization-specific validation rules:
     custom-checks-dir: ./custom-checks/
     config-file: ./iam-validator.yaml
 ```
+
+!!! danger "Never combine custom checks with `pull_request_target`"
+
+    `custom-checks-dir` executes every `.py` file in the directory. On
+    `pull_request_target` (or any workflow that checks out untrusted fork
+    code with elevated permissions), an attacker's PR can modify those files
+    and run arbitrary code with your workflow's token. Only enable custom
+    checks on trusted refs.
 
 ### Offline Mode (Air-Gapped Environments)
 

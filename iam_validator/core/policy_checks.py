@@ -154,6 +154,7 @@ async def validate_policies(
     custom_checks_dir: str | None = None,
     policy_type: PolicyType | None = None,
     aws_services_dir: str | None = None,
+    allow_config_custom_checks: bool = False,
 ) -> list[PolicyValidationResult]:
     """Validate multiple policies concurrently.
 
@@ -167,6 +168,13 @@ async def validate_policies(
             then a final fallback to ``IDENTITY_POLICY``.
         aws_services_dir: Optional path to directory containing pre-downloaded AWS service definitions
                          (enables offline mode, overrides config setting)
+        allow_config_custom_checks: Allow auto-discovery from a ``custom_checks_dir``
+            that comes from the YAML config file. Auto-discovery executes
+            arbitrary Python from that directory, and the config file often
+            ships in the same repository as the (potentially untrusted)
+            policies being validated — so mere config presence is not treated
+            as consent. Passing ``custom_checks_dir`` explicitly (CLI flag /
+            SDK argument) is always honoured.
 
     Returns:
         List of validation results
@@ -201,10 +209,23 @@ async def validate_policies(
     # Priority: CLI arg > config file > default None
     checks_dir = custom_checks_dir or config.custom_checks_dir
     if checks_dir:
-        checks_dir_path = Path(checks_dir).resolve()
-        discovered_checks = ConfigLoader.discover_checks_in_directory(checks_dir_path, registry)
-        if discovered_checks:
-            logger.info("Auto-discovered %d custom checks from configured directory", len(discovered_checks))
+        # Auto-discovery executes repository Python. An explicitly passed
+        # custom_checks_dir (CLI flag / SDK argument) is caller consent; a
+        # dir sourced only from the YAML config additionally requires
+        # allow_config_custom_checks, because on CI events like
+        # pull_request_target the config file can be attacker-controlled.
+        if custom_checks_dir is None and not allow_config_custom_checks:
+            logger.warning(
+                "Ignoring custom_checks_dir from config file (%s): loading checks from a "
+                "config-referenced directory executes its Python code. Pass "
+                "--custom-checks-dir / --allow-config-custom-checks to opt in.",
+                checks_dir,
+            )
+        else:
+            checks_dir_path = Path(checks_dir).resolve()
+            discovered_checks = ConfigLoader.discover_checks_in_directory(checks_dir_path, registry)
+            if discovered_checks:
+                logger.info("Auto-discovered %d custom checks from configured directory", len(discovered_checks))
 
     # Apply configuration again to include custom checks
     # This allows configuring auto-discovered checks via the config file
