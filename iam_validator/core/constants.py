@@ -89,6 +89,18 @@ MAX_SCP_SIZE = 5120
 # Resource Control Policy maximum size (bytes, excluding whitespace)
 MAX_RCP_SIZE = 5120
 
+# Default maximum policy file size accepted by PolicyLoader, in MB.
+# A real IAM policy tops out at ~10 KB (see the byte limits above), so 10 MB
+# is ~1000x headroom while preventing memory exhaustion from huge files.
+# Override per-loader via PolicyLoader(max_file_size_mb=...).
+DEFAULT_MAX_POLICY_FILE_SIZE_MB = 10
+
+# Maximum bracket/brace nesting depth accepted when parsing policy JSON.
+# Real policies nest a handful of levels; pathological nesting causes
+# RecursionError deep inside the parser (which used to silently skip the
+# file). 100 is far beyond any legitimate policy.
+MAX_JSON_NESTING_DEPTH = 100
+
 # Policy size limits dictionary (for backward compatibility and easy lookup)
 AWS_POLICY_SIZE_LIMITS = {
     "managed": MAX_MANAGED_POLICY_SIZE,
@@ -233,6 +245,96 @@ FINDING_ID_STRICT_PATTERN = r"<!-- finding-id: ([a-f0-9]{16}) -->"
 # Loose pattern: accepts any hex length. Used by extract_finding_id() when
 # parsing user-authored ignore commands that may reference legacy ids.
 FINDING_ID_LOOSE_PATTERN = r"<!-- finding-id: ([a-f0-9]+) -->"
+
+# Zero-width space used to defang untrusted text without changing how it
+# renders: inserting it inside an HTML-comment delimiter or tag name stops
+# GitHub from parsing the construct while the visible characters stay intact.
+ZERO_WIDTH_SPACE = "\u200b"
+
+# How many leading lines of a comment body may carry bot markers. Every
+# body the bot emits (summary, multipart, review, ignored-findings store)
+# places its identifying markers at the start of one of the first few
+# lines; scanning only this window keeps forged markers buried later in a
+# body from matching.
+MARKER_SCAN_LINES = 10
+
+
+def sanitize_untrusted_comment_text(
+    text: str,
+    *,
+    neutralize_backticks: bool = False,
+    neutralize_fences: bool = False,
+) -> str:
+    """Neutralize marker/markdown breakouts in attacker-controlled text.
+
+    Policy fields (``Sid``, ``Action``, ``Resource``, messages that embed
+    them, …) flow into the bot's PR comments. Without sanitization a
+    crafted value can inject the bot's own HTML markers (breaking comment
+    dedup/update/delete) or break out of the surrounding markdown
+    structure. This helper defangs those constructs in a bounded way — a
+    zero-width space is inserted so the text still *reads* the same but no
+    longer *parses* as an HTML comment or tag.
+
+    Args:
+        text: Untrusted text destined for a PR comment body.
+        neutralize_backticks: Set when the value is interpolated inside a
+            markdown inline code span (`` `...` ``). Backticks are replaced
+            with apostrophes so the value cannot close the span.
+        neutralize_fences: Set when the value is interpolated inside a
+            fenced code block. Triple-backtick runs are broken up so the
+            value cannot close the fence.
+
+    Returns:
+        The sanitized text. Text without any of the neutralized tokens is
+        returned unchanged (byte-identical).
+    """
+    if not text:
+        return text
+    sanitized = text
+    if "<!--" in sanitized:
+        sanitized = sanitized.replace("<!--", f"<!{ZERO_WIDTH_SPACE}--")
+    if "-->" in sanitized:
+        sanitized = sanitized.replace("-->", f"--{ZERO_WIDTH_SPACE}>")
+    # <details>/<summary> open/close tags could truncate or extend the
+    # collapsible section the renderer wraps details in.
+    sanitized = re.sub(
+        r"<(/?)(details|summary)",
+        rf"<{ZERO_WIDTH_SPACE}\1\2",
+        sanitized,
+        flags=re.IGNORECASE,
+    )
+    if neutralize_fences and "```" in sanitized:
+        sanitized = sanitized.replace("```", f"``{ZERO_WIDTH_SPACE}`")
+    if neutralize_backticks and "`" in sanitized:
+        sanitized = sanitized.replace("`", "'")
+    return sanitized
+
+
+def body_has_anchored_marker(body: str, identifier: str) -> bool:
+    """Check whether ``body`` carries ``identifier`` where the bot puts it.
+
+    The bot always emits its identifying markers at the start of one of
+    the first :data:`MARKER_SCAN_LINES` lines of a comment body. Requiring
+    the marker there (instead of a bare ``identifier in body`` substring
+    test) prevents comments that merely quote — or maliciously embed — a
+    marker deeper in their body from being treated as bot comments.
+
+    Args:
+        body: Full comment body as returned by the GitHub API.
+        identifier: One of the marker constants (optionally scoped via
+            :func:`scoped_marker`) or :data:`BOT_IDENTIFIER`.
+
+    Returns:
+        True when the identifier is anchored at a line start within the
+        scan window.
+    """
+    if not body or not identifier:
+        return False
+    for line in body.splitlines()[:MARKER_SCAN_LINES]:
+        if line.startswith(identifier):
+            return True
+    return False
+
 
 # GitHub comment size limits
 # GITHUB_COMMENT_HARD_LIMIT is GitHub's actual API ceiling — exceeding it

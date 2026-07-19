@@ -731,6 +731,156 @@ DEFAULT_CONFIG = {
                     "}\n"
                 ),
             },
+            # Glue dev endpoint privilege escalation
+            {
+                "all_of": ["glue:CreateDevEndpoint", "iam:PassRole"],
+                "severity": "high",
+                "message": "Policy grants {actions} across statements - enables privilege escalation via Glue dev endpoint. {statements}",
+                "suggestion": (
+                    "This combination allows creating a Glue development endpoint with a "
+                    "privileged role attached, then using the endpoint (e.g. via SSH) to "
+                    "act with that role's permissions.\n\n"
+                    "Mitigation options:\n"
+                    "• Add iam:PassedToService condition requiring glue.amazonaws.com\n"
+                    "• Limit PassRole to specific low-privilege roles\n"
+                    "• Remove glue:CreateDevEndpoint if not needed"
+                ),
+                "example": (
+                    "{\n"
+                    '  "Condition": {\n'
+                    '    "StringEquals": {\n'
+                    '      "iam:PassedToService": "glue.amazonaws.com"\n'
+                    "    },\n"
+                    '    "ArnLike": {\n'
+                    '      "iam:PolicyARN": "arn:aws:iam::*:role/glue-limited-*"\n'
+                    "    }\n"
+                    "  }\n"
+                    "}\n"
+                ),
+            },
+            # CloudFormation stack privilege escalation
+            {
+                "all_of": ["cloudformation:CreateStack", "iam:PassRole"],
+                "severity": "high",
+                "message": "Policy grants {actions} across statements - enables privilege escalation via CloudFormation service role. {statements}",
+                "suggestion": (
+                    "This combination allows launching a CloudFormation stack with a "
+                    "privileged service role; the stack template can then create or "
+                    "modify any resource that role permits (including IAM).\n\n"
+                    "Mitigation options:\n"
+                    "• Add iam:PassedToService condition requiring cloudformation.amazonaws.com\n"
+                    "• Limit PassRole to specific low-privilege stack roles\n"
+                    "• Restrict cloudformation:TemplateUrl to trusted buckets"
+                ),
+                "example": (
+                    "{\n"
+                    '  "Condition": {\n'
+                    '    "StringEquals": {\n'
+                    '      "iam:PassedToService": "cloudformation.amazonaws.com"\n'
+                    "    }\n"
+                    "  }\n"
+                    "}\n"
+                ),
+            },
+            # SageMaker notebook privilege escalation
+            {
+                "all_of": ["sagemaker:CreateNotebookInstance", "iam:PassRole"],
+                "severity": "high",
+                "message": "Policy grants {actions} across statements - enables privilege escalation via SageMaker notebook role. {statements}",
+                "suggestion": (
+                    "This combination allows creating a SageMaker notebook instance with "
+                    "a privileged execution role, then running code in the notebook with "
+                    "that role's permissions.\n\n"
+                    "Mitigation options:\n"
+                    "• Add iam:PassedToService condition requiring sagemaker.amazonaws.com\n"
+                    "• Limit PassRole to specific low-privilege execution roles"
+                ),
+                "example": (
+                    "{\n"
+                    '  "Condition": {\n'
+                    '    "StringEquals": {\n'
+                    '      "iam:PassedToService": "sagemaker.amazonaws.com"\n'
+                    "    }\n"
+                    "  }\n"
+                    "}\n"
+                ),
+            },
+            # SSM run-command lateral movement with a passable role
+            {
+                "all_of": ["ssm:SendCommand", "iam:PassRole"],
+                "severity": "high",
+                "message": "Policy grants {actions} across statements - enables privilege escalation via remote command execution. {statements}",
+                "suggestion": (
+                    "ssm:SendCommand executes commands on managed instances with the "
+                    "instance profile's permissions; combined with iam:PassRole the "
+                    "principal can also wire privileged roles onto resources it "
+                    "controls.\n\n"
+                    "Mitigation options:\n"
+                    "• Restrict ssm:SendCommand to specific instances or tags\n"
+                    "• Limit PassRole to specific low-privilege roles\n"
+                    "• Require aws:ResourceTag conditions on target instances"
+                ),
+                "example": (
+                    "{\n"
+                    '  "Condition": {\n'
+                    '    "StringEquals": {\n'
+                    '      "aws:ResourceTag/environment": "sandbox"\n'
+                    "    }\n"
+                    "  }\n"
+                    "}\n"
+                ),
+            },
+            # CodeBuild project privilege escalation
+            {
+                "all_of": ["codebuild:CreateProject", "iam:PassRole"],
+                "severity": "high",
+                "message": "Policy grants {actions} across statements - enables privilege escalation via CodeBuild service role. {statements}",
+                "suggestion": (
+                    "This combination allows creating a CodeBuild project with a "
+                    "privileged service role; the buildspec then runs arbitrary "
+                    "commands with that role's permissions.\n\n"
+                    "Mitigation options:\n"
+                    "• Add iam:PassedToService condition requiring codebuild.amazonaws.com\n"
+                    "• Limit PassRole to specific low-privilege build roles"
+                ),
+                "example": (
+                    "{\n"
+                    '  "Condition": {\n'
+                    '    "StringEquals": {\n'
+                    '      "iam:PassedToService": "codebuild.amazonaws.com"\n'
+                    "    }\n"
+                    "  }\n"
+                    "}\n"
+                ),
+            },
+            # Data Pipeline privilege escalation
+            {
+                "all_of": [
+                    "datapipeline:CreatePipeline",
+                    "datapipeline:PutPipelineDefinition",
+                    "iam:PassRole",
+                ],
+                "severity": "high",
+                "message": "Policy grants {actions} across statements - enables privilege escalation via Data Pipeline roles. {statements}",
+                "suggestion": (
+                    "This combination allows creating a Data Pipeline whose definition "
+                    "runs shell activities with a passed (potentially privileged) "
+                    "role.\n\n"
+                    "Mitigation options:\n"
+                    "• Add iam:PassedToService condition requiring datapipeline.amazonaws.com\n"
+                    "• Limit PassRole to specific low-privilege pipeline roles\n"
+                    "• Remove Data Pipeline permissions (the service is deprecated)"
+                ),
+                "example": (
+                    "{\n"
+                    '  "Condition": {\n'
+                    '    "StringEquals": {\n'
+                    '      "iam:PassedToService": "datapipeline.amazonaws.com"\n'
+                    "    }\n"
+                    "  }\n"
+                    "}\n"
+                ),
+            },
         ],
     },
     # ========================================================================

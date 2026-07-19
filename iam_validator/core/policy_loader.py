@@ -36,6 +36,7 @@ from typing import Literal, overload
 import yaml
 from pydantic import ValidationError
 
+from iam_validator.core import constants
 from iam_validator.core.models import IAMPolicy
 
 
@@ -135,13 +136,16 @@ class PolicyLoader:
 
     def __init__(
         self,
-        max_file_size_mb: int = 100,
+        max_file_size_mb: int = constants.DEFAULT_MAX_POLICY_FILE_SIZE_MB,
         enforce_limits: bool = True,
     ) -> None:
         """Initialize the policy loader.
 
         Args:
-            max_file_size_mb: Maximum file size in MB to load (default: 100MB)
+            max_file_size_mb: Maximum file size in MB to load (default:
+                ``constants.DEFAULT_MAX_POLICY_FILE_SIZE_MB``). Raise it for
+                legitimately large files; the default guards against memory
+                exhaustion (a real IAM policy is ~1000x smaller).
             enforce_limits: Whether to enforce validation limits (default: True)
         """
         self.max_file_size_bytes = max_file_size_mb * 1024 * 1024
@@ -341,6 +345,43 @@ class PolicyLoader:
 
         return policy_map
 
+    @staticmethod
+    def _check_nesting_depth(content: str, max_depth: int = constants.MAX_JSON_NESTING_DEPTH) -> str | None:
+        """Check bracket/brace nesting depth of JSON-like content.
+
+        Pathologically nested input triggers RecursionError deep inside the
+        JSON parser; this bounded pre-scan turns that into a clean parsing
+        error instead. String literals are skipped so brackets inside values
+        do not count.
+
+        Args:
+            content: Raw JSON text.
+            max_depth: Maximum allowed nesting depth.
+
+        Returns:
+            An error message when the depth limit is exceeded, else None.
+        """
+        depth = 0
+        in_string = False
+        escaped = False
+        for ch in content:
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+            elif ch == '"':
+                in_string = True
+            elif ch in "{[":
+                depth += 1
+                if depth > max_depth:
+                    return f"JSON nesting depth exceeds the maximum of {max_depth} levels"
+            elif ch in "}]":
+                depth -= 1
+        return None
+
     def _check_file_size(self, path: Path) -> bool:
         """Check if file size is within limits.
 
@@ -365,19 +406,30 @@ class PolicyLoader:
             return False
 
     @overload
-    def load_from_file(self, file_path: str, return_raw_dict: Literal[False] = False) -> IAMPolicy | None: ...
+    def load_from_file(
+        self, file_path: str, return_raw_dict: Literal[False] = False, *, record_size_error: bool = False
+    ) -> IAMPolicy | None:
+        pass
 
     @overload
-    def load_from_file(self, file_path: str, return_raw_dict: Literal[True]) -> tuple[IAMPolicy, dict] | None: ...
+    def load_from_file(
+        self, file_path: str, return_raw_dict: Literal[True], *, record_size_error: bool = False
+    ) -> tuple[IAMPolicy, dict] | None:
+        pass
 
     def load_from_file(
-        self, file_path: str, return_raw_dict: bool = False
+        self, file_path: str, return_raw_dict: bool = False, *, record_size_error: bool = False
     ) -> IAMPolicy | tuple[IAMPolicy, dict] | None:
         """Load a single IAM policy from a file.
 
         Args:
             file_path: Path to the policy file
             return_raw_dict: If True, return tuple of (policy, raw_dict) for validation
+            record_size_error: If True, an over-size file is recorded in
+                ``parsing_errors`` (fails the run) instead of only being
+                logged. Set for explicitly targeted files; left False for
+                recursive directory scans, which may legitimately contain
+                large unrelated JSON/YAML files.
 
         Returns:
             Parsed IAMPolicy, or tuple of (IAMPolicy, raw_dict) if return_raw_dict=True,
@@ -401,6 +453,15 @@ class PolicyLoader:
 
         # Check file size before loading
         if not self._check_file_size(path):
+            if record_size_error:
+                limit_mb = self.max_file_size_bytes / 1024 / 1024
+                self.parsing_errors.append(
+                    (
+                        file_path,
+                        f"File exceeds the maximum size limit ({limit_mb:.0f} MB). "
+                        "Increase max_file_size_mb if this file is a legitimate policy.",
+                    )
+                )
             return None
 
         try:
@@ -410,6 +471,11 @@ class PolicyLoader:
             # Parse line numbers based on file type
             statement_line_numbers = []
             if path.suffix.lower() == ".json":
+                depth_error = self._check_nesting_depth(file_content)
+                if depth_error:
+                    logger.error("%s in %s", depth_error, file_path)
+                    self.parsing_errors.append((file_path, depth_error))
+                    return None
                 statement_line_numbers = self._find_statement_line_numbers(file_content)
                 data = json.loads(file_content)
             else:  # .yaml or .yml
@@ -466,7 +532,12 @@ class PolicyLoader:
             self.parsing_errors.append((file_path, error_summary))
             return None
         except Exception as e:
+            # Record the failure so the run FAILS instead of silently
+            # skipping the file — an unexpected parse error must never
+            # become a validation bypass in CI.
+            error_msg = f"Failed to load policy: {type(e).__name__}: {e}"
             logger.error("Failed to load policy from %s: %s", file_path, e)
+            self.parsing_errors.append((file_path, error_msg))
             return None
 
     def load_from_directory(self, directory_path: str, recursive: bool = True) -> list[tuple[str, IAMPolicy]]:
@@ -518,7 +589,10 @@ class PolicyLoader:
         path_obj = Path(path)
 
         if path_obj.is_file():
-            policy = self.load_from_file(path)
+            # Explicitly targeted file: an over-size skip is recorded as a
+            # parsing error (directory scans only log it, since they may
+            # sweep up large unrelated JSON/YAML).
+            policy = self.load_from_file(path, record_size_error=True)
             return [(path, policy)] if policy else []
         elif path_obj.is_dir():
             return self.load_from_directory(path, recursive)
@@ -641,12 +715,28 @@ class PolicyLoader:
     def parse_policy_string(policy_json: str) -> IAMPolicy | None:
         """Parse an IAM policy from a JSON string.
 
+        Enforces the same size and nesting-depth guards as file loading so
+        SDK callers passing untrusted strings get the same DoS protection.
+
         Args:
             policy_json: JSON string containing the policy
 
         Returns:
             Parsed IAMPolicy or None if parsing fails
         """
+        max_bytes = constants.DEFAULT_MAX_POLICY_FILE_SIZE_MB * 1024 * 1024
+        if len(policy_json) > max_bytes:
+            logger.error(
+                "Policy string exceeds the maximum size limit (%d MB)",
+                constants.DEFAULT_MAX_POLICY_FILE_SIZE_MB,
+            )
+            return None
+
+        depth_error = PolicyLoader._check_nesting_depth(policy_json)
+        if depth_error:
+            logger.error("%s in policy string", depth_error)
+            return None
+
         try:
             data = json.loads(policy_json)
             policy = IAMPolicy.model_validate(data)

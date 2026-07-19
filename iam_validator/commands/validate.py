@@ -199,7 +199,19 @@ Examples:
 
         parser.add_argument(
             "--custom-checks-dir",
-            help="Path to directory containing custom checks for auto-discovery",
+            help="Path to directory containing custom checks for auto-discovery. "
+            "WARNING: every .py file in the directory is executed — only point "
+            "this at trusted code, and never enable it for workflows that run "
+            "on untrusted forks (e.g. pull_request_target)",
+        )
+
+        parser.add_argument(
+            "--allow-config-custom-checks",
+            action="store_true",
+            help="Allow auto-discovery of custom checks from a custom_checks_dir "
+            "set in the YAML config file. Without this flag (or an explicit "
+            "--custom-checks-dir), a config-referenced directory is ignored, "
+            "since discovery executes its Python code",
         )
 
         parser.add_argument(
@@ -346,6 +358,7 @@ Examples:
             custom_checks_dir=custom_checks_dir,
             policy_type=policy_type,
             aws_services_dir=aws_services_dir,
+            allow_config_custom_checks=getattr(args, "allow_config_custom_checks", False),
         )
 
         # Generate report (include parsing errors if any)
@@ -471,6 +484,7 @@ Examples:
                 config_path=config_path,
                 custom_checks_dir=custom_checks_dir,
                 policy_type=policy_type,
+                allow_config_custom_checks=getattr(args, "allow_config_custom_checks", False),
             )
 
             if results:

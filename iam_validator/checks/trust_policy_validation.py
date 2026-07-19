@@ -473,16 +473,21 @@ class TrustPolicyValidationCheck(PolicyCheck):
                     statement_sid=statement.sid,
                     statement_index=statement_idx,
                     issue_type="confused_deputy_risk",
+                    # Wording is policy-shape-neutral: this check fires at the
+                    # statement level on both role trust policies and resource
+                    # policies (SNS/SQS/S3/...) with a Service principal.
                     message=(
-                        f"Trust policy allows service principal `{service_principal}` "
-                        f"without `aws:SourceArn` or `aws:SourceAccount` condition. "
+                        f"Statement allows service principal `{service_principal}` "
+                        f"without an `aws:SourceArn` or `aws:SourceAccount` condition. "
                         f"This may be vulnerable to confused deputy attacks."
                     ),
                     suggestion=(
-                        f"Add an `aws:SourceArn` or `aws:SourceAccount` condition to restrict "
-                        f"which resources can assume this role via `{service_principal}`. "
-                        f"This prevents the confused deputy problem where a service could "
-                        f"be tricked into assuming the role on behalf of an unauthorized party."
+                        f"Add an `aws:SourceArn` or `aws:SourceAccount` condition to "
+                        f"restrict which resources `{service_principal}` may act on "
+                        f"behalf of (for a role trust policy: which resources can "
+                        f"assume the role). This prevents the confused deputy problem "
+                        f"where the service could be tricked into using this permission "
+                        f"on behalf of an unauthorized party."
                     ),
                     example=self._get_confused_deputy_example(service_principal),
                     line_number=statement.line_number,

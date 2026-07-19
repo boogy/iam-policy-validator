@@ -274,7 +274,10 @@ class IgnoredFindingsStore:
             if not isinstance(comment, dict):
                 continue
             body = comment.get("body", "")
-            if self._marker in str(body):
+            # Anchored match: the store always writes its marker on the
+            # first line, so a comment merely containing (or forging) the
+            # marker deeper in its body cannot hijack the ignore store.
+            if constants.body_has_anchored_marker(str(body), self._marker):
                 return comment
 
         return None

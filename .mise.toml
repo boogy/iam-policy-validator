@@ -60,7 +60,7 @@ description = "Run linting checks (ruff + format check + prettier on markdown)"
 run = [
     "uv run --extra dev ruff check .",
     "uv run --extra dev ruff format --check .",
-    'prettier --write "**/*.md" --prose-wrap preserve',
+    'prettier --write "**/*.md"', # proseWrap driven by .prettierrc.json (CHANGELOG.md -> never; docs -> preserve)
 ]
 
 [tasks.format]

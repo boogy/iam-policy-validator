@@ -698,7 +698,7 @@ class GitHubIntegration:
         for comment in all_comments:
             if not isinstance(comment, dict):
                 continue
-            if identifier not in str(comment.get("body", "")):
+            if not constants.body_has_anchored_marker(str(comment.get("body", "")), identifier):
                 continue
             if not isinstance(comment.get("id"), int):
                 continue
@@ -762,7 +762,7 @@ class GitHubIntegration:
 
             # Check if this is a bot comment with valid location
             if (
-                identifier in str(body)
+                constants.body_has_anchored_marker(str(body), identifier)
                 and isinstance(comment_id, int)
                 and isinstance(path, str)
                 and isinstance(line, int)
@@ -891,7 +891,7 @@ class GitHubIntegration:
             comment_id = comment.get("id")
 
             # Check if this is a bot comment
-            if identifier in str(body) and isinstance(comment_id, int):
+            if constants.body_has_anchored_marker(str(body), identifier) and isinstance(comment_id, int):
                 comment_ids_to_delete.append(comment_id)
 
         if not comment_ids_to_delete:
@@ -1345,7 +1345,7 @@ class GitHubIntegration:
                 continue
 
             body = comment.get("body", "")
-            if identifier not in str(body):
+            if not constants.body_has_anchored_marker(str(body), identifier):
                 continue
 
             finding_id = self._extract_finding_id(body)
@@ -1800,7 +1800,7 @@ class GitHubIntegration:
                 continue
             body = comment.get("body", "")
             comment_id = comment.get("id")
-            if identifier in str(body) and isinstance(comment_id, int):
+            if constants.body_has_anchored_marker(str(body), identifier) and isinstance(comment_id, int):
                 bot_comments_by_id[comment_id] = comment
 
         # Find replies with ignore commands

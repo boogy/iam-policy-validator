@@ -4,6 +4,37 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] - 2026-07-19
+
+A security-hardening release closing gaps in the project's own GitHub Action / CI / parsing surface and expanding IAM validation coverage. New checks ship enabled by default.
+
+### Added
+
+- Six new cross-statement `iam:PassRole` privilege-escalation combos in the default `sensitive_action` config (`all_of` patterns, severity `high`, enabled by default): `glue:CreateDevEndpoint`, `cloudformation:CreateStack`, `sagemaker:CreateNotebookInstance`, `ssm:SendCommand`, `codebuild:CreateProject`, and `datapipeline:CreatePipeline`+`datapipeline:PutPipelineDefinition` — each paired with `iam:PassRole`. Previously only `ec2:RunInstances`+`iam:PassRole` was covered. Each finding ships an `iam:PassedToService`-based remediation example. (Standalone unconditioned `iam:PassRole` remains flagged critical by `action_condition_enforcement`; the combos add the concrete escalation vector.)
+- SCP Allow-statement validity errors in `policy_type_validation` (enabled by default): an `Effect: Allow` statement in a `SERVICE_CONTROL_POLICY` now errors when its `Resource` is not exactly `"*"` (`invalid_scp_allow_resource`) or when it carries a `Condition` (`invalid_scp_allow_condition`). Per AWS Organizations SCP syntax, Allow statements support only `Resource: "*"` and no `Condition` — AWS rejects anything else, so these are validity errors. Deny statements may still scope resources and use conditions.
+- JSON nesting-depth guard (`constants.MAX_JSON_NESTING_DEPTH`, 100 levels): pathologically nested policy JSON now produces a clean parsing error instead of an uncaught `RecursionError`. Applies to file loading and `PolicyLoader.parse_policy_string`, which also enforces the size limit now (SDK parity).
+- `--allow-config-custom-checks` flag (CLI) / `validate_policies(..., allow_config_custom_checks=True)` (SDK): opt-in required to auto-discover custom checks from a `custom_checks_dir` set only in the YAML config file (see Security).
+
+### Changed
+
+- **Breaking-ish (intended):** a policy file that fails to load for _any_ reason — including unexpected internal errors like `RecursionError` — is now recorded in `parsing_errors` and fails the run. Previously the generic error path returned `None` without recording anything, so a broken file was silently skipped and the run stayed green (a validation bypass in CI). A pipeline that formerly passed by silently skipping a broken file will now correctly fail.
+- `PolicyLoader` default `max_file_size_mb` lowered from 100 MB to 10 MB (`constants.DEFAULT_MAX_POLICY_FILE_SIZE_MB`) as a memory-DoS guard — still ~1000× a real IAM policy, and configurable via `PolicyLoader(max_file_size_mb=...)`. An over-size file fails the run only when explicitly targeted (single-file `--path`); recursive directory scans still skip it with a logged warning, so large unrelated JSON/YAML in a scanned tree cannot false-fail a run.
+- **Security:** custom-check auto-discovery from a `custom_checks_dir` set **only** in the YAML config file now requires `--allow-config-custom-checks` (or the SDK argument). Auto-discovery executes every `.py` file in the directory, and the config file often ships in the same repository as the untrusted policies being validated — mere config presence is no longer treated as consent. An explicit `--custom-checks-dir` (CLI/Action input/SDK argument) is always honoured; a skipped config-referenced directory logs a clear warning.
+- **Security:** the AWS Service Reference HTTP client no longer follows redirects (`follow_redirects=False`) — the API is a fixed host that never redirects, and following them would let a spoofed response steer requests to an arbitrary host.
+- **Security:** the HTML formatter loads Chart.js version-pinned (`chart.js@4.5.0`) with a Subresource Integrity hash and `crossorigin="anonymous"`, so a compromised CDN cannot inject arbitrary script into generated reports (previously an unpinned `cdn.jsdelivr.net/npm/chart.js` with no SRI).
+- Confused-deputy findings (`confused_deputy_risk`) use policy-shape-neutral wording. The check fires at the statement level on both role trust policies and resource policies (SNS/SQS/S3/…), but the message was hard-coded "Trust policy allows service principal …" — it now reads "Statement allows service principal …" and the suggestion covers both shapes. Wording change only; detection is unchanged.
+- Bumped pinned GitHub Actions (`github/codeql-action` 4.37.0, `astral-sh/setup-uv` 8.3.2, `softprops/action-gh-release` 3.0.2) and refreshed `uv.lock` dependency versions.
+
+### Fixed
+
+- **Security (GitHub Action):** all `${{ inputs.* }}` values consumed by `run:` steps in `action.yaml` are now passed through `env:` variables instead of being template-spliced into the shell script. Previously, a workflow that wired untrusted event data into an action input (e.g. `path: ${{ github.event.pull_request.title }}`) allowed shell command injection via `$(…)`, backticks, or `;`. Behavior is unchanged for legitimate inputs (newline-separated multi-path values still word-split). The `comment-tag` input is validated against the `COMMENT_TAG_PATTERN` character set (1-32 chars, `[A-Za-z0-9._-]`) before it reaches the command line.
+- **Security (GitHub Action):** `public-access-resource-type` no longer wraps the value in literal single quotes, which previously failed the CLI's `choices` validation when `check-no-public-access` was enabled.
+- **Security (CI):** `pre-release.yml` routes the PR title and branch name through `env:` before interpolating them into release-notes and step-summary heredocs, preventing command substitution from a crafted PR title or branch name.
+- **Security (PR comments):** attacker-controlled policy fields (`Sid`, `Action`, `Resource`, condition keys, and messages/suggestions/examples that embed them) are sanitized at the render boundary (`ValidationIssue.to_pr_comment`) via `constants.sanitize_untrusted_comment_text()`. Crafted values can no longer forge the bot's HTML markers (`<!-- iam-policy-validator-* -->`, `<!-- finding-id: … -->`) or break out of code spans / `<details>` sections. Normal findings render byte-identical; finding fingerprints are still computed from raw values, so finding IDs and dedup keys are unchanged.
+- **Security (PR comments):** bot-comment lookups (`_find_all_comments_with_identifier`, `get_bot_review_comments_with_location`, `cleanup_bot_review_comments`, `_get_bot_comments_by_fingerprint`, `scan_for_ignore_commands`, and the ignored-findings store) now require markers anchored at a line start within the first 10 lines of the body (`constants.body_has_anchored_marker()`) instead of a bare substring match. Comments that merely quote — or maliciously embed — a marker deeper in their body are no longer treated as bot comments, so they cannot poison comment dedup/update/delete or the ignore store.
+- **Security:** AWS service names are sanitized to a path-safe basename (`iam_validator.core.aws_service.storage.service_filename()`) before being used as filenames on both the `sync-services` write path (names come from the remote `_services.json`) and the offline-mode read path. A malicious name like `../../etc/x` can no longer escape the target directory.
+- Docs: `custom_checks_dir` is a top-level config key — the custom-checks guide previously showed it nested under `settings:`, where it was never read.
+
 ## [1.21.1] - 2026-06-18
 
 ### Changed
@@ -14,39 +45,29 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Added
 
-- `--comment-tag <TAG>` flag on `validate`, `analyze`, and `post-to-pr` commands, plus matching `comment-tag` GitHub Action input and `comment_tag:` config setting. When set, PR summary, review,
-  analyzer, and ignored-findings HTML markers are suffixed with `:<TAG>` so multiple validator runs on the same PR (e.g. one per policy type) maintain independent comment threads instead of
-  overwriting each other (#103).
+- `--comment-tag <TAG>` flag on `validate`, `analyze`, and `post-to-pr` commands, plus matching `comment-tag` GitHub Action input and `comment_tag:` config setting. When set, PR summary, review, analyzer, and ignored-findings HTML markers are suffixed with `:<TAG>` so multiple validator runs on the same PR (e.g. one per policy type) maintain independent comment threads instead of overwriting each other (#103).
 - `iam_validator.core.constants.scoped_marker(base, tag)` helper and `COMMENT_TAG_PATTERN` regex (`[A-Za-z0-9._-]{1,32}`) — single source of truth for tag validation and marker scoping.
-- `PRCommenter(..., comment_tag=...)`, `IgnoredFindingsStore(..., comment_tag=...)`, `IgnoreCommandProcessor(..., comment_tag=...)`, and `filter_ignored_findings(..., comment_tag=...)` constructor /
-  function parameters.
+- `PRCommenter(..., comment_tag=...)`, `IgnoredFindingsStore(..., comment_tag=...)`, `IgnoreCommandProcessor(..., comment_tag=...)`, and `filter_ignored_findings(..., comment_tag=...)` constructor / function parameters.
 - `ValidationIssue.to_pr_comment(..., review_identifier=...)` parameter so producer and consumer of inline review comments use the same scoped marker.
 
 ### Fixed
 
-- PR comments overwriting each other when validator runs in parallel for different policy types (e.g. POLICY + ROLE). Pre-fix, every run shared the same hardcoded HTML markers (`SUMMARY_IDENTIFIER`,
-  `REVIEW_IDENTIFIER`, `ANALYZER_IDENTIFIER`, `IGNORED_FINDINGS_IDENTIFIER`) and the second run's `update_or_create_*` flow PATCHed the first run's canonical comment. Setting distinct `--comment-tag`
-  values per run scopes each run's markers so independent comment threads coexist on the PR (#103).
+- PR comments overwriting each other when validator runs in parallel for different policy types (e.g. POLICY + ROLE). Pre-fix, every run shared the same hardcoded HTML markers (`SUMMARY_IDENTIFIER`, `REVIEW_IDENTIFIER`, `ANALYZER_IDENTIFIER`, `IGNORED_FINDINGS_IDENTIFIER`) and the second run's `update_or_create_*` flow PATCHed the first run's canonical comment. Setting distinct `--comment-tag` values per run scopes each run's markers so independent comment threads coexist on the PR (#103).
 
 ### Compatibility
 
-- Backward compatible: when `--comment-tag` / `comment_tag:` is unset (the default), the legacy markers are produced byte-for-byte and `IgnoredFindingsStore` continues to load comments stored under
-  the pre-1.21.0 un-scoped marker. Existing PR comments and stored ignores remain matchable without any user action.
+- Backward compatible: when `--comment-tag` / `comment_tag:` is unset (the default), the legacy markers are produced byte-for-byte and `IgnoredFindingsStore` continues to load comments stored under the pre-1.21.0 un-scoped marker. Existing PR comments and stored ignores remain matchable without any user action.
 
 ## [1.20.0] - 2026-05-01
 
 ### Added
 
-- `suppress_superseded_findings` setting (default `true`): when a bare `Allow Action:* Resource:*` statement is detected, a single `critical` finding from `full_wildcard` is surfaced and all redundant
-  statement-level and policy-level findings for that statement are suppressed — including custom checks. Sibling statements are unaffected. Set to `false` to restore the previous behaviour.
+- `suppress_superseded_findings` setting (default `true`): when a bare `Allow Action:* Resource:*` statement is detected, a single `critical` finding from `full_wildcard` is surfaced and all redundant statement-level and policy-level findings for that statement are suppressed — including custom checks. Sibling statements are unaffected. Set to `false` to restore the previous behaviour.
 - `Statement.is_full_wildcard_allow()` predicate and `PolicyCheck.supersedes` / `PolicyCheck.matches()` extension points (zero-cost defaults for existing checks).
-- Centralized `IAM_POLICY_VERSION_CURRENT` / `IAM_POLICY_VERSION_LEGACY` / `IAM_POLICY_VERSIONS_VALID` in `iam_validator/core/constants.py` so MCP, fix tools, and templates source the IAM policy
-  language version from one place.
-- `iam_validator/mcp/check_metadata.py` — curated examples and fix steps for 12 built-in checks. MCP `get_issue_guidance` and `get_check_details` now return registry-driven defaults for any registered
-  check (previously hardcoded for 5–6 checks).
+- Centralized `IAM_POLICY_VERSION_CURRENT` / `IAM_POLICY_VERSION_LEGACY` / `IAM_POLICY_VERSIONS_VALID` in `iam_validator/core/constants.py` so MCP, fix tools, and templates source the IAM policy language version from one place.
+- `iam_validator/mcp/check_metadata.py` — curated examples and fix steps for 12 built-in checks. MCP `get_issue_guidance` and `get_check_details` now return registry-driven defaults for any registered check (previously hardcoded for 5–6 checks).
 - MCP `--custom-checks-dir` and `--aws-services-dir` flags (CLI parity). Paths are stored on `SessionConfigManager` and forwarded to `validate_policies()` by the validation tools.
-- MCP `aws_access_analyzer_validate` tool — wraps AWS Access Analyzer ValidatePolicy in `asyncio.to_thread`. Lifespan caches `boto3.Session` instances per `(region, profile)` to amortise the ~50 ms
-  session-construction cost across calls.
+- MCP `aws_access_analyzer_validate` tool — wraps AWS Access Analyzer ValidatePolicy in `asyncio.to_thread`. Lifespan caches `boto3.Session` instances per `(region, profile)` to amortise the ~50 ms session-construction cost across calls.
 - `AccessAnalyzerValidator(session=...)` keyword argument so MCP can pass a shared boto3 session instead of reconstructing one per call.
 - MCP `--profile {full,validate-only,validate-and-query,no-generation,read-only}` flag for token-efficient sessions (FastMCP tag-based gating). `--list-profiles` prints the taxonomy and exits.
 - MCP `get_active_profile` tool — introspect the active profile and the tools it currently exposes.
@@ -56,32 +77,20 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Changed
 
-- MCP `build_arn` validates the `partition` argument against `ARN_PARTITION_REGEX` and rejects unknown partitions instead of silently accepting them. Supported partitions: `aws`, `aws-cn`,
-  `aws-us-gov`, `aws-eusc`, `aws-iso`, `aws-iso-b`, `aws-iso-e`, `aws-iso-f`.
-- MCP `get_issue_guidance` / `get_check_details` now source description and default severity from the check registry. Curated examples / fix steps live in `iam_validator/mcp/check_metadata.py`. The
-  `related_tools` field has been renamed to `related` (covers both tools and resource URIs).
-- MCP `build_arn` now consults the live AWS service reference (cached) instead of a hardcoded 9-service map. Supports all partitions in `ARN_PARTITION_REGEX` (incl. `aws-eusc`, `aws-iso*`) and
-  multi-placeholder ARN templates via a new `placeholders` dict argument. Returns `{arn, valid, notes, format_template, unfilled_placeholders}`. The `resource_name` argument is deprecated (removal
-  target v1.21.0) — pass `placeholders={...}` instead.
-- Single-call MCP query tools (`query_service_actions`, `query_action_details`, `expand_wildcard_action`, `query_condition_keys`, `query_arn_formats`) now reuse the lifespan-managed
-  `AWSServiceFetcher` instead of constructing a new one per call. Fewer HTTP connections, warmer cache. `validate_policy` / `validate_policies_batch` continue to construct their fetcher inside
-  `validate_policies()` — see follow-up issue for fetcher reuse there.
+- MCP `build_arn` validates the `partition` argument against `ARN_PARTITION_REGEX` and rejects unknown partitions instead of silently accepting them. Supported partitions: `aws`, `aws-cn`, `aws-us-gov`, `aws-eusc`, `aws-iso`, `aws-iso-b`, `aws-iso-e`, `aws-iso-f`.
+- MCP `get_issue_guidance` / `get_check_details` now source description and default severity from the check registry. Curated examples / fix steps live in `iam_validator/mcp/check_metadata.py`. The `related_tools` field has been renamed to `related` (covers both tools and resource URIs).
+- MCP `build_arn` now consults the live AWS service reference (cached) instead of a hardcoded 9-service map. Supports all partitions in `ARN_PARTITION_REGEX` (incl. `aws-eusc`, `aws-iso*`) and multi-placeholder ARN templates via a new `placeholders` dict argument. Returns `{arn, valid, notes, format_template, unfilled_placeholders}`. The `resource_name` argument is deprecated (removal target v1.21.0) — pass `placeholders={...}` instead.
+- Single-call MCP query tools (`query_service_actions`, `query_action_details`, `expand_wildcard_action`, `query_condition_keys`, `query_arn_formats`) now reuse the lifespan-managed `AWSServiceFetcher` instead of constructing a new one per call. Fewer HTTP connections, warmer cache. `validate_policy` / `validate_policies_batch` continue to construct their fetcher inside `validate_policies()` — see follow-up issue for fetcher reuse there.
 - `validate_policies_batch` accepts a `max_concurrency` parameter (default 10) and uses an `asyncio.Semaphore` to cap parallel validations.
 - `get_shared_fetcher` log noise demoted from WARNING to DEBUG.
 - FastMCP minimum bumped from `>=2.14.1` to `>=3.2,<4` — we now rely on v3 `enable(only=True)` semantics for tag-based gating.
-- MCP `BASE_INSTRUCTIONS` slimmed from ~2.6 KB to ~700 chars: per-tool guardrails relocated to individual tool docstrings; the server-level instructions retain only Core Principles, Absolute Rules,
-  the Validation Loop Prevention guardrail, and resource pointers.
-- MCP `explain_policy` now sources access-level classification from the live AWS service reference (Read/Write/List/Tagging/Permissions management) instead of a name-prefix heuristic. Surfaces
-  `NotAction`/`NotResource`/ `Principal:*`/`NotPrincipal` as explicit security concerns. Effect comparison is case-insensitive.
-- MCP `compare_policies` now uses canonical statement signatures (effect + sorted actions/resources/principals + canonical-JSON conditions) instead of positional indexing. Reports added/removed
-  `NotAction`, `NotResource`, `Principal`, `NotPrincipal`, and condition keys independently. No more phantom diffs from re-ordering Sid-less statements.
-- MCP `aws_access_analyzer_validate` adds a `partition` argument and defaults `region` to the canonical region per partition (e.g. `aws-cn` → `cn-north-1`, `aws-us-gov` → `us-gov-west-1`). Adds
-  `timeout_seconds` (default 30s) so a hung AWS endpoint cannot block the MCP server. Centralized in `core/constants.PARTITION_DEFAULT_REGION`.
-- MCP `fix_policy_issues` action-case normalization now also handles `NotAction` (previously only `Action`). `unfixed_issues` always returns a list; `unfixed_count` is exposed separately for clients
-  that want the count.
+- MCP `BASE_INSTRUCTIONS` slimmed from ~2.6 KB to ~700 chars: per-tool guardrails relocated to individual tool docstrings; the server-level instructions retain only Core Principles, Absolute Rules, the Validation Loop Prevention guardrail, and resource pointers.
+- MCP `explain_policy` now sources access-level classification from the live AWS service reference (Read/Write/List/Tagging/Permissions management) instead of a name-prefix heuristic. Surfaces `NotAction`/`NotResource`/ `Principal:*`/`NotPrincipal` as explicit security concerns. Effect comparison is case-insensitive.
+- MCP `compare_policies` now uses canonical statement signatures (effect + sorted actions/resources/principals + canonical-JSON conditions) instead of positional indexing. Reports added/removed `NotAction`, `NotResource`, `Principal`, `NotPrincipal`, and condition keys independently. No more phantom diffs from re-ordering Sid-less statements.
+- MCP `aws_access_analyzer_validate` adds a `partition` argument and defaults `region` to the canonical region per partition (e.g. `aws-cn` → `cn-north-1`, `aws-us-gov` → `us-gov-west-1`). Adds `timeout_seconds` (default 30s) so a hung AWS endpoint cannot block the MCP server. Centralized in `core/constants.PARTITION_DEFAULT_REGION`.
+- MCP `fix_policy_issues` action-case normalization now also handles `NotAction` (previously only `Action`). `unfixed_issues` always returns a list; `unfixed_count` is exposed separately for clients that want the count.
 - MCP `quick_validate` `wildcards_detected` now correctly fires for `full_wildcard` issues (previously missed; only the three lower-severity wildcard checks were in the set).
-- MCP DRY: extracted `issue_to_dict()` helper in `mcp/tools/validation.py`. `validate_policy`, `validate_policies_batch`, `generate_policy_from_template`, `build_minimal_policy`, and
-  `fix_policy_issues` all use it — single source of truth for the verbose-vs-lean issue projection.
+- MCP DRY: extracted `issue_to_dict()` helper in `mcp/tools/validation.py`. `validate_policy`, `validate_policies_batch`, `generate_policy_from_template`, `build_minimal_policy`, and `fix_policy_issues` all use it — single source of truth for the verbose-vs-lean issue projection.
 
 ### Fixed (P0 — accuracy)
 
@@ -111,14 +120,12 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Default MCP profile is `full` — existing Claude Desktop / Cursor configs see no behavioural change unless they explicitly pass `--profile`.
 - `--profile` requires a server restart to take effect — MCP clients cache tool catalogs per session.
 - `build_arn(resource_name=...)` is **deprecated** and emits a warning. Prefer `placeholders={...}`. Removal target: v1.21.0.
-- `list_templates`, `list_checks`, `list_sensitive_actions`, `get_check_details` are **demoted from tools to resources**. MCP clients that previously called these tools must switch to fetching the
-  corresponding resource URI.
+- `list_templates`, `list_checks`, `list_sensitive_actions`, `get_check_details` are **demoted from tools to resources**. MCP clients that previously called these tools must switch to fetching the corresponding resource URI.
 - FastMCP minimum bumped to `>=3.2,<4`. Users on `fastmcp<3` must upgrade via `uv sync --extra mcp`.
 
 ### Notes
 
-- **Breaking (noise reduction):** existing PR comments anchored to the suppressed check IDs become orphans on the next run and are cleaned up automatically. Set `suppress_superseded_findings: false`
-  to restore all findings.
+- **Breaking (noise reduction):** existing PR comments anchored to the suppressed check IDs become orphans on the next run and are cleaned up automatically. Set `suppress_superseded_findings: false` to restore all findings.
 
 ---
 
@@ -126,26 +133,18 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Changed
 
-- Reuse PR comments to minimize timeline noise — summary and inline review comments now update existing comments in place by id, post only the surplus, and delete only stale leftovers. Same part count
-  across runs produces zero `POST`/`DELETE` calls
-- Centralize HTML comment markers in `iam_validator/core/constants.py` (`ANALYZER_IDENTIFIER`, `ISSUE_TYPE_MARKER_FORMAT/PATTERN`, `FINDING_ID_MARKER_FORMAT`, `FINDING_ID_STRICT/LOOSE_PATTERN`) and
-  route every producer/parser through them. Default identifier params on `update_or_create_comment` / `post_multipart_comments` now resolve to `SUMMARY_IDENTIFIER` instead of an orphan literal
-- Centralize GitHub comment-size limits: add `GITHUB_COMMENT_HARD_LIMIT = 65536` and use the existing `GITHUB_MAX_COMMENT_LENGTH` / `GITHUB_COMMENT_SPLIT_LIMIT` from the call sites that previously
-  inlined literals
-- Extract `ARN_PARTITION_REGEX` and source it from `DEFAULT_ARN_VALIDATION_PATTERN` and the trust-policy SAML/OIDC provider patterns so all AWS partitions (`aws`, `aws-cn`, `aws-us-gov`, `aws-eusc`,
-  `aws-iso*`) validate consistently
+- Reuse PR comments to minimize timeline noise — summary and inline review comments now update existing comments in place by id, post only the surplus, and delete only stale leftovers. Same part count across runs produces zero `POST`/`DELETE` calls
+- Centralize HTML comment markers in `iam_validator/core/constants.py` (`ANALYZER_IDENTIFIER`, `ISSUE_TYPE_MARKER_FORMAT/PATTERN`, `FINDING_ID_MARKER_FORMAT`, `FINDING_ID_STRICT/LOOSE_PATTERN`) and route every producer/parser through them. Default identifier params on `update_or_create_comment` / `post_multipart_comments` now resolve to `SUMMARY_IDENTIFIER` instead of an orphan literal
+- Centralize GitHub comment-size limits: add `GITHUB_COMMENT_HARD_LIMIT = 65536` and use the existing `GITHUB_MAX_COMMENT_LENGTH` / `GITHUB_COMMENT_SPLIT_LIMIT` from the call sites that previously inlined literals
+- Extract `ARN_PARTITION_REGEX` and source it from `DEFAULT_ARN_VALIDATION_PATTERN` and the trust-policy SAML/OIDC provider patterns so all AWS partitions (`aws`, `aws-cn`, `aws-us-gov`, `aws-eusc`, `aws-iso*`) validate consistently
 
 ### Fixed
 
-- Fix `action_resource_matching` rejecting `s3vectors` `VectorBucket` ARNs (and any future service whose resource-type name contains `bucket` and whose pattern uses `bucket/${Name}`). The no-slash
-  rule now keys on the ARN pattern itself, not the resource-type name
-- Fix the PR summary comment becoming stale on busy PRs (lookup wasn't paginated) and after multi-part → single-part transitions (orphans left behind). Both paths now share
-  `_sync_comments_with_identifier`, which paginates lookup, updates oldest-first, and deletes only the surplus
+- Fix `action_resource_matching` rejecting `s3vectors` `VectorBucket` ARNs (and any future service whose resource-type name contains `bucket` and whose pattern uses `bucket/${Name}`). The no-slash rule now keys on the ARN pattern itself, not the resource-type name
+- Fix the PR summary comment becoming stale on busy PRs (lookup wasn't paginated) and after multi-part → single-part transitions (orphans left behind). Both paths now share `_sync_comments_with_identifier`, which paginates lookup, updates oldest-first, and deletes only the surplus
 - Fix trust-policy SAML/OIDC validation rejecting GovCloud, China, and ISO partitions — the provider patterns previously hardcoded `arn:aws:`
-- Fix `get_pr_files()` conflating API failure with an empty PR — both returned `[]`, causing the inline-review-comment cleanup phase to silently skip aggressive deletion on a transient 5xx. It now
-  returns `None` on failure and `[]` only for genuinely empty PRs
-- Fix `_sync_comments_with_identifier` reporting `success=False` when an orphan delete returned 404 — the canonical comment was already updated, so the user-visible state is correct. 404 / transient
-  orphan-delete errors now log a warning without failing the overall operation
+- Fix `get_pr_files()` conflating API failure with an empty PR — both returned `[]`, causing the inline-review-comment cleanup phase to silently skip aggressive deletion on a transient 5xx. It now returns `None` on failure and `[]` only for genuinely empty PRs
+- Fix `_sync_comments_with_identifier` reporting `success=False` when an orphan delete returned 404 — the canonical comment was already updated, so the user-visible state is correct. 404 / transient orphan-delete errors now log a warning without failing the overall operation
 
 ---
 
@@ -153,107 +152,51 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Added
 
-- Add Claude Code skill at `skills/iam-policy-validator/` with `.claude-plugin/` marketplace manifest — users can install a CLI-based Claude Code plugin via
-  `/plugin marketplace add boogy/iam-policy-validator` and `/plugin install iam-policy-validator@iam-policy-validator`, providing a CLI-based alternative to the MCP server. See
-  [Claude Code Skill](https://boogy.github.io/iam-policy-validator/integrations/claude-code-skill/)
-- Add `ValidationReport.policies_with_errors` and `ValidationReport.policies_with_findings` computed properties to express "structurally invalid" vs. "has findings" separately from the
-  `fail_on_severities`-gated `invalid_policies` counter
-- Add per-file policy-type auto-detection when `--policy-type` is omitted — each policy's type is resolved via a first-match-wins priority chain (`policy_types:` glob mapping in config → content
-  auto-detection → fallback to `IDENTITY_POLICY`). Trust policies and resource policies are now detected automatically; SCP/RCP still require an explicit flag or glob mapping because they share the
-  identity-policy shape. See the [Policy Type Resolution](https://boogy.github.io/iam-policy-validator/user-guide/configuration/#policy-type-resolution) documentation
-- Add `policy_types:` YAML config entry — a list of `{pattern, type}` entries that maps file globs to `PolicyType` values (e.g., `**/scp/*.json` → `SERVICE_CONTROL_POLICY`). Consulted only when
-  `--policy-type` is not provided
-- Add `policy_type` keyword argument to `iam_validator.sdk.shortcuts.validate_file`, `validate_directory`, `validate_json`, and `quick_validate` so Python SDK callers get the same explicit-or-auto
-  semantics as the CLI
-- Add machine-greppable per-policy debug log line in the orchestrator — runs with `--log-level debug` / `--verbose` emit exactly one
-  `policy_type=<TYPE> source=cli-flag|config-glob|auto-detect|default file=<path>` line per policy (the `config-glob` source also includes `pattern='...'`), making misresolution trivial to audit
+- Add Claude Code skill at `skills/iam-policy-validator/` with `.claude-plugin/` marketplace manifest — users can install a CLI-based Claude Code plugin via `/plugin marketplace add boogy/iam-policy-validator` and `/plugin install iam-policy-validator@iam-policy-validator`, providing a CLI-based alternative to the MCP server. See [Claude Code Skill](https://boogy.github.io/iam-policy-validator/integrations/claude-code-skill/)
+- Add `ValidationReport.policies_with_errors` and `ValidationReport.policies_with_findings` computed properties to express "structurally invalid" vs. "has findings" separately from the `fail_on_severities`-gated `invalid_policies` counter
+- Add per-file policy-type auto-detection when `--policy-type` is omitted — each policy's type is resolved via a first-match-wins priority chain (`policy_types:` glob mapping in config → content auto-detection → fallback to `IDENTITY_POLICY`). Trust policies and resource policies are now detected automatically; SCP/RCP still require an explicit flag or glob mapping because they share the identity-policy shape. See the [Policy Type Resolution](https://boogy.github.io/iam-policy-validator/user-guide/configuration/#policy-type-resolution) documentation
+- Add `policy_types:` YAML config entry — a list of `{pattern, type}` entries that maps file globs to `PolicyType` values (e.g., `**/scp/*.json` → `SERVICE_CONTROL_POLICY`). Consulted only when `--policy-type` is not provided
+- Add `policy_type` keyword argument to `iam_validator.sdk.shortcuts.validate_file`, `validate_directory`, `validate_json`, and `quick_validate` so Python SDK callers get the same explicit-or-auto semantics as the CLI
+- Add machine-greppable per-policy debug log line in the orchestrator — runs with `--log-level debug` / `--verbose` emit exactly one `policy_type=<TYPE> source=cli-flag|config-glob|auto-detect|default file=<path>` line per policy (the `config-glob` source also includes `pattern='...'`), making misresolution trivial to audit
 
 ### Changed
 
-- Clarify PR summary terminology — replace the "Valid Policies" / "Invalid Policies" rows with "Policies with Errors (AWS-invalid)" and "Policies with Findings" so a policy flagged only for security
-  or best-practice issues is no longer mislabeled as invalid. The same wording now applies to the GitHub Actions step summary, Rich console output, and the enhanced / CSV / HTML / markdown formatters
-- **CSV output schema change**: the `Valid Policies (IAM)`, `Invalid Policies (IAM)`, and `Policies with Security Findings` rows have been replaced by `Policies with Errors (AWS-invalid)` and
-  `Policies with Findings`. Downstream CSV consumers must update column expectations
+- Clarify PR summary terminology — replace the "Valid Policies" / "Invalid Policies" rows with "Policies with Errors (AWS-invalid)" and "Policies with Findings" so a policy flagged only for security or best-practice issues is no longer mislabeled as invalid. The same wording now applies to the GitHub Actions step summary, Rich console output, and the enhanced / CSV / HTML / markdown formatters
+- **CSV output schema change**: the `Valid Policies (IAM)`, `Invalid Policies (IAM)`, and `Policies with Security Findings` rows have been replaced by `Policies with Errors (AWS-invalid)` and `Policies with Findings`. Downstream CSV consumers must update column expectations
 - `ValidationReport.get_summary()` string format changed (now reports `clean` / `with errors` / `with findings` instead of `valid` / `invalid`). Code parsing this human-readable summary must update
-- Reclassify `action_condition_enforcement` default severity from `error` to `high` — missing an organizational condition (MFA, IP, tags) is a security concern rather than an AWS-rejectable structural
-  error. The check now appears under "Policies with Findings" instead of "Policies with Errors (AWS-invalid)"; users who rely on the previous severity can restore it via
-  `checks.action_condition_enforcement.severity: error` in config
-- Expose `policies_with_errors` and `policies_with_findings` as Pydantic `@computed_field`s so they appear in `ValidationReport.model_dump()` and the JSON formatter output, matching the terminology
-  used by every other formatter
-- Expand `RCP_SUPPORTED_SERVICES` to reflect the current AWS Resource Control Policy service list (per
-  [AWS Organizations docs](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_rcps.html)) — adds `cognito-idp`, `cognito-identity`, `dynamodb`, `ecr`, `aoss` (OpenSearch
-  Serverless), and `logs` (CloudWatch Logs) alongside the existing `s3`, `sts`, `sqs`, `kms`, `secretsmanager`. The `policy_type_validation` check no longer emits `unsupported_rcp_service` false
-  positives for policies targeting these services. Note: RCPs cover Amazon OpenSearch **Serverless** (`aoss`) but not the classic Amazon OpenSearch Service (`es`), and do not apply to
-  `kms:RetireGrant` or AWS-managed KMS keys
-- Change `--policy-type` default from `IDENTITY_POLICY` to auto-resolution. Pipelines that previously relied on the implicit default still behave identically for identity-only policies; directories
-  mixing identity, trust, and resource policies now get the correct type per file without extra flags. The `cli-flag` path is unchanged — supplying `--policy-type` still forces that value on every
-  policy in the run
-- Extend `iam_validator.checks.policy_structure.detect_policy_type()` to return `TRUST_POLICY` when the strict `is_trust_policy()` heuristic matches (Principal + exact `sts:AssumeRole*` action +
-  `Effect: Allow` + no specific resource ARNs). Previous behavior returned `RESOURCE_POLICY` for trust-shaped policies and required an explicit flag to distinguish them
-- Align the MCP `validate_policy` tool's auto-detection with the canonical CLI detector — `iam_validator.mcp.tools.validation._detect_policy_type` now delegates to
-  `iam_validator.checks.policy_structure.detect_policy_type`, so a trust policy posted via MCP is now classified as `trust` using the same strict rules as the CLI (prior MCP logic was more permissive)
-- Refresh `uv.lock` with `uv lock --upgrade` to pick up the newest versions compatible with the existing `>=` constraints in `pyproject.toml`. Notable jumps across majors: `fastmcp` 2.x → 3.2.4,
-  `rich` 14.x → 15.0.0, `starlette` 0.52 → 1.0.0 (transitive), `pydantic` 2.12.5 → 2.13.3, `mypy` 1.19 → 1.20, `ruff` 0.15.0 → 0.15.11, `mcp` 1.26 → 1.27, plus the Q1 2026 ecosystem renames pulled in
-  as transitives (`griffe` → `griffelib` by pawamoy, `mkdocs` → `properdocs` by Tom Christie, and `uncalled-for` as fastmcp's new async-DI dependency). Pure refresh — no version pins in
-  `pyproject.toml` were changed, so anyone installing via pip with `>=` constraints gets the same resolution
-- Update `tests/mcp/test_server_integration.py` to use FastMCP 3.x public async APIs (`await mcp.list_tools()`, `await mcp.list_resources()`) instead of the 2.x internal `_tool_manager._tools` /
-  `_resource_manager._resources` dicts that no longer exist. Affects tests only; the MCP server code itself was already using supported decorators (`@mcp.tool`, `@mcp.resource`) and needed no change
-- Restructure `.github/workflows/release.yml` for GitHub immutable releases. The release is now created as a **draft** with all assets attached, the assets are verified, PyPI is published (with
-  `uv publish --check-url https://pypi.org/simple/` for idempotent retries), and only then is the draft promoted to a published (immutable) release. Three guard rails fail the job early: (1) a
-  previously-published release for the tag blocks re-tagging; (2) a PyPI version that already exists with no draft release blocks re-tagging (PyPI versions are permanent); (3) the build must produce
-  both wheel and sdist before the draft is created. If any step between "create draft" and "publish release" fails, the workflow can be safely re-run — the draft is editable and every mutating step is
-  idempotent
-- Re-enable rolling major (`v1`) and minor (`v1.19`) tag updates after a stable release. These are plain git refs with no GitHub Release attached, so they remain movable under immutable releases
-  (which only freezes tags tied to a published Release). Skipped for `rc`/`beta`/`alpha` tags so pre-releases cannot promote the rolling references. The signed, version-specific `v<X.Y.Z>` tag stays
-  authoritative
+- Reclassify `action_condition_enforcement` default severity from `error` to `high` — missing an organizational condition (MFA, IP, tags) is a security concern rather than an AWS-rejectable structural error. The check now appears under "Policies with Findings" instead of "Policies with Errors (AWS-invalid)"; users who rely on the previous severity can restore it via `checks.action_condition_enforcement.severity: error` in config
+- Expose `policies_with_errors` and `policies_with_findings` as Pydantic `@computed_field`s so they appear in `ValidationReport.model_dump()` and the JSON formatter output, matching the terminology used by every other formatter
+- Expand `RCP_SUPPORTED_SERVICES` to reflect the current AWS Resource Control Policy service list (per [AWS Organizations docs](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_rcps.html)) — adds `cognito-idp`, `cognito-identity`, `dynamodb`, `ecr`, `aoss` (OpenSearch Serverless), and `logs` (CloudWatch Logs) alongside the existing `s3`, `sts`, `sqs`, `kms`, `secretsmanager`. The `policy_type_validation` check no longer emits `unsupported_rcp_service` false positives for policies targeting these services. Note: RCPs cover Amazon OpenSearch **Serverless** (`aoss`) but not the classic Amazon OpenSearch Service (`es`), and do not apply to `kms:RetireGrant` or AWS-managed KMS keys
+- Change `--policy-type` default from `IDENTITY_POLICY` to auto-resolution. Pipelines that previously relied on the implicit default still behave identically for identity-only policies; directories mixing identity, trust, and resource policies now get the correct type per file without extra flags. The `cli-flag` path is unchanged — supplying `--policy-type` still forces that value on every policy in the run
+- Extend `iam_validator.checks.policy_structure.detect_policy_type()` to return `TRUST_POLICY` when the strict `is_trust_policy()` heuristic matches (Principal + exact `sts:AssumeRole*` action + `Effect: Allow` + no specific resource ARNs). Previous behavior returned `RESOURCE_POLICY` for trust-shaped policies and required an explicit flag to distinguish them
+- Align the MCP `validate_policy` tool's auto-detection with the canonical CLI detector — `iam_validator.mcp.tools.validation._detect_policy_type` now delegates to `iam_validator.checks.policy_structure.detect_policy_type`, so a trust policy posted via MCP is now classified as `trust` using the same strict rules as the CLI (prior MCP logic was more permissive)
+- Refresh `uv.lock` with `uv lock --upgrade` to pick up the newest versions compatible with the existing `>=` constraints in `pyproject.toml`. Notable jumps across majors: `fastmcp` 2.x → 3.2.4, `rich` 14.x → 15.0.0, `starlette` 0.52 → 1.0.0 (transitive), `pydantic` 2.12.5 → 2.13.3, `mypy` 1.19 → 1.20, `ruff` 0.15.0 → 0.15.11, `mcp` 1.26 → 1.27, plus the Q1 2026 ecosystem renames pulled in as transitives (`griffe` → `griffelib` by pawamoy, `mkdocs` → `properdocs` by Tom Christie, and `uncalled-for` as fastmcp's new async-DI dependency). Pure refresh — no version pins in `pyproject.toml` were changed, so anyone installing via pip with `>=` constraints gets the same resolution
+- Update `tests/mcp/test_server_integration.py` to use FastMCP 3.x public async APIs (`await mcp.list_tools()`, `await mcp.list_resources()`) instead of the 2.x internal `_tool_manager._tools` / `_resource_manager._resources` dicts that no longer exist. Affects tests only; the MCP server code itself was already using supported decorators (`@mcp.tool`, `@mcp.resource`) and needed no change
+- Restructure `.github/workflows/release.yml` for GitHub immutable releases. The release is now created as a **draft** with all assets attached, the assets are verified, PyPI is published (with `uv publish --check-url https://pypi.org/simple/` for idempotent retries), and only then is the draft promoted to a published (immutable) release. Three guard rails fail the job early: (1) a previously-published release for the tag blocks re-tagging; (2) a PyPI version that already exists with no draft release blocks re-tagging (PyPI versions are permanent); (3) the build must produce both wheel and sdist before the draft is created. If any step between "create draft" and "publish release" fails, the workflow can be safely re-run — the draft is editable and every mutating step is idempotent
+- Re-enable rolling major (`v1`) and minor (`v1.19`) tag updates after a stable release. These are plain git refs with no GitHub Release attached, so they remain movable under immutable releases (which only freezes tags tied to a published Release). Skipped for `rc`/`beta`/`alpha` tags so pre-releases cannot promote the rolling references. The signed, version-specific `v<X.Y.Z>` tag stays authoritative
 
 ### Fixed
 
-- Fix `ValidationReport.policies_with_findings` double-counting policies whose only issues were structural errors — "findings" now counts only policies with at least one non-`error` severity issue
-  (`warning` / `info` / `critical` / `high` / `medium` / `low`), aligning with the display split between errors (AWS-invalid) and findings (security / best-practice). Policies with both kinds of
-  issues are counted in both properties
-- Fix `clean` policy count in the Rich console report and `get_summary()` — compute directly from policies with no issues instead of subtracting `policies_with_findings` (which would have marked
-  error-only policies as clean after the `policies_with_findings` fix)
-- Fix GitHub PR comment hiding the entire "Detailed Findings" section (and printing "All Policies Valid / no issues found") when `invalid_policies == 0` but `total_issues > 0` — happens with the
-  default `fail_on_severities=["error","critical"]` on a policy with only `high`/`medium`/`low`/`warning` issues. The detail section is now gated on `total_issues > 0` so all findings are rendered
-- Fix `ValidationReport.get_summary()` reporting "N clean" (and omitting any error count) for legacy callers that build a report with only scalar counters and no `results` list — falls back to
-  `total_policies - invalid_policies` so a failing run isn't mis-reported as fully clean
-- Fix `policy_size` check ignoring the runtime policy type — trust policies, SCPs, and RCPs were silently measured against the 6,144-byte managed-policy limit regardless of `--policy-type`. The check
-  now maps the runtime policy type (`IDENTITY_POLICY`/`RESOURCE_POLICY`/`TRUST_POLICY`/`SERVICE_CONTROL_POLICY`/`RESOURCE_CONTROL_POLICY`) to the appropriate AWS limit, and adds the three
-  previously-missing limits: `inline_role_trust` (2,048 bytes), `scp` (5,120 bytes), `rcp` (5,120 bytes). An explicit `policy_type` in YAML config still takes priority
-- Fix `policy_size` default config hardcoding `policy_type: "managed"` — this blocked the runtime `--policy-type` kwarg from ever reaching the check because my priority rule treated the default as an
-  explicit user choice. Removed from `defaults.py` so the runtime type flows through by default; users who need an override (e.g., pinning `inline_user` when `--policy-type` is `IDENTITY_POLICY`) can
-  still set `checks.policy_size.config.policy_type` in their YAML
-- Fix `policy_size` measuring character count instead of UTF-8 byte length — AWS counts bytes, so policies with non-ASCII characters in SIDs or condition values were previously under-counted. Now
-  measured via `len(policy_string.encode("utf-8"))`
-- Fix `policy_size` re-serializing through Pydantic (`model_dump`) rather than measuring what AWS would actually receive — the check now prefers the `raw_policy_dict` when it is passed through the
-  orchestrator, falling back to `model_dump` only when unavailable
-- Fix `_log_resolved_policy_type` debug log leaking absolute file paths and tripping CodeQL `py/clear-text-logging-sensitive-data` on config-derived values — log only the file basename via
-  `Path(policy_file).name`, whitelist `resolved_type` against a closed-set allowlist, branch on the `source` value so every emitted log record uses a compile-time literal for `source=…` (cli-flag /
-  config-glob / auto-detect / default / unknown), and replace the raw `pattern` glob with `pattern_present=true pattern_len=<n>` so no user-controlled string from the YAML config flows into the log
-  sink. `--log-level debug` callers who previously grepped the literal glob out of the log line should grep their own `iam-validator.yaml` instead
-- Fix implicit string concatenation in `MarkdownFormatter` summary list — join the policy-count rows into single f-string literals so CodeQL no longer flags `py/implicit-string-concatenation-in-list`
-  on the "Policies with Errors" / "Policies with Findings" rows
-- Fix `LabelManager` removing a shared label when one of its mapped severities is absent — if `severity_labels` maps multiple severities to the same label (e.g., both `error` and `warning` →
-  `iam-issue`) and only one of them is found, the "severity-not-found" side of the mapping previously scheduled the shared label for removal, and because removes ran after adds the label ended up
-  deleted despite still being warranted. `labels_to_remove` now subtracts `labels_to_apply` before intersecting with the current PR labels, so a shared label stays as long as any of its mapped
-  severities is still found
-- Fix per-file streaming mode racing on PR labels — `_post_file_review` previously called `post_findings_to_pr` with the default `manage_labels=True`, so each mini-report (which only sees one file's
-  severities) would add the label for that file's severities, then immediately remove the same label when the next label-free file was processed. Per-file review posting now passes
-  `manage_labels=False`, and `_run_final_review_cleanup` runs label management once against the aggregated full report (gated on `severity_labels` being configured)
-- Fix `condition_key_validation` emitting cascading `invalid_condition_key` findings for non-existent actions — when a statement named an action that doesn't exist in AWS (e.g. the bogus
-  `apigateway:TagResource`), the check still tried to validate each condition key against it and reported "key X is not supported by resources used by action Y" even though Y itself was invalid.
-  Non-existent actions are now filtered out via `validate_actions_batch` before condition-key validation runs, so only the authoritative `invalid_action` finding from `action_validation` is reported.
-  The bare `*` wildcard and service-wildcard patterns that match at least one real action are preserved
+- Fix `ValidationReport.policies_with_findings` double-counting policies whose only issues were structural errors — "findings" now counts only policies with at least one non-`error` severity issue (`warning` / `info` / `critical` / `high` / `medium` / `low`), aligning with the display split between errors (AWS-invalid) and findings (security / best-practice). Policies with both kinds of issues are counted in both properties
+- Fix `clean` policy count in the Rich console report and `get_summary()` — compute directly from policies with no issues instead of subtracting `policies_with_findings` (which would have marked error-only policies as clean after the `policies_with_findings` fix)
+- Fix GitHub PR comment hiding the entire "Detailed Findings" section (and printing "All Policies Valid / no issues found") when `invalid_policies == 0` but `total_issues > 0` — happens with the default `fail_on_severities=["error","critical"]` on a policy with only `high`/`medium`/`low`/`warning` issues. The detail section is now gated on `total_issues > 0` so all findings are rendered
+- Fix `ValidationReport.get_summary()` reporting "N clean" (and omitting any error count) for legacy callers that build a report with only scalar counters and no `results` list — falls back to `total_policies - invalid_policies` so a failing run isn't mis-reported as fully clean
+- Fix `policy_size` check ignoring the runtime policy type — trust policies, SCPs, and RCPs were silently measured against the 6,144-byte managed-policy limit regardless of `--policy-type`. The check now maps the runtime policy type (`IDENTITY_POLICY`/`RESOURCE_POLICY`/`TRUST_POLICY`/`SERVICE_CONTROL_POLICY`/`RESOURCE_CONTROL_POLICY`) to the appropriate AWS limit, and adds the three previously-missing limits: `inline_role_trust` (2,048 bytes), `scp` (5,120 bytes), `rcp` (5,120 bytes). An explicit `policy_type` in YAML config still takes priority
+- Fix `policy_size` default config hardcoding `policy_type: "managed"` — this blocked the runtime `--policy-type` kwarg from ever reaching the check because my priority rule treated the default as an explicit user choice. Removed from `defaults.py` so the runtime type flows through by default; users who need an override (e.g., pinning `inline_user` when `--policy-type` is `IDENTITY_POLICY`) can still set `checks.policy_size.config.policy_type` in their YAML
+- Fix `policy_size` measuring character count instead of UTF-8 byte length — AWS counts bytes, so policies with non-ASCII characters in SIDs or condition values were previously under-counted. Now measured via `len(policy_string.encode("utf-8"))`
+- Fix `policy_size` re-serializing through Pydantic (`model_dump`) rather than measuring what AWS would actually receive — the check now prefers the `raw_policy_dict` when it is passed through the orchestrator, falling back to `model_dump` only when unavailable
+- Fix `_log_resolved_policy_type` debug log leaking absolute file paths and tripping CodeQL `py/clear-text-logging-sensitive-data` on config-derived values — log only the file basename via `Path(policy_file).name`, whitelist `resolved_type` against a closed-set allowlist, branch on the `source` value so every emitted log record uses a compile-time literal for `source=…` (cli-flag / config-glob / auto-detect / default / unknown), and replace the raw `pattern` glob with `pattern_present=true pattern_len=<n>` so no user-controlled string from the YAML config flows into the log sink. `--log-level debug` callers who previously grepped the literal glob out of the log line should grep their own `iam-validator.yaml` instead
+- Fix implicit string concatenation in `MarkdownFormatter` summary list — join the policy-count rows into single f-string literals so CodeQL no longer flags `py/implicit-string-concatenation-in-list` on the "Policies with Errors" / "Policies with Findings" rows
+- Fix `LabelManager` removing a shared label when one of its mapped severities is absent — if `severity_labels` maps multiple severities to the same label (e.g., both `error` and `warning` → `iam-issue`) and only one of them is found, the "severity-not-found" side of the mapping previously scheduled the shared label for removal, and because removes ran after adds the label ended up deleted despite still being warranted. `labels_to_remove` now subtracts `labels_to_apply` before intersecting with the current PR labels, so a shared label stays as long as any of its mapped severities is still found
+- Fix per-file streaming mode racing on PR labels — `_post_file_review` previously called `post_findings_to_pr` with the default `manage_labels=True`, so each mini-report (which only sees one file's severities) would add the label for that file's severities, then immediately remove the same label when the next label-free file was processed. Per-file review posting now passes `manage_labels=False`, and `_run_final_review_cleanup` runs label management once against the aggregated full report (gated on `severity_labels` being configured)
+- Fix `condition_key_validation` emitting cascading `invalid_condition_key` findings for non-existent actions — when a statement named an action that doesn't exist in AWS (e.g. the bogus `apigateway:TagResource`), the check still tried to validate each condition key against it and reported "key X is not supported by resources used by action Y" even though Y itself was invalid. Non-existent actions are now filtered out via `validate_actions_batch` before condition-key validation runs, so only the authoritative `invalid_action` finding from `action_validation` is reported. The bare `*` wildcard and service-wildcard patterns that match at least one real action are preserved
 
 ## [1.18.2] - 2026-03-24
 
 ### Fixed
 
-- Fix `condition_key_validation` generating one PR comment per invalid condition key — aggregate keys that share the same action and base pattern (e.g., `aws:RequestTag/owner`, `aws:RequestTag/jira`,
-  `aws:RequestTag/env`) into a single finding listing all affected keys
-- Fix `set_operator_validation` false positive on `aws:ResourceOrgPaths` — classify it as a multivalued condition key (matching `aws:PrincipalOrgPaths`), and update type from `String` to
-  `ArrayOfString` in global condition key metadata ([#87])
+- Fix `condition_key_validation` generating one PR comment per invalid condition key — aggregate keys that share the same action and base pattern (e.g., `aws:RequestTag/owner`, `aws:RequestTag/jira`, `aws:RequestTag/env`) into a single finding listing all affected keys
+- Fix `set_operator_validation` false positive on `aws:ResourceOrgPaths` — classify it as a multivalued condition key (matching `aws:PrincipalOrgPaths`), and update type from `String` to `ArrayOfString` in global condition key metadata ([#87])
 
 [#87]: https://github.com/boogy/iam-policy-validator/pull/87
 
@@ -267,8 +210,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Fixed
 
-- Fix `service_wildcard` reporting `high` severity for service wildcards with ABAC tag conditions (`aws:ResourceTag/*` = `${aws:PrincipalTag/*}`) — severity is now reduced to `low` (configurable via
-  `abac_mitigated_severity`) when tag-based ownership constraints restrict the blast radius
+- Fix `service_wildcard` reporting `high` severity for service wildcards with ABAC tag conditions (`aws:ResourceTag/*` = `${aws:PrincipalTag/*}`) — severity is now reduced to `low` (configurable via `abac_mitigated_severity`) when tag-based ownership constraints restrict the blast radius
 - Fix `service_wildcard` ABAC detection not recognizing `ForAllValues:`/`ForAnyValue:` set operator prefixes and `IfExists` suffix on condition operators
 - Fix `service_wildcard` ABAC detection not explicitly excluding negated operators (`StringNotEquals`, `StringNotLike`) which do not restrict access
 
@@ -291,10 +233,8 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 - Fix `condition_key_in_list` false positive on tag keys containing `/` (e.g., `aws:ResourceTag/team/project-owner`) — use pattern prefix length instead of `rfind("/")` which split at the wrong `/`
 - Fix `condition_type_mismatch` and `set_operator_validation` failing to resolve types for compound tag keys — replace exact `in` lookups on pattern dicts with `find_matching_condition_key()`
-- Fix `set_operator_validation` false positive on multivalued service condition keys — look up `Types` metadata from AWS service definitions (`ArrayOfString` etc.) instead of relying solely on
-  hardcoded allowlist
-- Fix `wildcard_resource` false positive when ABAC tag conditions scope `Resource: "*"` — unify detection to cover `aws:ResourceTag/*`, `aws:RequestTag/*`, `aws:TagKeys`, `s3:ExistingObjectTag/*`, and
-  any service-specific tag condition key, validated against AWS service definitions
+- Fix `set_operator_validation` false positive on multivalued service condition keys — look up `Types` metadata from AWS service definitions (`ArrayOfString` etc.) instead of relying solely on hardcoded allowlist
+- Fix `wildcard_resource` false positive when ABAC tag conditions scope `Resource: "*"` — unify detection to cover `aws:ResourceTag/*`, `aws:RequestTag/*`, `aws:TagKeys`, `s3:ExistingObjectTag/*`, and any service-specific tag condition key, validated against AWS service definitions
 - Fix off-diff PR comments posting duplicates on re-runs — deduplicate via fingerprint, skip unchanged comments, update modified ones
 - Fix off-diff PR comment silently lost when `update_review_comment` fails — fall back to summary table
 - Fix `CheckDocumentation` breaking custom check loading when `short_description` field is missing — make optional with `kw_only=True` to prevent silent positional argument swapping
@@ -321,8 +261,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Add outdated policy version warning for `Version` `2008-10-17` ([#79])
 - Add implicit grant analysis and remediation suggestions in `not_action_not_resource` ([#79])
 - Add `--has-condition-key` filter and `--show-condition-keys`/`--show-arn-format`/`--show-resource-type` flags to `query` subcommands ([#79])
-- Add SDK improvements: TypedDicts for query results, `filter_issues_by_check_id`/`filter_issues_by_severity`, `str | dict` in `validate_json()`, ARN utility exports, usage examples and test suite
-  ([#79])
+- Add SDK improvements: TypedDicts for query results, `filter_issues_by_check_id`/`filter_issues_by_severity`, `str | dict` in `validate_json()`, ARN utility exports, usage examples and test suite ([#79])
 
 ### Fixed
 

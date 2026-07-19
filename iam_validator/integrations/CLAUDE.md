@@ -53,6 +53,13 @@ and `test_summary_comment_staleness.py`.
 All HTML comment markers come from `iam_validator.core.constants` — never hardcode
 them in either production or tests.
 
+Marker matching is **anchored**: bot-comment detection goes through
+`constants.body_has_anchored_marker(body, identifier)` (marker at a line start
+within the first `MARKER_SCAN_LINES` lines), never a bare `identifier in body`
+substring test. Untrusted policy text is defanged at the render boundary by
+`constants.sanitize_untrusted_comment_text()` in `ValidationIssue.to_pr_comment`
+— never sanitize fingerprint/hash inputs (finding IDs must stay stable).
+
 When the caller passes a `comment_tag` (issue #103, parallel runs on the
 same PR), the marker is rewritten via `constants.scoped_marker(base, tag)`
 before any lookup or write. Resolve identifiers per-instance in

@@ -1,0 +1,9 @@
+# MkDocs Material docs use markdown extensions — grid cards, admonitions
+# (!!! note), and content tabs (=== "x") — that depend on 4-space indentation
+# and `---` card separators. Prettier's CommonMark formatter rewrites those
+# (`---` -> `***`, 4-space -> 2-space continuation), which breaks card and
+# admonition rendering. MkDocs owns this markdown; keep prettier out of it.
+docs/
+
+# MkDocs build output
+site/

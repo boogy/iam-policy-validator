@@ -1,0 +1,11 @@
+{
+  "proseWrap": "preserve",
+  "overrides": [
+    {
+      "files": "CHANGELOG.md",
+      "options": {
+        "proseWrap": "never"
+      }
+    }
+  ]
+}

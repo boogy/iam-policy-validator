@@ -147,7 +147,8 @@ inputs:
 
   # Performance & Offline Options
   custom-checks-dir:
-    description: "Path to directory containing custom validation checks (relative to repository root)"
+    description: "Path to directory containing custom validation checks (relative to repository root). WARNING: every .py file in the directory is executed — never enable for workflows that run on
+      untrusted forks (e.g. pull_request_target)"
     required: false
     default: ""
 
@@ -270,6 +271,8 @@ runs:
 
     - name: Pre-validate IAM Policy Files
       id: prevalidate
+      env:
+        INPUT_PATH: ${{ inputs.path }}
       run: |
         # Function to check if a file is an IAM policy
         is_iam_policy() {
@@ -306,11 +309,11 @@ runs:
         IAM_POLICY_COUNT=0
 
         IFS=$'\n'
-        for path in ${{ inputs.path }}; do
+        for path in $INPUT_PATH; do
           path=$(echo "$path" | xargs)
           [ -z "$path" ] && continue
 
-          full_path="${{ github.workspace }}/$path"
+          full_path="$GITHUB_WORKSPACE/$path"
 
           # Handle directory or file
           if [ -d "$full_path" ]; then
@@ -375,6 +378,38 @@ runs:
         GITHUB_WORKSPACE: ${{ github.workspace }}
         # Try multiple ways to get PR number for different event types
         GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.number }}
+        GITHUB_EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        # All inputs are passed through env vars (never template-spliced into the
+        # script) so attacker-controlled values cannot inject shell commands.
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_CONFIG_FILE: ${{ inputs.config-file }}
+        INPUT_FAIL_ON_WARNINGS: ${{ inputs.fail-on-warnings }}
+        INPUT_POST_COMMENT: ${{ inputs.post-comment }}
+        INPUT_CREATE_REVIEW: ${{ inputs.create-review }}
+        INPUT_OFF_DIFF_COMMENT_MODE: ${{ inputs.off-diff-comment-mode }}
+        INPUT_COMMENT_TAG: ${{ inputs.comment-tag }}
+        INPUT_ALLOW_OWNER_IGNORE: ${{ inputs.allow-owner-ignore }}
+        INPUT_GITHUB_SUMMARY: ${{ inputs.github-summary }}
+        INPUT_SHOW_CONSOLE_OUTPUT: ${{ inputs.show-console-output }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_OUTPUT_FILE: ${{ inputs.output-file }}
+        INPUT_RECURSIVE: ${{ inputs.recursive }}
+        INPUT_STREAM: ${{ inputs.stream }}
+        INPUT_BATCH_SIZE: ${{ inputs.batch-size }}
+        INPUT_SUMMARY: ${{ inputs.summary }}
+        INPUT_SEVERITY_BREAKDOWN: ${{ inputs.severity-breakdown }}
+        INPUT_USE_ACCESS_ANALYZER: ${{ inputs.use-access-analyzer }}
+        INPUT_ACCESS_ANALYZER_REGION: ${{ inputs.access-analyzer-region }}
+        INPUT_POLICY_TYPE: ${{ inputs.policy-type }}
+        INPUT_RUN_ALL_CHECKS: ${{ inputs.run-all-checks }}
+        INPUT_CHECK_ACCESS_NOT_GRANTED: ${{ inputs.check-access-not-granted }}
+        INPUT_CHECK_ACCESS_RESOURCES: ${{ inputs.check-access-resources }}
+        INPUT_CHECK_NO_NEW_ACCESS: ${{ inputs.check-no-new-access }}
+        INPUT_CHECK_NO_PUBLIC_ACCESS: ${{ inputs.check-no-public-access }}
+        INPUT_PUBLIC_ACCESS_RESOURCE_TYPE: ${{ inputs.public-access-resource-type }}
+        INPUT_CUSTOM_CHECKS_DIR: ${{ inputs.custom-checks-dir }}
+        INPUT_AWS_SERVICES_DIR: ${{ inputs.aws-services-dir }}
+        INPUT_LOG_LEVEL: ${{ inputs.log-level }}
       run: |
         set -e
 
@@ -385,12 +420,12 @@ runs:
 
         # Build base command with log-level FIRST (global argument)
         BASE_CMD=""
-        if [ -n "${{ inputs.log-level }}" ] && [ "${{ inputs.log-level }}" != "warning" ]; then
-          BASE_CMD="--log-level ${{ inputs.log-level }}"
+        if [ -n "$INPUT_LOG_LEVEL" ] && [ "$INPUT_LOG_LEVEL" != "warning" ]; then
+          BASE_CMD="--log-level $INPUT_LOG_LEVEL"
         fi
 
         # Determine command based on use-access-analyzer flag
-        if [ "${{ inputs.use-access-analyzer }}" = "true" ]; then
+        if [ "$INPUT_USE_ACCESS_ANALYZER" = "true" ]; then
           CMD="analyze"
         else
           CMD="validate"
@@ -399,11 +434,11 @@ runs:
         # Parse paths (support newline-separated values)
         PATH_ARGS=""
         IFS=$'\n'
-        for p in ${{ inputs.path }}; do
+        for p in $INPUT_PATH; do
           # Trim whitespace
           p=$(echo "$p" | xargs)
           if [ -n "$p" ]; then
-            PATH_ARGS="$PATH_ARGS --path ${{ github.workspace }}/$p"
+            PATH_ARGS="$PATH_ARGS --path $GITHUB_WORKSPACE/$p"
           fi
         done
         unset IFS
@@ -412,126 +447,132 @@ runs:
         ARGS="$BASE_CMD $CMD $PATH_ARGS"
 
         # Add config file if specified
-        if [ -n "${{ inputs.config-file }}" ]; then
-          ARGS="$ARGS --config ${{ github.workspace }}/${{ inputs.config-file }}"
+        if [ -n "$INPUT_CONFIG_FILE" ]; then
+          ARGS="$ARGS --config $GITHUB_WORKSPACE/$INPUT_CONFIG_FILE"
         fi
 
         # Add format and output
-        ARGS="$ARGS --format ${{ inputs.format }}"
-        if [ -n "${{ inputs.output-file }}" ]; then
-          ARGS="$ARGS --output ${{ github.workspace }}/${{ inputs.output-file }}"
+        ARGS="$ARGS --format $INPUT_FORMAT"
+        if [ -n "$INPUT_OUTPUT_FILE" ]; then
+          ARGS="$ARGS --output $GITHUB_WORKSPACE/$INPUT_OUTPUT_FILE"
         fi
 
         # Add recursive flag
-        if [ "${{ inputs.recursive }}" = "false" ]; then
+        if [ "$INPUT_RECURSIVE" = "false" ]; then
           ARGS="$ARGS --no-recursive"
         fi
 
         # Add streaming mode flags
-        if [ "${{ inputs.stream }}" = "true" ]; then
-          ARGS="$ARGS --stream --batch-size ${{ inputs.batch-size }}"
+        if [ "$INPUT_STREAM" = "true" ]; then
+          ARGS="$ARGS --stream --batch-size $INPUT_BATCH_SIZE"
         fi
 
         # Add enhanced output flags
-        if [ "${{ inputs.summary }}" = "true" ]; then
+        if [ "$INPUT_SUMMARY" = "true" ]; then
           ARGS="$ARGS --summary"
         fi
 
-        if [ "${{ inputs.severity-breakdown }}" = "true" ]; then
+        if [ "$INPUT_SEVERITY_BREAKDOWN" = "true" ]; then
           ARGS="$ARGS --severity-breakdown"
         fi
 
         # Add fail-on-warnings flag
-        if [ "${{ inputs.fail-on-warnings }}" = "true" ]; then
+        if [ "$INPUT_FAIL_ON_WARNINGS" = "true" ]; then
           ARGS="$ARGS --fail-on-warnings"
         fi
 
         # Add policy-type flag (works for both validate and analyze commands)
-        if [ -n "${{ inputs.policy-type }}" ]; then
-          ARGS="$ARGS --policy-type ${{ inputs.policy-type }}"
+        if [ -n "$INPUT_POLICY_TYPE" ]; then
+          ARGS="$ARGS --policy-type $INPUT_POLICY_TYPE"
         fi
 
         # Add Access Analyzer specific options
-        if [ "${{ inputs.use-access-analyzer }}" = "true" ]; then
-          ARGS="$ARGS --region ${{ inputs.access-analyzer-region }}"
+        if [ "$INPUT_USE_ACCESS_ANALYZER" = "true" ]; then
+          ARGS="$ARGS --region $INPUT_ACCESS_ANALYZER_REGION"
 
-          if [ "${{ inputs.run-all-checks }}" = "true" ]; then
+          if [ "$INPUT_RUN_ALL_CHECKS" = "true" ]; then
             ARGS="$ARGS --run-all-checks"
           fi
 
           # Custom Policy Checks
-          if [ -n "${{ inputs.check-access-not-granted }}" ]; then
-            ARGS="$ARGS --check-access-not-granted ${{ inputs.check-access-not-granted }}"
+          if [ -n "$INPUT_CHECK_ACCESS_NOT_GRANTED" ]; then
+            ARGS="$ARGS --check-access-not-granted $INPUT_CHECK_ACCESS_NOT_GRANTED"
 
-            if [ -n "${{ inputs.check-access-resources }}" ]; then
-              ARGS="$ARGS --check-access-resources ${{ inputs.check-access-resources }}"
+            if [ -n "$INPUT_CHECK_ACCESS_RESOURCES" ]; then
+              ARGS="$ARGS --check-access-resources $INPUT_CHECK_ACCESS_RESOURCES"
             fi
           fi
 
-          if [ -n "${{ inputs.check-no-new-access }}" ]; then
-            ARGS="$ARGS --check-no-new-access ${{ github.workspace }}/${{ inputs.check-no-new-access }}"
+          if [ -n "$INPUT_CHECK_NO_NEW_ACCESS" ]; then
+            ARGS="$ARGS --check-no-new-access $GITHUB_WORKSPACE/$INPUT_CHECK_NO_NEW_ACCESS"
           fi
 
-          if [ "${{ inputs.check-no-public-access }}" = "true" ]; then
+          if [ "$INPUT_CHECK_NO_PUBLIC_ACCESS" = "true" ]; then
             ARGS="$ARGS --check-no-public-access"
 
-            if [ -n "${{ inputs.public-access-resource-type }}" ]; then
-              ARGS="$ARGS --public-access-resource-type '${{ inputs.public-access-resource-type }}'"
+            if [ -n "$INPUT_PUBLIC_ACCESS_RESOURCE_TYPE" ]; then
+              ARGS="$ARGS --public-access-resource-type $INPUT_PUBLIC_ACCESS_RESOURCE_TYPE"
             fi
           fi
         fi
 
         # Add GitHub integration flags (only for PRs)
-        if [ "${{ inputs.post-comment }}" = "true" ] && [ -n "${{ github.event.pull_request.number }}" ]; then
+        if [ "$INPUT_POST_COMMENT" = "true" ] && [ -n "$GITHUB_EVENT_PR_NUMBER" ]; then
           ARGS="$ARGS --github-comment"
 
-          if [ "${{ inputs.create-review }}" = "true" ]; then
+          if [ "$INPUT_CREATE_REVIEW" = "true" ]; then
             ARGS="$ARGS --github-review"
           fi
         fi
 
         # Add github-summary flag (works for all workflow runs)
-        if [ "${{ inputs.github-summary }}" = "true" ]; then
+        if [ "$INPUT_GITHUB_SUMMARY" = "true" ]; then
           ARGS="$ARGS --github-summary"
         fi
 
         # Add custom-checks-dir if specified
-        if [ -n "${{ inputs.custom-checks-dir }}" ]; then
-          ARGS="$ARGS --custom-checks-dir ${{ github.workspace }}/${{ inputs.custom-checks-dir }}"
+        if [ -n "$INPUT_CUSTOM_CHECKS_DIR" ]; then
+          ARGS="$ARGS --custom-checks-dir $GITHUB_WORKSPACE/$INPUT_CUSTOM_CHECKS_DIR"
         fi
 
         # Add aws-services-dir if specified (for offline mode)
-        if [ -n "${{ inputs.aws-services-dir }}" ]; then
-          ARGS="$ARGS --aws-services-dir ${{ github.workspace }}/${{ inputs.aws-services-dir }}"
+        if [ -n "$INPUT_AWS_SERVICES_DIR" ]; then
+          ARGS="$ARGS --aws-services-dir $GITHUB_WORKSPACE/$INPUT_AWS_SERVICES_DIR"
         fi
 
         # Add owner-ignore flag (default is enabled, so only add flag when disabled)
-        if [ "${{ inputs.allow-owner-ignore }}" = "false" ]; then
+        if [ "$INPUT_ALLOW_OWNER_IGNORE" = "false" ]; then
           ARGS="$ARGS --no-owner-ignore"
         fi
 
         # Add off-diff comment mode (only add flag when not the default)
-        if [ -n "${{ inputs.off-diff-comment-mode }}" ] && [ "${{ inputs.off-diff-comment-mode }}" != "summary_only" ]; then
-          ARGS="$ARGS --off-diff-comment-mode ${{ inputs.off-diff-comment-mode }}"
+        if [ -n "$INPUT_OFF_DIFF_COMMENT_MODE" ] && [ "$INPUT_OFF_DIFF_COMMENT_MODE" != "summary_only" ]; then
+          ARGS="$ARGS --off-diff-comment-mode $INPUT_OFF_DIFF_COMMENT_MODE"
         fi
 
         # Add comment-tag (scope marker for parallel runs on the same PR)
-        # Validated downstream by the CLI; only enforce non-empty here.
-        if [ -n "${{ inputs.comment-tag }}" ]; then
-          ARGS="$ARGS --comment-tag ${{ inputs.comment-tag }}"
+        # Validated here against COMMENT_TAG_PATTERN semantics (1-32 chars,
+        # [A-Za-z0-9._-]) BEFORE the value reaches the command line; the CLI
+        # re-validates downstream.
+        if [ -n "$INPUT_COMMENT_TAG" ]; then
+          if ! printf '%s' "$INPUT_COMMENT_TAG" | grep -Eq '^[A-Za-z0-9._-]{1,32}$'; then
+            echo "❌ Invalid comment-tag: must be 1-32 chars matching [A-Za-z0-9._-]"
+            exit 1
+          fi
+          ARGS="$ARGS --comment-tag $INPUT_COMMENT_TAG"
         fi
 
         # Create temp file for JSON metrics extraction
         METRICS_FILE=$(mktemp)
 
         # Build the final command based on show-console-output setting
-        if [ "${{ inputs.show-console-output }}" = "true" ]; then
+        if [ "$INPUT_SHOW_CONSOLE_OUTPUT" = "true" ]; then
           # CI mode: show enhanced output in console, write JSON to temp file for metrics
           # Remove --format from ARGS and add --ci flags
-          FINAL_ARGS="${ARGS//--format ${{ inputs.format }}/--ci --ci-output $METRICS_FILE}"
+          FINAL_ARGS="${ARGS//--format $INPUT_FORMAT/--ci --ci-output $METRICS_FILE}"
         else
           # Quiet mode: only JSON output for metrics, no console output
-          FINAL_ARGS="${ARGS//--format ${{ inputs.format }}/--format json --output $METRICS_FILE}"
+          FINAL_ARGS="${ARGS//--format $INPUT_FORMAT/--format json --output $METRICS_FILE}"
         fi
 
         echo "Running: uv run iam-validator $FINAL_ARGS"
@@ -550,7 +591,7 @@ runs:
           echo "total-issues=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
 
           # Only show metrics summary if console output is disabled (to avoid duplication)
-          if [ "${{ inputs.show-console-output }}" != "true" ]; then
+          if [ "$INPUT_SHOW_CONSOLE_OUTPUT" != "true" ]; then
             echo "📊 Validation Metrics:"
             echo "  Total policies: $TOTAL_POLICIES"
             echo "  Valid: $VALID_POLICIES"
