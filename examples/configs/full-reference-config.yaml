@@ -635,9 +635,33 @@ policy_type_validation:
   description: "Validates policies match declared type and enforces RCP requirements"
   # RCP validation includes:
   #  - Must have Effect: Deny (RCPs are deny-only)
-  #  - Must target specific resource types (no wildcards)
-  #  - Principal must be "*" (applies to all)
+  #  - Principal must be "*" (applies to all; restrict via Condition)
+  #  - Actions must come from RCP-supported services (26 service prefixes,
+  #    see constants.RCP_SUPPORTED_SERVICES); bare "*" Action is rejected
+  #  - NotAction / NotPrincipal are not supported
+  # Extra service prefixes to accept as RCP-supported (for AWS launches newer
+  # than this validator release):
+  # additional_rcp_services:
+  #   - "newservice"
+  # SCP validation: no Principal/NotPrincipal, 5,120-char size limit. Allow
+  # statements may use Condition, scoped resource ARNs, NotAction and
+  # NotResource (full IAM policy language, AWS launch 2025-09-19).
   # ignore_patterns available - see top of file for usage examples
+
+# ============================================================================
+# 13b. RCP BEST PRACTICES
+# ============================================================================
+# Best-practice guidance for Resource Control Policies (runs only when the
+# resolved policy type is RESOURCE_CONTROL_POLICY):
+#  - rcp_blanket_deny (low): Deny with no Condition blocks ALL principals,
+#    including your own org's admins — confirm intent
+#  - rcp_missing_service_carveout (medium): an org-boundary deny without
+#    `BoolIfExists aws:PrincipalIsAWSService: false` can break AWS
+#    service-to-service calls (canonical AWS identity-perimeter pattern)
+rcp_best_practices:
+  enabled: true
+  severity: medium
+  description: "Best-practice guidance for RCP deny statements (blanket denies, service carve-outs)"
 
 # ============================================================================
 # 14. ACTION-RESOURCE MATCHING

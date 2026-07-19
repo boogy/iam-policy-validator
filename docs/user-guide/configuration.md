@@ -588,7 +588,10 @@ drives type-specific checks (for example `policy_size` limits and the
 
 SCP and RCP cannot be auto-detected from content alone (they look
 structurally identical to identity/resource policies). Use the glob mapping
-or the explicit flag to drive those types.
+or the explicit flag to drive those types. As a safety net, a policy whose
+statements all match the customer-RCP shape (`Deny` + `Principal: "*"` +
+service-prefixed actions + `Resource: "*"`) gets an info-level
+`policy_type_hint` recommending `RESOURCE_CONTROL_POLICY`.
 
 ### `policy_types:` — per-file glob mapping
 

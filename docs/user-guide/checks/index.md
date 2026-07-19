@@ -49,7 +49,7 @@ IAM Policy Validator includes 22 built-in checks across three categories.
 | `resource_validation`      | error    | Resource ARN format                           |
 | `policy_structure`         | error    | Required fields, valid values, version check  |
 | `policy_size`              | error    | Character size limits (including SCP)         |
-| `sid_uniqueness`           | warning  | Unique SIDs                                   |
+| `sid_uniqueness`           | error    | Unique SIDs                                   |
 | `set_operator_validation`  | error    | ForAllValues/ForAnyValue usage                |
 | `ifexists_condition_usage` | warning  | IfExists condition validation                 |
 | `not_principal_validation` | warning  | NotPrincipal usage patterns                   |
@@ -75,6 +75,7 @@ IAM Policy Validator includes 22 built-in checks across three categories.
 | `action_resource_matching`     | medium   | Action-resource compatibility            |
 | `trust_policy_validation`      | high     | Trust policy structure + confused deputy |
 | `policy_type_validation`       | error    | Policy-type-specific requirements        |
+| `rcp_best_practices`           | medium   | RCP blanket denies + service carve-outs  |
 
 ## Severity Levels
 

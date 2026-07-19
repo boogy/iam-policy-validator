@@ -116,7 +116,9 @@ Trust policy validation is enabled when using `--policy-type TRUST_POLICY`. The 
 
 ### Confused Deputy Detection
 
-When a trust policy allows a service principal to assume a role without `aws:SourceArn` or `aws:SourceAccount` conditions, any resource using that service could assume the role - not just the intended one. This is the [confused deputy problem](https://docs.aws.amazon.com/IAM/latest/UserGuide/confused-deputy.html).
+When a trust policy allows a service principal to assume a role without `aws:SourceArn` or `aws:SourceAccount` conditions (or the org-wide `aws:SourceOrgID` / `aws:SourceOrgPaths`), any resource using that service could assume the role - not just the intended one. This is the [confused deputy problem](https://docs.aws.amazon.com/IAM/latest/UserGuide/confused-deputy.html).
+
+Any one of `aws:SourceArn`, `aws:SourceAccount`, `aws:SourceOrgID`, or `aws:SourceOrgPaths` counts as protection. `aws:SourceOrgID` is the scalable choice when many accounts in one AWS Organization are involved.
 
 #### Vulnerable Example
 
@@ -247,6 +249,32 @@ The validator supports different policy types and validates policies match their
 | `SERVICE_CONTROL_POLICY`  | Not allowed | AWS Organizations  |
 | `RESOURCE_CONTROL_POLICY` | Required    | AWS Organizations  |
 
+### SCP Rules
+
+- No `Principal` / `NotPrincipal` (errors `invalid_principal` / `invalid_not_principal`)
+- 5,120-character size limit (`scp_size_exceeded`)
+- Allow statements may use `Condition`, scoped resource ARNs, `NotAction` and
+  `NotResource` — AWS Organizations supports the full IAM policy language in
+  SCPs since 2025-09-19, so these are no longer flagged
+
+### RCP Rules
+
+- `Effect` must be `Deny`; `Principal` must be exactly `"*"`; `NotAction` /
+  `NotPrincipal` are unsupported; `Resource` or `NotResource` is required
+- Actions must come from RCP-supported services (26 service prefixes as of
+  2026-07-20, e.g. `s3`, `sts`, `kms`, `dynamodb`, `codebuild`, `textract`);
+  bare `"*"` in `Action` is rejected
+- New AWS launches can be accepted without a validator upgrade:
+
+```yaml
+policy_type_validation:
+  additional_rcp_services:
+    - "newservice"
+```
+
+Policies that match the customer-RCP shape but were not declared as RCPs get
+an info-level `policy_type_hint` (RCPs cannot be auto-detected).
+
 ### Configuration
 
 ```bash
@@ -255,4 +283,43 @@ iam-validator validate --path bucket-policy.json --policy-type RESOURCE_POLICY
 
 # Validate as trust policy
 iam-validator validate --path trust-policy.json --policy-type TRUST_POLICY
+```
+
+## rcp_best_practices
+
+**Severity:** medium | **Default:** enabled (runs only for `RESOURCE_CONTROL_POLICY`)
+
+Best-practice guidance for RCP deny statements, grounded in AWS's official
+example RCPs (aws-samples/resource-control-policy-examples and the
+data-perimeter identity-perimeter RCP).
+
+### What It Checks
+
+- **`rcp_blanket_deny` (low):** a Deny statement with no `Condition` blocks the
+  listed actions for ALL principals — including your organization's own admins.
+  Legal (AWS's Block-Public-Access-protection example does this), but worth
+  confirming intent.
+- **`rcp_missing_service_carveout` (medium):** a Deny that restricts principals
+  to the organization (`StringNotEquals*` on `aws:PrincipalOrgID`,
+  `aws:PrincipalOrgPaths`, or `aws:PrincipalAccount`) without an
+  `aws:PrincipalIsAWSService` carve-out can deny AWS service-to-service calls
+  (e.g. CloudTrail log delivery) and break integrations.
+
+### Pass Example (canonical identity perimeter)
+
+```json
+{
+  "Effect": "Deny",
+  "Principal": "*",
+  "Action": "s3:*",
+  "Resource": "*",
+  "Condition": {
+    "StringNotEqualsIfExists": {
+      "aws:PrincipalOrgID": "o-123456789"
+    },
+    "BoolIfExists": {
+      "aws:PrincipalIsAWSService": "false"
+    }
+  }
+}
 ```
