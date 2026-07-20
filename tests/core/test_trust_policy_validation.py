@@ -388,6 +388,30 @@ class TestConfusedDeputyDetection:
         assert not any(i.issue_type == "confused_deputy_risk" for i in issues)
 
     @pytest.mark.asyncio
+    async def test_service_principal_with_source_org_id_ok(self, check, fetcher, config):
+        """aws:SourceOrgID is a valid (org-wide) confused deputy protection."""
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Service": "cloudtrail.amazonaws.com"},
+            Action=["sts:AssumeRole"],
+            Condition={"StringEquals": {"aws:SourceOrgID": "o-example12345"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert not any(i.issue_type == "confused_deputy_risk" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_service_principal_with_source_org_paths_ok(self, check, fetcher, config):
+        """aws:SourceOrgPaths is a valid (OU-level) confused deputy protection."""
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Service": "cloudtrail.amazonaws.com"},
+            Action=["sts:AssumeRole"],
+            Condition={"ForAnyValue:StringLike": {"aws:SourceOrgPaths": "o-example12345/r-ab12/ou-ab12-11111111/*"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert not any(i.issue_type == "confused_deputy_risk" for i in issues)
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "service",
         [

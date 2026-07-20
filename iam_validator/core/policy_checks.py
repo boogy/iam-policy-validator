@@ -307,14 +307,8 @@ async def _validate_policy_with_registry(
         if loaded_result and isinstance(loaded_result, tuple):
             raw_policy_dict = loaded_result[1]
 
-    # Apply automatic policy-type validation (not configurable - always runs)
-    # Note: Import here to avoid circular import (policy_checks -> checks -> sdk -> policy_checks)
-    from iam_validator.checks import (  # pylint: disable=import-outside-toplevel
-        policy_type_validation,
-    )
-
-    policy_type_issues = await policy_type_validation.execute_policy(policy, policy_file, policy_type=policy_type)
-    result.issues.extend(policy_type_issues)  # pylint: disable=no-member
+    # Policy-type validation now runs as the registered `policy_type_validation`
+    # policy-level check (configurable via the standard check config system).
 
     # Pre-scan for full-wildcard statements so policy-level findings for those
     # statement indices can be suppressed below (same logic as statement-level).
@@ -339,10 +333,25 @@ async def _validate_policy_with_registry(
 
     result.issues.extend(policy_level_issues)  # pylint: disable=no-member
 
+    # Statement-level checks whose findings don't apply to guardrail policy
+    # types (checks themselves are policy-type-blind, so filter here):
+    # - RCPs must use `Principal: "*"` (AWS syntax rule), so the wildcard
+    #   public-access findings from principal_validation are structural noise.
+    # - SCP allow-list statements legitimately use `Resource: "*"` and
+    #   service wildcards, so the wildcard trio flags normal SCP shape.
+    skipped_check_ids: frozenset[str] = frozenset()
+    if policy_type == "RESOURCE_CONTROL_POLICY":
+        skipped_check_ids = frozenset({"principal_validation"})
+    elif policy_type == "SERVICE_CONTROL_POLICY":
+        skipped_check_ids = frozenset({"wildcard_resource", "service_wildcard", "full_wildcard"})
+
     # Execute all statement-level checks for each statement
     for idx, statement in enumerate(policy.statement or []):
         # Execute all registered checks in parallel (with ignore_patterns filtering)
         issues = await registry.execute_checks_parallel(statement, idx, fetcher, policy_file)
+
+        if skipped_check_ids:
+            issues = [issue for issue in issues if issue.check_id not in skipped_check_ids]
 
         # Add issues to result
         result.issues.extend(issues)  # pylint: disable=no-member

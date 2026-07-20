@@ -111,7 +111,7 @@ iam_validator/
 │   ├── aws_service/          # AWS Service Reference fetcher (cache: memory LRU + disk TTL)
 │   ├── config/               # YAML config + sensitive_actions / condition_requirements
 │   └── formatters/           # console / enhanced / json / markdown / sarif / csv / html
-├── checks/                   # 22 built-in checks — see checks/CLAUDE.md
+├── checks/                   # 23 built-in checks — see checks/CLAUDE.md
 ├── commands/                 # 8 CLI commands — see commands/CLAUDE.md
 ├── mcp/                      # MCP server (35+ tools, 15 templates) — see mcp/CLAUDE.md
 ├── sdk/                      # public Python API — see sdk/CLAUDE.md

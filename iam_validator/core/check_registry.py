@@ -738,6 +738,9 @@ def create_default_registry(
         # 1. POLICY STRUCTURE (Checks that examine the entire policy, not individual statements)
         registry.register(checks.SidUniquenessCheck())  # Policy-level: Duplicate SID detection across statements
         registry.register(checks.PolicySizeCheck())  # Policy-level: Size limit validation
+        registry.register(
+            checks.PolicyTypeValidationCheck()
+        )  # Policy-level: Declared-type rules (Principal usage, SCP/RCP requirements)
 
         # 2. IAM VALIDITY (AWS syntax validation - must pass before deeper checks)
         registry.register(checks.ActionValidationCheck())  # Validate actions against AWS API
@@ -773,7 +776,7 @@ def create_default_registry(
         registry.register(checks.PrincipalValidationCheck())  # Principal validation (resource policies)
         registry.register(checks.TrustPolicyValidationCheck())  # Trust policy validation (role assumption policies)
 
-        # Note: policy_type_validation is a standalone function (not a class-based check)
-        # and is called separately in the validation flow
+        # 8. GUARDRAIL POLICY GUIDANCE (Organizations policy types)
+        registry.register(checks.RCPBestPracticesCheck())  # Policy-level: RCP deny-statement best practices
 
     return registry

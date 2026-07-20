@@ -6,25 +6,74 @@ This check validates policy-type-specific requirements:
 - Service Control Policies (SERVICE_CONTROL_POLICY) have specific requirements
 - Resource Control Policies (RESOURCE_CONTROL_POLICY) have strict requirements
 
-This check runs automatically based on:
-1. The --policy-type flag value
-2. Auto-detection: If any statement has a Principal, provides helpful guidance
+Registered as the ``policy_type_validation`` check (PolicyTypeValidationCheck).
+The module-level ``execute_policy()`` function remains the implementation and
+is kept importable for backwards compatibility.
+
+Notes on AWS rules enforced here:
+- SCP Allow statements support Condition, scoped resource ARNs, NotAction and
+  NotResource since the 2025-09-19 "full IAM policy language for SCPs" launch,
+  so those older restrictions are intentionally NOT flagged anymore.
+- RCP supported services come from ``constants.RCP_SUPPORTED_SERVICES`` and can
+  be extended per-run via the ``additional_rcp_services`` check config option.
 """
 
+from typing import ClassVar
+
+from iam_validator.core.aws_service import AWSServiceFetcher
+from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.constants import RCP_SUPPORTED_SERVICES
-from iam_validator.core.models import IAMPolicy, ValidationIssue
+from iam_validator.core.models import IAMPolicy, Statement, ValidationIssue
+
+
+def _statement_principal_is_wildcard(statement: Statement) -> bool:
+    """Return True when the statement's Principal is exactly "*"."""
+    return statement.principal == "*" or str(statement.principal) == "*"
+
+
+def _looks_like_rcp(policy: IAMPolicy) -> bool:
+    """Heuristic: does this policy have the shape of a customer-managed RCP?
+
+    Customer RCPs must have Effect=Deny, Principal="*" and service-prefixed
+    actions in every statement (bare "*" is not allowed in RCP Action).
+    Requiring `Resource: "*"` too keeps the hint away from ordinary deny-style
+    resource policies (e.g. S3 TLS-only bucket policies, which must scope
+    their bucket ARNs).
+    """
+    if not policy.statement:
+        return False
+
+    for statement in policy.statement:
+        if not statement.effect or statement.effect.lower() != "deny":
+            return False
+        if statement.principal is None or not _statement_principal_is_wildcard(statement):
+            return False
+        actions = statement.action if isinstance(statement.action, list) else [statement.action]
+        if not actions or any(not isinstance(a, str) or ":" not in a for a in actions):
+            return False
+        if statement.get_resources() != ["*"]:
+            return False
+    return True
 
 
 async def execute_policy(
-    policy: IAMPolicy, policy_file: str, policy_type: str = "IDENTITY_POLICY", **kwargs
+    policy: IAMPolicy,
+    policy_file: str,
+    policy_type: str = "IDENTITY_POLICY",
+    additional_rcp_services: list[str] | set[str] | frozenset[str] | None = None,
+    **kwargs,
 ) -> list[ValidationIssue]:
     """Validate policy-type-specific requirements.
 
     Args:
         policy: IAM policy document
         policy_file: Path to policy file
-        policy_type: Type of policy (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY)
-        **kwargs: Additional context (fetcher, statement index, etc.)
+        policy_type: Type of policy (IDENTITY_POLICY, RESOURCE_POLICY, TRUST_POLICY,
+            SERVICE_CONTROL_POLICY, RESOURCE_CONTROL_POLICY)
+        additional_rcp_services: Extra service prefixes to treat as RCP-supported,
+            on top of ``constants.RCP_SUPPORTED_SERVICES`` (lets users track new
+            AWS launches without waiting for a validator release)
+        **kwargs: Additional context (fetcher, raw_policy_dict, etc.)
 
     Returns:
         List of validation issues
@@ -37,6 +86,31 @@ async def execute_policy(
 
     # Check if any statement has Principal
     has_any_principal = any(stmt.principal is not None or stmt.not_principal is not None for stmt in policy.statement)
+
+    # RCPs cannot be auto-detected (they share the resource-policy shape), so
+    # hint whenever an un-declared policy matches the customer-RCP shape —
+    # whether it fell through to IDENTITY_POLICY or auto-detected as
+    # RESOURCE_POLICY (any Principal ⇒ RESOURCE_POLICY).
+    if policy_type in ("IDENTITY_POLICY", "RESOURCE_POLICY") and _looks_like_rcp(policy):
+        issues.append(
+            ValidationIssue(
+                severity="info",
+                issue_type="policy_type_hint",
+                message=(
+                    "Policy matches the RESOURCE CONTROL POLICY shape (all statements are "
+                    '`Deny` with `Principal: "*"`, service-prefixed actions and `Resource: "*"`). '
+                    "Use `--policy-type RESOURCE_CONTROL_POLICY` (or a `policy_types:` config glob) "
+                    "for RCP-specific validation; RCPs cannot be auto-detected."
+                ),
+                statement_index=0,
+                statement_sid=None,
+                line_number=None,
+                suggestion="iam-validator validate --path <file> --policy-type RESOURCE_CONTROL_POLICY",
+            )
+        )
+        if policy_type == "IDENTITY_POLICY":
+            # Just hint — the identity-policy Principal warnings below would be noise.
+            return issues
 
     # If policy has Principal but type is IDENTITY_POLICY (default), provide helpful info
     if has_any_principal and policy_type == "IDENTITY_POLICY":
@@ -132,38 +206,8 @@ async def execute_policy(
 
     # Service Control Policies (SCPs) should not have Principal
     elif policy_type == "SERVICE_CONTROL_POLICY":
-        # SCP size limit validation (5,120 bytes, different from identity policies)
-        import json
-        import re
-
-        raw_policy_dict = kwargs.get("raw_policy_dict")
-        if raw_policy_dict:
-            policy_string = json.dumps(raw_policy_dict, separators=(",", ":"))
-            policy_size = len(re.sub(r"\s+", "", policy_string))
-            scp_max_size = 5120
-            if policy_size > scp_max_size:
-                percentage_over = ((policy_size - scp_max_size) / scp_max_size) * 100
-                issues.append(
-                    ValidationIssue(
-                        severity="error",
-                        issue_type="scp_size_exceeded",
-                        message=(
-                            f"Service Control Policy size ({policy_size:,} characters) exceeds "
-                            f"the SCP limit of {scp_max_size:,} characters. "
-                            "SCPs have a stricter size limit than identity policies."
-                        ),
-                        statement_index=-1,
-                        statement_sid=None,
-                        line_number=None,
-                        suggestion=(
-                            f"The SCP is {policy_size - scp_max_size:,} characters over the limit "
-                            f"({percentage_over:.1f}% too large). Consider:\n"
-                            "  1. Splitting the SCP into multiple smaller policies\n"
-                            "  2. Using more concise action patterns with wildcards\n"
-                            "  3. Removing unnecessary statements or conditions"
-                        ),
-                    )
-                )
+        # NOTE: the SCP 5,120-byte size limit is enforced by PolicySizeCheck
+        # (policy_size.py via AWS_POLICY_TYPE_TO_SIZE_KEY) — not duplicated here.
 
         for idx, statement in enumerate(policy.statement):
             # Check for Principal element (SCPs don't use Principal - it's implicit)
@@ -214,70 +258,19 @@ async def execute_policy(
                     )
                 )
 
-            # Allow statements in SCPs support only `Resource: "*"` and no
-            # Condition — anything else is rejected by AWS Organizations.
-            # (Deny statements may scope Resource and use Condition freely.)
-            if statement.effect and statement.effect.lower() == "allow":
-                resources = statement.get_resources()
-                if resources != ["*"]:
-                    issues.append(
-                        ValidationIssue(
-                            severity="error",
-                            issue_type="invalid_scp_allow_resource",
-                            message='Service Control Policy `Allow` statement must have `Resource: "*"`. '
-                            "AWS Organizations rejects Allow statements with a scoped or missing "
-                            "`Resource` (or `NotResource`) — only Deny statements may scope resources.",
-                            statement_index=idx,
-                            statement_sid=statement.sid,
-                            line_number=statement.line_number,
-                            suggestion='Set `Resource` to `"*"` on this Allow statement, or convert the '
-                            "statement to `Effect: Deny` if you need to scope specific resources.\n"
-                            "Example:\n"
-                            "```json\n"
-                            "{\n"
-                            '  "Effect": "Allow",\n'
-                            '  "Action": "s3:*",\n'
-                            '  "Resource": "*"\n'
-                            "}\n"
-                            "```",
-                            field_name="resource",
-                        )
-                    )
-
-                if statement.condition is not None:
-                    issues.append(
-                        ValidationIssue(
-                            severity="error",
-                            issue_type="invalid_scp_allow_condition",
-                            message="Service Control Policy `Allow` statement must not contain a "
-                            "`Condition` element. AWS Organizations rejects Allow statements with "
-                            "conditions — only Deny statements support `Condition`.",
-                            statement_index=idx,
-                            statement_sid=statement.sid,
-                            line_number=statement.line_number,
-                            suggestion="Remove the `Condition` from this Allow statement, or convert it "
-                            "to a `Deny` statement with an inverted condition.\n"
-                            "Example:\n"
-                            "```json\n"
-                            "{\n"
-                            '  "Effect": "Deny",\n'
-                            '  "Action": "ec2:*",\n'
-                            '  "Resource": "*",\n'
-                            '  "Condition": {\n'
-                            '    "StringNotEquals": {\n'
-                            '      "aws:RequestedRegion": ["us-east-1"]\n'
-                            "    }\n"
-                            "  }\n"
-                            "}\n"
-                            "```",
-                            field_name="condition",
-                        )
-                    )
+            # NOTE: SCP Allow statements previously required `Resource: "*"` and
+            # forbade `Condition`. Since 2025-09-19, AWS Organizations supports
+            # the full IAM policy language in SCPs (conditions, scoped resource
+            # ARNs, NotAction/NotResource, leading/middle wildcards in Action),
+            # so those restrictions are no longer validated.
 
     # Resource Control Policies (RCPs) have very strict requirements
     elif policy_type == "RESOURCE_CONTROL_POLICY":
-        # Use the centralized list of RCP supported services from constants
-        rcp_supported_services = RCP_SUPPORTED_SERVICES
+        # Centralized list of RCP supported services, optionally extended via
+        # the `additional_rcp_services` check config (new AWS launches).
+        rcp_supported_services = frozenset(RCP_SUPPORTED_SERVICES)
+        if additional_rcp_services:
+            rcp_supported_services |= {str(s).strip().lower() for s in additional_rcp_services if str(s).strip()}
 
         for idx, statement in enumerate(policy.statement):
             # 1. Effect MUST be Deny (only RCPFullAWSAccess can use Allow)
@@ -395,7 +388,10 @@ async def execute_policy(
                             statement_sid=statement.sid,
                             line_number=statement.line_number,
                             suggestion=f"Use only actions from supported RCP services: "
-                            f"{', '.join(f'`{a}`' for a in sorted(rcp_supported_services))}",
+                            f"{', '.join(f'`{a}`' for a in sorted(rcp_supported_services))}. "
+                            "If AWS added RCP support for a service after this validator release, "
+                            "add its prefix to the `additional_rcp_services` config option of the "
+                            "`policy_type_validation` check.",
                             field_name="action",
                         )
                     )
@@ -435,3 +431,32 @@ async def execute_policy(
                 )
 
     return issues
+
+
+class PolicyTypeValidationCheck(PolicyCheck):
+    """Registered wrapper around the policy-type validation logic.
+
+    Config options (under ``checks.policy_type_validation.config``):
+    - ``additional_rcp_services``: list of extra service prefixes to accept as
+      RCP-supported (for AWS launches newer than this validator release).
+    """
+
+    check_id: ClassVar[str] = "policy_type_validation"
+    description: ClassVar[str] = "Validates policies match declared type and enforces SCP/RCP requirements"
+    default_severity: ClassVar[str] = "error"
+
+    async def execute_policy(
+        self,
+        policy: IAMPolicy,
+        policy_file: str,
+        fetcher: AWSServiceFetcher,
+        config: CheckConfig,
+        **kwargs,
+    ) -> list[ValidationIssue]:
+        del fetcher  # AWS data not needed for structural type validation
+        return await execute_policy(
+            policy,
+            policy_file,
+            policy_type=kwargs.get("policy_type", "IDENTITY_POLICY"),
+            additional_rcp_services=config.config.get("additional_rcp_services", []),
+        )

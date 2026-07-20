@@ -4,6 +4,28 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] - 2026-07-20
+
+RCP/SCP modernization: catches up with AWS Organizations changes through mid-2026 (RCP service expansion, SCP full IAM language) and removes four verified false positives.
+
+### Added
+
+- New `rcp_best_practices` check (enabled by default, runs only for `RESOURCE_CONTROL_POLICY`), grounded in AWS's official example RCPs: `rcp_blanket_deny` (low) flags Deny statements with no `Condition` — legal, but they block ALL principals including your own org's admins; `rcp_missing_service_carveout` (medium) flags org-boundary denies (`StringNotEquals*` on `aws:PrincipalOrgID` / `aws:PrincipalOrgPaths` / `aws:PrincipalAccount`) that lack the canonical `BoolIfExists aws:PrincipalIsAWSService: false` carve-out, which can break AWS service-to-service calls.
+- RCP shape hint: an un-declared policy whose statements are all `Deny` + `Principal: "*"` + service-prefixed actions + `Resource: "*"` now gets an info-level `policy_type_hint` recommending `--policy-type RESOURCE_CONTROL_POLICY` (RCPs cannot be auto-detected).
+- `additional_rcp_services` config option on `policy_type_validation`: accept service prefixes AWS adds to RCP support without waiting for a validator release.
+
+### Changed
+
+- `RCP_SUPPORTED_SERVICES` expanded from 11 to 26 service prefixes per current AWS Organizations documentation (verified 2026-07-20): adds `appconfig`, `appstream`, `autoscaling`, `codebuild`, `codecommit`, `comprehend`, `comprehendmedical`, `dax`, `health`, `kinesisvideo`, `signin`, `support`, `textract`, `transcribe`, `translate`. Valid RCPs for these services no longer get false `unsupported_rcp_service` errors.
+- `policy_type_validation` is now a registered `PolicyCheck` (was a standalone always-on function): it appears in the check inventory and supports the standard config system (enable/disable, severity, `ignore_patterns`). Its dormant duplicate SCP size check (`scp_size_exceeded`) was removed — the SCP 5,120-byte limit is enforced by `policy_size` (`policy_size_exceeded`), byte-accurately, since 1.19.0.
+- Confused-deputy check (`confused_deputy_risk`) accepts `aws:SourceOrgID` / `aws:SourceOrgPaths` as valid protection alongside `aws:SourceArn` / `aws:SourceAccount`, and suggests them as the org-wide remediation.
+- Wildcard-principal condition requirements (`missing_principal_condition_any_of`) accept `aws:SourceOrgID`, `aws:SourceOrgPaths`, `aws:PrincipalOrgID`, and `aws:PrincipalOrgPaths` as valid restrictions for `Principal: "*"`.
+- Guardrail-policy noise reduction: `principal_validation` is skipped for `RESOURCE_CONTROL_POLICY` (RCPs are required by AWS syntax to use `Principal: "*"`; RCP guidance moved to `rcp_best_practices`), and the wildcard trio (`wildcard_resource`, `service_wildcard`, `full_wildcard`) is skipped for `SERVICE_CONTROL_POLICY` (allow-list SCPs legitimately use `Resource: "*"` and service wildcards).
+
+### Removed
+
+- **Reverts part of 1.22.0:** the `invalid_scp_allow_resource` and `invalid_scp_allow_condition` errors. AWS Organizations supports the full IAM policy language in SCPs since 2025-09-19 (conditions, scoped resource ARNs, `NotAction`/`NotResource`, leading/middle `Action` wildcards — no opt-in, all commercial and GovCloud regions), so SCP Allow statements with conditions or scoped resources are valid and no longer flagged.
+
 ## [1.22.0] - 2026-07-19
 
 A security-hardening release closing gaps in the project's own GitHub Action / CI / parsing surface and expanding IAM validation coverage. New checks ship enabled by default.

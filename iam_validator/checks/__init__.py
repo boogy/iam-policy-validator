@@ -16,7 +16,9 @@ from iam_validator.checks.not_action_not_resource import NotActionNotResourceChe
 from iam_validator.checks.not_principal_validation import NotPrincipalValidationCheck
 from iam_validator.checks.policy_size import PolicySizeCheck
 from iam_validator.checks.policy_structure import PolicyStructureCheck
+from iam_validator.checks.policy_type_validation import PolicyTypeValidationCheck
 from iam_validator.checks.principal_validation import PrincipalValidationCheck
+from iam_validator.checks.rcp_best_practices import RCPBestPracticesCheck
 from iam_validator.checks.resource_validation import ResourceValidationCheck
 from iam_validator.checks.sensitive_action import SensitiveActionCheck
 from iam_validator.checks.service_wildcard import ServiceWildcardCheck
@@ -39,7 +41,9 @@ __all__ = [
     "NotPrincipalValidationCheck",
     "PolicySizeCheck",
     "PolicyStructureCheck",
+    "PolicyTypeValidationCheck",
     "PrincipalValidationCheck",
+    "RCPBestPracticesCheck",
     "ResourceValidationCheck",
     "SensitiveActionCheck",
     "ServiceWildcardCheck",

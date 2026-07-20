@@ -75,6 +75,48 @@ PUBLIC_ACCESS_REQUIREMENT: Final[dict[str, Any]] = {
                     '"Condition": {\n  "IpAddress": {\n    "aws:SourceIp": ["10.0.0.0/8", "172.16.0.0/12"]\n  }\n}'
                 ),
             },
+            {
+                "condition_key": "aws:SourceOrgID",
+                "description": (
+                    "Or limit service-to-service access to resources owned by accounts "
+                    "in your AWS Organization (org-wide confused deputy protection)"
+                ),
+                "example": ('"Condition": {\n  "StringEquals": {\n    "aws:SourceOrgID": "o-123456789"\n  }\n}'),
+            },
+            {
+                "condition_key": "aws:SourceOrgPaths",
+                "description": (
+                    "Or limit service-to-service access to resources owned by accounts "
+                    "under specific AWS Organizations paths (OU-level confused deputy protection)"
+                ),
+                "example": (
+                    '"Condition": {\n  "ForAnyValue:StringLike": {\n'
+                    '    "aws:SourceOrgPaths": "o-123456789/r-ab12/ou-ab12-11111111/*"\n  }\n}'
+                ),
+            },
+            {
+                "condition_key": "aws:PrincipalOrgID",
+                "description": (
+                    "Or restrict the wildcard principal to identities in your AWS "
+                    "Organization (identity perimeter — the canonical RCP / data "
+                    "perimeter pattern)"
+                ),
+                "example": (
+                    '"Condition": {\n  "StringNotEqualsIfExists": {\n'
+                    '    "aws:PrincipalOrgID": "o-123456789"\n  },\n'
+                    '  "BoolIfExists": {\n    "aws:PrincipalIsAWSService": "false"\n  }\n}'
+                ),
+            },
+            {
+                "condition_key": "aws:PrincipalOrgPaths",
+                "description": (
+                    "Or restrict the wildcard principal to identities under specific AWS Organizations paths"
+                ),
+                "example": (
+                    '"Condition": {\n  "ForAnyValue:StringLike": {\n'
+                    '    "aws:PrincipalOrgPaths": "o-123456789/r-ab12/ou-ab12-11111111/*"\n  }\n}'
+                ),
+            },
         ]
     },
 }

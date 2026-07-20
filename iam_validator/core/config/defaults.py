@@ -351,6 +351,25 @@ DEFAULT_CONFIG = {
         "enabled": True,
         "severity": "error",  # IAM validity error
         "description": "Validates policies match declared type and enforces RCP requirements",
+        # Extra service prefixes to accept as RCP-supported, on top of the
+        # built-in constants.RCP_SUPPORTED_SERVICES list — lets users track
+        # new AWS RCP launches without waiting for a validator release.
+        "additional_rcp_services": [],
+    },
+    # ========================================================================
+    # 11b. RCP BEST PRACTICES
+    # ========================================================================
+    # Best-practice guidance for Resource Control Policies (only runs when the
+    # resolved policy type is RESOURCE_CONTROL_POLICY):
+    #  - rcp_blanket_deny (low): Deny with no Condition blocks ALL principals,
+    #    including your own org's admins — confirm intent
+    #  - rcp_missing_service_carveout (medium): org-boundary deny without the
+    #    canonical `BoolIfExists aws:PrincipalIsAWSService: false` carve-out
+    #    can break AWS service-to-service calls
+    "rcp_best_practices": {
+        "enabled": True,
+        "severity": "medium",
+        "description": "Best-practice guidance for RCP deny statements (blanket denies, service carve-outs)",
     },
     # ========================================================================
     # 12. ACTION-RESOURCE MATCHING
