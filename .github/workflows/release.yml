@@ -234,12 +234,17 @@ jobs:
           $(if [ "$IS_PRERELEASE" = "false" ]; then echo "- ✅ Published to [PyPI](https://pypi.org/project/${PYPI_PROJECT}/)"; else echo "- ⏭️ Skipped (pre-release version)"; fi)
 
           ### Rolling Tags
-          - ⚠️ Run manually after this release:
+          - ⚠️ Run manually after this release — intentionally not automated so the
+            rolling tags stay signed with the maintainer's key rather than a CI key:
           \`\`\`bash
           git fetch --tags
-          git tag -f v$MAJOR v$VERSION && git tag -f v$MINOR v$VERSION
+          git tag -f -s v$MAJOR -m "Rolling tag: v$MAJOR → v$VERSION" $TAG^{}
+          git tag -f -s v$MINOR -m "Rolling tag: v$MINOR → v$VERSION" $TAG^{}
           git push --force origin v$MAJOR v$MINOR
           \`\`\`
+          - ℹ️ \`-s -m\` are required (\`tag.gpgsign=true\` makes a message mandatory), and
+            the target is \`$TAG^{}\` — the commit, not the tag — so these stay annotated
+            rolling tags instead of becoming nested lightweight ones.
           - 🏷️ Immutable tag: \`v$VERSION\`
 
           ## 🔗 Quick Links
