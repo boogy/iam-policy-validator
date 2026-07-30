@@ -80,6 +80,7 @@ from iam_validator.checks.action_condition_enforcement import ActionConditionEnf
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.models import Statement
 
+
 class TestActionConditionEnforcement:
     @pytest.fixture
     def check(self):

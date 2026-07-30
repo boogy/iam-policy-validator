@@ -55,10 +55,10 @@ in summary). `protected_fingerprints` keeps off-diff comments alive across the
 ## AWS Service Fetcher
 
 ```python
-async with AWSServiceFetcher() as fetcher:                # offline: AWSServiceFetcher(aws_services_dir=...)
+async with AWSServiceFetcher() as fetcher:  # offline: AWSServiceFetcher(aws_services_dir=...)
     is_valid, err, is_wildcard = await fetcher.validate_action("s3:GetObject")
     actions = await fetcher.expand_wildcard_action("s3:Get*")
-    service = await fetcher.fetch_service_by_name("s3")    # .actions, .resources, .condition_keys
+    service = await fetcher.fetch_service_by_name("s3")  # .actions, .resources, .condition_keys
 ```
 
 Two-layer cache: memory LRU (raw JSON + Pydantic models) → disk TTL (raw JSON only).
@@ -72,6 +72,7 @@ Sub-files: `client.py` (httpx + retry + request coalescing), `cache.py`, `storag
 
 ```python
 from iam_validator.core.config.config_loader import ValidatorConfig, load_validator_config
+
 config = load_validator_config("iam-validator.yaml")  # Priority: CLI > config > defaults
 ```
 
