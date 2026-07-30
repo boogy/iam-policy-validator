@@ -4,6 +4,12 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.1] - 2026-07-30
+
+### Changed
+
+- Refresh `uv.lock` dependency versions: `boto3`/`botocore`/`types-boto3` 1.43.59, `s3transfer` 0.19.2, `fastmcp`/`fastmcp-slim` 3.4.5, `mcp` 1.29.0, `h2` 4.4.0, `sse-starlette` 3.4.6, `uvicorn` 0.52.0, `joserfc` 1.7.4, `cyclopts` 4.22.3, `certifi` 2026.7.22, and other transitive pins.
+
 ## [1.23.0] - 2026-07-20
 
 RCP/SCP modernization: catches up with AWS Organizations changes through mid-2026 (RCP service expansion, SCP full IAM language) and removes four verified false positives.
@@ -721,6 +727,9 @@ _First release._
 
 ---
 
+[1.23.1]: https://github.com/boogy/iam-policy-validator/compare/v1.23.0...v1.23.1
+[1.23.0]: https://github.com/boogy/iam-policy-validator/compare/v1.22.0...v1.23.0
+[1.22.0]: https://github.com/boogy/iam-policy-validator/compare/v1.21.1...v1.22.0
 [1.21.1]: https://github.com/boogy/iam-policy-validator/compare/v1.21.0...v1.21.1
 [1.21.0]: https://github.com/boogy/iam-policy-validator/compare/v1.20.0...v1.21.0
 [1.20.0]: https://github.com/boogy/iam-policy-validator/compare/v1.19.1...v1.20.0
