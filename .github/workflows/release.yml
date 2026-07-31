@@ -127,7 +127,7 @@ jobs:
       # the previous tag, grouped into the categories from .github/release.yml,
       # plus New Contributors and a Full Changelog compare link).
       - name: Create draft release with assets
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v2
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           name: ${{ steps.get_version.outputs.tag }}
           files: |
