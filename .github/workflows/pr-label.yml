@@ -1,0 +1,61 @@
+# Routes a PR into a release-notes category by labelling it from its
+# conventional-commit title prefix. `.github/release.yml` groups the generated
+# "What's Changed" section by LABEL, not by commit message, so an unlabelled PR
+# lands in "Other Changes" — this closes that gap without anyone remembering to
+# click a label.
+#
+# Runs on pull_request_target because PRs from forks get a read-only token on
+# `pull_request`, which cannot label. That is only safe because this workflow
+# never checks out or executes PR code: it reads the title (through an env var,
+# never string-interpolated into the shell) and calls the labels API. Do not add
+# an actions/checkout of `github.event.pull_request.head` here.
+name: PR label
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-label-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    name: Label from title prefix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply category label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          # Untrusted input: only ever read as a shell *variable*, never expanded
+          # into the script body by the ${{ }} template engine.
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+
+          # Strip an optional scope and the `!` breaking-change marker:
+          #   "fix(core)!: drop the flag" -> "fix"
+          type="$(printf '%s' "$TITLE" | sed -n 's/^\([a-zA-Z]\{1,\}\)\((.*)\)\{0,1\}!\{0,1\}:.*/\1/p' | tr 'A-Z' 'a-z')"
+
+          case "$type" in
+            feat | feature | perf) label=enhancement ;;
+            fix | revert)          label=bug ;;
+            docs)                  label=documentation ;;
+            ci)                    label=github-actions ;;
+            build | deps)          label=dependencies ;;
+            *)                     label= ;;
+          esac
+
+          if [ -z "$label" ]; then
+            echo "title prefix '${type:-<none>}' maps to no category — leaving it for Other Changes"
+            exit 0
+          fi
+
+          echo "labelling PR #$PR as '$label'"
+          gh pr edit "$PR" --add-label "$label"

@@ -1,0 +1,36 @@
+# Configures GitHub's auto-generated release notes (the release job runs
+# softprops/action-gh-release with generate_release_notes: true).
+#
+# Categorization is by PR LABEL, not commit-message prefix. Two things apply the
+# labels: dependabot self-labels (`dependencies` + `github-actions`/`python`), and
+# .github/workflows/pr-label.yml maps a conventional-commit PR title (`feat:`,
+# `fix:`, `docs:`, `ci:`, `build:`/`deps:`) onto the labels below. Anything
+# unmatched (e.g. `chore:`, `refactor:`, `test:`) falls into "Other Changes" via
+# the catch-all — add a label by hand to move it.
+#
+# This file only groups what GitHub already found. It cannot conjure entries: the
+# generator lists the PRs merged inside the tag's commit range, so the tag must be
+# on merged `main` or the release ships an empty changelog.
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+  categories:
+    - title: 🚀 Features
+      labels:
+        - enhancement
+    - title: 🐛 Fixes
+      labels:
+        - bug
+    - title: 📝 Documentation
+      labels:
+        - documentation
+    - title: 🔧 CI / Build
+      labels:
+        - github-actions
+    - title: 📦 Dependencies
+      labels:
+        - dependencies
+    - title: Other Changes
+      labels:
+        - "*"

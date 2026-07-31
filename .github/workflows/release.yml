@@ -24,7 +24,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # Full history for changelog generation
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6
@@ -117,34 +117,19 @@ jobs:
           fi
           echo "Build OK: wheel=$WHEEL sdist=$SDIST"
 
-      - name: Generate changelog
-        id: changelog
-        run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-
-          if [ -z "$PREV_TAG" ]; then
-            # First release - get all commits
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
-          else
-            # Get commits since previous tag
-            CHANGELOG=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges)
-          fi
-
-          echo "$CHANGELOG" > CHANGELOG.txt
-
-          COMMIT_COUNT=$(echo "$CHANGELOG" | wc -l)
-          echo "Generated changelog with $COMMIT_COUNT commits"
-
       # Step 1: Create the GitHub release as a DRAFT with all assets attached.
       # Under immutable releases, a release cannot be modified after it is
       # published — creating as draft lets us verify every asset uploaded
       # correctly before the release becomes immutable. If a draft already
       # exists (previous run failed), softprops updates it in place.
+      #
+      # generate_release_notes builds GitHub's auto changelog (merged PRs since
+      # the previous tag, grouped into the categories from .github/release.yml,
+      # plus New Contributors and a Full Changelog compare link).
       - name: Create draft release with assets
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v2
         with:
           name: ${{ steps.get_version.outputs.tag }}
-          body_path: CHANGELOG.txt
           files: |
             dist/*.whl
             dist/*.tar.gz
