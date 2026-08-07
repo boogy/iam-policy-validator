@@ -37,7 +37,7 @@ jobs:
 
 | Input              | Description                                                                                                            | Default           |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------- | ----------------- |
-| `path`             | Path(s) to IAM policy files or directories. Use newline-separated values for multiple paths                            | Required          |
+| `path`             | Path(s) to IAM policy files or directories. Newline- or space-separated for multiple paths                             | Required          |
 | `config-file`      | Path to custom configuration file (iam-validator.yaml)                                                                 | Auto-detect       |
 | `policy-type`      | Policy type: `IDENTITY_POLICY`, `RESOURCE_POLICY`, `TRUST_POLICY`, `SERVICE_CONTROL_POLICY`, `RESOURCE_CONTROL_POLICY` | `IDENTITY_POLICY` |
 | `recursive`        | Recursively search directories for policy files                                                                        | `true`            |

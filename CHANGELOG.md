@@ -4,6 +4,16 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.2] - Unreleased
+
+### Fixed
+
+- GitHub Action: space-separated `path` inputs are recognized again. Since 1.22.0 the path-parsing loops split `$INPUT_PATH` with `IFS=$'\n'` only, so a space-separated file list (what `tj-actions/changed-files` emits by default) collapsed into one non-existent path and the action reported `No IAM policies found. Skipping validation.` Both loops now split on newlines and whitespace, with globbing disabled (`set -f`) so path values are still never expanded by the shell. Before 1.22.0 the same loops used an unquoted `${{ inputs.path }}` template splice, whose literal word boundaries hid the issue; removing that splice (a deliberate injection fix) exposed it.
+
+### Changed
+
+- Refresh `uv.lock` dependency versions: `cryptography` 50.0.0, `starlette` 1.4.1, `boto3`/`botocore`/`types-boto3` 1.43.66, `fastmcp`/`fastmcp-slim` 3.4.6, `pydantic-settings` 2.15.0, `sse-starlette` 3.4.8, `librt` 0.15.0, `ast-serialize` 0.7.0, `cffi` 2.1.1, `ruff` 0.16.1, `coverage` 7.15.4, `cyclopts` 4.22.5, and other transitive pins.
+
 ## [1.23.1] - 2026-07-30
 
 ### Changed
