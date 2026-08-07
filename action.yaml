@@ -8,7 +8,7 @@ branding:
 
 inputs:
   path:
-    description: "Path(s) to IAM policy JSON/YAML file or directory (relative to repository root). For multiple paths, use newline-separated values"
+    description: "Path(s) to IAM policy JSON/YAML file or directory (relative to repository root). For multiple paths, use newline- or space-separated values"
     required: true
 
   config-file:
@@ -308,7 +308,11 @@ runs:
         TOTAL_FILES=0
         IAM_POLICY_COUNT=0
 
-        IFS=$'\n'
+        # Split on newlines AND spaces/tabs: many callers (e.g.
+        # tj-actions/changed-files) emit space-separated file lists.
+        # set -f prevents the split words from being glob-expanded.
+        set -f
+        unset IFS
         for path in $INPUT_PATH; do
           path=$(echo "$path" | xargs)
           [ -z "$path" ] && continue
@@ -338,7 +342,7 @@ runs:
             fi
           fi
         done
-        unset IFS
+        set +f
 
         # Output summary
         echo "📊 File Analysis Summary:"
@@ -431,9 +435,10 @@ runs:
           CMD="validate"
         fi
 
-        # Parse paths (support newline-separated values)
+        # Parse paths (support newline- or whitespace-separated values)
         PATH_ARGS=""
-        IFS=$'\n'
+        set -f
+        unset IFS
         for p in $INPUT_PATH; do
           # Trim whitespace
           p=$(echo "$p" | xargs)
@@ -441,7 +446,7 @@ runs:
             PATH_ARGS="$PATH_ARGS --path $GITHUB_WORKSPACE/$p"
           fi
         done
-        unset IFS
+        set +f
 
         # Build arguments (command comes after global options)
         ARGS="$BASE_CMD $CMD $PATH_ARGS"
