@@ -4,6 +4,17 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.0] - 2026-08-21
+
+### Added
+
+- Add `not_resource_deny_review` (low) and `not_resource_deny_ineffective` findings to `not_action_not_resource` for `NotResource` used with `Deny` — mirrors the existing `NotAction` + `Deny` checks on the resource axis; a `NotResource: "*"` exclusion denies nothing ([#155])
+- Add `ineffective_deny_carve_out` finding to `principal_validation` for a `Deny` with a negated principal condition (e.g. `ArnNotEquals` on `aws:PrincipalArn`) that carves out every principal, closing the gap left when migrating off `NotPrincipal` ([#153])
+
+### Fixed
+
+- Skip `Deny` statements in `principal_validation` (blocked principals, the `{"Service": "*"}` wildcard, `allowed_principals`, `principal_condition_requirements`) — a `Deny` over `Principal` grants nothing, so these rules produced false positives; `NotPrincipal` denies remain fully checked ([#153])
+
 ## [1.23.2] - 2026-08-07
 
 ### Fixed
@@ -737,6 +748,9 @@ _First release._
 
 ---
 
+[1.24.0]: https://github.com/boogy/iam-policy-validator/compare/v1.23.2...v1.24.0
+[#155]: https://github.com/boogy/iam-policy-validator/pull/155
+[#153]: https://github.com/boogy/iam-policy-validator/pull/153
 [1.23.2]: https://github.com/boogy/iam-policy-validator/compare/v1.23.1...v1.23.2
 [1.23.1]: https://github.com/boogy/iam-policy-validator/compare/v1.23.0...v1.23.1
 [1.23.0]: https://github.com/boogy/iam-policy-validator/compare/v1.22.0...v1.23.0
