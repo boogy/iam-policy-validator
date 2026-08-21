@@ -66,6 +66,9 @@ class NotActionNotResourceCheck(PolicyCheck):
     1. NotAction with Effect: Allow - grants everything EXCEPT listed actions
     2. NotResource with wildcards - grants access to all resources except listed
     3. NotAction in Allow without strict conditions - missing safeguards
+    4. NotAction with Deny - inverted deny on the action axis, worth reviewing
+    5. NotResource with Deny - inverted deny on the resource axis; a "*" exclusion
+       denies nothing at all
 
     These patterns are particularly dangerous because they grant permissions
     by exclusion rather than explicit inclusion, making it easy to accidentally
@@ -256,4 +259,61 @@ class NotActionNotResourceCheck(PolicyCheck):
                     )
                 )
 
+        # Check 5: NotResource with Deny - the mirror of Check 4 on the resource axis.
+        # NotResource with Deny means "deny these actions on everything except these
+        # resources", so the exclusion list is what stays reachable. A NotResource of "*"
+        # excludes every resource, which makes the statement deny nothing at all.
+        if not_resources and effect == "Deny":
+            if "*" in not_resources:
+                issues.append(
+                    ValidationIssue(
+                        severity=self.get_severity(config),
+                        statement_sid=statement.sid,
+                        statement_index=statement_idx,
+                        issue_type="not_resource_deny_ineffective",
+                        message=(
+                            "Statement uses `NotResource` with `Deny` effect and a `*` exclusion. "
+                            "Every resource is excluded from the deny, so this statement denies nothing."
+                        ),
+                        suggestion=(
+                            "Replace `*` with the specific resources that must stay reachable, or use "
+                            "`Resource` with an explicit `Deny` if everything should be denied."
+                        ),
+                        line_number=statement.line_number,
+                        field_name="resource",
+                        resource=format_list_with_backticks(not_resources, 3),
+                    )
+                )
+            elif self._has_broad_actions(statement):
+                issues.append(
+                    ValidationIssue(
+                        severity="low",
+                        statement_sid=statement.sid,
+                        statement_index=statement_idx,
+                        issue_type="not_resource_deny_review",
+                        message=(
+                            "Statement uses `NotResource` with `Deny` effect on broad actions. "
+                            f"This denies everything except: {format_list_with_backticks(not_resources, 5)}. "
+                            "Review to ensure this is the intended behavior."
+                        ),
+                        suggestion=(
+                            "Verify that leaving only these resources reachable is intended. "
+                            "Consider if an explicit `Resource` deny would be clearer."
+                        ),
+                        line_number=statement.line_number,
+                        field_name="resource",
+                        resource=format_list_with_backticks(not_resources, 3),
+                    )
+                )
+
         return issues
+
+    @staticmethod
+    def _has_broad_actions(statement: Statement) -> bool:
+        """True when the statement's actions are wildcarded.
+
+        Mirrors the wildcard-resource gate on Check 4: the review-level finding is only
+        worth raising when the inverted deny spans a broad set of actions.
+        """
+        actions = statement.get_actions()
+        return any("*" in action for action in actions)
