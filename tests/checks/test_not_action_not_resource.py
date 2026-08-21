@@ -130,3 +130,114 @@ class TestNotActionNotResourceCheck:
         assert len(issues) == 1
         assert issues[0].issue_type == "combined_not_action_not_resource"
         assert issues[0].severity == "critical"
+
+
+class TestNotResourceWithDeny:
+    """Check 5: NotResource with Deny, the resource-axis mirror of Check 4.
+
+    `Deny` + `NotResource` denies the listed actions on everything *except* the listed
+    resources, so the exclusion list is what stays reachable. A `NotResource` of `*`
+    excludes every resource, leaving a statement that denies nothing.
+    """
+
+    @pytest.mark.asyncio
+    async def test_wildcard_not_resource_denies_nothing(self, check, config, mock_fetcher) -> None:
+        """The degenerate case: every resource excluded, so the Deny is a no-op."""
+        statement = Statement(
+            effect="Deny",
+            action=["s3:*"],
+            not_resource=["*"],
+        )
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "not_resource_deny_ineffective"
+        assert issues[0].severity == "high"
+        assert issues[0].field_name == "resource"
+        assert "denies nothing" in issues[0].message.lower()
+
+    @pytest.mark.asyncio
+    async def test_wildcard_not_resource_flagged_for_narrow_actions_too(self, check, config, mock_fetcher) -> None:
+        """A no-op deny is unambiguous, so it is reported regardless of action breadth."""
+        statement = Statement(
+            effect="Deny",
+            action=["s3:GetObject"],
+            not_resource=["*"],
+        )
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "not_resource_deny_ineffective"
+
+    @pytest.mark.asyncio
+    async def test_wildcard_among_specific_exclusions_is_flagged(self, check, config, mock_fetcher) -> None:
+        """A `*` alongside specific ARNs still excludes everything."""
+        statement = Statement(
+            effect="Deny",
+            action=["s3:*"],
+            not_resource=["arn:aws:s3:::safe/*", "*"],
+        )
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "not_resource_deny_ineffective"
+
+    @pytest.mark.asyncio
+    async def test_scoped_not_resource_with_broad_actions_is_review(self, check, config, mock_fetcher) -> None:
+        """A real inverted deny over broad actions is worth a review note."""
+        statement = Statement(
+            effect="Deny",
+            action=["s3:*"],
+            not_resource=["arn:aws:s3:::safe/*"],
+        )
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "not_resource_deny_review"
+        assert issues[0].severity == "low"
+        assert "denies everything except" in issues[0].message.lower()
+
+    @pytest.mark.asyncio
+    async def test_scoped_not_resource_with_narrow_actions_is_clean(self, check, config, mock_fetcher) -> None:
+        """Noise gate mirroring Check 4: narrow actions plus a scoped exclusion is fine."""
+        statement = Statement(
+            effect="Deny",
+            action=["s3:GetObject"],
+            not_resource=["arn:aws:s3:::safe/*"],
+        )
+        assert await check.execute(statement, 0, mock_fetcher, config) == []
+
+    @pytest.mark.asyncio
+    async def test_not_resource_with_allow_is_unchanged(self, check, config, mock_fetcher) -> None:
+        """Check 5 must not disturb the existing Allow-side finding."""
+        statement = Statement(
+            effect="Allow",
+            action=["s3:*"],
+            not_resource=["arn:aws:s3:::protected/*"],
+            resource="*",
+        )
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "not_resource_broad"
+
+    @pytest.mark.asyncio
+    async def test_not_action_deny_is_unchanged(self, check, config, mock_fetcher) -> None:
+        """Check 4 must keep firing on its own, unaffected by Check 5."""
+        statement = Statement(
+            effect="Deny",
+            not_action=["s3:GetObject"],
+            resource="*",
+        )
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "not_action_deny_review"
+
+    @pytest.mark.asyncio
+    async def test_both_not_action_and_not_resource_with_deny(self, check, config, mock_fetcher) -> None:
+        """Both inversions on a Deny: each axis reports independently.
+
+        The has_combined suppression only applies to Allow, so this is two findings.
+        """
+        statement = Statement(
+            effect="Deny",
+            not_action=["s3:GetObject"],
+            not_resource=["*"],
+        )
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert {i.issue_type for i in issues} == {"not_resource_deny_ineffective"}

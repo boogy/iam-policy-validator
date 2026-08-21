@@ -535,6 +535,8 @@ NotAction and NotResource grant permissions by **exclusion** rather than explici
 
 This makes it easy to accidentally grant more access than intended, especially as AWS adds new services and actions.
 
+The same exclusion logic inverts a `Deny`: with `Deny`, the listed items are the ones **not** denied, so the exclusion list is what stays reachable. An exclusion of `*` leaves everything reachable and the statement denies nothing.
+
 ### Patterns Detected
 
 1. **NotAction with Allow (no conditions)** - High: Near-administrator access
@@ -542,8 +544,25 @@ This makes it easy to accidentally grant more access than intended, especially a
 3. **NotResource with broad Resource** - High: Access to all resources except listed
 4. **Combined NotAction AND NotResource** - Critical: Near-administrator on nearly all resources
 5. **NotAction with Deny** - Low: Valid pattern but should be reviewed
+6. **NotResource with Deny** - Low: Inverted deny over broad actions, worth reviewing
+7. **NotResource with Deny and a `*` exclusion** - High: Every resource is excluded, so the statement denies nothing
 
 When both NotAction **and** NotResource are present in an Allow statement, only the combined critical finding is reported. The individual NotAction and NotResource warnings are suppressed to reduce noise.
+
+The `Deny` findings (5-7) apply a noise gate like their `Allow` counterparts: the review-level findings only fire when the *other* axis is broad (`Resource: "*"` for #5, a wildcarded `Action` for #6). Finding #7 is unconditional, because a statement that denies nothing is unambiguous.
+
+#### Deny Fail Example
+
+```json
+{
+  "Effect": "Deny",
+  "Principal": "*",
+  "Action": "s3:*",
+  "NotResource": "*"
+}
+```
+
+This reads like a lockdown but denies nothing: `NotResource: "*"` excludes every resource from the deny.
 
 ### Implicit Grant Analysis
 
