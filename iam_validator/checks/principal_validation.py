@@ -8,7 +8,9 @@ This check enforces:
 - Rich condition requirements for principals (supports any_of/all_of/none_of)
 - Service principal validation
 
-Only runs for RESOURCE_POLICY and TRUST_POLICY types.
+Only runs for RESOURCE_POLICY and TRUST_POLICY types. ``Effect: Deny`` statements are
+skipped unless they use ``NotPrincipal``: a Deny over ``Principal`` cannot over-grant,
+but ``NotPrincipal`` inverts the set, so a broad exception list is a real exposure.
 
 Configuration format:
 
@@ -75,6 +77,14 @@ class PrincipalValidationCheck(PolicyCheck):
         # Skip if no principal
         if statement.principal is None and statement.not_principal is None:
             return issues
+
+        # A Deny over Principal grants nothing, so the rules below do not apply -- except
+        # that an inverted Deny carves principals *out* of the deny, and a carve-out of
+        # "*" denies nobody. NotPrincipal spells that inversion with a principal (so it
+        # falls through to the normal rules); ArnNotEquals & friends spell it with a
+        # condition, which only this check catches.
+        if self._is_deny(statement) and statement.not_principal is None:
+            return self._check_deny_carve_out(statement, statement_idx, config)
 
         # Get configuration (defaults match defaults.py)
         blocked_principals = list(config.config.get("blocked_principals", []))
@@ -172,6 +182,97 @@ class PrincipalValidationCheck(PolicyCheck):
                 issues.extend(condition_issues)
 
         return issues
+
+    #: Condition operators that carve principals *out* of a Deny (negated matching).
+    _NEGATED_OPERATORS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "arnnotequals",
+            "arnnotlike",
+            "stringnotequals",
+            "stringnotequalsignorecase",
+            "stringnotlike",
+        }
+    )
+
+    #: Condition keys that identify *who* the caller is, as opposed to what they request.
+    _PRINCIPAL_CONDITION_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "aws:principalarn",
+            "aws:principalaccount",
+            "aws:principalorgid",
+            "aws:principalorgpaths",
+            "aws:principalservicename",
+            "aws:principaltype",
+            "aws:principalisawsservice",
+            "aws:userid",
+            "aws:username",
+        }
+    )
+
+    @staticmethod
+    def _is_deny(statement: Statement) -> bool:
+        """Return True only for an unambiguous Deny, so a malformed Effect is still checked.
+
+        Matched case-insensitively: policies reach the check straight from user files.
+        """
+        return isinstance(statement.effect, str) and statement.effect.strip().lower() == "deny"
+
+    @classmethod
+    def _is_principal_condition_key(cls, key: str) -> bool:
+        normalized = key.strip().lower()
+        return normalized in cls._PRINCIPAL_CONDITION_KEYS or normalized.startswith("aws:principaltag/")
+
+    @classmethod
+    def _is_negated_operator(cls, operator: str) -> bool:
+        # Strip set prefixes (ForAnyValue:/ForAllValues:) and the IfExists suffix
+        base = operator.strip().lower().rsplit(":", 1)[-1].removesuffix("ifexists")
+        return base in cls._NEGATED_OPERATORS
+
+    def _check_deny_carve_out(
+        self,
+        statement: Statement,
+        statement_idx: int,
+        config: CheckConfig,
+    ) -> list[ValidationIssue]:
+        """Flag an inverted Deny whose carve-out matches every principal.
+
+        AWS recommends replacing ``NotPrincipal`` with ``Deny`` + ``Principal: "*"`` and a
+        negated principal condition such as ``ArnNotEquals`` on ``aws:PrincipalArn``. That
+        rewrite exempts the listed principals from the deny, so a carve-out of ``"*"``
+        exempts everyone and the statement denies nothing -- the condition equivalent of
+        ``NotPrincipal: "*"``.
+        """
+        if not statement.condition:
+            return []
+
+        for operator, entries in statement.condition.items():
+            if not self._is_negated_operator(operator) or not isinstance(entries, dict):
+                continue
+            for key, value in entries.items():
+                if not self._is_principal_condition_key(key):
+                    continue
+                values = value if isinstance(value, list) else [value]
+                if not any(str(v).strip() == "*" for v in values):
+                    continue
+                return [
+                    ValidationIssue(
+                        severity=self.get_severity(config),
+                        statement_sid=statement.sid,
+                        statement_index=statement_idx,
+                        issue_type="ineffective_deny_carve_out",
+                        message=(
+                            f"`Deny` carve-out `{operator}` on `{key}` is `*`, which exempts every "
+                            "principal from the deny. The statement denies nothing."
+                        ),
+                        suggestion=(
+                            "Replace `*` with the specific principals that must be exempt, or remove "
+                            f"the `{key}` condition if nothing should be exempt."
+                        ),
+                        line_number=statement.line_number,
+                        field_name="condition",
+                    )
+                ]
+        return []
 
     def _extract_principals(self, statement: Statement) -> list[str]:
         """Extract all principals from a statement.

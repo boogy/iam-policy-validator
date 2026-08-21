@@ -338,6 +338,23 @@ Validates Principal elements in resource policies and trust policies.
 
 **Severity:** `high` (varies by issue type)
 
+**Scope:** `Effect: Deny` statements are skipped unless they use `NotPrincipal`.
+
+Every rule below describes an over-broad *grant*, and a `Deny` over `Principal` cannot
+over-grant — `Deny` with `Principal: "*"` is the standard guardrail idiom (resource
+control policies, org perimeters, `sts:TagSession` restrictions), and scoping it with
+`aws:SourceArn`/`aws:PrincipalOrgID` would narrow the deny and weaken the policy.
+
+Inverted denies are the exception, because the carve-out is the exposure. `NotPrincipal`
+spells the inversion with a principal, so those statements are still checked in full.
+[AWS recommends](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_notprincipal.html)
+spelling it with a condition instead — `Principal: "*"` plus `ArnNotEquals` on
+`aws:PrincipalArn` — and that form is reported as `ineffective_deny_carve_out` when the
+carve-out is `*`, since exempting every principal denies nobody.
+
+See also [`rcp_best_practices`](advanced-checks.md#rcp_best_practices) and
+[`not_principal_validation`](aws-validation.md#not_principal_validation).
+
 ### What It Checks
 
 - **Service Principal Wildcards** (`critical`): Detects dangerous `{"Service": "*"}` patterns

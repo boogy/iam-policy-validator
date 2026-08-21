@@ -452,3 +452,440 @@ class TestServicePrincipalWildcardDetection:
         # Should have no service_principal_wildcard issues
         service_wildcard_issues = [i for i in issues if i.issue_type == "service_principal_wildcard"]
         assert len(service_wildcard_issues) == 0
+
+
+class TestDenyStatementsAreSkipped:
+    """A Deny cannot over-grant, so none of this check's rules apply to it.
+
+    `Deny` + `Principal: "*"` is the canonical guardrail idiom (resource control
+    policies, org-wide perimeters, `sts:TagSession` restrictions). Flagging it as
+    public access is a false positive, and the suggested remediation -- scoping the
+    statement with `aws:SourceArn`/`aws:PrincipalOrgID` -- would narrow the Deny and
+    weaken the policy.
+    """
+
+    @pytest.fixture
+    def check(self):
+        return PrincipalValidationCheck()
+
+    @pytest.mark.asyncio
+    async def test_deny_wildcard_principal_without_conditions_is_clean(self, check, fetcher):
+        """The regression: a bare `Deny` + `Principal: "*"` must not be flagged."""
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "principal_condition_requirements": [
+                    {
+                        "principals": ["*"],
+                        "severity": "critical",
+                        "required_conditions": {
+                            "any_of": [
+                                {"condition_key": "aws:SourceArn"},
+                                {"condition_key": "aws:PrincipalOrgID"},
+                            ]
+                        },
+                    }
+                ],
+            },
+        )
+        statement = Statement(
+            Sid="DenyInsecureTransport",
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["arn:aws:s3:::my-bucket/*"],
+            Principal="*",
+            Condition={"BoolIfExists": {"aws:SecureTransport": "false"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_allow_wildcard_principal_is_still_flagged(self, check, fetcher):
+        """The guard must not weaken the Allow path -- same shape, Effect: Allow."""
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "principal_condition_requirements": [
+                    {
+                        "principals": ["*"],
+                        "severity": "critical",
+                        "required_conditions": {
+                            "any_of": [
+                                {"condition_key": "aws:SourceArn"},
+                                {"condition_key": "aws:PrincipalOrgID"},
+                            ]
+                        },
+                    }
+                ],
+            },
+        )
+        statement = Statement(
+            Sid="AllowAnyone",
+            Effect="Allow",
+            Action=["s3:*"],
+            Resource=["arn:aws:s3:::my-bucket/*"],
+            Principal="*",
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "missing_principal_condition_any_of"
+        assert issues[0].severity == "critical"
+
+    @pytest.mark.asyncio
+    async def test_deny_blocked_principal_is_clean(self, check, fetcher):
+        """`blocked_principals` describes who may be granted access, not denied."""
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={"blocked_principals": ["*"], "block_wildcard_principal": True},
+        )
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["*"],
+            Principal="*",
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_deny_service_principal_wildcard_is_clean(self, check, fetcher):
+        """`{"Service": "*"}` under Deny denies every service -- that is hardening."""
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={"block_service_principal_wildcard": True},
+        )
+        statement = Statement(
+            Effect="Deny",
+            Action=["sts:AssumeRole"],
+            Resource=["*"],
+            Principal={"Service": "*"},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_deny_non_allowlisted_principal_is_clean(self, check, fetcher):
+        """An `allowed_principals` allow-list constrains grants, not denies."""
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={"allowed_principals": ["arn:aws:iam::111122223333:root"]},
+        )
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["*"],
+            Principal={"AWS": "arn:aws:iam::999988887777:root"},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_deny_forbidden_condition_is_clean(self, check, fetcher):
+        """`none_of` forbids allowing insecure transport; denying it is the fix."""
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "principal_condition_requirements": [
+                    {
+                        "principals": ["*"],
+                        "required_conditions": {
+                            "none_of": [
+                                {
+                                    "condition_key": "aws:SecureTransport",
+                                    "expected_value": False,
+                                }
+                            ]
+                        },
+                    }
+                ],
+            },
+        )
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["*"],
+            Principal="*",
+            Condition={"Bool": {"aws:SecureTransport": "false"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("effect", ["Deny", "deny", "DENY", " Deny "])
+    async def test_deny_casing_variants_are_skipped(self, check, fetcher, effect):
+        """AWS mandates exact casing, but user files reach the check unnormalised."""
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={"blocked_principals": ["*"], "block_wildcard_principal": True},
+        )
+        statement = Statement(Effect=effect, Action=["s3:*"], Resource=["*"], Principal="*")
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "not_principal",
+        ["*", {"AWS": "*"}, {"Service": "*"}],
+    )
+    async def test_deny_with_notprincipal_wildcard_is_still_flagged(self, check, fetcher, not_principal):
+        """NotPrincipal inverts the set, so a wildcard exception is real exposure.
+
+        `Deny` + `NotPrincipal: "*"` denies nobody -- everyone is in "*", so nobody is
+        "not *". The guard must not silence that.
+        """
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={"blocked_principals": ["*"], "block_wildcard_principal": True},
+        )
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["*"],
+            NotPrincipal=not_principal,
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "blocked_principal"
+
+    @pytest.mark.asyncio
+    async def test_deny_with_scoped_notprincipal_is_clean(self, check, fetcher):
+        """A narrow NotPrincipal exception is a real lockdown, not an exposure."""
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={"blocked_principals": ["*"], "block_wildcard_principal": True},
+        )
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["*"],
+            NotPrincipal={"AWS": "arn:aws:iam::111122223333:role/Admin"},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("effect", ["Allow", "allow", None, "Bogus"])
+    async def test_non_deny_effects_are_still_validated(self, check, fetcher, effect):
+        """Anything not recognisably a Deny is validated: never fail open on a grant."""
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={"blocked_principals": ["*"], "block_wildcard_principal": True},
+        )
+        statement = Statement(Effect=effect, Action=["s3:*"], Resource=["*"], Principal="*")
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "blocked_principal"
+
+
+class TestInvertedDenyCarveOut:
+    """AWS recommends replacing NotPrincipal with Deny + Principal "*" + ArnNotEquals.
+
+    See https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_notprincipal.html
+    That rewrite carves the listed principals *out* of the deny, so the carve-out is the
+    exposure -- and a carve-out of "*" excludes everyone, denying nothing.
+    """
+
+    @pytest.fixture
+    def check(self):
+        return PrincipalValidationCheck()
+
+    @pytest.fixture
+    def config(self):
+        return CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "principal_condition_requirements": [
+                    {
+                        "principals": ["*"],
+                        "required_conditions": {"any_of": [{"condition_key": "aws:SourceArn"}]},
+                    }
+                ],
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_aws_documented_role_carve_out_is_clean(self, check, fetcher, config):
+        """The exact example from the AWS NotPrincipal page must not be flagged."""
+        statement = Statement(
+            Sid="DenyCrossAuditAccess",
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["arn:aws:s3:::audit"],
+            Principal="*",
+            Condition={"ArnNotEquals": {"aws:PrincipalArn": "arn:aws:iam::444455556666:role/read-only-role"}},
+        )
+        assert await check.execute(statement, 0, fetcher, config) == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "operator",
+        ["ArnNotEquals", "ArnNotLike", "StringNotEquals", "StringNotLike", "StringNotEqualsIgnoreCase"],
+    )
+    async def test_equivalent_operators_on_principalarn_are_clean(self, check, fetcher, config, operator):
+        """aws:PrincipalArn accepts ARN *and* String operators; all express the same carve-out.
+
+        ARN operators are the documented preference, but the String forms are valid and
+        must not be treated as a finding here.
+        """
+        statement = Statement(
+            Sid="DenyCrossAuditAccess",
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["arn:aws:s3:::Bucket_Account_Audit"],
+            Principal="*",
+            Condition={operator: {"aws:PrincipalArn": "arn:aws:iam::444455556666:role/read-only-role"}},
+        )
+        assert await check.execute(statement, 0, fetcher, config) == []
+
+    @pytest.mark.asyncio
+    async def test_wildcard_org_carve_out_is_flagged(self, check, fetcher, config):
+        """aws:PrincipalOrgID satisfies the any_of rule, so nothing else catches this.
+
+        `Deny` + `StringNotEquals aws:PrincipalOrgID: "*"` exempts every org, denying
+        nobody, and unlike the ARN keys `"*"` is a structurally valid value here.
+        """
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["*"],
+            Principal="*",
+            Condition={"StringNotEquals": {"aws:PrincipalOrgID": "*"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "ineffective_deny_carve_out"
+
+    @pytest.mark.asyncio
+    async def test_notaction_deny_is_not_a_principal_carve_out(self, check, fetcher, config):
+        """NotAction inverts the action axis, not the principal axis.
+
+        That belongs to not_action_not_resource; the principal set is still "everyone".
+        """
+        statement = Statement(
+            Effect="Deny",
+            NotAction=["s3:*"],
+            Resource=["*"],
+            Principal="*",
+        )
+        assert await check.execute(statement, 0, fetcher, config) == []
+
+    @pytest.mark.asyncio
+    async def test_aws_documented_service_carve_out_is_clean(self, check, fetcher, config):
+        """The service-principal variant from the same page, incl. the IfExists suffix."""
+        statement = Statement(
+            Sid="DenyNotCodeBuildAccess",
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["arn:aws:s3:::bucket"],
+            Principal="*",
+            Condition={"StringNotEqualsIfExists": {"aws:PrincipalServiceName": "codebuild.amazonaws.com"}},
+        )
+        assert await check.execute(statement, 0, fetcher, config) == []
+
+    @pytest.mark.asyncio
+    async def test_org_perimeter_deny_is_clean(self, check, fetcher, config):
+        """The canonical org-boundary RCP shape stays clean."""
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["*"],
+            Principal="*",
+            Condition={
+                "StringNotEquals": {"aws:PrincipalOrgID": "o-abc123"},
+                "BoolIfExists": {"aws:PrincipalIsAWSService": "false"},
+            },
+        )
+        assert await check.execute(statement, 0, fetcher, config) == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "operator,key",
+        [
+            ("ArnNotEquals", "aws:PrincipalArn"),
+            ("ArnNotLike", "aws:PrincipalArn"),
+            ("StringNotEquals", "aws:PrincipalAccount"),
+            ("StringNotEqualsIfExists", "aws:PrincipalServiceName"),
+            ("StringNotLike", "aws:PrincipalOrgPaths"),
+            ("ForAnyValue:StringNotEquals", "aws:PrincipalTag/team"),
+        ],
+    )
+    async def test_wildcard_carve_out_is_flagged(self, check, fetcher, config, operator, key):
+        """A carve-out of "*" excludes every principal, so the Deny denies nothing."""
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["*"],
+            Principal="*",
+            Condition={operator: {key: "*"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "ineffective_deny_carve_out"
+        assert issues[0].field_name == "condition"
+
+    @pytest.mark.asyncio
+    async def test_wildcard_in_carve_out_list_is_flagged(self, check, fetcher, config):
+        """A "*" hidden among specific ARNs still defeats the whole deny."""
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["*"],
+            Principal="*",
+            Condition={"ArnNotEquals": {"aws:PrincipalArn": ["arn:aws:iam::111122223333:role/A", "*"]}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "ineffective_deny_carve_out"
+
+    @pytest.mark.asyncio
+    async def test_non_principal_key_wildcard_is_ignored(self, check, fetcher, config):
+        """A negated operator on a request key is not a principal carve-out.
+
+        The repo's own rcp-valid-enforce-encryption fixture uses StringNotEquals on
+        s3:x-amz-server-side-encryption, which must stay clean.
+        """
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:PutObject"],
+            Resource=["*"],
+            Principal="*",
+            Condition={"StringNotEquals": {"s3:x-amz-server-side-encryption": "*"}},
+        )
+        assert await check.execute(statement, 0, fetcher, config) == []
+
+    @pytest.mark.asyncio
+    async def test_positive_operator_wildcard_is_ignored(self, check, fetcher, config):
+        """StringEquals is not a carve-out -- it narrows the deny rather than exempting."""
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["*"],
+            Principal="*",
+            Condition={"StringEquals": {"aws:PrincipalAccount": "*"}},
+        )
+        assert await check.execute(statement, 0, fetcher, config) == []
+
+    @pytest.mark.asyncio
+    async def test_allow_with_negated_principal_condition_still_validated(self, check, fetcher, config):
+        """The carve-out path must not swallow the Allow rules."""
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:*"],
+            Resource=["*"],
+            Principal="*",
+            Condition={"ArnNotEquals": {"aws:PrincipalArn": "*"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "missing_principal_condition_any_of"
