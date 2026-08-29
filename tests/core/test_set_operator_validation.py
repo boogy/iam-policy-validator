@@ -126,6 +126,28 @@ class TestSetOperatorValidationCheck:
         assert "single-valued" in issues[0].message.lower()
 
     @pytest.mark.asyncio
+    async def test_foranyvalue_with_calledvia(self, check, config):
+        """Test ForAnyValue with aws:CalledVia is accepted.
+
+        AWS documents aws:CalledVia as `Data type - String (list)` and
+        `Value type - Multivalued`, and multivalued keys require a set operator.
+        Both the Athena and forward-access-sessions guides use
+        ForAnyValue:StringEquals with this key.
+        """
+        statement = Statement(
+            effect="Allow",
+            action=["lambda:InvokeFunction"],
+            resource=["*"],
+            condition={
+                "ForAnyValue:StringEquals": {
+                    "aws:CalledVia": ["athena.amazonaws.com"],
+                },
+            },
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
     async def test_forallvalues_allow_without_null_check(self, check, config):
         """Test ForAllValues with Allow effect without Null check generates warning."""
         statement = Statement(
