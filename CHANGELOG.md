@@ -4,6 +4,12 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Treat `aws:CalledVia` as multivalued, so a set operator on it no longer raises `set_operator_on_single_valued_key` — AWS types it `Value type - Multivalued`, and multivalued keys require one; `aws:CalledViaFirst` and `aws:CalledViaLast` stay single-valued
+
 ## [1.24.0] - 2026-08-21
 
 ### Added
