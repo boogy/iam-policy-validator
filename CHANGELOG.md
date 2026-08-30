@@ -9,6 +9,9 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 ### Changed
 
 - Upgrade locked dependencies: `boto3`/`botocore` 1.43.66 → 1.43.83, `pydantic` 2.13.4 → 2.13.5, `fastmcp` 3.4.6 → 3.4.7, `ruff` 0.16.1 → 0.16.5, `mypy` 2.3.0 → 2.3.1, `starlette` 1.4.1 → 1.6.0, `cryptography` 50.0.0 → 50.0.1 and their transitive dependencies. Declared version floors are unchanged, so the supported range is not narrowed
+- Lower `set_operator_validation` from `error` to `warning`. This repository defines `error` as "AWS will reject the policy", but AWS accepts a set operator on a single-valued key — its documentation only states "Do not use condition set operators `ForAllValues` or `ForAnyValue` with single-valued context keys" as guidance. This also softens the 1.25.0 change that newly flagged `s3:x-amz-grant-*` and `ec2:ResourceTag/*`: those findings no longer fail a run gated on `error`. Set `severity: error` under `set_operator_validation` to restore the previous behaviour
+- Lower `action_resource_matching` from `error` to `medium` in the default config, matching the severity the check class, the docs and `iam_validator/checks/CLAUDE.md` have always declared — AWS accepts a policy whose resource ARN does not match the action's resource type, it simply fails to grant
+- Raise the `sid_uniqueness` check class default from `warning` to `error`, matching the default config, the docs and AWS: "In IAM, the Sid value must be unique within a JSON policy". Only callers that ran the check without a `ValidatorConfig` (the SDK, direct instantiation) saw `warning`; every CLI run already reported `error`
 
 ### Fixed
 
@@ -18,6 +21,8 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Reject a bare `Null` condition as proof that a `principal_condition_requirements` or `action_condition_requirements` entry is satisfied — `Null` only asserts a key's presence or absence and never constrains its value, so `"Null": {"aws:PrincipalOrgID": "false"}` alone cleared the cross-account org requirement it could not enforce
 - Match condition keys and operators case-insensitively in the `principal_validation` and `action_condition_enforcement` requirement lookups, so `"stringequals"` / `"aws:principalorgid"` no longer produce a false `missing_principal_condition_*` or missing-condition finding
 - Pair a `Null` check with its set-operator key case-insensitively in `set_operator_validation`, so `"Null": {"aws:tagkeys": "false"}` suppresses `forallvalues_allow_without_null_check` on `aws:TagKeys` as the canonically cased spelling already did, and stop treating a miscased `"AWS:"` prefix as a service prefix when resolving the key's type
+- Correct the severities documented for `sid_uniqueness` (`warning` → `error`) and `action_condition_enforcement` (`error` → `high`) in the check reference, and stop `examples/mcp-llm-instructions/organization_config.yaml` from lowering `sid_uniqueness` to `warning` while raising every neighbouring check
+- Correct the `sid_uniqueness` module docstring and default-config comment: unique Sids are an AWS requirement, not a best practice, and the Sid charset AWS accepts is `A-Z a-z 0-9` only — not hyphens and underscores, which the check's own regex has always rejected
 - Type all seven multivalued global condition keys as `ArrayOfString` in `AWS_GLOBAL_CONDITION_KEYS` — `aws:ResourceOrgPaths` alone carried it, leaving the table contradicting `is_multivalued_context_key` for the other six
 
 ## [1.25.0] - 2026-08-30

@@ -27,7 +27,7 @@ class SetOperatorValidationCheck(PolicyCheck):
 
     check_id: ClassVar[str] = "set_operator_validation"
     description: ClassVar[str] = "Validates proper usage of ForAllValues and ForAnyValue set operators"
-    default_severity: ClassVar[str] = "error"
+    default_severity: ClassVar[str] = "warning"
 
     async def _is_multivalued_key(
         self,
@@ -102,7 +102,7 @@ class SetOperatorValidationCheck(PolicyCheck):
         Returns:
             List of validation issues found
         """
-        issues = []
+        issues: list[ValidationIssue] = []
 
         # Only check statements with conditions
         if not statement.condition:

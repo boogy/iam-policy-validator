@@ -32,8 +32,8 @@ class TestSetOperatorValidationCheck:
         assert "ForAnyValue" in check.description
 
     def test_default_severity(self, check):
-        """Test default severity is error."""
-        assert check.default_severity == "error"
+        """Test default severity is warning."""
+        assert check.default_severity == "warning"
 
     @pytest.mark.asyncio
     async def test_no_conditions(self, check, config):
@@ -103,7 +103,7 @@ class TestSetOperatorValidationCheck:
 
         # Check the single-valued key error
         single_valued_issue = [i for i in issues if i.issue_type == "set_operator_on_single_valued_key"][0]
-        assert single_valued_issue.severity == "error"
+        assert single_valued_issue.severity == "warning"
         assert "single-valued" in single_valued_issue.message.lower()
         assert "aws:SourceIp" in single_valued_issue.message
 
@@ -448,7 +448,7 @@ class TestSetOperatorValidationCheck:
     @pytest.mark.asyncio
     async def test_custom_severity(self, check):
         """Test custom severity from config."""
-        config = CheckConfig(check_id="set_operator_validation", enabled=True, severity="warning")
+        config = CheckConfig(check_id="set_operator_validation", enabled=True, severity="error")
         statement = Statement(
             effect="Allow",
             action=["s3:GetObject"],
@@ -460,9 +460,10 @@ class TestSetOperatorValidationCheck:
             },
         )
         issues = await check.execute(statement, 0, None, config)
-        assert len(issues) == 2  # single-valued key error + missing Null check
-        # Both should have warning severity (the custom severity applies to the first, second is always warning)
-        assert all(issue.severity == "warning" for issue in issues)
+        assert len(issues) == 2
+        by_type = {issue.issue_type: issue.severity for issue in issues}
+        assert by_type["set_operator_on_single_valued_key"] == "error"
+        assert by_type["forallvalues_allow_without_null_check"] == "warning"
 
     @pytest.mark.asyncio
     async def test_null_check_with_true_value_still_warns(self, check, config):

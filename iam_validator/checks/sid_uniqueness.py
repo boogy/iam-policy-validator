@@ -4,8 +4,8 @@ This check validates that Statement IDs (Sids):
 1. Are unique within a policy
 2. Follow AWS naming requirements (alphanumeric only: A-Z, a-z, 0-9)
 
-According to AWS best practices, while not strictly required, having unique SIDs
-makes it easier to reference specific statements and improves policy maintainability.
+AWS states "In IAM, the Sid value must be unique within a JSON policy", so IAM
+rejects a policy with duplicate Sids rather than merely discouraging them.
 
 This is implemented as a policy-level check that runs once when processing the first
 statement, examining all statements in the policy to find duplicates and format issues.
@@ -112,7 +112,7 @@ class SidUniquenessCheck(PolicyCheck):
     description: ClassVar[str] = (
         "Validates that Statement IDs (Sids) are unique and follow AWS naming requirements (alphanumeric only)"
     )
-    default_severity: ClassVar[str] = "warning"
+    default_severity: ClassVar[str] = "error"
 
     async def execute_policy(
         self,
