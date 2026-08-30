@@ -6,6 +6,10 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ## [Unreleased]
 
+### Changed
+
+- Treat `s3:x-amz-grant-*` and `ec2:ResourceTag/*` as single-valued, so a set operator on them now raises `set_operator_on_single_valued_key` — the Service Authorization Reference types both as `String`, not `ArrayOfString`, and `ec2:ResourceTag/*` was the only `ResourceTag` variant exempt from the error that `aws:ResourceTag/*` and every other service prefix already produced. Genuinely multivalued service keys keep working: they are resolved from their `ArrayOf` prefix in the Service Authorization Reference ([#164])
+
 ### Fixed
 
 - Treat `aws:CalledVia` as multivalued, so a set operator on it no longer raises `set_operator_on_single_valued_key` — AWS types it `Value type - Multivalued`, and multivalued keys require one; `aws:CalledViaFirst` and `aws:CalledViaLast` stay single-valued
@@ -755,6 +759,7 @@ _First release._
 
 ---
 
+[#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
 [1.24.0]: https://github.com/boogy/iam-policy-validator/compare/v1.23.2...v1.24.0
 [#155]: https://github.com/boogy/iam-policy-validator/pull/155
