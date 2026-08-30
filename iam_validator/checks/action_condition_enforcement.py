@@ -1133,6 +1133,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         return issues
 
+    @staticmethod
+    def _base_operator(operator: str) -> str:
+        """Lowercase operator without set prefix (ForAnyValue:/ForAllValues:) or IfExists suffix."""
+        return operator.strip().lower().rsplit(":", 1)[-1].removesuffix("ifexists")
+
     def _has_condition_requirement(self, statement: Statement, condition_requirement: dict[str, Any]) -> bool:
         """Check if statement has the required condition."""
         condition_key = condition_requirement.get("condition_key")
@@ -1166,23 +1171,27 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         if not statement.condition:
             return False
 
-        # If operator specified, only check that operator
-        operators_to_check = [operator] if operator else list(statement.condition.keys())
+        if operator:
+            wanted = operator.strip().lower()
+            operators_to_check = [op for op in statement.condition if op.strip().lower() == wanted]
+        else:
+            # Null only asserts a key's presence or absence; it never constrains the value.
+            operators_to_check = [op for op in statement.condition if self._base_operator(op) != "null"]
+
+        key_lower = condition_key.lower()
 
         # Look through specified condition operators
         for op in operators_to_check:
-            if op not in statement.condition:
-                continue
-
             conditions = statement.condition[op]
             if isinstance(conditions, dict):
-                if condition_key in conditions:
+                actual_key = next((k for k in conditions if k.lower() == key_lower), None)
+                if actual_key is not None:
                     # If no expected value specified, just presence is enough
                     if expected_value is None:
                         return True
 
                     # Check if the value matches
-                    actual_value = conditions[condition_key]
+                    actual_value = conditions[actual_key]
 
                     # Handle boolean values
                     if isinstance(expected_value, bool):

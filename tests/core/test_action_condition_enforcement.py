@@ -528,3 +528,76 @@ class TestActionConditionEnforcement:
         # Test 2: Test file - should be ignored
         issues = await check.execute_policy(policy, "policies/test.json", mock_fetcher, config)
         assert len(issues) == 0
+
+
+class TestHasConditionResolution:
+    """Condition-key lookups must ignore case and reject bare `Null` as proof of a constraint."""
+
+    @pytest.fixture
+    def check(self):
+        return ActionConditionEnforcementCheck()
+
+    @staticmethod
+    def _config() -> CheckConfig:
+        return CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            severity="error",
+            config={
+                "action_condition_requirements": [
+                    {
+                        "actions": ["iam:CreateUser"],
+                        "required_conditions": [{"condition_key": "aws:MultiFactorAuthPresent"}],
+                    }
+                ]
+            },
+        )
+
+    @staticmethod
+    def _policy(condition):
+        return IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    sid="TestStatement",
+                    effect="Allow",
+                    action=["iam:CreateUser"],
+                    resource="*",
+                    condition=condition,
+                )
+            ],
+        )
+
+    async def _run(self, check, condition):
+        return await check.execute_policy(self._policy(condition), "test-policy.json", None, self._config())
+
+    @pytest.mark.asyncio
+    async def test_missing_condition_is_flagged(self, check):
+        assert len(await self._run(check, None)) == 1
+
+    @pytest.mark.asyncio
+    async def test_null_check_alone_does_not_satisfy_requirement(self, check):
+        for value in ("true", "false"):
+            assert len(await self._run(check, {"Null": {"aws:MultiFactorAuthPresent": value}})) == 1, value
+
+    @pytest.mark.asyncio
+    async def test_miscased_condition_key_satisfies_requirement(self, check):
+        assert await self._run(check, {"Bool": {"aws:multifactorauthpresent": "true"}}) == []
+
+    @pytest.mark.asyncio
+    async def test_miscased_operator_satisfies_pinned_operator(self, check):
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            severity="error",
+            config={
+                "action_condition_requirements": [
+                    {
+                        "actions": ["iam:CreateUser"],
+                        "required_conditions": [{"condition_key": "aws:MultiFactorAuthPresent", "operator": "Bool"}],
+                    }
+                ]
+            },
+        )
+        policy = self._policy({"bool": {"aws:MultiFactorAuthPresent": "true"}})
+        assert await check.execute_policy(policy, "test-policy.json", None, config) == []

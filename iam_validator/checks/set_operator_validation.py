@@ -50,7 +50,7 @@ class SetOperatorValidationCheck(PolicyCheck):
         # Look up condition key type from AWS service data
         # Try extracting service prefix from the condition key itself (e.g. "route53:KeyName")
         service_prefixes: set[str] = set()
-        if ":" in condition_key and not condition_key.startswith("aws:"):
+        if ":" in condition_key and not condition_key.lower().startswith("aws:"):
             service_prefixes.add(condition_key.split(":")[0].lower())
 
         # Also extract service prefixes from the statement's actions
