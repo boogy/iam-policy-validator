@@ -262,8 +262,12 @@ class TestSetOperatorValidationCheck:
         assert issues[0].issue_type == "forallvalues_allow_without_null_check"
 
     @pytest.mark.asyncio
-    async def test_s3_grant_header_is_multivalued(self, check, config):
-        """Test S3 grant headers are recognized as multivalued."""
+    async def test_s3_grant_header_is_single_valued(self, check, config):
+        """Test S3 grant headers are flagged as single-valued.
+
+        The Service Authorization Reference types every s3:x-amz-grant-* key as
+        `String`, not `ArrayOfString`.
+        """
         statement = Statement(
             effect="Allow",
             action=["s3:PutObjectAcl"],
@@ -278,8 +282,23 @@ class TestSetOperatorValidationCheck:
             },
         )
         issues = await check.execute(statement, 0, None, config)
-        # Should not generate set_operator_on_single_valued_key error
-        assert all(issue.issue_type != "set_operator_on_single_valued_key" for issue in issues)
+        assert any(issue.issue_type == "set_operator_on_single_valued_key" for issue in issues)
+
+    @pytest.mark.asyncio
+    async def test_ec2_resource_tag_is_single_valued(self, check, config):
+        """Test ec2:ResourceTag is flagged as single-valued, like aws:ResourceTag."""
+        statement = Statement(
+            effect="Allow",
+            action=["ec2:StartInstances"],
+            resource=["*"],
+            condition={
+                "ForAnyValue:StringEquals": {
+                    "ec2:ResourceTag/Environment": ["production"],
+                },
+            },
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert any(issue.issue_type == "set_operator_on_single_valued_key" for issue in issues)
 
     @pytest.mark.asyncio
     async def test_resource_org_paths_is_multivalued(self, check, config):
