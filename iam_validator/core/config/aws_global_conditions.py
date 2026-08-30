@@ -111,7 +111,7 @@ AWS_CONDITION_KEY_PATTERNS = [
 class AWSGlobalConditions:
     """Manages AWS global condition keys."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize with global condition keys."""
         self._global_keys: dict[str, str] = AWS_GLOBAL_CONDITION_KEYS.copy()
         self._patterns: list[dict[str, Any]] = AWS_CONDITION_KEY_PATTERNS.copy()

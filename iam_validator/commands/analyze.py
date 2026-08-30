@@ -564,8 +564,8 @@ Examples:
 
                 summary_parts.append("| Finding Type | Count |")
                 summary_parts.append("|--------------|-------|")
-                for finding_type, count in sorted_types:
-                    summary_parts.append(f"| {finding_type} | {count} |")
+                for type_name, count in sorted_types:
+                    summary_parts.append(f"| {type_name} | {count} |")
 
             # Add footer with links
             summary_parts.append("")

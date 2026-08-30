@@ -15,7 +15,7 @@ Optimizations:
 import functools
 import logging
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, cast
 
 from fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
@@ -704,7 +704,7 @@ async def query_arn_formats(service: str, ctx: Context) -> list[dict[str, Any]]:
     from iam_validator.mcp.tools.query import query_arn_formats as _query
 
     fetcher = get_shared_fetcher(ctx)
-    return await _query(service=service, fetcher=fetcher)
+    return cast(list[dict[str, Any]], await _query(service=service, fetcher=fetcher))
 
 
 @mcp.tool(

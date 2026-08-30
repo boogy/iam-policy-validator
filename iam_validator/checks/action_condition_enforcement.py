@@ -79,7 +79,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             List of ValidationIssue objects found by this check
         """
         del kwargs  # Not used in current implementation
-        issues = []
+        issues: list[ValidationIssue] = []
 
         # Get action condition requirements using configurable merge strategy
         requirements = self._get_merged_requirements(config, policy_file)
@@ -439,7 +439,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         not statements that contain just some of them. This is useful for detecting
         overly permissive individual statements.
         """
-        issues = []
+        issues: list[ValidationIssue] = []
 
         # First, check if ALL required actions exist somewhere in the policy
         found_actions_mapping: dict[str, str] = {}  # req_action -> matched_policy_action
@@ -548,7 +548,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         config: CheckConfig,
     ) -> list[ValidationIssue]:
         """Check if at least ONE required action exists anywhere in the policy."""
-        issues = []
+        issues: list[ValidationIssue] = []
         found_actions: list[str] = []
         statements_with_required_actions: list[tuple[int, Statement, list[str]]] = []
 
@@ -595,7 +595,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         fetcher: AWSServiceFetcher,
     ) -> list[ValidationIssue]:
         """Check if any forbidden actions exist in the policy."""
-        issues = []
+        issues: list[ValidationIssue] = []
         forbidden_found: list[str] = []
         statements_with_forbidden: list[tuple[int, Statement, list[str]]] = []
 
@@ -719,7 +719,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         Used when actions are specified as a simple list (not using all_of/any_of/none_of).
         """
-        issues = []
+        issues: list[ValidationIssue] = []
         matching_statements: list[tuple[int, Statement, list[str]]] = []
 
         for idx, statement in enumerate(policy.statement or []):

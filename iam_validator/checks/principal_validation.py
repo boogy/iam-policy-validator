@@ -72,7 +72,7 @@ class PrincipalValidationCheck(PolicyCheck):
         Returns:
             List of validation issues
         """
-        issues = []
+        issues: list[ValidationIssue] = []
 
         # Skip if no principal
         if statement.principal is None and statement.not_principal is None:
