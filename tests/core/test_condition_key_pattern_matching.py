@@ -171,7 +171,7 @@ class TestFindMatchingConditionKey:
         keys = {"aws:ResourceTag/${TagKey}": MagicMock()}
         assert find_matching_condition_key("aws:resourcetag/owner", keys) == "aws:ResourceTag/${TagKey}"
 
-    def test_miscased_pattern_prefix_preserves_compound_tag_key_case(self):
+    def test_miscased_prefix_matches_compound_tag_key(self):
         keys = {"aws:ResourceTag/${TagKey}": ConditionKey(Name="aws:ResourceTag/${TagKey}", Types=["String"])}
         assert find_matching_condition_key("AWS:RESOURCETAG/Team/Owner", keys) == "aws:ResourceTag/${TagKey}"
 

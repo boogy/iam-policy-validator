@@ -115,7 +115,7 @@ class SetOperatorValidationCheck(PolicyCheck):
 
         # Track which condition keys have set operators and Null checks
         set_operator_keys: dict[str, str] = {}  # key -> operator prefix
-        null_checked_keys: set[str] = set()
+        null_checked_keys: set[str] = set()  # lowercased: condition key names are not case-sensitive
 
         # First pass: Identify set operators and Null checks
         for operator, conditions in statement.condition.items():
@@ -124,7 +124,7 @@ class SetOperatorValidationCheck(PolicyCheck):
             # Track Null checks
             if base_operator == "Null":
                 for condition_key in conditions.keys():
-                    null_checked_keys.add(condition_key)
+                    null_checked_keys.add(condition_key.lower())
 
             # Track set operators
             if set_prefix in ["ForAllValues", "ForAnyValue"]:
@@ -163,7 +163,7 @@ class SetOperatorValidationCheck(PolicyCheck):
 
                 # Issue 2: ForAllValues with Allow effect without Null check (security risk)
                 if set_prefix == "ForAllValues" and effect == "Allow":
-                    if condition_key not in null_checked_keys:
+                    if condition_key.lower() not in null_checked_keys:
                         if has_ifexists:
                             message = (
                                 f"Compounded security risk: `{operator}` with `Allow` effect "
@@ -196,7 +196,7 @@ class SetOperatorValidationCheck(PolicyCheck):
 
                 # Issue 3: ForAnyValue with Deny effect without Null check (unpredictable)
                 if set_prefix == "ForAnyValue" and effect == "Deny":
-                    if condition_key not in null_checked_keys:
+                    if condition_key.lower() not in null_checked_keys:
                         issues.append(
                             ValidationIssue(
                                 severity="warning",

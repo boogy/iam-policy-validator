@@ -168,6 +168,34 @@ class TestSetOperatorValidationCheck:
         assert "Null" in issues[0].message
 
     @pytest.mark.asyncio
+    async def test_forallvalues_allow_miscased_null_check_suppresses_warning(self, check, config):
+        statement = Statement(
+            effect="Allow",
+            action=["s3:DeleteObjectTagging"],
+            resource=["*"],
+            condition={
+                "ForAllValues:StringEquals": {"aws:TagKeys": ["environment"]},
+                "Null": {"aws:tagkeys": "false"},
+            },
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_foranyvalue_deny_miscased_null_check_suppresses_warning(self, check, config):
+        statement = Statement(
+            effect="Deny",
+            action=["s3:DeleteObjectTagging"],
+            resource=["*"],
+            condition={
+                "ForAnyValue:StringEquals": {"aws:TagKeys": ["environment"]},
+                "Null": {"AWS:TAGKEYS": "false"},
+            },
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
     async def test_forallvalues_deny_without_null_check_no_warning(self, check, config):
         """Test ForAllValues with Deny effect without Null check is OK."""
         statement = Statement(

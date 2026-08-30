@@ -12,8 +12,11 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Fixed
 
-- Match condition key names case-insensitively in `find_matching_condition_key` and `AWSGlobalConditions`, so `"s3:requestobjecttagkeys"` and `"aws:sourceip"` resolve to the same AWS metadata as their canonically cased spellings — AWS states condition key names are not case-sensitive, and the case-sensitive lookups produced a false `set_operator_on_single_valued_key` on miscased multivalued keys and a false unknown-key finding on miscased global keys. Tag key values after the `/` stay case-sensitive
+- Match condition key names case-insensitively in `find_matching_condition_key` and `AWSGlobalConditions`, so `"s3:requestobjecttagkeys"` and `"aws:sourceip"` resolve to the same AWS metadata as their canonically cased spellings — AWS states condition key names are not case-sensitive, and the case-sensitive lookups produced a false `set_operator_on_single_valued_key` on miscased multivalued keys and a false unknown-key finding on miscased global keys. Tag keys after the `/` are matched case-insensitively too (AWS: "Tag keys are not case-sensitive")
 - Drop the `StringEquals` operator pin from the `aws:PrincipalOrgPaths` entry in `CROSS_ACCOUNT_ORG_REQUIREMENT`, so a cross-account root policy guarded with `ForAnyValue:StringLike` is no longer reported as missing the required org condition — `aws:PrincipalOrgPaths` is multivalued and requires a set operator, and `StringEquals` does not expand the trailing `/*` the suggested example relied on
+- Reject a bare `Null` condition as proof that a `principal_condition_requirements` entry is satisfied — `Null` only asserts a key's presence or absence and never constrains its value, so `"Null": {"aws:PrincipalOrgID": "false"}` alone cleared the cross-account org requirement it could not enforce
+- Match condition keys and operators case-insensitively in `principal_validation`'s requirement lookup, so `"stringequals"` / `"aws:principalorgid"` no longer produce a false `missing_principal_condition_*` finding
+- Pair a `Null` check with its set-operator key case-insensitively in `set_operator_validation`, so `"Null": {"aws:tagkeys": "false"}` suppresses `forallvalues_allow_without_null_check` on `aws:TagKeys` as the canonically cased spelling already did
 - Type all seven multivalued global condition keys as `ArrayOfString` in `AWS_GLOBAL_CONDITION_KEYS` — `aws:ResourceOrgPaths` alone carried it, leaving the table contradicting `is_multivalued_context_key` for the other six
 
 ## [1.25.0] - 2026-08-30

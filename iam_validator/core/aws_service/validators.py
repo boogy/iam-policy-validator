@@ -60,8 +60,9 @@ def find_matching_condition_key(condition_key: str, condition_keys: list[str] | 
     the prefix before the FIRST "/" must match the condition key's prefix and the
     suffix after that "/" in the condition_key must be a valid AWS tag key.
 
-    Condition key names are matched case-insensitively, per AWS: "Condition key names
-    are not case-sensitive." Tag key *values* after the "/" stay case-sensitive.
+    Matching is case-insensitive, per AWS: "Condition key names are not case-sensitive"
+    and "Tag keys are not case-sensitive". The tag key after the "/" is only
+    charset-validated, never compared, so its case is irrelevant here.
 
     IMPORTANT: Uses the pattern's prefix length (up to the first "/") to split the
     condition_key. This is critical because AWS tag keys can contain "/" characters

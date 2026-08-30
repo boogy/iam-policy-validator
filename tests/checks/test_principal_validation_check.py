@@ -947,6 +947,43 @@ class TestCrossAccountOrgRequirement:
         issues = await check.execute(statement, 0, fetcher, self._config())
         assert len(issues) == 1
 
+    @pytest.mark.asyncio
+    async def test_null_check_alone_does_not_satisfy_requirement(self, check, fetcher):
+        for value in ("true", "false"):
+            statement = Statement(
+                Effect="Allow",
+                Action=["s3:GetObject"],
+                Resource=["arn:aws:s3:::my-bucket/*"],
+                Principal={"AWS": "arn:aws:iam::123456789012:root"},
+                Condition={"Null": {"aws:PrincipalOrgID": value, "aws:PrincipalOrgPaths": value}},
+            )
+            issues = await check.execute(statement, 0, fetcher, self._config())
+            assert len(issues) == 1, value
+
+    @pytest.mark.asyncio
+    async def test_miscased_condition_key_satisfies_requirement(self, check, fetcher):
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:::my-bucket/*"],
+            Principal={"AWS": "arn:aws:iam::123456789012:root"},
+            Condition={"StringEquals": {"aws:principalorgid": "o-123456789"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, self._config())
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_miscased_operator_satisfies_requirement(self, check, fetcher):
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:::my-bucket/*"],
+            Principal={"AWS": "arn:aws:iam::123456789012:root"},
+            Condition={"stringequals": {"aws:PrincipalOrgID": "o-123456789"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, self._config())
+        assert issues == []
+
     def test_org_paths_example_uses_a_set_operator(self):
         from iam_validator.core.config.principal_requirements import get_principal_requirement
 

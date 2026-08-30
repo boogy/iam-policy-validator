@@ -222,11 +222,14 @@ class PrincipalValidationCheck(PolicyCheck):
         normalized = key.strip().lower()
         return normalized in cls._PRINCIPAL_CONDITION_KEYS or normalized.startswith("aws:principaltag/")
 
+    @staticmethod
+    def _base_operator(operator: str) -> str:
+        """Lowercase operator without set prefix (ForAnyValue:/ForAllValues:) or IfExists suffix."""
+        return operator.strip().lower().rsplit(":", 1)[-1].removesuffix("ifexists")
+
     @classmethod
     def _is_negated_operator(cls, operator: str) -> bool:
-        # Strip set prefixes (ForAnyValue:/ForAllValues:) and the IfExists suffix
-        base = operator.strip().lower().rsplit(":", 1)[-1].removesuffix("ifexists")
-        return base in cls._NEGATED_OPERATORS
+        return cls._base_operator(operator) in cls._NEGATED_OPERATORS
 
     def _check_deny_carve_out(
         self,
@@ -695,23 +698,27 @@ class PrincipalValidationCheck(PolicyCheck):
         if not statement.condition:
             return False
 
-        # If operator specified, only check that operator
-        operators_to_check = [operator] if operator else list(statement.condition.keys())
+        if operator:
+            wanted = operator.strip().lower()
+            operators_to_check = [op for op in statement.condition if op.strip().lower() == wanted]
+        else:
+            # Null only asserts a key's presence or absence; it never constrains the value.
+            operators_to_check = [op for op in statement.condition if self._base_operator(op) != "null"]
+
+        key_lower = condition_key.lower()
 
         # Look through specified condition operators
         for op in operators_to_check:
-            if op not in statement.condition:
-                continue
-
             conditions = statement.condition[op]
             if isinstance(conditions, dict):
-                if condition_key in conditions:
+                actual_key = next((k for k in conditions if k.lower() == key_lower), None)
+                if actual_key is not None:
                     # If no expected value specified, just presence is enough
                     if expected_value is None:
                         return True
 
                     # Check if the value matches
-                    actual_value = conditions[condition_key]
+                    actual_value = conditions[actual_key]
 
                     # Handle boolean values
                     if isinstance(expected_value, bool):
