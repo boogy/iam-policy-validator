@@ -41,10 +41,13 @@ AWS_GLOBAL_CONDITION_KEYS = {
     "aws:Ec2InstanceSourceVpc": "String",  # VPC where EC2 IAM role credentials were delivered
     "aws:Ec2InstanceSourcePrivateIPv4": "IPAddress",  # Private IPv4 of EC2 instance
     "aws:SourceIdentity": "String",  # Source identity set when assuming a role
+    "aws:SignInSessionArn": "ARN",  # AWS Sign-In OAuth session ARN
+    "aws:ViaCustomerDomain": "String",  # Account that issued Temporary Access Delegation credentials
     "ec2:RoleDelivery": "Numeric",  # Instance metadata service version
     # Network Properties
     "aws:SourceIp": "IPAddress",  # Requester's IP address (IPv4/IPv6)
     "aws:SourceVpc": "String",  # VPC through which request travels
+    "aws:SourceVpcArn": "ARN",  # ARN of the VPC the request passed through
     "aws:SourceVpce": "String",  # VPC endpoint identifier
     "aws:VpceAccount": "String",  # AWS account owning the VPC endpoint
     "aws:VpceOrgID": "String",  # Organization ID of VPC endpoint owner
@@ -72,6 +75,9 @@ AWS_GLOBAL_CONDITION_KEYS = {
     "aws:CalledViaFirst": "String",  # First service in call chain
     "aws:CalledViaLast": "String",  # Last service in call chain
     "aws:ViaAWSService": "Bool",  # Whether AWS service made the request
+    "aws:CalledViaAWSMCP": "String",  # MCP service principal that called on the principal's behalf
+    "aws:ViaAWSMCPService": "Bool",  # Whether an AWS MCP service forwarded the request
+    "aws:IsMcpServiceAction": "Bool",  # Whether the authorized action is an MCP service action
 }
 
 # Global condition keys that restrict resource scope.

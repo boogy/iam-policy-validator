@@ -148,6 +148,19 @@ class TestAWSGlobalConditions:
 
         assert conditions.is_valid_global_key("aws:NotARealKey") is False
 
+    def test_recently_documented_global_keys_are_recognized(self, conditions):
+        expected = {
+            "aws:CalledViaAWSMCP": "String",
+            "aws:IsMcpServiceAction": "Bool",
+            "aws:ViaAWSMCPService": "Bool",
+            "aws:ViaCustomerDomain": "String",
+            "aws:SignInSessionArn": "ARN",
+            "aws:SourceVpcArn": "ARN",
+        }
+        for key, key_type in expected.items():
+            assert conditions.is_valid_global_key(key) is True, key
+            assert conditions.get_key_type(key) == key_type, key
+
     def test_multivalued_keys_typed_arrayofstring(self, conditions):
         """The seven keys AWS documents as Value type - Multivalued carry ArrayOfString."""
         multivalued = [

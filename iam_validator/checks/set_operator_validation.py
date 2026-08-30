@@ -113,23 +113,14 @@ class SetOperatorValidationCheck(PolicyCheck):
         effect = statement.effect
         actions = statement.get_actions()
 
-        # Track which condition keys have set operators and Null checks
-        set_operator_keys: dict[str, str] = {}  # key -> operator prefix
         null_checked_keys: set[str] = set()  # lowercased: condition key names are not case-sensitive
 
-        # First pass: Identify set operators and Null checks
+        # First pass: Identify Null checks
         for operator, conditions in statement.condition.items():
-            base_operator, _operator_type, set_prefix = normalize_operator(operator)
-
-            # Track Null checks
+            base_operator, _operator_type, _set_prefix = normalize_operator(operator)
             if base_operator == "Null":
                 for condition_key in conditions.keys():
                     null_checked_keys.add(condition_key.lower())
-
-            # Track set operators
-            if set_prefix in ["ForAllValues", "ForAnyValue"]:
-                for condition_key in conditions.keys():
-                    set_operator_keys[condition_key] = set_prefix
 
         # Second pass: Validate set operator usage
         for operator, conditions in statement.condition.items():

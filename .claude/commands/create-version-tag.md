@@ -39,12 +39,12 @@ Optional argument: $ARGUMENTS (can be `patch`, `minor`, or `major` to skip the p
 ### 1. Get Current Version
 
 ```bash
-# Read from both files - they MUST match
+# Single source of truth; pyproject.toml reads it dynamically via hatch
 grep "__version__" iam_validator/__version__.py
-grep "^version" pyproject.toml | head -1
+grep -n 'dynamic = \["version"\]' pyproject.toml
 ```
 
-If versions don't match:
+If `pyproject.toml` declares a literal `version =` instead of `dynamic`:
 
 - STOP immediately
 - Show both versions
@@ -80,9 +80,11 @@ Example calculations:
   - minor → `1.16.0`
   - major → `2.0.0`
 
-### 5. Update Version Files
+### 5. Update the Version File
 
-Update **BOTH** files with the new version:
+The version lives in **one** file. `pyproject.toml` reads it via
+`[tool.hatch.version]` and must keep `dynamic = ["version"]` — do not add a
+literal `version =` there.
 
 **`iam_validator/__version__.py`** (line 6):
 
@@ -90,16 +92,10 @@ Update **BOTH** files with the new version:
 __version__ = "X.Y.Z"
 ```
 
-**`pyproject.toml`** (line 3):
-
-```toml
-version = "X.Y.Z"
-```
-
 Show the diff for user confirmation:
 
 ```bash
-git diff iam_validator/__version__.py pyproject.toml
+git diff iam_validator/__version__.py
 ```
 
 ### 6. Update CHANGELOG.md
@@ -119,7 +115,7 @@ If checks fail, STOP and fix issues before proceeding.
 ### 8. Commit Version Bump
 
 ```bash
-git add iam_validator/__version__.py pyproject.toml CHANGELOG.md
+git add iam_validator/__version__.py CHANGELOG.md
 git commit -s -S -m "chore: bump version to X.Y.Z"
 ```
 
@@ -186,8 +182,7 @@ gh run list --workflow=release.yml --limit=1
 
 ## Important Rules
 
-- **MUST** update BOTH `__version__.py` AND `pyproject.toml`
-- **MUST** keep version files in sync at all times
+- **MUST** update `__version__.py` only — `pyproject.toml` stays `dynamic = ["version"]`
 - **MUST** only create tags from main branch
 - **MUST** ask user consent before pushing to remote
 - **MUST** use signed tags (`git tag -s`). NEVER use `git tag -a`
@@ -202,8 +197,8 @@ gh run list --workflow=release.yml --limit=1
 ```bash
 # Full flow example for patch release
 git checkout main && git pull
-# ... update version files and CHANGELOG.md ...
-git add iam_validator/__version__.py pyproject.toml CHANGELOG.md
+# ... update the version file and CHANGELOG.md ...
+git add iam_validator/__version__.py CHANGELOG.md
 git commit -s -S -m "chore: bump version to 1.15.6"
 git tag -s v1.15.6 -m "Release v1.15.6"
 git push origin main
@@ -212,7 +207,7 @@ git push origin v1.15.6
 
 ## Version File Locations
 
-| File                           | Line | Format                  |
-| ------------------------------ | ---- | ----------------------- |
-| `iam_validator/__version__.py` | 6    | `__version__ = "X.Y.Z"` |
-| `pyproject.toml`               | 3    | `version = "X.Y.Z"`     |
+| File                           | Line | Format                               |
+| ------------------------------ | ---- | ------------------------------------ |
+| `iam_validator/__version__.py` | 6    | `__version__ = "X.Y.Z"`              |
+| `pyproject.toml`               | 3    | `dynamic = ["version"]` — never edit |
