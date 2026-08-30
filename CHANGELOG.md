@@ -4,11 +4,19 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.1] - 2026-08-30
+
+### Fixed
+
+- Match condition key names case-insensitively in `find_matching_condition_key` and `AWSGlobalConditions`, so `"s3:requestobjecttagkeys"` and `"aws:sourceip"` resolve to the same AWS metadata as their canonically cased spellings — AWS states condition key names are not case-sensitive, and the case-sensitive lookups produced a false `set_operator_on_single_valued_key` on miscased multivalued keys and a false unknown-key finding on miscased global keys. Tag key values after the `/` stay case-sensitive
+- Drop the `StringEquals` operator pin from the `aws:PrincipalOrgPaths` entry in `CROSS_ACCOUNT_ORG_REQUIREMENT`, so a cross-account root policy guarded with `ForAnyValue:StringLike` is no longer reported as missing the required org condition — `aws:PrincipalOrgPaths` is multivalued and requires a set operator, and `StringEquals` does not expand the trailing `/*` the suggested example relied on
+- Type all seven multivalued global condition keys as `ArrayOfString` in `AWS_GLOBAL_CONDITION_KEYS` — `aws:ResourceOrgPaths` alone carried it, leaving the table contradicting `is_multivalued_context_key` for the other six
+
 ## [1.25.0] - 2026-08-30
 
 ### Changed
 
-- Treat `s3:x-amz-grant-*` and `ec2:ResourceTag/*` as single-valued, so a set operator on them now raises `set_operator_on_single_valued_key` — the Service Authorization Reference types both as `String`, not `ArrayOfString`, and `ec2:ResourceTag/*` was the only `ResourceTag` variant exempt from the error that `aws:ResourceTag/*` and every other service prefix already produced. Genuinely multivalued service keys keep working: they are resolved from their `ArrayOf` prefix in the Service Authorization Reference ([#164])
+- **Breaking-ish (intended):** treat `s3:x-amz-grant-*` and `ec2:ResourceTag/*` as single-valued, so a set operator on them now raises `set_operator_on_single_valued_key` — the Service Authorization Reference types both as `String`, not `ArrayOfString`, and `ec2:ResourceTag/*` was the only `ResourceTag` variant exempt from the error that `aws:ResourceTag/*` and every other service prefix already produced. Genuinely multivalued service keys keep working: they are resolved from their `ArrayOf` prefix in the Service Authorization Reference. A policy that used a set operator on these keys passed on 1.24.0 and now fails at severity `error` ([#164])
 
 ### Fixed
 

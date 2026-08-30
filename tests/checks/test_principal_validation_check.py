@@ -889,3 +889,71 @@ class TestInvertedDenyCarveOut:
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
         assert issues[0].issue_type == "missing_principal_condition_any_of"
+
+
+class TestCrossAccountOrgRequirement:
+    """The cross_account_org requirement must accept the set operator its key needs."""
+
+    @staticmethod
+    def _config() -> CheckConfig:
+        from iam_validator.core.config.principal_requirements import get_principal_requirement
+
+        requirement = get_principal_requirement("cross_account_org")
+        assert requirement is not None
+        return CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "block_wildcard_principal": False,
+                "blocked_principals": [],
+                "allowed_principals": [],
+                "allowed_service_principals": ["aws:*"],
+                "principal_condition_requirements": [requirement],
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_org_paths_with_set_operator_satisfies_requirement(self, check, fetcher):
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:::my-bucket/*"],
+            Principal={"AWS": "arn:aws:iam::123456789012:root"},
+            Condition={"ForAnyValue:StringLike": {"aws:PrincipalOrgPaths": "o-123456789/r-ab12/ou-ab12-11111111/*"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, self._config())
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_org_id_with_string_equals_satisfies_requirement(self, check, fetcher):
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:::my-bucket/*"],
+            Principal={"AWS": "arn:aws:iam::123456789012:root"},
+            Condition={"StringEquals": {"aws:PrincipalOrgID": "o-123456789"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, self._config())
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_unconditioned_cross_account_root_still_flagged(self, check, fetcher):
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:::my-bucket/*"],
+            Principal={"AWS": "arn:aws:iam::123456789012:root"},
+        )
+        issues = await check.execute(statement, 0, fetcher, self._config())
+        assert len(issues) == 1
+
+    def test_org_paths_example_uses_a_set_operator(self):
+        from iam_validator.core.config.principal_requirements import get_principal_requirement
+
+        requirement = get_principal_requirement("cross_account_org")
+        assert requirement is not None
+        entry = next(
+            c for c in requirement["required_conditions"]["any_of"] if c["condition_key"] == "aws:PrincipalOrgPaths"
+        )
+        assert "operator" not in entry
+        assert "ForAnyValue:StringLike" in entry["example"]

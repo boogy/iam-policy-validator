@@ -57,8 +57,11 @@ def find_matching_condition_key(condition_key: str, condition_keys: list[str] | 
     - ``s3:RequestObjectTag/<key>`` to match ``s3:RequestObjectTag/Environment``
 
     Any pattern containing "/" is treated as a potential tag-key pattern where
-    the prefix before the FIRST "/" must match exactly and the suffix after that "/"
-    in the condition_key must be a valid AWS tag key.
+    the prefix before the FIRST "/" must match the condition key's prefix and the
+    suffix after that "/" in the condition_key must be a valid AWS tag key.
+
+    Condition key names are matched case-insensitively, per AWS: "Condition key names
+    are not case-sensitive." Tag key *values* after the "/" stay case-sensitive.
 
     IMPORTANT: Uses the pattern's prefix length (up to the first "/") to split the
     condition_key. This is critical because AWS tag keys can contain "/" characters
@@ -76,17 +79,24 @@ def find_matching_condition_key(condition_key: str, condition_keys: list[str] | 
     if condition_key in condition_keys:
         return condition_key
 
+    key_lower = condition_key.lower()
+    for key in condition_keys:
+        if key.lower() == key_lower:
+            return key
+
     # Pattern matching only applies when the condition key contains "/"
     if "/" not in condition_key:
         return None
 
     for pattern in condition_keys:
-        if "/" not in pattern:
+        prefix_len = pattern.find("/")
+        if prefix_len < 0:
             continue
-        pattern_prefix = pattern[: pattern.find("/")]
-        if not condition_key.startswith(pattern_prefix + "/"):
+        if condition_key[:prefix_len].lower() != pattern[:prefix_len].lower():
             continue
-        tag_key = condition_key[len(pattern_prefix) + 1 :]
+        if condition_key[prefix_len : prefix_len + 1] != "/":
+            continue
+        tag_key = condition_key[prefix_len + 1 :]
         if tag_key and _is_valid_tag_key(tag_key):
             return pattern
 

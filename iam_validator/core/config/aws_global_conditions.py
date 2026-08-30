@@ -16,16 +16,18 @@ from iam_validator.core.constants import AWS_TAG_KEY_ALLOWED_CHARS
 
 # AWS Global Condition Keys with Type Information
 # These condition keys are available for use in IAM policies across all AWS services
-# Format: {key: type} where type is one of: String, ARN, Bool, Date, IPAddress, Numeric
+# Format: {key: type} where type is one of: String, ArrayOfString, ARN, Bool, Date,
+# IPAddress, Numeric. The seven keys AWS documents as "Value type - Multivalued" carry
+# ArrayOfString; is_multivalued_context_key() is the authority for set-operator checks.
 AWS_GLOBAL_CONDITION_KEYS = {
     # Properties of the Principal
     "aws:PrincipalArn": "ARN",  # ARN of the principal making the request
     "aws:PrincipalAccount": "String",  # Account to which the requesting principal belongs
-    "aws:PrincipalOrgPaths": "String",  # AWS Organizations path for the principal
+    "aws:PrincipalOrgPaths": "ArrayOfString",  # AWS Organizations paths for the principal (multivalued)
     "aws:PrincipalOrgID": "String",  # Organization identifier of the principal
     "aws:PrincipalIsAWSService": "Bool",  # Checks if call is made directly by AWS service principal
     "aws:PrincipalServiceName": "String",  # Service principal name making the request
-    "aws:PrincipalServiceNamesList": "String",  # List of all service principal names
+    "aws:PrincipalServiceNamesList": "ArrayOfString",  # Service principal names of the calling service (multivalued)
     "aws:PrincipalType": "String",  # Type of principal making the request
     "aws:userid": "String",  # Principal identifier of the requester
     "aws:username": "String",  # User name of the requester
@@ -46,7 +48,7 @@ AWS_GLOBAL_CONDITION_KEYS = {
     "aws:SourceVpce": "String",  # VPC endpoint identifier
     "aws:VpceAccount": "String",  # AWS account owning the VPC endpoint
     "aws:VpceOrgID": "String",  # Organization ID of VPC endpoint owner
-    "aws:VpceOrgPaths": "String",  # AWS Organizations path of VPC endpoint
+    "aws:VpceOrgPaths": "ArrayOfString",  # AWS Organizations paths of VPC endpoint owner (multivalued)
     "aws:VpcSourceIp": "IPAddress",  # IP address from VPC endpoint request
     # Resource Properties
     "aws:ResourceAccount": "String",  # Resource owner's AWS account ID
@@ -58,15 +60,15 @@ AWS_GLOBAL_CONDITION_KEYS = {
     "aws:referer": "String",  # HTTP referer header value (note: lowercase 'r')
     "aws:Referer": "String",  # HTTP referer header value (alternate capitalization)
     "aws:RequestedRegion": "String",  # AWS Region for the request
-    "aws:TagKeys": "String",  # Tag keys present in request
+    "aws:TagKeys": "ArrayOfString",  # Tag keys present in request (multivalued)
     "aws:SecureTransport": "Bool",  # Whether HTTPS was used
     "aws:SourceAccount": "String",  # Account making the request
     "aws:SourceArn": "ARN",  # ARN of request source
     "aws:SourceOrgID": "String",  # Organization ID of request source
-    "aws:SourceOrgPaths": "String",  # Organization paths of request source
+    "aws:SourceOrgPaths": "ArrayOfString",  # Organization paths of request source (multivalued)
     "aws:UserAgent": "String",  # HTTP user agent string
     # Cross-Service Keys
-    "aws:CalledVia": "String",  # Services called in request chain
+    "aws:CalledVia": "ArrayOfString",  # Ordered list of services in the FAS call chain (multivalued)
     "aws:CalledViaFirst": "String",  # First service in call chain
     "aws:CalledViaLast": "String",  # Last service in call chain
     "aws:ViaAWSService": "Bool",  # Whether AWS service made the request
@@ -107,10 +109,13 @@ class AWSGlobalConditions:
         """Initialize with global condition keys."""
         self._global_keys: dict[str, str] = AWS_GLOBAL_CONDITION_KEYS.copy()
         self._patterns: list[dict[str, Any]] = AWS_CONDITION_KEY_PATTERNS.copy()
+        self._global_keys_lower: dict[str, str] = {k.lower(): k for k in self._global_keys}
 
     def is_valid_global_key(self, condition_key: str) -> bool:
         """
         Check if a condition key is a valid AWS global condition key.
+
+        Condition key names are not case-sensitive in AWS, so lookups are too.
 
         Args:
             condition_key: The condition key to validate (e.g., "aws:SourceIp")
@@ -118,17 +123,20 @@ class AWSGlobalConditions:
         Returns:
             True if valid global condition key, False otherwise
         """
-        # Check exact matches first
-        if condition_key in self._global_keys:
+        if self._resolve_key(condition_key) is not None:
             return True
 
-        # Check patterns (for tags and wildcards)
         for pattern_config in self._patterns:
-            pattern = pattern_config["pattern"]
-            if re.match(pattern, condition_key):
+            if re.match(pattern_config["pattern"], condition_key, re.IGNORECASE):
                 return True
 
         return False
+
+    def _resolve_key(self, condition_key: str) -> str | None:
+        """Resolve a condition key to its canonically cased name, or None."""
+        if condition_key in self._global_keys:
+            return condition_key
+        return self._global_keys_lower.get(condition_key.lower())
 
     def get_key_type(self, condition_key: str) -> str | None:
         """
@@ -138,16 +146,16 @@ class AWSGlobalConditions:
             condition_key: The condition key (e.g., "aws:SourceIp")
 
         Returns:
-            Type string (String, ARN, Bool, Date, IPAddress, Numeric) or None if not found
+            Type string (String, ArrayOfString, ARN, Bool, Date, IPAddress, Numeric)
+            or None if not found
         """
-        # Check exact matches
-        if condition_key in self._global_keys:
-            return self._global_keys[condition_key]
+        resolved = self._resolve_key(condition_key)
+        if resolved is not None:
+            return self._global_keys[resolved]
 
         # Check patterns - all tag-based keys are String type
         for pattern_config in self._patterns:
-            pattern = pattern_config["pattern"]
-            if re.match(pattern, condition_key):
+            if re.match(pattern_config["pattern"], condition_key, re.IGNORECASE):
                 return "String"
 
         return None
