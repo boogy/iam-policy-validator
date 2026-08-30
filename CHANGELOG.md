@@ -6,6 +6,10 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ## [1.25.1] - 2026-08-30
 
+### Changed
+
+- Upgrade locked dependencies: `boto3`/`botocore` 1.43.66 → 1.43.83, `pydantic` 2.13.4 → 2.13.5, `fastmcp` 3.4.6 → 3.4.7, `ruff` 0.16.1 → 0.16.5, `mypy` 2.3.0 → 2.3.1, `starlette` 1.4.1 → 1.6.0, `cryptography` 50.0.0 → 50.0.1 and their transitive dependencies. Declared version floors are unchanged, so the supported range is not narrowed
+
 ### Fixed
 
 - Match condition key names case-insensitively in `find_matching_condition_key` and `AWSGlobalConditions`, so `"s3:requestobjecttagkeys"` and `"aws:sourceip"` resolve to the same AWS metadata as their canonically cased spellings — AWS states condition key names are not case-sensitive, and the case-sensitive lookups produced a false `set_operator_on_single_valued_key` on miscased multivalued keys and a false unknown-key finding on miscased global keys. Tag key values after the `/` stay case-sensitive
