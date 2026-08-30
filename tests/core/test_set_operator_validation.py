@@ -298,6 +298,54 @@ class TestSetOperatorValidationCheck:
         assert all(issue.issue_type != "set_operator_on_single_valued_key" for issue in issues)
 
     @pytest.mark.asyncio
+    async def test_principal_service_names_list_is_multivalued(self, check, config):
+        """Test aws:PrincipalServiceNamesList is recognized as multivalued."""
+        statement = Statement(
+            effect="Allow",
+            action=["s3:GetObject"],
+            resource=["*"],
+            condition={
+                "ForAnyValue:StringEquals": {
+                    "aws:PrincipalServiceNamesList": ["cloudtrail.amazonaws.com"],
+                },
+            },
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert all(issue.issue_type != "set_operator_on_single_valued_key" for issue in issues)
+
+    @pytest.mark.asyncio
+    async def test_source_org_paths_is_multivalued(self, check, config):
+        """Test aws:SourceOrgPaths is recognized as multivalued."""
+        statement = Statement(
+            effect="Allow",
+            action=["sts:AssumeRole"],
+            resource=["*"],
+            condition={
+                "ForAnyValue:StringLike": {
+                    "aws:SourceOrgPaths": ["o-example12345/r-ab12/ou-ab12-11111111/*"],
+                },
+            },
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert all(issue.issue_type != "set_operator_on_single_valued_key" for issue in issues)
+
+    @pytest.mark.asyncio
+    async def test_vpce_org_paths_is_multivalued(self, check, config):
+        """Test aws:VpceOrgPaths is recognized as multivalued."""
+        statement = Statement(
+            effect="Allow",
+            action=["s3:GetObject"],
+            resource=["*"],
+            condition={
+                "ForAnyValue:StringLike": {
+                    "aws:VpceOrgPaths": ["o-example12345/r-ab12/ou-ab12-11111111/*"],
+                },
+            },
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert all(issue.issue_type != "set_operator_on_single_valued_key" for issue in issues)
+
+    @pytest.mark.asyncio
     async def test_statement_with_sid(self, check, config):
         """Test issue includes statement SID when present."""
         statement = Statement(

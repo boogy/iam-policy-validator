@@ -808,7 +808,9 @@ def is_multivalued_context_key(condition_key: str) -> bool:
 
     Multivalued context keys include:
     - aws:TagKeys (list of tag keys being applied)
-    - aws:PrincipalOrgPaths (organization paths)
+    - aws:PrincipalOrgPaths, aws:ResourceOrgPaths, aws:SourceOrgPaths, aws:VpceOrgPaths
+      (organization paths)
+    - aws:PrincipalServiceNamesList (service principal names of the calling service)
     - aws:CalledVia (ordered list of services in a forward access session chain)
     - Service-specific multivalued keys (e.g., s3:x-amz-grant-*)
 
@@ -846,7 +848,10 @@ def is_multivalued_context_key(condition_key: str) -> bool:
     multivalued_keys = {
         "aws:tagkeys",  # List of tag keys being applied/modified
         "aws:principalorgpaths",  # Organization paths for the principal
+        "aws:principalservicenameslist",  # Service principal names of the calling service
         "aws:resourceorgpaths",  # Organization paths for the resource
+        "aws:sourceorgpaths",  # Organization paths of the source resource owner
+        "aws:vpceorgpaths",  # Organization paths of the VPC endpoint owner
         "aws:calledvia",  # Ordered list of services in the FAS call chain
     }
 

@@ -9,6 +9,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 ### Fixed
 
 - Treat `aws:CalledVia` as multivalued, so a set operator on it no longer raises `set_operator_on_single_valued_key` — AWS types it `Value type - Multivalued`, and multivalued keys require one; `aws:CalledViaFirst` and `aws:CalledViaLast` stay single-valued
+- Treat `aws:PrincipalServiceNamesList`, `aws:SourceOrgPaths` and `aws:VpceOrgPaths` as multivalued, completing the set of 7 keys AWS documents as `Value type - Multivalued` — AWS states outright that each requires `ForAnyValue` or `ForAllValues`, and `principal_validation` already recommends `ForAnyValue:StringLike` on `aws:SourceOrgPaths` for OU-level confused deputy protection ([#162])
 
 ## [1.24.0] - 2026-08-21
 
@@ -754,6 +755,7 @@ _First release._
 
 ---
 
+[#162]: https://github.com/boogy/iam-policy-validator/issues/162
 [1.24.0]: https://github.com/boogy/iam-policy-validator/compare/v1.23.2...v1.24.0
 [#155]: https://github.com/boogy/iam-policy-validator/pull/155
 [#153]: https://github.com/boogy/iam-policy-validator/pull/153
