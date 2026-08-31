@@ -22,7 +22,7 @@ class WildcardActionCheck(PolicyCheck):
         config: CheckConfig,
     ) -> list[ValidationIssue]:
         """Execute wildcard action check on a statement."""
-        issues = []
+        issues: list[ValidationIssue] = []
 
         # Only check Allow statements
         if statement.effect != "Allow":

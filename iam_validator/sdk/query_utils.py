@@ -166,7 +166,7 @@ async def query_actions(
     """
     service_detail = await fetcher.fetch_service_by_name(service)
 
-    filtered_actions = []
+    filtered_actions: list[ActionInfo] = []
     for action_name, action_detail in service_detail.actions.items():
         access_lv = _get_access_level(action_detail)
 

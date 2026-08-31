@@ -634,7 +634,7 @@ class ConfigLoader:
             Custom check modules should export a class that inherits from PolicyCheck.
             The module path should be importable (e.g., "my_package.my_check.MyCheck").
         """
-        loaded_checks = []
+        loaded_checks: list[str] = []
 
         # Handle None or missing custom_checks
         if not config.custom_checks:
@@ -704,7 +704,7 @@ class ConfigLoader:
             - Each file can contain multiple PolicyCheck subclasses
             - Classes must inherit from PolicyCheck and implement required methods
         """
-        loaded_checks = []
+        loaded_checks: list[str] = []
 
         if not directory.exists():
             logger.warning(f"Custom checks directory does not exist: {directory}")

@@ -805,26 +805,26 @@ class ReportGenerator:
         # Issue breakdown
         if report.total_issues > 0:
             # Count issues - separate validity errors from security findings
-            validity_errors = sum(1 for r in report.results for i in r.issues if i.severity == "error")
-            critical_findings = sum(1 for r in report.results for i in r.issues if i.severity == "critical")
-            high_findings = sum(1 for r in report.results for i in r.issues if i.severity == "high")
-            warnings = sum(1 for r in report.results for i in r.issues if i.severity in ("warning", "medium"))
-            infos = sum(1 for r in report.results for i in r.issues if i.severity in ("info", "low"))
+            validity_errors_count = sum(1 for r in report.results for i in r.issues if i.severity == "error")
+            critical_findings_count = sum(1 for r in report.results for i in r.issues if i.severity == "critical")
+            high_findings_count = sum(1 for r in report.results for i in r.issues if i.severity == "high")
+            warnings_count = sum(1 for r in report.results for i in r.issues if i.severity in ("warning", "medium"))
+            infos_count = sum(1 for r in report.results for i in r.issues if i.severity in ("info", "low"))
 
             lines.append("### 🔍 Issue Breakdown")
             lines.append("")
             lines.append("| Severity | Count |")
             lines.append("|----------|------:|")
-            if validity_errors > 0:
-                lines.append(f"| 🔴 **Errors** | {validity_errors} |")
-            if critical_findings > 0:
-                lines.append(f"| 🟣 **Critical** | {critical_findings} |")
-            if high_findings > 0:
-                lines.append(f"| 🔶 **High** | {high_findings} |")
-            if warnings > 0:
-                lines.append(f"| 🟡 **Warnings** | {warnings} |")
-            if infos > 0:
-                lines.append(f"| 🔵 **Info** | {infos} |")
+            if validity_errors_count > 0:
+                lines.append(f"| 🔴 **Errors** | {validity_errors_count} |")
+            if critical_findings_count > 0:
+                lines.append(f"| 🟣 **Critical** | {critical_findings_count} |")
+            if high_findings_count > 0:
+                lines.append(f"| 🔶 **High** | {high_findings_count} |")
+            if warnings_count > 0:
+                lines.append(f"| 🟡 **Warnings** | {warnings_count} |")
+            if infos_count > 0:
+                lines.append(f"| 🔵 **Info** | {infos_count} |")
             lines.append("")
 
         # Ignored findings section

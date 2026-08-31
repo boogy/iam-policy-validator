@@ -207,7 +207,10 @@ SCP size is validated separately when using `--policy-type SERVICE_CONTROL_POLIC
 
 Validates Statement IDs (SIDs) are unique within a policy.
 
-**Severity:** `warning`
+**Severity:** `error`
+
+AWS states "In IAM, the Sid value must be unique within a JSON policy", so IAM
+rejects a policy with duplicate Sids.
 
 ### Pass Example
 
@@ -326,7 +329,10 @@ Replace `NotPrincipal` with `Principal: "*"` and a `Condition` using `ArnNotEqua
 
 Validates ForAllValues and ForAnyValue operators are used correctly.
 
-**Severity:** `error`
+**Severity:** `warning`
+
+AWS accepts a set operator on a single-valued key; its documentation only advises
+against the pattern. Raise the severity in your config if you want it to fail CI.
 
 ### What It Checks
 

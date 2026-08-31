@@ -4,7 +4,7 @@ import html
 from datetime import datetime
 
 from iam_validator.core.formatters.base import OutputFormatter
-from iam_validator.core.models import ValidationReport
+from iam_validator.core.models import ValidationIssue, ValidationReport
 
 
 class HTMLFormatter(OutputFormatter):
@@ -421,7 +421,7 @@ class HTMLFormatter(OutputFormatter):
         </section>
         """
 
-    def _format_suggestion(self, suggestion: str) -> str:
+    def _format_suggestion(self, suggestion: str | None) -> str:
         """Format suggestion field to show examples in code blocks."""
         if not suggestion:
             return "-"
@@ -497,7 +497,7 @@ class HTMLFormatter(OutputFormatter):
             if not policy_result.issues:
                 continue
 
-            issues_by_statement = {}
+            issues_by_statement: dict[int, list[ValidationIssue]] = {}
             for issue in policy_result.issues:
                 stmt_idx = issue.statement_index or -1
                 if stmt_idx not in issues_by_statement:

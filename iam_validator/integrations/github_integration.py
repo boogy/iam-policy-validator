@@ -330,7 +330,7 @@ class GitHubIntegration:
                     retry_after = response.headers.get("Retry-After")
 
                     if retry_after:
-                        wait_time = int(retry_after)
+                        wait_time: float = int(retry_after)
                     elif reset_time:
                         wait_time = max(0, int(reset_time) - int(time.time()))
                     else:

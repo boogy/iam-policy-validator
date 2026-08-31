@@ -125,7 +125,7 @@ class TestRCPBestPractices:
                 Principal="*",
                 Action=["secretsmanager:*"],
                 Resource=["*"],
-                Condition={"StringNotEqualsIfExists": {"aws:PrincipalOrgPaths": "o-example12345/r-ab12/*"}},
+                Condition={"StringNotEqualsIfExists": {"aws:PrincipalOrgID": "o-example12345"}},
             ),
         )
         issues = await check.execute_policy(

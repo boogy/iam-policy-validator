@@ -153,7 +153,7 @@ class CSVFormatter(OutputFormatter):
 
     def _create_pivot_data(self, report: ValidationReport) -> dict[tuple, dict[str, Any]]:
         """Create pivot table data structure."""
-        pivot_data = {}
+        pivot_data: dict[tuple, dict[str, Any]] = {}
 
         for policy_result in report.results:
             for issue in policy_result.issues:
@@ -170,6 +170,6 @@ class CSVFormatter(OutputFormatter):
 
         # Convert sets to lists
         for key in pivot_data:
-            pivot_data[key]["files"] = sorted(list(pivot_data[key]["files"]))
+            pivot_data[key]["files"] = sorted(pivot_data[key]["files"])
 
         return pivot_data

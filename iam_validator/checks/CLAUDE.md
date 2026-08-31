@@ -87,7 +87,7 @@ Cached: memory LRU + disk TTL (7 days). Tests must mock — never hit the real A
 | `policy_type_validation.py`       | `policy_type_validation`       | error    | type-specific rules + RCP shape hint               |
 | `rcp_best_practices.py`           | `rcp_best_practices`           | medium   | RCP blanket denies + service carve-outs            |
 | `sid_uniqueness.py`               | `sid_uniqueness`               | error    | policy-level                                       |
-| `set_operator_validation.py`      | `set_operator_validation`      | error    | ForAllValues/ForAnyValue                           |
+| `set_operator_validation.py`      | `set_operator_validation`      | warning  | ForAllValues/ForAnyValue                           |
 | `ifexists_condition_check.py`     | `ifexists_condition_usage`     | warning  | IfExists patterns                                  |
 | `mfa_condition_check.py`          | `mfa_condition_antipattern`    | warning  | MFA anti-patterns                                  |
 | `trust_policy_validation.py`      | `trust_policy_validation`      | high     | + confused deputy                                  |

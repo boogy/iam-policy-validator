@@ -15,7 +15,7 @@ from iam_validator.core.config.sensitive_actions import (
     RESOURCE_EXPOSURE_ACTIONS,
 )
 from iam_validator.mcp.models import ActionDetails, PolicySummary
-from iam_validator.sdk import get_actions_by_access_level, parse_policy, query_arn_types
+from iam_validator.sdk import ArnTypeInfo, get_actions_by_access_level, parse_policy, query_arn_types
 from iam_validator.sdk import get_policy_summary as sdk_get_policy_summary
 from iam_validator.sdk import query_action_details as sdk_query_action_details
 from iam_validator.sdk import query_condition_keys as sdk_query_condition_keys
@@ -179,7 +179,7 @@ async def query_condition_keys(service: str, fetcher: AWSServiceFetcher | None =
             await _fetcher.__aexit__(None, None, None)
 
 
-async def query_arn_formats(service: str, fetcher: AWSServiceFetcher | None = None) -> list[dict[str, Any]]:
+async def query_arn_formats(service: str, fetcher: AWSServiceFetcher | None = None) -> list[ArnTypeInfo]:
     """Get ARN formats for a service's resources.
 
     Args:

@@ -861,7 +861,5 @@ def is_multivalued_context_key(condition_key: str) -> bool:
     if key_lower in multivalued_keys:
         return True
 
-    # Most condition keys are single-valued by default. Service-specific multivalued
-    # keys carry an ArrayOf prefix in the Service Authorization Reference and are
-    # resolved from that data by the caller.
+    # Service-specific multivalued keys are resolved from their ArrayOf prefix by the caller.
     return False

@@ -362,7 +362,7 @@ condition_type_mismatch:
 # ============================================================================
 set_operator_validation:
   enabled: true
-  severity: error
+  severity: warning
   description: "Validates that set operators are used with multi-value condition keys"
   # Set operators (ForAllValues:, ForAnyValue:) should only be used with keys that accept multiple values
   # Using them with single-value keys can cause unexpected behavior
@@ -674,7 +674,7 @@ rcp_best_practices:
 #   - s3:ListBucket with object ARN (needs bucket ARN without /)
 action_resource_matching:
   enabled: true
-  severity: error # IAM validity error - these policies won't work as expected
+  severity: medium # AWS accepts these policies; they just fail to grant
   description: "Validates that resources match required types for actions (including account-level actions)"
 
   # Example ignore patterns (commented out by default)

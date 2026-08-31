@@ -78,7 +78,7 @@ async def execute_policy(
     Returns:
         List of validation issues
     """
-    issues = []
+    issues: list[ValidationIssue] = []
 
     # Handle policies with no statements
     if not policy.statement:

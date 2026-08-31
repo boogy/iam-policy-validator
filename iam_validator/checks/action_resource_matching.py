@@ -68,7 +68,7 @@ class ActionResourceMatchingCheck(PolicyCheck):
         Returns:
             List of ValidationIssue objects for resource mismatches
         """
-        issues = []
+        issues: list[ValidationIssue] = []
 
         # Check if template variable support is enabled (default: true)
         # Try global settings first, then check-specific config

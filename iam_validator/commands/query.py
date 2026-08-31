@@ -421,6 +421,7 @@ note:
         """Execute query command."""
         try:
             async with AWSServiceFetcher(prefetch_common=False) as fetcher:
+                result: dict[str, Any] | list[dict[str, Any]] | list[str]
                 if args.query_type == "action":
                     # Use new multi-action parsing for action queries
                     result = await self._query_action_table(fetcher, args)
@@ -835,7 +836,7 @@ note:
 
     async def _query_arn_table(
         self, fetcher: AWSServiceFetcher, args: argparse.Namespace
-    ) -> dict[str, Any] | list[dict[str, Any]]:
+    ) -> dict[str, Any] | list[dict[str, Any]] | list[str]:
         """Query ARN table."""
         service_detail = await fetcher.fetch_service_by_name(args.service)
         condition_key_filter = getattr(args, "has_condition_key", None)

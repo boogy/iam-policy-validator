@@ -137,15 +137,53 @@ class TestAWSGlobalConditions:
         for key in AWS_GLOBAL_CONDITION_KEYS:
             assert conditions.is_valid_global_key(key) is True, f"{key} should be valid"
 
-    def test_case_sensitivity(self, conditions):
-        """Test that condition keys are case-sensitive."""
-        # Valid key
+    def test_case_insensitivity(self, conditions):
+        """AWS: condition key names are not case-sensitive."""
         assert conditions.is_valid_global_key("aws:SourceIp") is True
+        assert conditions.is_valid_global_key("aws:sourceip") is True
+        assert conditions.is_valid_global_key("AWS:SourceIp") is True
+        assert conditions.is_valid_global_key("aws:SOURCEIP") is True
+        assert conditions.get_key_type("aws:sourceip") == "IPAddress"
+        assert conditions.get_key_type("AWS:PRINCIPALTAG/team") == "String"
 
-        # Invalid cases (wrong capitalization)
-        assert conditions.is_valid_global_key("aws:sourceip") is False
-        assert conditions.is_valid_global_key("AWS:SourceIp") is False
-        assert conditions.is_valid_global_key("aws:SOURCEIP") is False
+        assert conditions.is_valid_global_key("aws:NotARealKey") is False
+
+    def test_recently_documented_global_keys_are_recognized(self, conditions):
+        expected = {
+            "aws:CalledViaAWSMCP": "String",
+            "aws:IsMcpServiceAction": "Bool",
+            "aws:ViaAWSMCPService": "Bool",
+            "aws:ViaCustomerDomain": "String",
+            "aws:SignInSessionArn": "ARN",
+            "aws:SourceVpcArn": "ARN",
+        }
+        for key, key_type in expected.items():
+            assert conditions.is_valid_global_key(key) is True, key
+            assert conditions.get_key_type(key) == key_type, key
+
+    def test_multivalued_keys_typed_arrayofstring(self, conditions):
+        """The seven keys AWS documents as Value type - Multivalued carry ArrayOfString."""
+        multivalued = [
+            "aws:TagKeys",
+            "aws:PrincipalOrgPaths",
+            "aws:PrincipalServiceNamesList",
+            "aws:ResourceOrgPaths",
+            "aws:SourceOrgPaths",
+            "aws:VpceOrgPaths",
+            "aws:CalledVia",
+        ]
+        for key in multivalued:
+            assert conditions.get_key_type(key) == "ArrayOfString", key
+
+        assert conditions.get_key_type("aws:CalledViaFirst") == "String"
+        assert conditions.get_key_type("aws:CalledViaLast") == "String"
+
+    def test_arrayofstring_table_agrees_with_is_multivalued_context_key(self):
+        """The type table and the set-operator authority must not contradict."""
+        from iam_validator.core.condition_validators import is_multivalued_context_key
+
+        for key, key_type in AWS_GLOBAL_CONDITION_KEYS.items():
+            assert is_multivalued_context_key(key) is (key_type == "ArrayOfString"), key
 
     def test_tag_with_special_characters(self, conditions):
         """Test tag patterns with allowed special characters."""

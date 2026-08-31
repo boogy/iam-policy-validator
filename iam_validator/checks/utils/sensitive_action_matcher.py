@@ -250,9 +250,9 @@ def check_patterns_config(actions: list[str], config) -> tuple[bool, list[str]]:
                             all_matched.add(action)
             elif isinstance(item, dict):
                 # Recurse for dict items
-                matches, matched = check_patterns_config(actions, item)
+                matches, nested_matched = check_patterns_config(actions, item)
                 if matches:
-                    all_matched.update(matched)
+                    all_matched.update(nested_matched)
 
         return len(all_matched) > 0, list(all_matched)
 
@@ -274,17 +274,15 @@ def check_patterns_config(actions: list[str], config) -> tuple[bool, list[str]]:
         # all_of: at least one action must match ALL patterns
         if "all_of" in config:
             # Pre-compile all patterns using centralized cache
-            compiled_patterns = [compile_pattern(p) for p in config["all_of"]]
-            # Filter out invalid patterns
-            compiled_patterns = [p for p in compiled_patterns if p]
+            all_of_patterns = [p for p in (compile_pattern(p) for p in config["all_of"]) if p]
 
-            if not compiled_patterns:
+            if not all_of_patterns:
                 return False, []
 
             matched = set()
             for action in actions:
                 # Check if this action matches ALL patterns
-                if all(compiled.match(action) for compiled in compiled_patterns):
+                if all(compiled.match(action) for compiled in all_of_patterns):
                     matched.add(action)
 
             return len(matched) > 0, list(matched)

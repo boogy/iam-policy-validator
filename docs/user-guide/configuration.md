@@ -425,7 +425,7 @@ All 22 built-in checks with their default settings:
 | `policy_structure`          | error            | Required fields, valid values, version check  |
 | `policy_size`               | error            | Policy size limits (including SCP-specific)   |
 | `sid_uniqueness`            | error            | SIDs are unique across statements             |
-| `set_operator_validation`   | error            | ForAllValues/ForAnyValue used correctly       |
+| `set_operator_validation`   | warning          | ForAllValues/ForAnyValue used correctly       |
 | `mfa_condition_antipattern` | warning          | MFA anti-patterns detected                    |
 | `trust_policy_validation`   | high             | Trust policy structure + confused deputy      |
 | `not_principal_validation`  | warning          | NotPrincipal usage patterns                   |

@@ -4,11 +4,33 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.1] - 2026-08-30
+
+### Changed
+
+- Upgrade locked dependencies: `boto3`/`botocore` 1.43.66 → 1.43.83, `pydantic` 2.13.4 → 2.13.5, `fastmcp` 3.4.6 → 3.4.7, `ruff` 0.16.1 → 0.16.5, `mypy` 2.3.0 → 2.3.1, `starlette` 1.4.1 → 1.6.0, `cryptography` 50.0.0 → 50.0.1 and their transitive dependencies. Declared version floors are unchanged, so the supported range is not narrowed
+- Lower `set_operator_validation` from `error` to `warning`. This repository defines `error` as "AWS will reject the policy", but AWS accepts a set operator on a single-valued key — its documentation only states "Do not use condition set operators `ForAllValues` or `ForAnyValue` with single-valued context keys" as guidance. This also softens the 1.25.0 change that newly flagged `s3:x-amz-grant-*` and `ec2:ResourceTag/*`: those findings no longer fail a run gated on `error`. Set `severity: error` under `set_operator_validation` to restore the previous behaviour
+- Lower `action_resource_matching` from `error` to `medium` in the default config, matching the severity the check class, the docs and `iam_validator/checks/CLAUDE.md` have always declared — AWS accepts a policy whose resource ARN does not match the action's resource type, it simply fails to grant
+- Raise the `sid_uniqueness` check class default from `warning` to `error`, matching the default config, the docs and AWS: "In IAM, the Sid value must be unique within a JSON policy". Only callers that ran the check without a `ValidatorConfig` (the SDK, direct instantiation) saw `warning`; every CLI run already reported `error`
+- Type-annotate the codebase so `uv run mypy iam_validator/` is clean (66 errors in 26 files → 0). Empty-collection accumulators carry explicit element types, `_query_arn_table` declares the `list[str]` branch it could already return, and eight locals that reused an outer name for a different type were renamed. No runtime behaviour changes
+
+### Fixed
+
+- Match condition key names case-insensitively in `find_matching_condition_key` and `AWSGlobalConditions`, so `"s3:requestobjecttagkeys"` and `"aws:sourceip"` resolve to the same AWS metadata as their canonically cased spellings — AWS states condition key names are not case-sensitive, and the case-sensitive lookups produced a false `set_operator_on_single_valued_key` on miscased multivalued keys and a false unknown-key finding on miscased global keys. Tag keys after the `/` are matched case-insensitively too (AWS: "Tag keys are not case-sensitive")
+- Drop the `StringEquals` operator pin from the `aws:PrincipalOrgPaths` entry in `CROSS_ACCOUNT_ORG_REQUIREMENT`, so a cross-account root policy guarded with `ForAnyValue:StringLike` is no longer reported as missing the required org condition — `aws:PrincipalOrgPaths` is multivalued and requires a set operator, and `StringEquals` does not expand the trailing `/*` the suggested example relied on
+- Add six global condition keys AWS documents but `AWS_GLOBAL_CONDITION_KEYS` was missing, which `condition_key_validation` reported as unknown: `aws:CalledViaAWSMCP`, `aws:IsMcpServiceAction`, `aws:ViaAWSMCPService`, `aws:ViaCustomerDomain`, `aws:SignInSessionArn` and `aws:SourceVpcArn`. AWS's own documented example policies for all six now validate clean
+- Reject a bare `Null` condition as proof that a `principal_condition_requirements` or `action_condition_requirements` entry is satisfied — `Null` only asserts a key's presence or absence and never constrains its value, so `"Null": {"aws:PrincipalOrgID": "false"}` alone cleared the cross-account org requirement it could not enforce
+- Match condition keys and operators case-insensitively in the `principal_validation` and `action_condition_enforcement` requirement lookups, so `"stringequals"` / `"aws:principalorgid"` no longer produce a false `missing_principal_condition_*` or missing-condition finding
+- Pair a `Null` check with its set-operator key case-insensitively in `set_operator_validation`, so `"Null": {"aws:tagkeys": "false"}` suppresses `forallvalues_allow_without_null_check` on `aws:TagKeys` as the canonically cased spelling already did, and stop treating a miscased `"AWS:"` prefix as a service prefix when resolving the key's type
+- Correct the severities documented for `sid_uniqueness` (`warning` → `error`) and `action_condition_enforcement` (`error` → `high`) in the check reference, and stop `examples/mcp-llm-instructions/organization_config.yaml` from lowering `sid_uniqueness` to `warning` while raising every neighbouring check
+- Correct the `sid_uniqueness` module docstring and default-config comment: unique Sids are an AWS requirement, not a best practice, and the Sid charset AWS accepts is `A-Z a-z 0-9` only — not hyphens and underscores, which the check's own regex has always rejected
+- Type all seven multivalued global condition keys as `ArrayOfString` in `AWS_GLOBAL_CONDITION_KEYS` — `aws:ResourceOrgPaths` alone carried it, leaving the table contradicting `is_multivalued_context_key` for the other six
+
 ## [1.25.0] - 2026-08-30
 
 ### Changed
 
-- Treat `s3:x-amz-grant-*` and `ec2:ResourceTag/*` as single-valued, so a set operator on them now raises `set_operator_on_single_valued_key` — the Service Authorization Reference types both as `String`, not `ArrayOfString`, and `ec2:ResourceTag/*` was the only `ResourceTag` variant exempt from the error that `aws:ResourceTag/*` and every other service prefix already produced. Genuinely multivalued service keys keep working: they are resolved from their `ArrayOf` prefix in the Service Authorization Reference ([#164])
+- **Breaking-ish (intended):** treat `s3:x-amz-grant-*` and `ec2:ResourceTag/*` as single-valued, so a set operator on them now raises `set_operator_on_single_valued_key` — the Service Authorization Reference types both as `String`, not `ArrayOfString`, and `ec2:ResourceTag/*` was the only `ResourceTag` variant exempt from the error that `aws:ResourceTag/*` and every other service prefix already produced. Genuinely multivalued service keys keep working: they are resolved from their `ArrayOf` prefix in the Service Authorization Reference. A policy that used a set operator on these keys passed on 1.24.0 and now fails at severity `error` ([#164])
 
 ### Fixed
 

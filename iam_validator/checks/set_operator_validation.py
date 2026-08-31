@@ -27,7 +27,7 @@ class SetOperatorValidationCheck(PolicyCheck):
 
     check_id: ClassVar[str] = "set_operator_validation"
     description: ClassVar[str] = "Validates proper usage of ForAllValues and ForAnyValue set operators"
-    default_severity: ClassVar[str] = "error"
+    default_severity: ClassVar[str] = "warning"
 
     async def _is_multivalued_key(
         self,
@@ -50,7 +50,7 @@ class SetOperatorValidationCheck(PolicyCheck):
         # Look up condition key type from AWS service data
         # Try extracting service prefix from the condition key itself (e.g. "route53:KeyName")
         service_prefixes: set[str] = set()
-        if ":" in condition_key and not condition_key.startswith("aws:"):
+        if ":" in condition_key and not condition_key.lower().startswith("aws:"):
             service_prefixes.add(condition_key.split(":")[0].lower())
 
         # Also extract service prefixes from the statement's actions
@@ -102,7 +102,7 @@ class SetOperatorValidationCheck(PolicyCheck):
         Returns:
             List of validation issues found
         """
-        issues = []
+        issues: list[ValidationIssue] = []
 
         # Only check statements with conditions
         if not statement.condition:
@@ -113,23 +113,14 @@ class SetOperatorValidationCheck(PolicyCheck):
         effect = statement.effect
         actions = statement.get_actions()
 
-        # Track which condition keys have set operators and Null checks
-        set_operator_keys: dict[str, str] = {}  # key -> operator prefix
-        null_checked_keys: set[str] = set()
+        null_checked_keys: set[str] = set()  # lowercased: condition key names are not case-sensitive
 
-        # First pass: Identify set operators and Null checks
+        # First pass: Identify Null checks
         for operator, conditions in statement.condition.items():
-            base_operator, _operator_type, set_prefix = normalize_operator(operator)
-
-            # Track Null checks
+            base_operator, _operator_type, _set_prefix = normalize_operator(operator)
             if base_operator == "Null":
                 for condition_key in conditions.keys():
-                    null_checked_keys.add(condition_key)
-
-            # Track set operators
-            if set_prefix in ["ForAllValues", "ForAnyValue"]:
-                for condition_key in conditions.keys():
-                    set_operator_keys[condition_key] = set_prefix
+                    null_checked_keys.add(condition_key.lower())
 
         # Second pass: Validate set operator usage
         for operator, conditions in statement.condition.items():
@@ -163,7 +154,7 @@ class SetOperatorValidationCheck(PolicyCheck):
 
                 # Issue 2: ForAllValues with Allow effect without Null check (security risk)
                 if set_prefix == "ForAllValues" and effect == "Allow":
-                    if condition_key not in null_checked_keys:
+                    if condition_key.lower() not in null_checked_keys:
                         if has_ifexists:
                             message = (
                                 f"Compounded security risk: `{operator}` with `Allow` effect "
@@ -196,7 +187,7 @@ class SetOperatorValidationCheck(PolicyCheck):
 
                 # Issue 3: ForAnyValue with Deny effect without Null check (unpredictable)
                 if set_prefix == "ForAnyValue" and effect == "Deny":
-                    if condition_key not in null_checked_keys:
+                    if condition_key.lower() not in null_checked_keys:
                         issues.append(
                             ValidationIssue(
                                 severity="warning",

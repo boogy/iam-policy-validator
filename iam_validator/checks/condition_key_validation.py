@@ -24,7 +24,7 @@ class ConditionKeyValidationCheck(PolicyCheck):
         config: CheckConfig,
     ) -> list[ValidationIssue]:
         """Execute condition key validation on a statement."""
-        issues = []
+        issues: list[ValidationIssue] = []
 
         # Get conditions from statement
         if not statement.condition:

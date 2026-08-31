@@ -38,7 +38,7 @@ class MFAConditionCheck(PolicyCheck):
         Returns:
             List of validation issues found
         """
-        issues = []
+        issues: list[ValidationIssue] = []
 
         # Only check statements with conditions
         if not statement.condition:

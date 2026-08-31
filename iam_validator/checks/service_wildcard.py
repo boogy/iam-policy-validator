@@ -37,7 +37,7 @@ class ServiceWildcardCheck(PolicyCheck):
         config: CheckConfig,
     ) -> list[ValidationIssue]:
         """Execute service wildcard check on a statement."""
-        issues = []
+        issues: list[ValidationIssue] = []
 
         # Only check Allow statements
         if statement.effect != "Allow":

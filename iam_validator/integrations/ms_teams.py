@@ -145,7 +145,7 @@ class MSTeamsIntegration:
         Returns:
             Adaptive card payload
         """
-        card = {
+        card: dict[str, Any] = {
             "type": "message",
             "attachments": [
                 {

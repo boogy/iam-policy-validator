@@ -145,16 +145,15 @@ CROSS_ACCOUNT_ORG_REQUIREMENT: Final[dict[str, Any]] = {
             },
             {
                 "condition_key": "aws:PrincipalOrgPaths",
-                "operator": "StringEquals",
                 "description": (
                     "Cross-account root access must be from principals in the same AWS Organization "
                     "to prevent unauthorized third-party access"
                 ),
                 "example": (
-                    "# Replace with your organization ID\n"
+                    "# Replace with your organization and OU path\n"
                     '"Condition": {\n'
-                    '  "StringEquals": {\n'
-                    '    "aws:PrincipalOrgPaths": "o-123456789/*"\n'
+                    '  "ForAnyValue:StringLike": {\n'
+                    '    "aws:PrincipalOrgPaths": "o-123456789/r-ab12/ou-ab12-11111111/*"\n'
                     "  }\n"
                     "}"
                 ),

@@ -36,7 +36,7 @@ def check_policy_level_actions(
     Returns:
         List of ValidationIssue objects
     """
-    issues = []
+    issues: list[ValidationIssue] = []
 
     if not config:
         return issues
@@ -129,7 +129,7 @@ def _check_all_of_pattern(
 
         # Collect which statements these actions appear in
         statement_refs = []
-        action_to_statements = {}  # Map action -> list of statement references
+        action_to_statements: dict[str, list[str]] = {}
 
         for action in matched_actions:
             action_to_statements[action] = []

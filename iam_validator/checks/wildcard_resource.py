@@ -171,7 +171,7 @@ class WildcardResourceCheck(PolicyCheck):
         config: CheckConfig,
     ) -> list[ValidationIssue]:
         """Execute wildcard resource check on a statement."""
-        issues = []
+        issues: list[ValidationIssue] = []
 
         # Only check Allow statements
         if statement.effect != "Allow":

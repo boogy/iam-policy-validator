@@ -124,7 +124,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
         Returns:
             List of validation issues
         """
-        issues = []
+        issues: list[ValidationIssue] = []
 
         # Skip if no principal (trust policies must have principals)
         if statement.principal is None and statement.not_principal is None:
@@ -271,7 +271,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
         Returns:
             List of validation issues
         """
-        issues = []
+        issues: list[ValidationIssue] = []
 
         allowed_types = rule.get("allowed_principal_types", [])
         if not allowed_types:
@@ -324,7 +324,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
         Returns:
             List of validation issues
         """
-        issues = []
+        issues: list[ValidationIssue] = []
 
         provider_pattern = rule.get("provider_pattern")
         if not provider_pattern:
@@ -375,14 +375,14 @@ class TrustPolicyValidationCheck(PolicyCheck):
         Returns:
             List of validation issues
         """
-        issues = []
+        issues: list[ValidationIssue] = []
 
         required_conditions = rule.get("required_conditions", [])
         if not required_conditions:
             return issues
 
         # Get all condition keys from statement
-        condition_keys = set()
+        condition_keys: set[str] = set()
         if statement.condition:
             for _operator, keys_dict in statement.condition.items():
                 if isinstance(keys_dict, dict):
@@ -444,7 +444,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
         Returns:
             List of validation issues
         """
-        issues = []
+        issues: list[ValidationIssue] = []
 
         principal_types = self._extract_principal_types(statement)
         service_principals = principal_types.get("Service", [])

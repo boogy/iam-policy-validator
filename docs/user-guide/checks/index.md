@@ -50,7 +50,7 @@ IAM Policy Validator includes 23 built-in checks across three categories.
 | `policy_structure`         | error    | Required fields, valid values, version check  |
 | `policy_size`              | error    | Character size limits (including SCP)         |
 | `sid_uniqueness`           | error    | Unique SIDs                                   |
-| `set_operator_validation`  | error    | ForAllValues/ForAnyValue usage                |
+| `set_operator_validation`  | warning  | ForAllValues/ForAnyValue usage                |
 | `ifexists_condition_usage` | warning  | IfExists condition validation                 |
 | `not_principal_validation` | warning  | NotPrincipal usage patterns                   |
 

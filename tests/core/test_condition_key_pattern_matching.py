@@ -159,6 +159,26 @@ class TestFindMatchingConditionKey:
         keys = {"ssm:resourceTag/tag-key": MagicMock(), "ssm:Overwrite": MagicMock()}
         assert find_matching_condition_key("ssm:resourceTag/ns/key", keys) == "ssm:resourceTag/tag-key"
 
+    def test_miscased_exact_key_returns_canonical_key(self):
+        keys = {"s3:RequestObjectTagKeys": MagicMock()}
+        assert find_matching_condition_key("s3:requestobjecttagkeys", keys) == "s3:RequestObjectTagKeys"
+
+    def test_miscased_service_prefix_returns_canonical_key(self):
+        keys = {"s3:RequestObjectTagKeys": MagicMock()}
+        assert find_matching_condition_key("S3:RequestObjectTagKeys", keys) == "s3:RequestObjectTagKeys"
+
+    def test_miscased_pattern_prefix_returns_pattern(self):
+        keys = {"aws:ResourceTag/${TagKey}": MagicMock()}
+        assert find_matching_condition_key("aws:resourcetag/owner", keys) == "aws:ResourceTag/${TagKey}"
+
+    def test_miscased_prefix_matches_compound_tag_key(self):
+        keys = {"aws:ResourceTag/${TagKey}": ConditionKey(Name="aws:ResourceTag/${TagKey}", Types=["String"])}
+        assert find_matching_condition_key("AWS:RESOURCETAG/Team/Owner", keys) == "aws:ResourceTag/${TagKey}"
+
+    def test_miscased_empty_tag_key_returns_none(self):
+        keys = {"aws:ResourceTag/${TagKey}": MagicMock()}
+        assert find_matching_condition_key("aws:resourcetag/", keys) is None
+
     def test_caller_can_get_metadata_from_matched_key(self):
         """Verify the intended usage: look up type info from the matched pattern."""
         cond_key_obj = ConditionKey(Name="aws:ResourceTag/${TagKey}", Types=["String"])
@@ -352,6 +372,23 @@ class TestSetOperatorValidationPatternMatching:
 
         result = await check._is_multivalued_key("aws:ResourceTag/team/owner", fetcher, ["events:DeleteEventBus"])
         assert result is False
+
+    @pytest.mark.asyncio
+    async def test_miscased_arrayofstring_key_is_multivalued(self):
+        from iam_validator.checks.set_operator_validation import SetOperatorValidationCheck
+
+        check = SetOperatorValidationCheck()
+
+        fetcher = MagicMock()
+        fetcher.parse_action = MagicMock(return_value=("s3", "PutObject"))
+        service_detail = MagicMock()
+        service_detail.condition_keys = {
+            "s3:RequestObjectTagKeys": ConditionKey(Name="s3:RequestObjectTagKeys", Types=["ArrayOfString"]),
+        }
+        fetcher.fetch_service_by_name = AsyncMock(return_value=service_detail)
+
+        result = await check._is_multivalued_key("s3:requestobjecttagkeys", fetcher, ["s3:PutObject"])
+        assert result is True
 
 
 # =============================================================================

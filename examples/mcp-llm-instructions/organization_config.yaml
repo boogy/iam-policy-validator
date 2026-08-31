@@ -114,7 +114,7 @@ policy_size:
 # Validates SIDs are unique
 sid_uniqueness:
   enabled: true
-  severity: warning
+  severity: error
 
 # Validates trust policies
 trust_policy_validation:
@@ -134,7 +134,7 @@ action_resource_matching:
 # Validates set operators (ForAllValues/ForAnyValue)
 set_operator_validation:
   enabled: true
-  severity: error
+  severity: warning
 # =============================================================================
 # EXAMPLE: RELAXED CONFIGURATION (for development/testing)
 # =============================================================================

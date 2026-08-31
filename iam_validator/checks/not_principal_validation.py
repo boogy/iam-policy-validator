@@ -39,7 +39,7 @@ class NotPrincipalValidationCheck(PolicyCheck):
         """Execute NotPrincipal check on a statement."""
         del fetcher  # Unused
 
-        issues = []
+        issues: list[ValidationIssue] = []
 
         # Only check statements that have NotPrincipal
         if statement.not_principal is None:

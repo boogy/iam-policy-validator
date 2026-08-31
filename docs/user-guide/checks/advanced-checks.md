@@ -11,7 +11,7 @@ These 4 checks provide advanced validation for condition enforcement, trust poli
 
 Enforces required conditions for specific actions.
 
-**Severity:** `error`
+**Severity:** `high`
 
 ### Why It Matters
 

@@ -15,8 +15,8 @@ Authoritative per-check docs (risk, examples, remediation): https://boogy.github
 | `policy_structure`          | error    | Missing required fields, invalid `Version`               |
 | `policy_size`               | error    | Policy exceeds character limits (incl. SCP/RCP limits)   |
 | `policy_type_validation`    | error    | Policy content doesn't match declared `--policy-type`    |
-| `sid_uniqueness`            | warning  | Duplicate SIDs within a policy                           |
-| `set_operator_validation`   | error    | `ForAllValues` / `ForAnyValue` misuse                    |
+| `sid_uniqueness`            | error    | Duplicate or malformed SIDs within a policy              |
+| `set_operator_validation`   | warning  | `ForAllValues` / `ForAnyValue` misuse                    |
 | `ifexists_condition_usage`  | warning  | `IfExists` suffix misuse                                 |
 | `not_principal_validation`  | warning  | Risky `NotPrincipal` patterns                            |
 | `principal_validation`      | high     | Malformed principals (resource/trust policies)           |
