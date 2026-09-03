@@ -149,6 +149,38 @@ Switching from `false` to `true` (or vice versa) causes a one-time churn of
 existing PR comments anchored to the now-suppressed (or now-visible) check IDs.
 Re-run the validator once after changing this setting to refresh comment state.
 
+### on_check_error
+
+A check that raises an exception returns no findings, so the statement it was given
+went unvalidated by that check. By default the validator reports this as a
+`check_execution_error` finding at severity `error`, which fails a run gated on
+`error` — a run that cannot validate a policy must not report it clean.
+
+```yaml
+settings:
+  on_check_error: fail # default: fail
+```
+
+The finding names the check and the exception, and is attributed to the failing check's
+`check_id`. It deliberately ignores that check's `ignore_patterns` and severity
+overrides: the finding is *about* the check, not *from* it, so the check cannot silence
+the notice that it crashed.
+
+**Opt out**
+
+```yaml
+settings:
+  on_check_error: warn
+```
+
+`warn` logs the failure and drops it, so a policy can pass with a check's findings
+missing. This was the behaviour before the setting existed.
+
+!!! note "Custom checks"
+A bug in a custom check now fails the run instead of degrading quietly. If you load
+third-party checks you do not control and would rather not gate on their stability,
+set `on_check_error: warn` and watch the logs.
+
 ## Check Configuration
 
 ### Disable a Check
@@ -334,6 +366,10 @@ settings:
 
   # Noise reduction
   suppress_superseded_findings: true # Collapse */* noise into one finding (default: true)
+
+  # What to do when a check raises instead of returning findings
+  # fail: report a check_execution_error finding (default) | warn: log only
+  on_check_error: fail
 
   # AWS service definitions
   aws_services_dir: null # Path to offline service definitions
