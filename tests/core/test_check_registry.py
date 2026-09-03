@@ -485,8 +485,12 @@ class TestCheckRegistry:
         # Should not raise, but continue with working check
         issues = await registry.execute_checks_parallel(mock_statement, 0, mock_fetcher)
 
-        # Should still get issues from working check
-        assert len(issues) == 1
+        # The working check's issue, plus a check_execution_error for the failing one:
+        # a check that raised validated nothing, so the run must not report clean.
+        assert len(issues) == 2
+        by_type = {issue.issue_type: issue for issue in issues}
+        assert by_type["check_execution_error"].check_id == "failing_check"
+        assert by_type["check_execution_error"].severity == "error"
 
     @pytest.mark.asyncio
     async def test_execute_checks_parallel_disabled_checks_skipped(self, registry, mock_statement, mock_fetcher):
@@ -526,8 +530,9 @@ class TestCheckRegistry:
 
         issues = await registry.execute_checks_sequential(mock_statement, 0, mock_fetcher)
 
-        # Should still get issues from working check
-        assert len(issues) == 1
+        # As in the parallel path: the working check's issue plus a check_execution_error.
+        assert len(issues) == 2
+        assert {issue.issue_type for issue in issues} >= {"check_execution_error"}
 
     @pytest.mark.asyncio
     async def test_parallel_disabled_falls_back_to_sequential(self, mock_statement, mock_fetcher):
@@ -685,3 +690,92 @@ class TestCreateDefaultRegistry:
         registry = create_default_registry(enable_parallel=False, include_builtin_checks=False)
 
         assert registry.enable_parallel is False
+
+
+class TestOnCheckError:
+    """A check that raises must not let the run report clean.
+
+    Logging alone means the policy passes with that check's findings missing --
+    the result is not merely wrong but unsound, and an unsound pass is worse
+    than a policy AWS would reject. `on_check_error: warn` restores the old
+    log-only behaviour for anyone who wants it.
+    """
+
+    @pytest.fixture
+    def mock_statement(self):
+        return Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::bucket/*"])
+
+    @pytest.fixture
+    def mock_fetcher(self):
+        return MagicMock()
+
+    def _registry(self, on_check_error="fail", enable_parallel=True, with_working_check=True):
+        registry = CheckRegistry(enable_parallel=enable_parallel, on_check_error=on_check_error)
+        registry.register(FailingCheck())
+        registry.configure_check("failing_check", CheckConfig(check_id="failing_check", enabled=True))
+        if with_working_check:
+            registry.register(IssueGeneratingCheck(num_issues=1))
+            registry.configure_check("issue_check", CheckConfig(check_id="issue_check", enabled=True))
+        return registry
+
+    def test_default_is_fail(self):
+        assert CheckRegistry().on_check_error == "fail"
+        assert create_default_registry().on_check_error == "fail"
+
+    async def test_fail_mode_reports_the_failure(self, mock_statement, mock_fetcher):
+        registry = self._registry(with_working_check=False)
+
+        issues = await registry.execute_checks_parallel(mock_statement, 0, mock_fetcher)
+
+        assert len(issues) == 1
+        assert issues[0].issue_type == "check_execution_error"
+        assert issues[0].severity == "error"
+        assert issues[0].check_id == "failing_check"
+        assert "not fully validated" in issues[0].message
+        assert "on_check_error: warn" in (issues[0].suggestion or "")
+
+    async def test_warn_mode_keeps_the_old_behaviour(self, mock_statement, mock_fetcher):
+        registry = self._registry(on_check_error="warn", with_working_check=False)
+
+        issues = await registry.execute_checks_parallel(mock_statement, 0, mock_fetcher)
+
+        assert issues == []
+
+    @pytest.mark.parametrize("enable_parallel", [True, False])
+    async def test_every_statement_path_reports(self, mock_statement, mock_fetcher, enable_parallel):
+        # enable_parallel=False routes execute_checks_parallel to its inline
+        # sequential branch, which previously had no exception handling at all.
+        registry = self._registry(enable_parallel=enable_parallel)
+
+        issues = await registry.execute_checks_parallel(mock_statement, 0, mock_fetcher)
+
+        assert "check_execution_error" in {issue.issue_type for issue in issues}
+
+    async def test_sequential_path_reports(self, mock_statement, mock_fetcher):
+        registry = self._registry()
+
+        issues = await registry.execute_checks_sequential(mock_statement, 0, mock_fetcher)
+
+        assert "check_execution_error" in {issue.issue_type for issue in issues}
+
+    async def test_a_failing_check_does_not_hide_a_working_one(self, mock_statement, mock_fetcher):
+        registry = self._registry()
+
+        issues = await registry.execute_checks_parallel(mock_statement, 0, mock_fetcher)
+
+        assert {issue.issue_type for issue in issues} == {"check_execution_error", "test_issue"}
+
+    async def test_failure_is_not_silenced_by_the_failing_checks_own_config(self, mock_statement, mock_fetcher):
+        # A check whose own config hides every severity must not thereby hide the
+        # notice that it crashed - the finding is about the check, not from it.
+        registry = CheckRegistry(on_check_error="fail")
+        registry.register(FailingCheck())
+        registry.configure_check(
+            "failing_check",
+            CheckConfig(check_id="failing_check", enabled=True, severity="none"),
+        )
+
+        issues = await registry.execute_checks_sequential(mock_statement, 0, mock_fetcher)
+
+        assert len(issues) == 1
+        assert issues[0].issue_type == "check_execution_error"
