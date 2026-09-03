@@ -187,10 +187,12 @@ async def validate_policies(
     enable_builtin_checks = config.get_setting("enable_builtin_checks", True)
 
     suppress_superseded = config.get_setting("suppress_superseded_findings", False)
+    on_check_error = config.get_setting("on_check_error", "fail")
     registry = create_default_registry(
         enable_parallel=enable_parallel,
         include_builtin_checks=enable_builtin_checks,
         suppress_superseded=suppress_superseded,
+        on_check_error=on_check_error,
     )
 
     if not enable_builtin_checks:

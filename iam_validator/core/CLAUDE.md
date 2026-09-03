@@ -10,6 +10,7 @@ Validation engine, models, AWS integration. Extends [../../CLAUDE.md](../../CLAU
 core/
 ├── cli.py                  # CLI entry point (argparse + ALL_COMMANDS dispatch)
 ├── check_registry.py       # PolicyCheck ABC, CheckConfig, CheckRegistry, create_default_registry
+│                           # a check that raises -> check_execution_error finding (settings.on_check_error)
 ├── models.py               # Pydantic v2: IAMPolicy, Statement, ValidationIssue, PolicyValidationResult
 ├── policy_loader.py        # JSON/YAML loading + auto-detect (also embedded in CFN/Terraform)
 ├── policy_checks.py        # validate_policies() orchestrator

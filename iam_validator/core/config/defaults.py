@@ -135,6 +135,11 @@ DEFAULT_CONFIG = {
         "comment_tag": None,
         # Suppress redundant findings for statements already flagged by full_wildcard.
         "suppress_superseded_findings": True,
+        # What to do when a check raises instead of returning findings.
+        # fail: report a `check_execution_error` finding (severity error) so a run
+        #       cannot report clean on a validation that did not fully run (default)
+        # warn: log only, which lets a policy pass with that check's findings missing
+        "on_check_error": "fail",
     },
     # ========================================================================
     # AWS IAM Validation Checks (17 checks total)
