@@ -61,6 +61,12 @@ async with AWSServiceFetcher() as fetcher:  # offline: AWSServiceFetcher(aws_ser
     service = await fetcher.fetch_service_by_name("s3")  # .actions, .resources, .condition_keys
 ```
 
+`validate_action`, `validate_actions_batch` and `validate_condition_key` return their
+normal result type for an action they cannot parse (e.g. `*:Untag*`, whose service prefix
+AWS rejects outright) rather than raising `ValueError` — a raise reaches
+`check_registry`, which logs it and drops every finding from that check for the whole
+statement. `parse_action` still raises; `describe_action_format_error` builds the message.
+
 Two-layer cache: memory LRU (raw JSON + Pydantic models) → disk TTL (raw JSON only).
 Cache dirs: `~/Library/Caches` (macOS), `~/.cache` (Linux), `%LOCALAPPDATA%` (Win).
 Sub-files: `client.py` (httpx + retry + request coalescing), `cache.py`, `storage.py`,
