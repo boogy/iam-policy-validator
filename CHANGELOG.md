@@ -4,6 +4,19 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.0] - 2026-09-03
+
+Two unsound failure modes: a check that raised, and an action that could not be parsed, both ended with the validator reporting the policy clean. A run that cannot finish validating a policy must not pass it.
+
+### Added
+
+- `settings.on_check_error` (default `fail`) controls what happens when a check raises instead of returning findings. `fail` reports a `check_execution_error` finding at severity `error`; `warn` restores the previous log-only behaviour, for anyone who loads third-party custom checks and would rather not gate a run on their stability
+
+### Fixed
+
+- Report a check that raises instead of passing the policy clean. A raising check returns no findings, so the statement it was given went unvalidated by it — the registry logged `Check '<id>' failed` at warning level, dropped the check's entry, and a run gated on `error` reported the policy clean with nothing in the output saying validation had been incomplete. The exception now becomes a `check_execution_error` finding at severity `error` naming the check and the exception, on all five execution paths. That also removes an inconsistency: the single-enabled-check branch of `execute_checks_parallel` had no exception handling and propagated, so behaviour on a failing check depended on how many checks were enabled and whether parallel execution was on. The finding bypasses `_process_issues` deliberately — it is about the check, not from it, so the failing check's own `ignore_patterns` and severity overrides cannot silence the notice that it crashed. A buggy custom check now fails the run instead of degrading quietly; set `on_check_error: warn` to opt out
+- Report unparseable actions instead of aborting the check. `AWSServiceFetcher.validate_action`, `validate_actions_batch` and `validate_condition_key` called `parse_action` outside a `try`, so an action whose service prefix cannot be parsed raised `ValueError` out of the check — `action_validation` and `condition_key_validation` were silently skipped for that statement and the policy passed, including for the valid actions sitting next to the malformed one. The most common real-world case is a wildcard service prefix such as `"*:Untag*"`, written to cover an action across services, which AWS rejects outright with `MalformedPolicyDocument: Action vendors (e.g., aws, ec2, etc.) must not contain wildcards`. All three entry points now return their documented result type, and `describe_action_format_error` explains the failure: it names the wildcard-vendor case, quotes the AWS error, and suggests one action per service while noting that a wildcard inside the action _name_ is fine. A missing `":"` separator gets its own message, and both `*` and `?` count as a wildcard in the service prefix, matching AWS, which rejects `"ec?:DescribeTags"` identically
+
 ## [1.25.1] - 2026-08-31
 
 ### Changed
@@ -783,6 +796,7 @@ _First release._
 
 [#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
+[1.26.0]: https://github.com/boogy/iam-policy-validator/compare/v1.25.1...v1.26.0
 [1.25.1]: https://github.com/boogy/iam-policy-validator/compare/v1.25.0...v1.25.1
 [1.25.0]: https://github.com/boogy/iam-policy-validator/compare/v1.24.0...v1.25.0
 [1.24.0]: https://github.com/boogy/iam-policy-validator/compare/v1.23.2...v1.24.0
