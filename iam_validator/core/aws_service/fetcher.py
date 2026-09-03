@@ -427,7 +427,11 @@ class AWSServiceFetcher:
             ...     if not is_valid:
             ...         print(f"Invalid action: {error}")
         """
-        service_prefix, _ = self._parser.parse_action(action)
+        try:
+            service_prefix, _ = self._parser.parse_action(action)
+        except ValueError as e:
+            return False, str(e), False
+
         service_detail = await self.fetch_service_by_name(service_prefix)
         return await self._validator.validate_action(action, service_detail, allow_wildcards)
 
@@ -462,10 +466,16 @@ class AWSServiceFetcher:
         if not actions:
             return {}
 
-        # Group actions by service prefix
+        # Group actions by service prefix. An action that cannot be parsed has no
+        # service to group under, so its result is recorded up front.
+        results: dict[str, tuple[bool, str | None, bool]] = {}
         service_actions: dict[str, list[str]] = {}
         for action in actions:
-            service_prefix, _ = self._parser.parse_action(action)
+            try:
+                service_prefix, _ = self._parser.parse_action(action)
+            except ValueError as e:
+                results[action] = (False, str(e), False)
+                continue
             if service_prefix not in service_actions:
                 service_actions[service_prefix] = []
             service_actions[service_prefix].append(action)
@@ -483,16 +493,15 @@ class AWSServiceFetcher:
                 service_details[service] = result
 
         # Validate all actions using cached service details
-        results: dict[str, tuple[bool, str | None, bool]] = {}
-        for action in actions:
-            service_prefix, _ = self._parser.parse_action(action)
+        for service_prefix, service_actions_list in service_actions.items():
             service_detail = service_details.get(service_prefix)
 
-            if service_detail is None:
-                # Service fetch failed
-                results[action] = (False, f"Failed to fetch service '{service_prefix}'", False)
-            else:
-                results[action] = await self._validator.validate_action(action, service_detail, allow_wildcards)
+            for action in service_actions_list:
+                if service_detail is None:
+                    # Service fetch failed
+                    results[action] = (False, f"Failed to fetch service '{service_prefix}'", False)
+                else:
+                    results[action] = await self._validator.validate_action(action, service_detail, allow_wildcards)
 
         return results
 
@@ -535,7 +544,14 @@ class AWSServiceFetcher:
             ...     if not result.is_valid:
             ...         print(f"Invalid condition key: {result.error_message}")
         """
-        service_prefix, _ = self._parser.parse_action(action)
+        try:
+            service_prefix, _ = self._parser.parse_action(action)
+        except ValueError:
+            # The action cannot be resolved to a service, so its supported condition
+            # keys are unknowable. action_validation reports the malformed action
+            # itself; re-reporting it per condition key would only add noise.
+            return ConditionKeyValidationResult(is_valid=True)
+
         service_detail = await self.fetch_service_by_name(service_prefix)
         return await self._validator.validate_condition_key(action, condition_key, service_detail, resources)
 

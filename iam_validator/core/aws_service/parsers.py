@@ -42,9 +42,49 @@ class ServiceParser:
         """
         match = self._patterns.action_pattern.match(action)
         if not match:
-            raise ValueError(f"Invalid action format: {action}")
+            raise ValueError(self.describe_action_format_error(action))
 
         return match.group("service").lower(), match.group("action")
+
+    def describe_action_format_error(self, action: str) -> str:
+        """Explain why an action string cannot be parsed.
+
+        The service prefix of an action must name a single service literally.
+        AWS rejects either wildcard character there (`*` or `?`) with
+        `MalformedPolicyDocument: Action vendors (e.g., aws, ec2, etc.) must
+        not contain wildcards`, so the message calls that case out separately
+        from a plain malformed action.
+
+        Args:
+            action: Action string that failed to parse
+
+        Returns:
+            Human-readable explanation, suitable for a validation finding
+
+        Example:
+            >>> parser = ServiceParser()
+            >>> parser.describe_action_format_error("*:Untag*")[:44]
+            'Invalid action format: `*:Untag*`. The servi'
+        """
+        service, separator, action_name = action.partition(":")
+
+        if separator and any(char in service for char in ("*", "?")):
+            suggestion = action_name or "*"
+            return (
+                f"Invalid action format: `{action}`. The service prefix cannot contain a "
+                f"wildcard - AWS rejects this with `MalformedPolicyDocument: Action vendors "
+                f"(e.g., aws, ec2, etc.) must not contain wildcards`. List one action per "
+                f"service instead (e.g. `iam:{suggestion}`, `s3:{suggestion}`). A wildcard "
+                f"inside the action name is allowed."
+            )
+
+        if not separator:
+            return f"Invalid action format: `{action}`. Expected `<service>:<action>`, e.g. `s3:GetObject`."
+
+        return (
+            f"Invalid action format: `{action}`. Expected `<service>:<action>` where both "
+            f"parts use only letters, digits, `_`, `-` and (in the action name) `*`."
+        )
 
     def validate_arn_format(self, arn: str) -> tuple[bool, str | None]:
         """Validate ARN format using compiled regex.
