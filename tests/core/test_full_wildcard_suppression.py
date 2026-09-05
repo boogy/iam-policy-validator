@@ -1,5 +1,6 @@
 """Integration tests for full-wildcard suppression (suppress_superseded_findings)."""
 
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock
 
 from iam_validator.checks.full_wildcard import FullWildcardCheck
@@ -204,8 +205,8 @@ class TestSuppressSupersededEnabled:
         check_ids = {i.check_id for i in issues}
         assert "wildcard_action" in check_ids
 
-    async def test_custom_check_not_in_supersedes_is_suppressed(self):
-        """Custom checks not in supersedes are also suppressed for */* statements."""
+    async def test_custom_check_not_in_supersedes_is_not_suppressed(self):
+        """Custom checks not declared in supersedes are NOT suppressed for */* statements."""
         registry = _make_registry(suppress=True)
         registry.register(FullWildcardCheck())
         registry.configure_check("full_wildcard", CheckConfig(check_id="full_wildcard", enabled=True))
@@ -218,11 +219,11 @@ class TestSuppressSupersededEnabled:
 
         check_ids = {i.check_id for i in issues}
         assert "full_wildcard" in check_ids
-        assert "my_custom_abac_check" not in check_ids
-        assert "another_custom_check" not in check_ids
+        assert "my_custom_abac_check" in check_ids
+        assert "another_custom_check" in check_ids
 
-    async def test_suppression_note_lists_all_suppressed_ids(self):
-        """Suppression note lists all suppressed IDs including custom checks."""
+    async def test_suppression_note_lists_only_declared_suppressed_ids(self):
+        """Suppression note lists declared supersedes IDs, not unrelated custom checks."""
         registry = _make_registry(suppress=True)
         registry.register(FullWildcardCheck())
         registry.configure_check("full_wildcard", CheckConfig(check_id="full_wildcard", enabled=True))
@@ -233,11 +234,14 @@ class TestSuppressSupersededEnabled:
         fetcher = _make_mock_fetcher()
         issues = await registry.execute_checks_parallel(statement, 0, fetcher)
 
+        check_ids = {i.check_id for i in issues}
+        assert "my_custom_check" in check_ids
+
         fw_issues = [i for i in issues if i.check_id == "full_wildcard"]
         assert len(fw_issues) == 1
         note = fw_issues[0].message
         assert "wildcard_action" in note
-        assert "my_custom_check" in note
+        assert "my_custom_check" not in note
 
 
 class TestPolicyLevelSuppression:
@@ -346,3 +350,39 @@ class TestPolicyLevelSuppression:
 
         check_ids = {i.check_id for i in result.issues}
         assert "mock_policy_level2" in check_ids
+
+
+def _issue(check_id: str) -> ValidationIssue:
+    return ValidationIssue(
+        severity="medium",
+        statement_index=0,
+        issue_type=f"{check_id}_finding",
+        message="m",
+        check_id=check_id,
+    )
+
+
+class Dominant(PolicyCheck):
+    check_id: ClassVar[str] = "dominant"
+    description: ClassVar[str] = "supersedes only 'subsumed'"
+    supersedes: ClassVar[frozenset[str]] = frozenset({"subsumed"})
+
+    async def execute(self, statement, statement_idx, fetcher, config):
+        return [_issue("dominant")]
+
+
+def test_supersedes_only_suppresses_declared_ids():
+    registry = CheckRegistry()
+    statement = Statement(effect="Allow", action=["*"], resource=["*"])
+    issues_map = {
+        "dominant": [_issue("dominant")],
+        "subsumed": [_issue("subsumed")],
+        "unrelated": [_issue("unrelated")],
+    }
+
+    result = registry._apply_supersedes(statement, [Dominant()], issues_map)
+
+    assert set(result) == {"dominant", "unrelated"}
+    assert "1 checks suppressed" in result["dominant"][0].message
+    assert "subsumed" in result["dominant"][0].message
+    assert "unrelated" not in result["dominant"][0].message

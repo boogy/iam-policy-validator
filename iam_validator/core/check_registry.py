@@ -496,8 +496,7 @@ class CheckRegistry:
     ) -> dict[str, list[ValidationIssue]]:
         """Post-process issues to suppress redundant findings when a superseding check fired.
 
-        Suppresses ALL other checks that produced issues for this statement — not just
-        the hardcoded supersedes set — so custom checks are automatically covered.
+        Only check IDs named in a superseding check's `supersedes` frozenset are suppressed.
         """
         superseding = [
             (check, issues_map.get(check.check_id, []))
@@ -507,7 +506,10 @@ class CheckRegistry:
         if not superseding:
             return issues_map
         superseder_ids = {check.check_id for check, _ in superseding}
-        suppressed_ids = set(issues_map.keys()) - superseder_ids
+        declared: set[str] = set()
+        for check, _ in superseding:
+            declared |= set(check.supersedes)
+        suppressed_ids = (declared & set(issues_map.keys())) - superseder_ids
         if not suppressed_ids:
             return issues_map
         for _, s_issues in superseding:
