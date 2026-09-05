@@ -4,8 +4,7 @@ This module provides functionality to parse IAM actions, validate ARN formats,
 and perform wildcard matching on action patterns.
 """
 
-import re
-
+from iam_validator.core.aws_matching import compile_iam_glob
 from iam_validator.core.aws_service.patterns import CompiledPatterns
 
 
@@ -105,10 +104,7 @@ class ServiceParser:
             >>> parser.match_wildcard_action("Get*", actions)
             (True, ['GetObject', 'GetBucket'])
         """
-        # Convert wildcard pattern to regex
-        # Escape special regex chars except *, then replace * with .*
-        regex_pattern = "^" + re.escape(pattern).replace(r"\*", ".*") + "$"
-        compiled_pattern = re.compile(regex_pattern, re.IGNORECASE)
+        compiled_pattern = compile_iam_glob(pattern)
 
         matched = [a for a in actions if compiled_pattern.match(a)]
         return len(matched) > 0, matched

@@ -22,6 +22,7 @@ import re
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from iam_validator.checks.utils import format_list_with_backticks
+from iam_validator.checks.utils.aws_matching import action_matches
 from iam_validator.checks.utils.condition_matching import has_condition_key
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
@@ -921,43 +922,14 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         - statement_action="iam:Create*" matches required_action="iam:CreateUser"
         - statement_action="iam:C*" matches pattern="^iam:Create" (by checking actual AWS actions)
         """
-        if statement_action == "*":
+        # Exact match, and bidirectional case-insensitive wildcard match
+        # (statement_action="*" or "iam:Create*", required_action="iam:CreateUser" or "iam:Creat*")
+        if action_matches(statement_action, required_action):
             return True
-
-        # Exact match
-        if statement_action == required_action:
-            return True
-
-        # AWS wildcard match in required_action (e.g., "s3:*", "s3:Get*")
-        if "*" in required_action:
-            # Convert AWS wildcard to regex and cache compilation
-            wildcard_pattern = required_action.replace("*", ".*").replace("?", ".")
-            try:
-                compiled_pattern = compile_and_cache(f"^{wildcard_pattern}$")
-                if compiled_pattern.match(statement_action):
-                    return True
-            except re.error:
-                # Invalid regex pattern - skip this match attempt
-                pass
 
         # AWS wildcard match in statement_action (e.g., "iam:Creat*" in policy)
         # Check if this wildcard would grant access to actions matching our patterns
         if "*" in statement_action:
-            # Convert statement wildcard to regex pattern
-            stmt_wildcard_pattern = statement_action.replace("*", ".*").replace("?", ".")
-
-            # Check if statement wildcard overlaps with required action
-            if "*" not in required_action:
-                # Required action is specific (e.g., "iam:CreateUser")
-                # Check if statement wildcard would grant it
-                try:
-                    compiled_pattern = compile_and_cache(f"^{stmt_wildcard_pattern}$")
-                    if compiled_pattern.match(required_action):
-                        return True
-                except re.error:
-                    # Invalid regex pattern - skip this match attempt
-                    pass
-
             # Check if statement wildcard overlaps with any of our action patterns
             # Strategy: Use real AWS actions from the fetcher instead of hardcoded guesses
             # For example: "iam:C*" should match pattern "^iam:Create" because:
