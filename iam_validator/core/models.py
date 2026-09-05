@@ -162,6 +162,14 @@ class IAMPolicy(BaseModel):
     statement: list[Statement] | None = Field(default=None, alias="Statement")
     id: str | None = Field(default=None, alias="Id")
 
+    @field_validator("statement", mode="before")
+    @classmethod
+    def _coerce_single_statement(cls, v: Any) -> Any:
+        """AWS accepts a bare Statement object as well as an array."""
+        if isinstance(v, dict):
+            return [v]
+        return v
+
 
 # Validation Result Models
 class ValidationIssue(BaseModel):

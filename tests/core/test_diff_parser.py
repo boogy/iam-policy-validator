@@ -358,6 +358,28 @@ class TestDiffParser:
         finally:
             Path(policy_file).unlink()
 
+    def test_statement_end_line_detection_handles_utf8_bom(self):
+        """A leading UTF-8 BOM must not shift brace-depth tracking."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8-sig") as f:
+            f.write(
+                """{
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::bucket/*"
+    }
+  ]
+}"""
+            )
+            policy_file = f.name
+
+        try:
+            end_line = DiffParser.get_statement_end_line(policy_file, 3)
+            assert end_line == 7
+        finally:
+            Path(policy_file).unlink()
+
     def test_hunk_header_variations(self):
         """Test parsing various hunk header formats."""
         # Format: @@ -start +start @@  (no count, implies 1 line)

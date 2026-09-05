@@ -191,6 +191,34 @@ class TestIAMPolicy:
         policy2 = IAMPolicy(Version="2012-10-17")
         assert policy2.statement is None
 
+    def test_single_object_statement_is_normalised_to_a_list(self):
+        policy = IAMPolicy.model_validate(
+            {
+                "Version": "2012-10-17",
+                "Statement": {
+                    "Effect": "Allow",
+                    "Action": "s3:GetObject",
+                    "Resource": "arn:aws:s3:::bucket/*",
+                },
+            }
+        )
+        assert policy.statement is not None
+        assert len(policy.statement) == 1
+        assert policy.statement[0].effect == "Allow"
+
+    def test_list_statement_still_works(self):
+        policy = IAMPolicy.model_validate(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"},
+                    {"Effect": "Deny", "Action": "s3:DeleteObject", "Resource": "*"},
+                ],
+            }
+        )
+        assert policy.statement is not None
+        assert len(policy.statement) == 2
+
 
 class TestValidationIssue:
     """Test the ValidationIssue model."""

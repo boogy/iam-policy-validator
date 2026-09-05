@@ -700,7 +700,7 @@ class PRCommenter:
             Dict mapping statement index to line number
         """
         try:
-            with open(policy_file, encoding="utf-8") as f:
+            with open(policy_file, encoding="utf-8-sig") as f:
                 lines = f.readlines()
 
             mapping: dict[int, int] = {}
@@ -782,7 +782,7 @@ class PRCommenter:
             return self._policy_line_maps[policy_file]
 
         try:
-            with open(policy_file, encoding="utf-8") as f:
+            with open(policy_file, encoding="utf-8-sig") as f:
                 content = f.read()
 
             policy_map = PolicyLoader.parse_statement_field_lines(content)
@@ -805,7 +805,7 @@ class PRCommenter:
             Line number or None
         """
         try:
-            with open(policy_file, encoding="utf-8") as f:
+            with open(policy_file, encoding="utf-8-sig") as f:
                 lines = f.readlines()
 
             # Find the statement block

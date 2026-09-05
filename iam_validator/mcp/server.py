@@ -809,6 +809,8 @@ async def fix_policy_issues(
     # Fix 2: Duplicate SIDs (structural fix)
     if should_fix("sid_uniqueness") and "sid_uniqueness" in issue_check_ids:
         statements = fixed_policy.get("Statement", [])
+        if isinstance(statements, dict):
+            statements = [statements]
         seen_sids: dict[str, int] = {}
         for i, stmt in enumerate(statements):
             sid = stmt.get("Sid")

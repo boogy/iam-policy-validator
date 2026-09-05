@@ -281,6 +281,45 @@ async def test_fix_policy_issues_normalizes_not_action_case(monkeypatch):
     assert any("NotAction" in fix for fix in result["fixes_applied"])
 
 
+async def test_fix_policy_issues_sid_dedup_handles_single_object_statement(monkeypatch):
+    """A bare Statement object (not an array) must not crash the SID-dedup fix."""
+    from iam_validator.core.models import ValidationIssue
+    from iam_validator.mcp.models import ValidationResult
+    from iam_validator.mcp.tools import validation as validation_mod
+
+    fake_initial = ValidationResult(
+        is_valid=False,
+        issues=[
+            ValidationIssue(
+                severity="error",
+                statement_index=0,
+                issue_type="duplicate_sid",
+                message="Duplicate Sid",
+                suggestion="Rename",
+                check_id="sid_uniqueness",
+            )
+        ],
+        policy_file="inline-policy",
+    )
+    fake_final = ValidationResult(is_valid=True, issues=[], policy_file="inline-policy")
+
+    calls = {"n": 0}
+
+    async def fake_validate(**kwargs):
+        calls["n"] += 1
+        return fake_initial if calls["n"] == 1 else fake_final
+
+    monkeypatch.setattr(validation_mod, "validate_policy", fake_validate)
+    monkeypatch.setattr(validation_mod, "_detect_policy_type", lambda _p: "identity")
+
+    policy = {
+        "Version": "2012-10-17",
+        "Statement": {"Sid": "S1", "Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"},
+    }
+    result = await server.fix_policy_issues(policy)
+    assert result["fixed_policy"]["Statement"]["Sid"] == "S1"
+
+
 async def test_fix_policy_issues_returns_consistent_unfixed_shape(monkeypatch):
     """unfixed_issues is always a list; unfixed_count is always an int."""
     from iam_validator.core.models import ValidationIssue

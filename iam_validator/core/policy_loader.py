@@ -256,6 +256,8 @@ class PolicyLoader:
         # Extract statement line numbers
         statement_line_numbers = []
         statements = data.get("Statement", [])
+        if isinstance(statements, dict):
+            statements = [statements]
 
         if isinstance(statements, list):
             for stmt in statements:
@@ -465,7 +467,7 @@ class PolicyLoader:
             return None
 
         try:
-            with open(path, encoding="utf-8") as f:
+            with open(path, encoding="utf-8-sig") as f:
                 file_content = f.read()
 
             # Parse line numbers based on file type
