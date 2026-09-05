@@ -212,6 +212,47 @@ class TestActionConditionEnforcement:
         assert all(issue.issue_type == "missing_required_condition" for issue in issues)
 
     @pytest.mark.asyncio
+    async def test_action_match_is_case_insensitive(self, check, mock_fetcher):
+        """A statement action must match a differently-cased configured action.
+
+        IAM action names are case-insensitive, so `_action_matches` (invoked here via
+        `_check_action_match`) must not miss `iam:attachrolepolicy` in a statement just
+        because the config spells it `iam:AttachRolePolicy`.
+        """
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            severity="error",
+            config={
+                "action_condition_requirements": [
+                    {
+                        "actions": ["iam:AttachRolePolicy"],
+                        "required_conditions": {
+                            "all_of": [
+                                {"condition_key": "aws:RequestTag/Owner"},
+                            ]
+                        },
+                    }
+                ]
+            },
+        )
+
+        # Statement uses a different case than the configured required action.
+        statement = Statement(
+            sid="TestStatement",
+            effect="Allow",
+            action=["iam:attachrolepolicy"],
+            resource="*",
+        )
+
+        policy = IAMPolicy(version="2012-10-17", statement=[statement])
+        issues = await check.execute_policy(policy, "test-policy.json", mock_fetcher, config)
+
+        # The action matched despite the case mismatch, so the missing condition is flagged.
+        assert len(issues) == 1
+        assert issues[0].issue_type == "missing_required_condition"
+
+    @pytest.mark.asyncio
     async def test_all_of_conditions_present(self, check, mock_fetcher):
         """Test that all_of passes when all conditions present."""
         config = CheckConfig(
