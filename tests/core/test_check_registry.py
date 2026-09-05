@@ -485,8 +485,9 @@ class TestCheckRegistry:
         # Should not raise, but continue with working check
         issues = await registry.execute_checks_parallel(mock_statement, 0, mock_fetcher)
 
-        # Should still get issues from working check
-        assert len(issues) == 1
+        # Should get a check_execution_error finding plus issues from the working check
+        assert len(issues) == 2
+        assert {i.issue_type for i in issues} == {"check_execution_error", "test_issue"}
 
     @pytest.mark.asyncio
     async def test_execute_checks_parallel_disabled_checks_skipped(self, registry, mock_statement, mock_fetcher):
@@ -526,8 +527,9 @@ class TestCheckRegistry:
 
         issues = await registry.execute_checks_sequential(mock_statement, 0, mock_fetcher)
 
-        # Should still get issues from working check
-        assert len(issues) == 1
+        # Should get a check_execution_error finding plus issues from the working check
+        assert len(issues) == 2
+        assert {i.issue_type for i in issues} == {"check_execution_error", "test_issue"}
 
     @pytest.mark.asyncio
     async def test_parallel_disabled_falls_back_to_sequential(self, mock_statement, mock_fetcher):

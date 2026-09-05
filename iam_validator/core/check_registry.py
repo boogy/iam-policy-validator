@@ -519,6 +519,30 @@ class CheckRegistry:
                 )
         return {check_id: issues for check_id, issues in issues_map.items() if check_id not in suppressed_ids}
 
+    @staticmethod
+    def _issue_for_failed_check(
+        check_id: str,
+        statement_idx: int,
+        statement_sid: str | None,
+        exc: BaseException,
+    ) -> ValidationIssue:
+        return ValidationIssue(
+            severity="error",
+            statement_sid=statement_sid,
+            statement_index=statement_idx,
+            issue_type="check_execution_error",
+            message=(
+                f"Check `{check_id}` raised {type(exc).__name__}: {exc}. "
+                "This statement was NOT validated by that check — the result is incomplete, "
+                "not clean."
+            ),
+            suggestion=(
+                "Re-run with `--log-level debug` for the traceback. If the input is a valid "
+                "policy, this is a validator bug; please report it with the failing statement."
+            ),
+            check_id=check_id,
+        )
+
     async def execute_checks_parallel(
         self,
         statement: Statement,
@@ -549,14 +573,23 @@ class CheckRegistry:
         if not self.enable_parallel or len(enabled_checks) == 1:
             # Run sequentially if parallel disabled or only one check
             issues_map: dict[str, list[ValidationIssue]] = {}
+            failures: list[ValidationIssue] = []
             for check in enabled_checks:
                 config = self.get_config(check.check_id)
-                if config:
+                if not config:
+                    continue
+                try:
                     issues = await check.execute(statement, statement_idx, fetcher, config)
-                    issues_map[check.check_id] = self._process_issues(issues, check, config, filepath)
+                except Exception as exc:  # noqa: BLE001 - a crashed check must not abort the run
+                    logger.warning("Check '%s' failed: %s", check.check_id, exc, exc_info=exc)
+                    failures.append(self._issue_for_failed_check(check.check_id, statement_idx, statement.sid, exc))
+                    continue
+                processed = self._process_issues(issues, check, config, filepath)
+                if processed:
+                    issues_map[check.check_id] = processed
             if self.suppress_superseded:
                 issues_map = self._apply_supersedes(statement, enabled_checks, issues_map)
-            return [issue for issues in issues_map.values() for issue in issues]
+            return failures + [issue for issues in issues_map.values() for issue in issues]
 
         # Execute all checks in parallel
         tasks = []
@@ -575,17 +608,21 @@ class CheckRegistry:
 
         # Build issues_map, handling exceptions and applying filters
         issues_map = {}
+        failures = []
         for idx, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.warning("Check '%s' failed: %s", task_checks[idx].check_id, result)
+            check_id = task_checks[idx].check_id
+            if isinstance(result, BaseException):
+                logger.warning("Check '%s' failed: %s", check_id, result, exc_info=result)
+                failures.append(self._issue_for_failed_check(check_id, statement_idx, statement.sid, result))
             elif isinstance(result, list):
                 processed = self._process_issues(result, task_checks[idx], configs[idx], filepath)
-                issues_map[task_checks[idx].check_id] = processed
+                if processed:
+                    issues_map[check_id] = processed
 
         if self.suppress_superseded:
             issues_map = self._apply_supersedes(statement, enabled_checks, issues_map)
 
-        return [issue for issues in issues_map.values() for issue in issues]
+        return failures + [issue for issues in issues_map.values() for issue in issues]
 
     async def execute_checks_sequential(
         self,
@@ -610,20 +647,26 @@ class CheckRegistry:
         """
         enabled_checks = self.get_enabled_checks()
         issues_map: dict[str, list[ValidationIssue]] = {}
+        failures: list[ValidationIssue] = []
 
         for check in enabled_checks:
             config = self.get_config(check.check_id)
-            if config:
-                try:
-                    issues = await check.execute(statement, statement_idx, fetcher, config)
-                    issues_map[check.check_id] = self._process_issues(issues, check, config, filepath)
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    logger.warning("Check '%s' failed: %s", check.check_id, e)
+            if not config:
+                continue
+            try:
+                issues = await check.execute(statement, statement_idx, fetcher, config)
+            except Exception as exc:  # noqa: BLE001 - a crashed check must not abort the run
+                logger.warning("Check '%s' failed: %s", check.check_id, exc, exc_info=exc)
+                failures.append(self._issue_for_failed_check(check.check_id, statement_idx, statement.sid, exc))
+                continue
+            processed = self._process_issues(issues, check, config, filepath)
+            if processed:
+                issues_map[check.check_id] = processed
 
         if self.suppress_superseded:
             issues_map = self._apply_supersedes(statement, enabled_checks, issues_map)
 
-        return [issue for issues in issues_map.values() for issue in issues]
+        return failures + [issue for issues in issues_map.values() for issue in issues]
 
     async def execute_policy_checks(
         self,
@@ -662,19 +705,22 @@ class CheckRegistry:
             # Run sequentially if parallel disabled or only one check
             for check in policy_level_checks:
                 config = self.get_config(check.check_id)
-                if config:
-                    try:
-                        issues = await check.execute_policy(
-                            policy,
-                            policy_file,
-                            fetcher,
-                            config,
-                            policy_type=policy_type,
-                            **kwargs,
-                        )
-                        all_issues.extend(self._process_issues(issues, check, config, policy_file))
-                    except Exception as e:  # pylint: disable=broad-exception-caught
-                        logger.warning("Check '%s' failed: %s", check.check_id, e)
+                if not config:
+                    continue
+                try:
+                    issues = await check.execute_policy(
+                        policy,
+                        policy_file,
+                        fetcher,
+                        config,
+                        policy_type=policy_type,
+                        **kwargs,
+                    )
+                except Exception as exc:  # noqa: BLE001 - a crashed check must not abort the run
+                    logger.warning("Policy check '%s' failed: %s", check.check_id, exc, exc_info=exc)
+                    all_issues.append(self._issue_for_failed_check(check.check_id, 0, None, exc))
+                    continue
+                all_issues.extend(self._process_issues(issues, check, config, policy_file))
             return all_issues
 
         # Execute all policy-level checks in parallel
@@ -692,12 +738,11 @@ class CheckRegistry:
 
         # Collect all issues, handling any exceptions and applying filters
         for idx, result in enumerate(results):
-            if isinstance(result, Exception):
-                # Log error but continue with other checks
-                check = policy_level_checks[idx]
-                logger.warning("Check '%s' failed: %s", check.check_id, result)
+            check = policy_level_checks[idx]
+            if isinstance(result, BaseException):
+                logger.warning("Policy check '%s' failed: %s", check.check_id, result, exc_info=result)
+                all_issues.append(self._issue_for_failed_check(check.check_id, 0, None, result))
             elif isinstance(result, list):
-                check = policy_level_checks[idx]
                 config = configs[idx]
                 all_issues.extend(self._process_issues(result, check, config, policy_file))
 
