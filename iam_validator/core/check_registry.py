@@ -228,12 +228,6 @@ class PolicyCheck(ABC):
         Only relevant when supersedes is non-empty."""
         return True
 
-    def __getattr__(self, name: str) -> Any:
-        """Raise NotImplementedError for required attributes not defined by subclass."""
-        if name in ("check_id", "description"):
-            raise NotImplementedError(f"Subclasses must define {name}")
-        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
-
     def __init_subclass__(cls, **kwargs):
         """
         Validate that subclasses define required attributes and override
@@ -247,6 +241,10 @@ class PolicyCheck(ABC):
         # Skip validation for abstract classes
         if ABC in cls.__bases__:
             return
+
+        for required in ("check_id", "description"):
+            if not getattr(cls, required, None):
+                raise NotImplementedError(f"{cls.__name__} must define {required}")
 
         # Check if at least one method is overridden
         has_execute = cls.execute is not PolicyCheck.execute

@@ -1,5 +1,6 @@
 """Unit tests for Check Registry module."""
 
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 import pytest
@@ -233,16 +234,14 @@ class TestSeverityFiltering:
 class TestPolicyCheck:
     """Test the PolicyCheck abstract base class."""
 
-    def test_cannot_instantiate_abstract_class(self):
-        """Test that PolicyCheck raises error when check_id/description not defined."""
-        # PolicyCheck itself can be instantiated but will raise NotImplementedError
-        # when accessing check_id or description
+    def test_required_attributes_not_silently_present(self):
+        """Test that incomplete checks don't silently have required attributes."""
         check = PolicyCheck()
 
-        with pytest.raises(NotImplementedError, match="check_id"):
+        with pytest.raises(AttributeError):
             _ = check.check_id
 
-        with pytest.raises(NotImplementedError, match="description"):
+        with pytest.raises(AttributeError):
             _ = check.description
 
     def test_mock_check_implementation(self):
@@ -268,6 +267,27 @@ class TestPolicyCheck:
 
         severity = check.get_severity(config)
         assert severity == "error"
+
+    def test_hasattr_is_false_for_missing_required_attributes(self):
+        class Incomplete(PolicyCheck):
+            check_id: ClassVar[str] = "incomplete"
+            description: ClassVar[str] = "has both, but probe an unrelated name"
+
+            async def execute(self, statement, statement_idx, fetcher, config):
+                return []
+
+        check = Incomplete()
+        assert hasattr(check, "check_id") is True
+        assert hasattr(check, "not_a_real_attribute") is False
+
+    def test_missing_check_id_raises_at_class_definition_not_at_access(self):
+        with pytest.raises((NotImplementedError, TypeError, AttributeError)):
+
+            class MissingId(PolicyCheck):
+                description: ClassVar[str] = "no check_id"
+
+                async def execute(self, statement, statement_idx, fetcher, config):
+                    return []
 
 
 class TestCheckRegistry:
