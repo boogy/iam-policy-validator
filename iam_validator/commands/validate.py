@@ -320,7 +320,7 @@ Examples:
             import json
             import sys
 
-            stdin_content = sys.stdin.read()
+            stdin_content = sys.stdin.read().lstrip("\ufeff")
             if not stdin_content.strip():
                 logging.error("No policy data provided on stdin")
                 return 1

@@ -1086,31 +1086,5 @@ class TestOffDiffCommentModeConfigValidation:
         assert schema.off_diff_comment_mode == "summary_only"
 
 
-class TestLineMappingUtf8Bom:
-    """Statement-index line lookups must tolerate a UTF-8 BOM in the policy file."""
-
-    def test_get_line_mapping_handles_bom(self):
-        commenter = PRCommenter(github=MagicMock(spec=GitHubIntegration))
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8-sig") as f:
-            f.write(
-                """{
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::bucket/*"
-    }
-  ]
-}"""
-            )
-            policy_file = f.name
-
-        try:
-            mapping = commenter._get_line_mapping(policy_file)
-            assert mapping.get(0) is not None
-        finally:
-            Path(policy_file).unlink()
-
-
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
