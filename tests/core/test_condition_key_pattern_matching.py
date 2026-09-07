@@ -20,6 +20,7 @@ from iam_validator.core.aws_service.validators import (
     condition_key_in_list,
     find_matching_condition_key,
 )
+from iam_validator.core.condition_validators import _validate_single_value, is_known_operator
 from iam_validator.core.models import ConditionKey
 
 # =============================================================================
@@ -529,3 +530,33 @@ class TestCheckDocumentationBackwardCompatibility:
             )
         )
         assert CheckDocumentationRegistry.get_short_description("_test_with_desc") == "My Check"
+
+
+@pytest.mark.parametrize("value", ["*", "arn:aws:iam::123456789012:role/App"])
+def test_wildcard_is_a_valid_arn_condition_value(value):
+    ok, _ = _validate_single_value("ARN", value)
+    assert ok is True
+
+
+def test_malformed_arn_condition_value_is_still_rejected():
+    ok, message = _validate_single_value("ARN", "not-an-arn")
+    assert ok is False
+    assert "ARN" in message
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["StringEquals", "stringequals", "ForAnyValue:StringLike", "StringEqualsIfExists", "Null", "ArnLike"],
+)
+def test_known_operators_are_recognised(operator):
+    assert is_known_operator(operator) is True
+
+
+@pytest.mark.parametrize("operator", ["StringEqual", "BoolEquals", "ForSomeValues:StringEquals", "Nul"])
+def test_unknown_operators_are_rejected(operator):
+    assert is_known_operator(operator) is False
+
+
+@pytest.mark.parametrize("operator", ["stringequalsifexists", "forallvalues:stringlike", "FORANYVALUE:StringEquals"])
+def test_operator_modifiers_are_case_insensitive(operator):
+    assert is_known_operator(operator) is True

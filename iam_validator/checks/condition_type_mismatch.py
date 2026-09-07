@@ -15,6 +15,7 @@ from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.condition_validators import (
     CONDITION_OPERATORS,
     has_if_exists_suffix,
+    is_known_operator,
     normalize_operator,
     translate_type,
     validate_value_for_type,
@@ -73,7 +74,21 @@ class ConditionTypeMismatchCheck(PolicyCheck):
             base_operator, operator_type, _set_prefix = normalize_operator(operator)
 
             if operator_type is None:
-                # Unknown operator - this will be caught by another check
+                if not is_known_operator(operator):
+                    issues.append(
+                        ValidationIssue(
+                            severity="error",
+                            message=(
+                                f"Unknown condition operator `{operator}`. AWS will reject this policy. "
+                                "Valid operators are listed in the IAM policy reference."
+                            ),
+                            statement_sid=statement_sid,
+                            statement_index=statement_idx,
+                            issue_type="invalid_operator",
+                            line_number=line_number,
+                            field_name="condition",
+                        )
+                    )
                 continue
 
             # Detect NullIfExists as invalid syntax (must be BEFORE skip_operators guard)

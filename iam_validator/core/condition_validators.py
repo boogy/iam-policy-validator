@@ -70,6 +70,9 @@ CONDITION_OPERATORS = {
 # Reference: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_multi-value-conditions.html
 SET_OPERATOR_PREFIXES = ["ForAllValues", "ForAnyValue"]
 
+_KNOWN_OPERATORS_LOWER: frozenset[str] = frozenset(op.lower() for op in CONDITION_OPERATORS)
+_SET_OPERATOR_PREFIXES_LOWER: frozenset[str] = frozenset(p.lower() for p in SET_OPERATOR_PREFIXES)
+
 # Condition keys that are sometimes absent from the request context AND are
 # security-sensitive. Using IfExists with these keys in Allow statements can
 # bypass security controls when the key is missing.
@@ -164,6 +167,19 @@ def normalize_operator(operator: str) -> tuple[str, str | None, str | None]:
             return base_op, op_type, set_prefix
 
     return operator, None, set_prefix
+
+
+def is_known_operator(operator: str) -> bool:
+    """True if ``operator`` is a real AWS condition operator, allowing prefix and suffix modifiers."""
+    cleaned = operator.strip()
+    if ":" in cleaned:
+        prefix, _, rest = cleaned.partition(":")
+        if prefix.lower() not in _SET_OPERATOR_PREFIXES_LOWER:
+            return False
+        cleaned = rest
+    if cleaned.lower().endswith("ifexists"):
+        cleaned = cleaned[: -len("IfExists")]
+    return cleaned.lower() in _KNOWN_OPERATORS_LOWER
 
 
 def has_if_exists_suffix(operator: str) -> bool:
@@ -475,12 +491,13 @@ def _validate_single_value(value_type: str, value_str: str) -> tuple[bool, str |
     if value_type == "ARN":
         # ARN format: arn:partition:service:region:account-id:resource
         # Wildcards are allowed in ARN values
-        arn_pattern = r"^arn:[^:]*:[^:]*:[^:]*:[^:]*:.+$"
-        if not re.match(arn_pattern, value_str):
-            return (
-                False,
-                f"Expected ARN value (arn:aws:service:region:account:resource) but got: {value_str}",
-            )
+        if value_str != "*":
+            arn_pattern = r"^arn:[^:]*:[^:]*:[^:]*:[^:]*:.+$"
+            if not re.match(arn_pattern, value_str):
+                return (
+                    False,
+                    f"Expected ARN value (arn:partition:service:region:account:resource) but got: {value_str}",
+                )
 
     elif value_type == "Binary":
         # Base-64 encoded string validation
