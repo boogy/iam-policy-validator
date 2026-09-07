@@ -44,6 +44,7 @@ from typing import Any, ClassVar
 
 from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.checks.utils.aws_matching import action_matches, iam_glob_match
+from iam_validator.checks.utils.condition_matching import base_operator, is_deny, is_negated_operator
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.constants import ARN_PARTITION_REGEX
@@ -372,10 +373,13 @@ class TrustPolicyValidationCheck(PolicyCheck):
         # Get all condition keys from statement
         condition_keys: set[str] = set()
         if statement.condition:
+            accept_negated = is_deny(statement)
             for operator, keys_dict in statement.condition.items():
                 if not isinstance(keys_dict, dict):
                     continue
-                is_null_op = operator.strip().lower() == "null"
+                if not accept_negated and is_negated_operator(operator):
+                    continue
+                is_null_op = base_operator(operator) == "null"
                 for key, value in keys_dict.items():
                     if is_null_op and _asserts_key_absent(value):
                         continue

@@ -187,3 +187,31 @@ async def test_null_false_does_satisfy_a_required_condition(mock_fetcher, defaul
     )
     issues = await TrustPolicyValidationCheck().execute(statement, 0, mock_fetcher, default_config)
     assert not [i for i in issues if i.issue_type == "missing_required_condition_for_assume_action"]
+
+
+async def test_negated_operator_does_not_satisfy_a_required_condition_on_allow(mock_fetcher, default_config):
+    statement = Statement(
+        effect="Allow",
+        action=["sts:AssumeRoleWithWebIdentity"],
+        principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+        condition={
+            "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
+            "StringNotEquals": {"token.actions.githubusercontent.com:sub": "repo:evil/app:ref:refs/heads/main"},
+        },
+    )
+    issues = await TrustPolicyValidationCheck().execute(statement, 0, mock_fetcher, default_config)
+    assert any(i.issue_type == "missing_required_condition_for_assume_action" and ":sub" in i.message for i in issues)
+
+
+async def test_forallvalues_null_true_does_not_satisfy_a_required_condition(mock_fetcher, default_config):
+    statement = Statement(
+        effect="Allow",
+        action=["sts:AssumeRoleWithWebIdentity"],
+        principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+        condition={
+            "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
+            "ForAllValues:Null": {"token.actions.githubusercontent.com:sub": "true"},
+        },
+    )
+    issues = await TrustPolicyValidationCheck().execute(statement, 0, mock_fetcher, default_config)
+    assert any(i.issue_type == "missing_required_condition_for_assume_action" and ":sub" in i.message for i in issues)
