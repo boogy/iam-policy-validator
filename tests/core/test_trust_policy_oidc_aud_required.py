@@ -27,8 +27,8 @@ class TestOIDCAudienceRequired:
         return CheckConfig(check_id="trust_policy_validation")
 
     @pytest.mark.asyncio
-    async def test_oidc_with_aud_passes(self, check, fetcher, config):
-        """Test that OIDC with aud condition passes."""
+    async def test_oidc_with_aud_only_is_flagged_for_missing_sub(self, check, fetcher, config):
+        """`aud` alone is assumable by any workload of the provider; `sub` is required too."""
         statement = Statement(
             Effect="Allow",
             Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/accounts.google.com"},
@@ -38,8 +38,8 @@ class TestOIDCAudienceRequired:
 
         issues = await check.execute(statement, 0, fetcher, config)
 
-        # Should not have missing condition issues
-        assert not any(issue.issue_type == "missing_required_condition_for_assume_action" for issue in issues)
+        assert any(issue.issue_type == "missing_required_condition_for_assume_action" for issue in issues)
+        assert any("sub" in issue.message for issue in issues)
 
     @pytest.mark.asyncio
     async def test_oidc_without_aud_fails(self, check, fetcher, config):
@@ -78,8 +78,8 @@ class TestOIDCAudienceRequired:
         assert not any(issue.issue_type == "missing_required_condition_for_assume_action" for issue in issues)
 
     @pytest.mark.asyncio
-    async def test_cognito_aud_passes(self, check, fetcher, config):
-        """Test Amazon Cognito OIDC with aud passes."""
+    async def test_cognito_aud_only_is_flagged_for_missing_sub(self, check, fetcher, config):
+        """`aud` alone is assumable by any workload of the provider; `sub` is required too."""
         statement = Statement(
             Effect="Allow",
             Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/cognito-identity.amazonaws.com"},
@@ -91,8 +91,8 @@ class TestOIDCAudienceRequired:
 
         issues = await check.execute(statement, 0, fetcher, config)
 
-        # Should not have missing condition issues
-        assert not any(issue.issue_type == "missing_required_condition_for_assume_action" for issue in issues)
+        assert any(issue.issue_type == "missing_required_condition_for_assume_action" for issue in issues)
+        assert any("sub" in issue.message for issue in issues)
 
     @pytest.mark.asyncio
     async def test_oidc_with_sub_but_no_aud_fails(self, check, fetcher, config):
@@ -114,3 +114,32 @@ class TestOIDCAudienceRequired:
         assert len(issues) > 0
         assert any(issue.issue_type == "missing_required_condition_for_assume_action" for issue in issues)
         assert any(":aud" in issue.message for issue in issues)
+
+
+async def test_oidc_without_sub_is_flagged(mock_fetcher, default_config):
+    statement = Statement(
+        effect="Allow",
+        action=["sts:AssumeRoleWithWebIdentity"],
+        principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+        condition={"StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"}},
+    )
+    check = TrustPolicyValidationCheck()
+    issues = await check.execute(statement, 0, mock_fetcher, default_config)
+    assert any("sub" in (i.condition_key or "") or ":sub" in i.message for i in issues)
+
+
+async def test_oidc_with_aud_and_sub_is_clean(mock_fetcher, default_config):
+    statement = Statement(
+        effect="Allow",
+        action=["sts:AssumeRoleWithWebIdentity"],
+        principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+        condition={
+            "StringEquals": {
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                "token.actions.githubusercontent.com:sub": "repo:acme/app:ref:refs/heads/main",
+            }
+        },
+    )
+    check = TrustPolicyValidationCheck()
+    issues = await check.execute(statement, 0, mock_fetcher, default_config)
+    assert not [i for i in issues if ":sub" in i.message or ":aud" in i.message]

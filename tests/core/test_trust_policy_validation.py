@@ -128,7 +128,11 @@ class TestTrustPolicyValidationCheck:
 
     @pytest.mark.asyncio
     async def test_assume_role_with_web_identity_valid(self, check, fetcher, config):
-        """Test that AssumeRoleWithWebIdentity with Federated OIDC principal is valid."""
+        """Test that AssumeRoleWithWebIdentity with Federated OIDC principal is valid.
+
+        ``aud`` alone still leaves the rule assumable by any workload of that OIDC
+        provider, so `:sub` is required too and its absence is flagged here.
+        """
         statement = Statement(
             Effect="Allow",
             Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
@@ -136,7 +140,9 @@ class TestTrustPolicyValidationCheck:
             Condition={"StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
-        assert len(issues) == 0
+        assert len(issues) == 1
+        assert issues[0].issue_type == "missing_required_condition_for_assume_action"
+        assert "sub" in issues[0].message
 
     @pytest.mark.asyncio
     async def test_assume_role_with_web_identity_wrong_principal(self, check, fetcher, config):
@@ -564,3 +570,22 @@ class TestTrustPolicyPartitionCoverage:
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert any(i.issue_type == "invalid_provider_format" for i in issues)
+
+
+def test_find_matching_rule_is_case_insensitive():
+    check = TrustPolicyValidationCheck()
+    rules = {"sts:AssumeRole": {"allowed_principal_types": ["AWS"]}}
+    assert check._find_matching_rule("sts:assumerole", rules) is not None
+    assert check._find_matching_rule("STS:ASSUMEROLE", rules) is not None
+
+
+def test_find_matching_rule_matches_statement_glob_against_rule():
+    check = TrustPolicyValidationCheck()
+    rules = {"sts:AssumeRoleWithWebIdentity": {"allowed_principal_types": ["Federated"]}}
+    assert check._find_matching_rule("sts:AssumeRoleWith*", rules) is not None
+
+
+def test_find_matching_rule_returns_none_for_unrelated_action():
+    check = TrustPolicyValidationCheck()
+    rules = {"sts:AssumeRole": {"allowed_principal_types": ["AWS"]}}
+    assert check._find_matching_rule("s3:GetObject", rules) is None

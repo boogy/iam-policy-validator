@@ -43,6 +43,7 @@ import re
 from typing import Any, ClassVar
 
 from iam_validator.checks.utils import format_list_with_backticks
+from iam_validator.checks.utils.aws_matching import action_matches, iam_glob_match
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.constants import ARN_PARTITION_REGEX
@@ -85,7 +86,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
         "sts:AssumeRoleWithWebIdentity": {
             "allowed_principal_types": ["Federated"],
             "provider_pattern": rf"^arn:{ARN_PARTITION_REGEX}:iam::\d{{12}}:oidc-provider/[\w./-]+$",
-            "required_conditions": ["*:aud"],  # Require audience condition (provider-specific key)
+            "required_conditions": ["*:aud", "*:sub"],
             "description": "OIDC-based federated role assumption",
         },
         "sts:TagSession": {
@@ -141,11 +142,11 @@ class TrustPolicyValidationCheck(PolicyCheck):
         # Check each assume action
         for action in actions:
             # Skip full wildcard (too broad to validate specifically)
-            if action == "*":
+            if action.strip() == "*":
                 continue
 
             # Treat sts:* as matching all STS assume actions
-            if action == "sts:*":
+            if iam_glob_match(action, "sts:*"):
                 for rule_action, rule in validation_rules.items():
                     principal_issues = self._validate_principal_type(
                         statement, rule_action, rule, statement_idx, config
@@ -202,30 +203,12 @@ class TrustPolicyValidationCheck(PolicyCheck):
         """
         return statement.get_actions()
 
-    def _find_matching_rule(self, action: str, rules: dict[str, Any]) -> dict[str, Any] | None:
-        """Find validation rule matching the action.
-
-        Supports wildcards in action names.
-
-        Args:
-            action: Action to find rule for (e.g., "sts:AssumeRole")
-            rules: Validation rules dict
-
-        Returns:
-            Matching rule dict or None
-        """
-        # Exact match first (performance optimization)
-        if action in rules:
-            return rules[action]
-
-        # Check for wildcard patterns in action
+    @staticmethod
+    def _find_matching_rule(action: str, rules: dict[str, Any]) -> dict[str, Any] | None:
+        """Find the rule covering ``action``, matching case-insensitively in both directions."""
         for rule_action, rule_config in rules.items():
-            # Support wildcards in the action being validated
-            if "*" in action:
-                pattern = action.replace("*", ".*")
-                if re.match(f"^{pattern}$", rule_action):
-                    return rule_config
-
+            if action_matches(action, rule_action):
+                return rule_config
         return None
 
     def _extract_principal_types(self, statement: Statement) -> dict[str, list[str]]:
