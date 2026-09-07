@@ -215,3 +215,17 @@ async def test_forallvalues_null_true_does_not_satisfy_a_required_condition(mock
     )
     issues = await TrustPolicyValidationCheck().execute(statement, 0, mock_fetcher, default_config)
     assert any(i.issue_type == "missing_required_condition_for_assume_action" and ":sub" in i.message for i in issues)
+
+
+async def test_negated_operator_on_deny_does_satisfy_a_required_condition(mock_fetcher, default_config):
+    statement = Statement(
+        effect="Deny",
+        action=["sts:AssumeRoleWithWebIdentity"],
+        principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+        condition={
+            "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
+            "StringNotEquals": {"token.actions.githubusercontent.com:sub": "repo:acme/app:ref:refs/heads/main"},
+        },
+    )
+    issues = await TrustPolicyValidationCheck().execute(statement, 0, mock_fetcher, default_config)
+    assert not [i for i in issues if i.issue_type == "missing_required_condition_for_assume_action"]
