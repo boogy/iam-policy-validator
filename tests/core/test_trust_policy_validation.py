@@ -127,12 +127,8 @@ class TestTrustPolicyValidationCheck:
     # ========================================================================
 
     @pytest.mark.asyncio
-    async def test_assume_role_with_web_identity_valid(self, check, fetcher, config):
-        """Test that AssumeRoleWithWebIdentity with Federated OIDC principal is valid.
-
-        ``aud`` alone still leaves the rule assumable by any workload of that OIDC
-        provider, so `:sub` is required too and its absence is flagged here.
-        """
+    async def test_assume_role_with_web_identity_without_sub_is_flagged(self, check, fetcher, config):
+        """OIDC ``aud`` alone is assumable by any workload of that provider, so ``:sub`` is required."""
         statement = Statement(
             Effect="Allow",
             Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},

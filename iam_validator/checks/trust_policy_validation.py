@@ -52,6 +52,7 @@ from iam_validator.core.models import Statement, ValidationIssue
 
 
 def _asserts_key_absent(value: Any) -> bool:
+    """True when a ``Null`` value asserts the key is absent; policy JSON gives bool, str, or list."""
     values = value if isinstance(value, list) else [value]
     return any(str(v).strip().lower() == "true" for v in values)
 
