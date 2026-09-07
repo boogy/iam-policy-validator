@@ -9,6 +9,9 @@ Performance optimizations:
 - Lazy loading of default actions from modular data structure
 """
 
+from collections.abc import Iterable
+
+from iam_validator.checks.utils.aws_matching import action_matches
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.config.sensitive_actions import get_sensitive_actions
 from iam_validator.core.ignore_patterns import compile_pattern
@@ -155,59 +158,43 @@ def check_actions_config(actions: list[str], config, default_actions: frozenset[
     - all_of: {"all_of": ["action1", "action2"]}
     - Multiple groups: [{"all_of": [...]}, {"all_of": [...]}, "action3"]
 
-    Args:
-        actions: List of actions to check
-        config: Sensitive actions configuration
-        default_actions: Default sensitive actions to use if no config
+    Matching is case-insensitive and glob-aware, per AWS IAM action semantics.
 
     Returns:
-        tuple[bool, list[str]]: (matches, matched_actions)
+        tuple[bool, list[str]]: (matches, matched_actions) — matched actions are
+        returned as written in the statement, not as written in the configuration.
     """
     if not config:
-        # If no config, fall back to defaults with any_of logic
-        # default_actions is already a frozenset for O(1) lookups
-        matched = [a for a in actions if a in default_actions]
+        matched = [a for a in actions if _matches_any(a, default_actions)]
         return len(matched) > 0, matched
 
-    # Handle simple list with potential mixed items
     if isinstance(config, list):
-        # Use set for O(1) membership checks
-        all_matched = set()
-        actions_set = set(actions)  # Convert once for O(1) lookups
-
+        all_matched: set[str] = set()
         for item in config:
-            # Each item can be a string, or a dict with any_of/all_of
             if isinstance(item, str):
-                # Simple string - check if action matches (O(1) lookup)
-                if item in actions_set:
-                    all_matched.add(item)
+                all_matched.update(a for a in actions if action_matches(item, a))
             elif isinstance(item, dict):
-                # Recurse for dict items
                 matches, matched = check_actions_config(actions, item, default_actions)
                 if matches:
                     all_matched.update(matched)
-
         return len(all_matched) > 0, list(all_matched)
 
-    # Handle dict with any_of/all_of
     if isinstance(config, dict):
-        # any_of: at least one action must match
         if "any_of" in config:
-            # Convert once for O(1) intersection
-            any_of_set = set(config["any_of"])
-            actions_set = set(actions)
-            matched = list(any_of_set & actions_set)
+            matched = [a for a in actions if _matches_any(a, config["any_of"])]
             return len(matched) > 0, matched
 
-        # all_of: all specified actions must be present in the statement
         if "all_of" in config:
-            all_of_set = set(config["all_of"])
-            actions_set = set(actions)
-            matched = list(all_of_set & actions_set)
-            # All required actions must be present
-            return all_of_set.issubset(actions_set), matched
+            required = list(config["all_of"])
+            matched = [a for a in actions if _matches_any(a, required)]
+            satisfied = all(any(action_matches(req, a) for a in actions) for req in required)
+            return satisfied, matched
 
     return False, []
+
+
+def _matches_any(action: str, candidates: Iterable[str]) -> bool:
+    return any(action_matches(candidate, action) for candidate in candidates)
 
 
 def check_patterns_config(actions: list[str], config) -> tuple[bool, list[str]]:

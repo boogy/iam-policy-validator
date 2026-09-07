@@ -1,9 +1,6 @@
 """Sensitive action detection must not depend on the action's letter casing."""
 
-import pytest
 
-
-@pytest.mark.xfail(reason="fixed in Task 8: sensitive_action_matcher case-insensitivity", strict=True)
 async def test_lowercase_action_is_still_detected(mock_fetcher, default_config):
     from iam_validator.checks.sensitive_action import SensitiveActionCheck
     from iam_validator.core.models import Statement
