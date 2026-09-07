@@ -143,3 +143,47 @@ async def test_oidc_with_aud_and_sub_is_clean(mock_fetcher, default_config):
     check = TrustPolicyValidationCheck()
     issues = await check.execute(statement, 0, mock_fetcher, default_config)
     assert not [i for i in issues if ":sub" in i.message or ":aud" in i.message]
+
+
+async def test_required_condition_key_matching_is_case_insensitive(mock_fetcher, default_config):
+    statement = Statement(
+        effect="Allow",
+        action=["sts:AssumeRoleWithWebIdentity"],
+        principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+        condition={
+            "StringEquals": {
+                "token.actions.githubusercontent.com:AUD": "sts.amazonaws.com",
+                "token.actions.githubusercontent.com:Sub": "repo:acme/app:ref:refs/heads/main",
+            }
+        },
+    )
+    issues = await TrustPolicyValidationCheck().execute(statement, 0, mock_fetcher, default_config)
+    assert not [i for i in issues if i.issue_type == "missing_required_condition_for_assume_action"]
+
+
+async def test_null_true_does_not_satisfy_a_required_condition(mock_fetcher, default_config):
+    statement = Statement(
+        effect="Allow",
+        action=["sts:AssumeRoleWithWebIdentity"],
+        principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+        condition={
+            "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
+            "Null": {"token.actions.githubusercontent.com:sub": "true"},
+        },
+    )
+    issues = await TrustPolicyValidationCheck().execute(statement, 0, mock_fetcher, default_config)
+    assert any(i.issue_type == "missing_required_condition_for_assume_action" and ":sub" in i.message for i in issues)
+
+
+async def test_null_false_does_satisfy_a_required_condition(mock_fetcher, default_config):
+    statement = Statement(
+        effect="Allow",
+        action=["sts:AssumeRoleWithWebIdentity"],
+        principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+        condition={
+            "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
+            "Null": {"token.actions.githubusercontent.com:sub": "false"},
+        },
+    )
+    issues = await TrustPolicyValidationCheck().execute(statement, 0, mock_fetcher, default_config)
+    assert not [i for i in issues if i.issue_type == "missing_required_condition_for_assume_action"]

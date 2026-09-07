@@ -50,6 +50,11 @@ from iam_validator.core.constants import ARN_PARTITION_REGEX
 from iam_validator.core.models import Statement, ValidationIssue
 
 
+def _asserts_key_absent(value: Any) -> bool:
+    values = value if isinstance(value, list) else [value]
+    return any(str(v).strip().lower() == "true" for v in values)
+
+
 class TrustPolicyValidationCheck(PolicyCheck):
     """Validates trust policies for role assumption security."""
 
@@ -367,22 +372,20 @@ class TrustPolicyValidationCheck(PolicyCheck):
         # Get all condition keys from statement
         condition_keys: set[str] = set()
         if statement.condition:
-            for _operator, keys_dict in statement.condition.items():
-                if isinstance(keys_dict, dict):
-                    condition_keys.update(keys_dict.keys())
+            for operator, keys_dict in statement.condition.items():
+                if not isinstance(keys_dict, dict):
+                    continue
+                is_null_op = operator.strip().lower() == "null"
+                for key, value in keys_dict.items():
+                    if is_null_op and _asserts_key_absent(value):
+                        continue
+                    condition_keys.add(key)
 
         # Check for missing required conditions (supports wildcards like *:aud)
         missing_conditions = []
         for required_cond in required_conditions:
-            if "*:" in required_cond:
-                # Wildcard pattern - check if any key ends with the suffix
-                suffix = required_cond.split("*:")[1]
-                if not any(key.endswith(f":{suffix}") for key in condition_keys):
-                    missing_conditions.append(required_cond)
-            else:
-                # Exact match
-                if required_cond not in condition_keys:
-                    missing_conditions.append(required_cond)
+            if not any(iam_glob_match(required_cond, key) for key in condition_keys):
+                missing_conditions.append(required_cond)
 
         if missing_conditions:
             missing_list = format_list_with_backticks(missing_conditions)
