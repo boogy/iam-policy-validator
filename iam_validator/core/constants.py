@@ -11,6 +11,7 @@ References:
 """
 
 import re
+from typing import Final
 
 # ============================================================================
 # ARN Validation
@@ -34,6 +35,14 @@ DEFAULT_ARN_VALIDATION_PATTERN = (
 # Maximum allowed ARN length to prevent ReDoS attacks
 # AWS maximum ARN length is approximately 2048 characters
 MAX_ARN_LENGTH = 2048
+
+# ============================================================================
+# IAM Policy Grammar
+# ============================================================================
+
+#: AWS IAM policy grammar allows only alphanumeric characters in a Sid.
+#: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_grammar.html
+SID_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9]+$")
 
 # ============================================================================
 # IAM Policy Version Literals

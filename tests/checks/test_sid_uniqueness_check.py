@@ -1,11 +1,14 @@
 """Tests for SID uniqueness check."""
 
+from pathlib import Path
+
 import pytest
 
 from iam_validator.checks.sid_uniqueness import SidUniquenessCheck
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.models import IAMPolicy, Statement
+from iam_validator.core.policy_checks import validate_policies
 
 
 class TestSidUniquenessCheck:
@@ -78,3 +81,43 @@ class TestSidUniquenessCheck:
         )
         issues = await check.execute_policy(policy, "test.json", fetcher, config)
         assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_invalid_sid_format_honors_configured_severity(self, check, fetcher):
+        """A configured severity override applies to the Sid-format finding, not just duplicates."""
+        config = CheckConfig(check_id="sid_uniqueness", severity="warning")
+        policy = IAMPolicy(
+            Version="2012-10-17",
+            Statement=[
+                Statement(Sid="bad-sid", Effect="Allow", Action=["s3:GetObject"], Resource=["*"]),
+            ],
+        )
+        issues = await check.execute_policy(policy, "test.json", fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "invalid_sid_format"
+        assert issues[0].severity == "warning"
+
+
+async def test_malformed_sid_reported_exactly_once():
+    policy = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "my-invalid-sid",
+                "Effect": "Allow",
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::bucket/*",
+            }
+        ],
+    }
+    results = await validate_policies([("inline.json", IAMPolicy.model_validate(policy), policy)])
+    sid_issues = [i for r in results for i in r.issues if i.issue_type == "invalid_sid_format"]
+
+    assert len(sid_issues) == 1
+    assert sid_issues[0].severity == "error"
+
+
+def test_sid_pattern_is_defined_only_in_constants():
+    literal = r're.compile(r"^[a-zA-Z0-9]+$")'
+    defining = [p for p in Path("iam_validator").rglob("*.py") if literal in p.read_text(encoding="utf-8")]
+    assert [p.name for p in defining] == ["constants.py"]

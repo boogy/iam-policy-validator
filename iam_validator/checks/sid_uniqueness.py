@@ -11,12 +11,12 @@ This is implemented as a policy-level check that runs once when processing the f
 statement, examining all statements in the policy to find duplicates and format issues.
 """
 
-import re
 from collections import Counter
 from typing import ClassVar
 
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
+from iam_validator.core.constants import SID_PATTERN
 from iam_validator.core.models import IAMPolicy, ValidationIssue
 
 
@@ -32,10 +32,6 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
     """
     issues: list[ValidationIssue] = []
 
-    # AWS SID requirements: alphanumeric characters only per AWS IAM policy grammar
-    # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_grammar.html
-    sid_pattern = re.compile(r"^[a-zA-Z0-9]+$")
-
     # Handle policies with no statements
     if not policy.statement:
         return []
@@ -45,7 +41,7 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
     for idx, statement in enumerate(policy.statement):
         if statement.sid:  # Only check statements that have a SID
             # Check SID format
-            if not sid_pattern.match(statement.sid):
+            if not SID_PATTERN.match(statement.sid):
                 # Identify the issue
                 if " " in statement.sid:
                     issue_msg = f"Statement ID `{statement.sid}` contains spaces, which are not allowed by AWS"
@@ -57,7 +53,7 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
 
                 issues.append(
                     ValidationIssue(
-                        severity="error",  # Invalid SID format is an error
+                        severity=severity,
                         statement_sid=statement.sid,
                         statement_index=idx,
                         issue_type="invalid_sid_format",
