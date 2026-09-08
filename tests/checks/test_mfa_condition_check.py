@@ -93,6 +93,64 @@ class TestMFAConditionCheck:
         assert issues[0].severity == "high"
 
     @pytest.mark.asyncio
+    async def test_aws_recommended_deny_boolifexists_is_not_flagged(self, check, config):
+        """AWS's DenyAllExceptListedIfNoMFA pattern is not a finding."""
+        statement = Statement(
+            Effect="Deny",
+            NotAction=["iam:ChangePassword", "sts:GetSessionToken"],
+            Resource=["*"],
+            Condition={"BoolIfExists": {"aws:MultiFactorAuthPresent": "false"}},
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_aws_recommended_deny_null_true_is_not_flagged(self, check, config):
+        """AWS's recommended deny-when-no-MFA-context guard is not a finding."""
+        statement = Statement(
+            Effect="Deny",
+            Action=["*"],
+            Resource=["*"],
+            Condition={"Null": {"aws:MultiFactorAuthPresent": "true"}},
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_deny_bool_false_is_still_flagged(self, check, config):
+        """Bool: false fails to enforce MFA under Deny too, unlike BoolIfExists/Null."""
+        statement = Statement(
+            Effect="Deny",
+            Action=["*"],
+            Resource=["*"],
+            Condition={"Bool": {"aws:MultiFactorAuthPresent": "false"}},
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert [i.issue_type for i in issues] == ["mfa_antipattern_bool_false"]
+
+    @pytest.mark.asyncio
+    async def test_lowercase_operator_key_is_still_matched(self, check, config):
+        statement = Statement(
+            Effect="Allow",
+            Action=["*"],
+            Resource=["*"],
+            Condition={"bool": {"aws:MultiFactorAuthPresent": "false"}},
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert [i.issue_type for i in issues] == ["mfa_antipattern_bool_false"]
+
+    @pytest.mark.asyncio
+    async def test_allow_null_true_message_names_the_effect(self, check, config):
+        statement = Statement(
+            Effect="Allow",
+            Action=["*"],
+            Resource=["*"],
+            Condition={"Null": {"aws:MultiFactorAuthPresent": "true"}},
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert "Allow" in issues[0].message
+
+    @pytest.mark.asyncio
     async def test_both_antipatterns_detected(self, check, config):
         """Test both anti-patterns in the same statement."""
         statement = Statement(
