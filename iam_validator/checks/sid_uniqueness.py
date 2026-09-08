@@ -36,34 +36,38 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
     if not policy.statement:
         return []
 
-    # Collect all SIDs (ignoring None/empty values) and check format
+    # An empty Sid is a format error but is not a duplicate of another empty Sid.
     sids_with_indices: list[tuple[str, int]] = []
     for idx, statement in enumerate(policy.statement):
-        if statement.sid:  # Only check statements that have a SID
-            # Check SID format
-            if not SID_PATTERN.match(statement.sid):
-                # Identify the issue
-                if " " in statement.sid:
-                    issue_msg = f"Statement ID `{statement.sid}` contains spaces, which are not allowed by AWS"
-                    suggestion = f"Remove spaces from the SID. Example: `{statement.sid.replace(' ', '')}`"
-                else:
-                    invalid_chars = "".join(set(c for c in statement.sid if not c.isalnum()))
-                    issue_msg = f"Statement ID `{statement.sid}` contains invalid characters: `{invalid_chars}`"
-                    suggestion = "SIDs must contain only alphanumeric characters (A-Z, a-z, 0-9)"
+        if statement.sid is None:
+            continue
 
-                issues.append(
-                    ValidationIssue(
-                        severity=severity,
-                        statement_sid=statement.sid,
-                        statement_index=idx,
-                        issue_type="invalid_sid_format",
-                        message=issue_msg,
-                        suggestion=suggestion,
-                        line_number=statement.line_number,
-                        field_name="sid",
-                    )
+        if not SID_PATTERN.match(statement.sid):
+            if not statement.sid:
+                issue_msg = "Statement ID is empty"
+                suggestion = "Provide a non-empty alphanumeric SID, or omit the `Sid` field"
+            elif " " in statement.sid:
+                issue_msg = f"Statement ID `{statement.sid}` contains spaces, which are not allowed by AWS"
+                suggestion = f"Remove spaces from the SID. Example: `{statement.sid.replace(' ', '')}`"
+            else:
+                invalid_chars = "".join(set(c for c in statement.sid if not c.isalnum()))
+                issue_msg = f"Statement ID `{statement.sid}` contains invalid characters: `{invalid_chars}`"
+                suggestion = "SIDs must contain only alphanumeric characters (A-Z, a-z, 0-9)"
+
+            issues.append(
+                ValidationIssue(
+                    severity=severity,
+                    statement_sid=statement.sid,
+                    statement_index=idx,
+                    issue_type="invalid_sid_format",
+                    message=issue_msg,
+                    suggestion=suggestion,
+                    line_number=statement.line_number,
+                    field_name="sid",
                 )
+            )
 
+        if statement.sid:
             sids_with_indices.append((statement.sid, idx))
 
     # Find duplicates
