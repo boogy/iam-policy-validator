@@ -10,6 +10,7 @@ unintended access:
 
 from typing import ClassVar
 
+from iam_validator.checks.utils.condition_matching import is_deny
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
@@ -46,7 +47,7 @@ class NotPrincipalValidationCheck(PolicyCheck):
             return issues
 
         # Check 1: NotPrincipal with Effect: Allow is not supported by AWS
-        if statement.effect == "Allow":
+        if not is_deny(statement):
             issues.append(
                 ValidationIssue(
                     severity="error",

@@ -241,3 +241,40 @@ class TestNotResourceWithDeny:
         )
         issues = await check.execute(statement, 0, mock_fetcher, config)
         assert {i.issue_type for i in issues} == {"not_resource_deny_ineffective"}
+
+
+class TestEffectNormalisation:
+    """Case-insensitive Effect handling and the deliberate wildcard-scope asymmetry."""
+
+    @pytest.mark.asyncio
+    async def test_lowercase_effect_is_normalised(self, check, config, mock_fetcher) -> None:
+        statement = Statement(effect="allow", not_action=["s3:DeleteBucket"], resource=["*"])
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert [i.issue_type for i in issues] == ["not_action_allow_no_condition"]
+
+    @pytest.mark.asyncio
+    async def test_single_char_wildcard_resource_is_not_broad(self, check, config, mock_fetcher) -> None:
+        statement = Statement(effect="Deny", not_action=["s3:GetObject"], resource=["arn:aws:s3:::bucket-?"])
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert "not_action_deny_review" not in {i.issue_type for i in issues}
+
+    @pytest.mark.asyncio
+    async def test_glob_resource_under_deny_is_not_all_resources(self, check, config, mock_fetcher) -> None:
+        statement = Statement(
+            effect="Deny",
+            not_action=["s3:GetObject"],
+            resource=["arn:aws:s3:::bucket-*"],
+        )
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert "not_action_deny_review" not in {i.issue_type for i in issues}
+
+    @pytest.mark.asyncio
+    async def test_glob_resource_under_allow_is_broad(self, check, config, mock_fetcher) -> None:
+        statement = Statement(
+            effect="Allow",
+            action=["s3:*"],
+            resource=["arn:aws:s3:::my-bucket-*"],
+            not_resource=["arn:aws:s3:::my-bucket-protected/*"],
+        )
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert [i.issue_type for i in issues] == ["not_resource_broad"]

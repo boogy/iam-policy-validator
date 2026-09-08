@@ -93,7 +93,7 @@ class NotActionNotResourceCheck(PolicyCheck):
 
         not_actions = statement.get_not_actions()
         not_resources = statement.get_not_resources()
-        effect = statement.effect
+        effect = (statement.effect or "").strip().title()
 
         # When both NotAction AND NotResource are present with Allow,
         # only emit the combined critical finding (Check 3) to avoid noise.
@@ -168,7 +168,7 @@ class NotActionNotResourceCheck(PolicyCheck):
         if not_resources and effect == "Allow" and not has_combined:
             # Check if NotResource is used with wildcard Resource
             resources = statement.get_resources()
-            has_wildcard_resource = "*" in resources or any("*" in r for r in resources)
+            has_wildcard_resource = any("*" in r for r in resources)
 
             # Trust policies validly omit Resource (the role itself is the resource).
             # Skip the "missing Resource" warning when the statement has a Principal,
@@ -235,6 +235,7 @@ class NotActionNotResourceCheck(PolicyCheck):
         # which is actually a valid deny pattern but should be reviewed
         if not_actions and effect == "Deny":
             resources = statement.get_resources()
+            # Literal "*" only: a glob resource is not "all resources".
             has_wildcard_resource = "*" in resources
 
             if has_wildcard_resource:

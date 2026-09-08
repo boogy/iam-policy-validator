@@ -159,3 +159,18 @@ class TestNotPrincipalValidationCheck:
         issues = await check.execute(statement, 0, mock_fetcher, custom_config)
         assert len(issues) == 1
         assert issues[0].severity == "error"
+
+
+class TestEffectNormalisation:
+    """Case-insensitive Effect handling via is_deny."""
+
+    @pytest.mark.asyncio
+    async def test_lowercase_allow_effect_is_treated_as_allow(self, check, config, mock_fetcher) -> None:
+        statement = Statement(
+            effect="allow",
+            not_principal={"AWS": "arn:aws:iam::123456789012:root"},
+            action=["s3:GetObject"],
+            resource=["*"],
+        )
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert [i.issue_type for i in issues] == ["not_principal_with_allow"]
