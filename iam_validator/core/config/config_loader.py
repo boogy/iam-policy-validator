@@ -159,7 +159,6 @@ class SettingsSchema(BaseModel):
 
     model_config = ConfigDict(extra="allow")  # Allow additional settings
 
-    fail_fast: bool = False
     parallel: bool = True
     max_workers: int | None = None
     fail_on_severity: list[str] = list(HIGH_SEVERITY_LEVELS)
@@ -680,7 +679,7 @@ class ConfigLoader:
 
             except Exception as e:
                 # Log error but continue loading other checks
-                print(f"Warning: Failed to load custom check '{module_path}': {e}")
+                logger.warning("Failed to load custom check '%s': %s", module_path, e)
 
         return loaded_checks
 

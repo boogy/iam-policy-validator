@@ -3,8 +3,7 @@
 # For production IAM policies in high-security environments
 
 settings:
-  fail_fast: false
-  max_concurrent: 10
+  max_concurrency: 10
   enable_builtin_checks: true
   parallel_execution: true
 

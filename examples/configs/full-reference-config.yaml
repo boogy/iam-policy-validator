@@ -101,11 +101,8 @@
 # ============================================================================
 
 settings:
-  # Stop validation on first error
-  fail_fast: false
-
   # Maximum number of concurrent policy validations
-  max_concurrent: 10
+  max_concurrency: 10
 
   # Enable/disable ALL built-in checks (default: true)
   # Set to false when using AWS Access Analyzer to avoid redundant validation

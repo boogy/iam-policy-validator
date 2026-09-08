@@ -241,7 +241,7 @@ class TestConfigLoader:
         assert config.config_dict != {}
         assert "settings" in config.config_dict
         # Verify some key default settings exist
-        assert config.config_dict["settings"]["fail_fast"] is False
+        assert config.config_dict["settings"]["max_concurrency"] == 10
         assert "action_validation" in config.config_dict
 
     def test_load_config_not_found_disallow_missing(self, temp_dir):

@@ -266,7 +266,6 @@ The MCP server uses the same configuration format as the CLI validator. Configur
 | Setting            | Type | Description                                   |
 | ------------------ | ---- | --------------------------------------------- |
 | `fail_on_severity` | list | Severity levels that cause validation to fail |
-| `fail_fast`        | bool | Stop on first error                           |
 | `parallel`         | bool | Enable parallel check execution               |
 
 #### Per-Check Options

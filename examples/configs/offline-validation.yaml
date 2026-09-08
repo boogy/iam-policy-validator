@@ -11,8 +11,7 @@ settings:
   cache_enabled: false
 
   # Standard settings
-  fail_fast: false
-  max_concurrent: 10
+  max_concurrency: 10
   enable_builtin_checks: true
   parallel_execution: true
 

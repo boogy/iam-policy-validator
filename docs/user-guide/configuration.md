@@ -315,7 +315,6 @@ All settings under the `settings` key:
 ```yaml
 settings:
   # Validation behavior
-  fail_fast: false # Stop on first error (default: false)
   parallel: true # Enable parallel execution (default: true)
   max_workers: null # Max concurrent workers (default: auto)
 

@@ -157,7 +157,7 @@ async def validate_policies(
     aws_services_dir: str | None = None,
     allow_config_custom_checks: bool = False,
     *,
-    max_concurrency: int = 10,
+    max_concurrency: int | None = None,
 ) -> list[PolicyValidationResult]:
     """Validate multiple policies concurrently.
 
@@ -179,6 +179,8 @@ async def validate_policies(
             as consent. Passing ``custom_checks_dir`` explicitly (CLI flag /
             SDK argument) is always honoured.
         max_concurrency: Maximum number of policies validated concurrently.
+            When ``None`` (default), falls back to the config ``max_concurrency``
+            setting (default 10).
 
     Returns:
         List of validation results
@@ -244,6 +246,7 @@ async def validate_policies(
     cache_directory = config.get_setting("cache_directory", None)
     # CLI argument takes precedence over config file
     services_dir = aws_services_dir or config.get_setting("aws_services_dir", None)
+    resolved_max_concurrency = max_concurrency or config.get_setting("max_concurrency", 10)
     cache_ttl_seconds = cache_ttl_hours * constants.SECONDS_PER_HOUR
 
     # Validate policies using registry
@@ -274,7 +277,7 @@ async def validate_policies(
                 )
             )
 
-        semaphore = asyncio.Semaphore(max_concurrency)
+        semaphore = asyncio.Semaphore(resolved_max_concurrency)
 
         async def _bounded(coro: Awaitable[PolicyValidationResult]) -> PolicyValidationResult:
             async with semaphore:
