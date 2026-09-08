@@ -77,7 +77,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                 if not is_known_operator(operator):
                     issues.append(
                         ValidationIssue(
-                            severity="error",
+                            severity=self.get_severity(config),
                             message=(
                                 f"Unknown condition operator `{operator}`. AWS will reject this policy. "
                                 "Valid operators are listed in the IAM policy reference."

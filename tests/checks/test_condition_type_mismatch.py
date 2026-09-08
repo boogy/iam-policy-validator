@@ -249,3 +249,26 @@ class TestNullIfExistsDetection:
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
         assert issues[0].issue_type == "invalid_operator"
+
+
+class TestUnknownOperatorDetection:
+    @pytest.mark.asyncio
+    async def test_misspelled_operator_is_flagged(self, check, fetcher, config):
+        statement = _make_statement({"StringEqals": {"aws:PrincipalTag/team": "sec"}})
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert [i.issue_type for i in issues] == ["invalid_operator"]
+        assert "StringEqals" in issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_unknown_operator_severity_follows_config(self, check, fetcher):
+        statement = _make_statement({"StringEqals": {"aws:PrincipalTag/team": "sec"}})
+        config = CheckConfig(check_id="condition_type_mismatch", severity="warning")
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert [i.severity for i in issues] == ["warning"]
+
+    @pytest.mark.asyncio
+    async def test_modifier_spellings_are_not_flagged(self, check, fetcher, config):
+        for operator in ("ForAllValues:StringLike", "StringEqualsIfExists", "forallvalues:stringlike"):
+            statement = _make_statement({operator: {"aws:TagKeys": "team"}})
+            issues = await check.execute(statement, 0, fetcher, config)
+            assert not [i for i in issues if i.issue_type == "invalid_operator"], operator
