@@ -23,10 +23,15 @@ import re
 # Covers commercial, China, GovCloud, Europe sovereign, and all ISO partitions.
 ARN_PARTITION_REGEX = r"(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f)"
 
-# Lenient ARN format used by `resource_validation` — allows wildcards (*) in
-# region and account fields. Stricter than the structural parser in
+# Lenient ARN format used by `resource_validation` — allows wildcards (* and ?)
+# in region and account fields. Stricter than the structural parser in
 # CompiledPatterns but tolerant enough for policy-author conveniences.
-DEFAULT_ARN_VALIDATION_PATTERN = rf"^arn:{ARN_PARTITION_REGEX}:[a-z0-9\-]+:[a-z0-9\-*]*:[0-9*]*:.+$"
+# Account segment: empty, exactly 12 digits, or any digit/wildcard string with
+# at least one * or ?. Region segment similarly allows wildcards.
+DEFAULT_ARN_VALIDATION_PATTERN = (
+    rf"^arn:{ARN_PARTITION_REGEX}:[a-z0-9\-]+:[a-z0-9\-*?]*:"
+    rf"(?:[0-9]{{12}}|[0-9]*[*?][0-9*?]*)?:.+$"
+)
 
 # Maximum allowed ARN length to prevent ReDoS attacks
 # AWS maximum ARN length is approximately 2048 characters

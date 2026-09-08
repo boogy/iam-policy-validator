@@ -2,6 +2,8 @@
 
 import re
 
+import pytest
+
 from iam_validator.utils.regex import (
     cached_pattern,
     clear_pattern_cache,
@@ -263,3 +265,49 @@ class TestPerformance:
         speedup = recompile_time / cached_time
         # Just verify we get some speedup (at least 1.1x)
         assert speedup > 1.0, f"Expected speedup, got {speedup:.1f}x"
+
+
+class TestARNValidation:
+    """Test ARN validation pattern."""
+
+    @pytest.fixture
+    def arn_pattern(self):
+        from iam_validator.core.constants import DEFAULT_ARN_VALIDATION_PATTERN
+
+        return re.compile(DEFAULT_ARN_VALIDATION_PATTERN)
+
+    @pytest.mark.parametrize(
+        "arn",
+        [
+            "arn:aws:s3:::my-bucket/*",
+            "arn:aws:iam::123456789012:role/App",
+            "arn:aws:ec2:us-east-1:123456789012:instance/*",
+            "arn:aws:ec2:us-east-1:*:instance/*",
+            "arn:aws-us-gov:s3:::bucket",
+        ],
+    )
+    def test_valid_arns_accepted(self, arn_pattern, arn):
+        assert arn_pattern.match(arn) is not None
+
+    @pytest.mark.parametrize(
+        "arn",
+        [
+            "arn:aws:s3:us-east-1:123:bucket",
+            "arn:aws:iam::1234567890123:role/App",
+            "arn:aws:iam::12345678901:role/App",
+        ],
+    )
+    def test_short_or_long_account_ids_rejected(self, arn_pattern, arn):
+        assert arn_pattern.match(arn) is None
+
+    @pytest.mark.parametrize(
+        "arn",
+        [
+            "arn:aws:iam::1234*:role/App",
+            "arn:aws:iam::12345678901?:role/App",
+            "arn:aws:iam::*789012:role/App",
+            "arn:aws:ec2:us-east-?:123456789012:instance/i-0",
+        ],
+    )
+    def test_wildcarded_account_and_region_accepted(self, arn_pattern, arn):
+        assert arn_pattern.match(arn) is not None
