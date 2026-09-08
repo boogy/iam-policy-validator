@@ -355,9 +355,7 @@ async def _validate_policy_with_registry(
     elif policy_type == "SERVICE_CONTROL_POLICY":
         skipped_check_ids = frozenset({"wildcard_resource", "service_wildcard", "full_wildcard"})
 
-    # Execute all statement-level checks for each statement concurrently, then
-    # apply results in statement order — order anchors ignore_patterns and
-    # PR-comment fingerprints, so the gather must not change what gets reported first.
+    # Statement order anchors ignore_patterns and PR-comment fingerprints.
     statements = list(policy.statement or [])
     statement_issue_lists = await asyncio.gather(
         *(

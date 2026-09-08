@@ -1,7 +1,7 @@
 """Unit tests for the validate_policies orchestrator."""
 
 from iam_validator.core import constants
-from iam_validator.core.config.config_loader import ValidatorConfig
+from iam_validator.core.config.config_loader import SettingsSchema, ValidatorConfig
 from iam_validator.core.config.defaults import DEFAULT_CONFIG
 from iam_validator.core.models import IAMPolicy
 from iam_validator.core.policy_checks import validate_policies
@@ -21,6 +21,7 @@ def test_fail_on_severity_default_agrees_across_all_three_sources():
     expected = set(constants.HIGH_SEVERITY_LEVELS)
     assert set(ValidatorConfig().get_setting("fail_on_severity")) == expected
     assert set(DEFAULT_CONFIG["settings"]["fail_on_severity"]) == expected
+    assert set(SettingsSchema().fail_on_severity) == expected
 
 
 async def test_statement_findings_stay_in_statement_order():
