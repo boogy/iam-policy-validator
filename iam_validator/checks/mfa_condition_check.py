@@ -67,9 +67,7 @@ class MFAConditionCheck(PolicyCheck):
         bool_conditions = operator_block("Bool")
         for key, value in bool_conditions.items():
             if key.lower() == "aws:multifactorauthpresent":
-                # Normalize value to list
                 values = value if isinstance(value, list) else [value]
-                # Convert to lowercase strings for comparison
                 values_lower = [str(v).lower() for v in values]
 
                 if "false" in values_lower or False in values:
@@ -92,16 +90,12 @@ class MFAConditionCheck(PolicyCheck):
                     )
 
         # Check for anti-pattern #2: BoolIfExists with aws:MultiFactorAuthPresent = false
-        # This is MORE dangerous than Bool because it also matches when the key is missing.
-        # AWS documents `Deny` + this condition as the canonical MFA-enforcement statement;
-        # it is only dangerous under `Allow`.
+        # AWS's canonical Deny-based MFA guard uses this exact condition.
         if not deny:
             bool_if_exists_conditions = operator_block("BoolIfExists")
             for key, value in bool_if_exists_conditions.items():
                 if key.lower() == "aws:multifactorauthpresent":
-                    # Normalize value to list
                     values = value if isinstance(value, list) else [value]
-                    # Convert to lowercase strings for comparison
                     values_lower = [str(v).lower() for v in values]
 
                     if "false" in values_lower or False in values:
@@ -129,9 +123,7 @@ class MFAConditionCheck(PolicyCheck):
         null_conditions = operator_block("Null")
         for key, value in null_conditions.items():
             if key.lower() == "aws:multifactorauthpresent":
-                # Normalize value to list
                 values = value if isinstance(value, list) else [value]
-                # Convert to lowercase strings for comparison
                 values_lower = [str(v).lower() for v in values]
 
                 if "false" in values_lower or False in values:
@@ -153,8 +145,7 @@ class MFAConditionCheck(PolicyCheck):
                     )
 
                 # Check for anti-pattern #4: Null with aws:MultiFactorAuthPresent = true
-                # This means "key does NOT exist" = no MFA was used. Under `Deny` this is
-                # AWS's recommended MFA guard, so it is only a finding under `Allow`.
+                # "Key absent" means no MFA; under Deny that is AWS's recommended guard.
                 if not deny and ("true" in values_lower or True in values):
                     issues.append(
                         ValidationIssue(
