@@ -9,6 +9,7 @@ This module provides comprehensive validation of IAM policies including:
 
 import asyncio
 import logging
+from collections.abc import Awaitable
 from pathlib import Path
 
 from iam_validator.core import constants
@@ -155,6 +156,8 @@ async def validate_policies(
     policy_type: PolicyType | None = None,
     aws_services_dir: str | None = None,
     allow_config_custom_checks: bool = False,
+    *,
+    max_concurrency: int = 10,
 ) -> list[PolicyValidationResult]:
     """Validate multiple policies concurrently.
 
@@ -175,6 +178,7 @@ async def validate_policies(
             policies being validated — so mere config presence is not treated
             as consent. Passing ``custom_checks_dir`` explicitly (CLI flag /
             SDK argument) is always honoured.
+        max_concurrency: Maximum number of policies validated concurrently.
 
     Returns:
         List of validation results
@@ -232,7 +236,7 @@ async def validate_policies(
     ConfigLoader.apply_config_to_registry(config, registry)
 
     # Get fail_on_severity setting from config
-    fail_on_severities = config.get_setting("fail_on_severity", ["error"])
+    fail_on_severities = config.get_setting("fail_on_severity", list(constants.HIGH_SEVERITY_LEVELS))
 
     # Get cache settings from config
     cache_enabled = config.get_setting("cache_enabled", True)
@@ -270,7 +274,13 @@ async def validate_policies(
                 )
             )
 
-        results = await asyncio.gather(*tasks)
+        semaphore = asyncio.Semaphore(max_concurrency)
+
+        async def _bounded(coro: Awaitable[PolicyValidationResult]) -> PolicyValidationResult:
+            async with semaphore:
+                return await coro
+
+        results = await asyncio.gather(*(_bounded(t) for t in tasks))
 
     return list(results)
 
@@ -345,11 +355,18 @@ async def _validate_policy_with_registry(
     elif policy_type == "SERVICE_CONTROL_POLICY":
         skipped_check_ids = frozenset({"wildcard_resource", "service_wildcard", "full_wildcard"})
 
-    # Execute all statement-level checks for each statement
-    for idx, statement in enumerate(policy.statement or []):
-        # Execute all registered checks in parallel (with ignore_patterns filtering)
-        issues = await registry.execute_checks_parallel(statement, idx, fetcher, policy_file)
+    # Execute all statement-level checks for each statement concurrently, then
+    # apply results in statement order — order anchors ignore_patterns and
+    # PR-comment fingerprints, so the gather must not change what gets reported first.
+    statements = list(policy.statement or [])
+    statement_issue_lists = await asyncio.gather(
+        *(
+            registry.execute_checks_parallel(statement, idx, fetcher, policy_file)
+            for idx, statement in enumerate(statements)
+        )
+    )
 
+    for statement, issues in zip(statements, statement_issue_lists):
         if skipped_check_ids:
             issues = [issue for issue in issues if issue.check_id not in skipped_check_ids]
 

@@ -23,6 +23,7 @@ from iam_validator.core.constants import (
     _COMMENT_TAG_RE,
     COMMENT_TAG_PATTERN,
     DEFAULT_CONFIG_FILENAMES,
+    HIGH_SEVERITY_LEVELS,
 )
 from iam_validator.core.models import PolicyType
 
@@ -161,7 +162,7 @@ class SettingsSchema(BaseModel):
     fail_fast: bool = False
     parallel: bool = True
     max_workers: int | None = None
-    fail_on_severity: list[str] = ["error", "critical"]
+    fail_on_severity: list[str] = list(HIGH_SEVERITY_LEVELS)
     severity_labels: dict[str, str | list[str]] = {}
     ignore_settings: IgnoreSettingsSchema = IgnoreSettingsSchema()
     documentation: DocumentationSettingsSchema = DocumentationSettingsSchema()
