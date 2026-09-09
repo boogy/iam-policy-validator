@@ -24,6 +24,7 @@ Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundar
 - WebIdentity (OIDC) trust policies must now carry `*:aud` plus one of `*:sub` or `*:amr`
 - `fetch_multiple_services` no longer re-raises when a single service fails to fetch; failures are logged and omitted from the result
 - Service prefetch is bounded by the shared request semaphore instead of fixed batches of five
+- Entry-point plugin discovery now lives in `check_registry.load_entry_point_checks`, breaking the `check_registry` ↔ `config_loader` import cycle; `ConfigLoader.load_entry_point_checks` delegates to it
 
 ### Fixed
 

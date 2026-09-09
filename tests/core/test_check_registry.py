@@ -281,13 +281,11 @@ class TestPolicyCheck:
         assert hasattr(check, "not_a_real_attribute") is False
 
     def test_missing_check_id_raises_at_class_definition_not_at_access(self):
+        async def execute(self, statement, statement_idx, fetcher, config):
+            return []
+
         with pytest.raises((NotImplementedError, TypeError, AttributeError)):
-
-            class MissingId(PolicyCheck):
-                description: ClassVar[str] = "no check_id"
-
-                async def execute(self, statement, statement_idx, fetcher, config):
-                    return []
+            type("MissingId", (PolicyCheck,), {"description": "no check_id", "execute": execute})
 
 
 class TestCheckRegistry:

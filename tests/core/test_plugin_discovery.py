@@ -21,7 +21,7 @@ class _FakeEntryPoint:
 
 def test_entry_point_checks_are_registered(monkeypatch):
     monkeypatch.setattr(
-        "iam_validator.core.config.config_loader.entry_points",
+        "iam_validator.core.check_registry.entry_points",
         lambda group: [_FakeEntryPoint()],
     )
     registry = CheckRegistry()
@@ -51,7 +51,7 @@ def test_colliding_check_id_is_skipped_and_builtin_survives(monkeypatch, caplog)
             return CollidingCheck
 
     monkeypatch.setattr(
-        "iam_validator.core.config.config_loader.entry_points",
+        "iam_validator.core.check_registry.entry_points",
         lambda group: [_CollidingEntryPoint(), _FakeEntryPoint()],
     )
     registry = CheckRegistry()
@@ -76,7 +76,7 @@ def test_a_broken_entry_point_does_not_abort_discovery(monkeypatch, caplog):
             raise ImportError("missing dependency")
 
     monkeypatch.setattr(
-        "iam_validator.core.config.config_loader.entry_points",
+        "iam_validator.core.check_registry.entry_points",
         lambda group: [_Broken(), _FakeEntryPoint()],
     )
     registry = CheckRegistry()
@@ -100,7 +100,7 @@ def test_non_policy_check_entry_point_is_skipped(monkeypatch, caplog):
             return _NotACheck
 
     monkeypatch.setattr(
-        "iam_validator.core.config.config_loader.entry_points",
+        "iam_validator.core.check_registry.entry_points",
         lambda group: [_NonCheckEntryPoint(), _FakeEntryPoint()],
     )
     registry = CheckRegistry()
@@ -126,7 +126,7 @@ async def test_run_completes_when_a_non_check_plugin_is_advertised(monkeypatch):
             return _NotACheck
 
     monkeypatch.setattr(
-        "iam_validator.core.config.config_loader.entry_points",
+        "iam_validator.core.check_registry.entry_points",
         lambda group: [_NonCheckEntryPoint()],
     )
     policy = {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]}
@@ -141,7 +141,7 @@ def test_loaded_entry_point_check_ids_are_logged(monkeypatch, caplog):
     from iam_validator.core.check_registry import create_default_registry
 
     monkeypatch.setattr(
-        "iam_validator.core.config.config_loader.entry_points",
+        "iam_validator.core.check_registry.entry_points",
         lambda group: [_FakeEntryPoint()],
     )
     with caplog.at_level(logging.INFO, logger="iam_validator.core.check_registry"):

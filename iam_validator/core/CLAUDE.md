@@ -72,10 +72,12 @@ from it is never suppressed:
 Both paths respect the superseding check's `applies_to_policy_types`: if it does not run
 for the policy type, nothing is suppressed.
 
-`ConfigLoader.load_entry_point_checks(registry)` registers third-party checks advertised
-under the `iam_validator.checks` entry-point group. An entry that is not a `PolicyCheck`,
-or whose `check_id` is already registered, is logged and skipped rather than aborting
-discovery.
+`check_registry.load_entry_point_checks(registry)` registers third-party checks advertised
+under the `iam_validator.checks` entry-point group (`ENTRY_POINT_GROUP`). An entry that is
+not a `PolicyCheck`, or whose `check_id` is already registered, is logged and skipped
+rather than aborting discovery. It lives in `check_registry` so `create_default_registry()`
+does not have to import `config_loader` — `ConfigLoader.load_entry_point_checks` remains as
+a thin delegator. Patch `iam_validator.core.check_registry.entry_points` in tests.
 
 ---
 

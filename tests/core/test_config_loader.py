@@ -1,7 +1,6 @@
 """Unit tests for ConfigLoader logging behavior and config/defaults consistency."""
 
 import logging
-import subprocess
 from pathlib import Path
 
 from iam_validator.core.check_registry import CheckRegistry
@@ -24,17 +23,17 @@ def test_custom_check_load_failure_is_logged_not_printed(caplog, capsys):
 
 
 def test_no_dead_settings_in_defaults():
-    dead = []
-    for key in DEFAULT_CONFIG["settings"]:
-        hits: list[str] = []
-        for pattern in (f'"{key}"', f"'{key}'"):
-            out = subprocess.run(
-                ["rg", "-n", "-F", pattern, str(_REPO_ROOT / "iam_validator")],
-                capture_output=True,
-                text=True,
-            ).stdout.splitlines()
-            hits += [h for h in out if "config/defaults.py" not in h]
-        if not hits:
-            dead.append(key)
+    sources = [
+        path.read_text(encoding="utf-8")
+        for path in (_REPO_ROOT / "iam_validator").rglob("*.py")
+        if path.parts[-2:] != ("config", "defaults.py")
+    ]
+    assert sources, "no sources found to scan"
+
+    dead = [
+        key
+        for key in DEFAULT_CONFIG["settings"]
+        if not any(f'"{key}"' in text or f"'{key}'" in text for text in sources)
+    ]
 
     assert set(dead) <= DOCUMENTED_UNIMPLEMENTED, f"dead settings: {sorted(dead)}"

@@ -13,6 +13,7 @@ import asyncio
 import logging
 from abc import ABC
 from dataclasses import dataclass, field
+from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from iam_validator.core.aws_service import AWSServiceFetcher
@@ -798,6 +799,46 @@ class CheckRegistry:
         return all_issues
 
 
+#: Entry-point group third-party packages register PolicyCheck subclasses under.
+ENTRY_POINT_GROUP = "iam_validator.checks"
+
+
+def load_entry_point_checks(registry: "CheckRegistry") -> list[str]:
+    """Register every PolicyCheck advertised under the ``iam_validator.checks`` entry-point group.
+
+    Args:
+        registry: Check registry to add discovered checks to
+
+    Returns:
+        List of loaded check IDs
+    """
+    loaded: list[str] = []
+    for ep in entry_points(group=ENTRY_POINT_GROUP):
+        try:
+            check_cls = ep.load()
+            instance = check_cls()
+            if not isinstance(instance, PolicyCheck):
+                logger.warning(
+                    "Plugin entry point '%s' resolved to %s, which is not a PolicyCheck; skipping.",
+                    ep.name,
+                    type(instance).__name__,
+                )
+                continue
+            if registry.get_check(instance.check_id) is not None:
+                logger.warning(
+                    "Plugin entry point '%s' declares check_id '%s', which is already "
+                    "registered; skipping to avoid shadowing the existing check.",
+                    ep.name,
+                    instance.check_id,
+                )
+                continue
+            registry.register(instance)
+            loaded.append(instance.check_id)
+        except Exception as e:
+            logger.warning("Failed to load plugin check '%s': %s", ep.name, e)
+    return loaded
+
+
 def create_default_registry(
     enable_parallel: bool = True,
     include_builtin_checks: bool = True,
@@ -880,10 +921,7 @@ def create_default_registry(
         # 8. GUARDRAIL POLICY GUIDANCE (Organizations policy types)
         registry.register(checks.RCPBestPracticesCheck())  # Policy-level: RCP deny-statement best practices
 
-    # Function-local import: config_loader imports from this module at module scope.
-    from iam_validator.core.config.config_loader import ConfigLoader  # pylint: disable=import-outside-toplevel
-
-    entry_point_checks = ConfigLoader.load_entry_point_checks(registry)
+    entry_point_checks = load_entry_point_checks(registry)
     if entry_point_checks:
         logger.info("Loaded %d entry-point plugin checks: %s", len(entry_point_checks), ", ".join(entry_point_checks))
 

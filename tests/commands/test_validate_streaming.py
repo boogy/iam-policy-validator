@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-import iam_validator.commands.validate as validate_mod
 from iam_validator.commands.validate import ValidateCommand
 
 
@@ -52,7 +51,7 @@ def _streaming_args(tmp_path, **overrides) -> Namespace:
 async def test_streaming_passes_aws_services_dir_to_validate_policies(tmp_path):
     args = _streaming_args(tmp_path, aws_services_dir=str(tmp_path))
     spy = AsyncMock(return_value=[])
-    with patch.object(validate_mod, "validate_policies", spy):
+    with patch("iam_validator.commands.validate.validate_policies", spy):
         await ValidateCommand()._execute_streaming(args)
 
     assert spy.await_args.kwargs["aws_services_dir"] == str(tmp_path)
@@ -62,7 +61,7 @@ async def test_streaming_passes_aws_services_dir_to_validate_policies(tmp_path):
 async def test_streaming_leaves_policy_type_unresolved_without_the_flag(tmp_path):
     args = _streaming_args(tmp_path)
     spy = AsyncMock(return_value=[])
-    with patch.object(validate_mod, "validate_policies", spy):
+    with patch("iam_validator.commands.validate.validate_policies", spy):
         await ValidateCommand()._execute_streaming(args)
 
     assert spy.await_args.kwargs["policy_type"] is None
@@ -73,11 +72,11 @@ async def test_streaming_and_batch_pass_the_same_keywords(tmp_path):
     args = _streaming_args(tmp_path, aws_services_dir=str(tmp_path))
     spy = AsyncMock(return_value=[])
 
-    with patch.object(validate_mod, "validate_policies", spy):
+    with patch("iam_validator.commands.validate.validate_policies", spy):
         await ValidateCommand()._execute_streaming(args)
     stream_kwargs = set(spy.await_args.kwargs)
 
-    with patch.object(validate_mod, "validate_policies", spy):
+    with patch("iam_validator.commands.validate.validate_policies", spy):
         await ValidateCommand().execute(args)
     batch_kwargs = set(spy.await_args.kwargs)
 

@@ -11,14 +11,18 @@ import importlib.util
 import inspect
 import logging
 import sys
-from importlib.metadata import entry_points
 from pathlib import Path, PurePosixPath
 from typing import Any, get_args
 
 import yaml
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from iam_validator.core.check_registry import CheckConfig, CheckRegistry, PolicyCheck
+from iam_validator.core.check_registry import (
+    CheckConfig,
+    CheckRegistry,
+    PolicyCheck,
+    load_entry_point_checks,
+)
 from iam_validator.core.config.defaults import get_default_config
 from iam_validator.core.constants import (
     _COMMENT_TAG_RE,
@@ -34,9 +38,6 @@ from iam_validator.core.models import PolicyType
 VALID_POLICY_TYPES = frozenset(get_args(PolicyType))
 
 logger = logging.getLogger(__name__)
-
-# Entry-point group third-party packages register PolicyCheck subclasses under.
-ENTRY_POINT_GROUP = "iam_validator.checks"
 
 # Valid severity levels for validation
 SEVERITY_LEVELS = frozenset(["error", "warning", "info", "critical", "high", "medium", "low"])
@@ -815,31 +816,7 @@ class ConfigLoader:
         Returns:
             List of loaded check IDs
         """
-        loaded: list[str] = []
-        for ep in entry_points(group=ENTRY_POINT_GROUP):
-            try:
-                check_cls = ep.load()
-                instance = check_cls()
-                if not isinstance(instance, PolicyCheck):
-                    logger.warning(
-                        "Plugin entry point '%s' resolved to %s, which is not a PolicyCheck; skipping.",
-                        ep.name,
-                        type(instance).__name__,
-                    )
-                    continue
-                if registry.get_check(instance.check_id) is not None:
-                    logger.warning(
-                        "Plugin entry point '%s' declares check_id '%s', which is already "
-                        "registered; skipping to avoid shadowing the existing check.",
-                        ep.name,
-                        instance.check_id,
-                    )
-                    continue
-                registry.register(instance)
-                loaded.append(instance.check_id)
-            except Exception as e:
-                logger.warning("Failed to load plugin check '%s': %s", ep.name, e)
-        return loaded
+        return load_entry_point_checks(registry)
 
 
 def load_validator_config(config_path: str | None = None, allow_missing: bool = True) -> ValidatorConfig:

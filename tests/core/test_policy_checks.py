@@ -5,7 +5,6 @@ import logging
 
 import pytest
 
-import iam_validator.core.policy_checks as policy_checks_module
 from iam_validator.core import constants
 from iam_validator.core.config.config_loader import SettingsSchema, ValidatorConfig
 from iam_validator.core.config.defaults import DEFAULT_CONFIG
@@ -78,7 +77,9 @@ async def test_statement_findings_stay_in_statement_order():
 async def test_max_concurrency_bounds_concurrent_validations(monkeypatch):
     active = [0]
     peak = [0]
-    monkeypatch.setattr(policy_checks_module, "_validate_policy_with_registry", _tracking_validate_policy(active, peak))
+    monkeypatch.setattr(
+        "iam_validator.core.policy_checks._validate_policy_with_registry", _tracking_validate_policy(active, peak)
+    )
     policies = [(f"p{i}.json", _CONCURRENCY_POLICY, None) for i in range(10)]
 
     await validate_policies(policies, max_concurrency=2)
@@ -89,7 +90,9 @@ async def test_max_concurrency_bounds_concurrent_validations(monkeypatch):
 async def test_max_concurrency_none_resolves_from_config(tmp_path, monkeypatch):
     active = [0]
     peak = [0]
-    monkeypatch.setattr(policy_checks_module, "_validate_policy_with_registry", _tracking_validate_policy(active, peak))
+    monkeypatch.setattr(
+        "iam_validator.core.policy_checks._validate_policy_with_registry", _tracking_validate_policy(active, peak)
+    )
     config_file = tmp_path / "config.yaml"
     config_file.write_text("settings:\n  max_concurrency: 2\n")
     policies = [(f"p{i}.json", _CONCURRENCY_POLICY, None) for i in range(10)]
@@ -102,7 +105,9 @@ async def test_max_concurrency_none_resolves_from_config(tmp_path, monkeypatch):
 async def test_max_concurrency_explicit_argument_overrides_config(tmp_path, monkeypatch):
     active = [0]
     peak = [0]
-    monkeypatch.setattr(policy_checks_module, "_validate_policy_with_registry", _tracking_validate_policy(active, peak))
+    monkeypatch.setattr(
+        "iam_validator.core.policy_checks._validate_policy_with_registry", _tracking_validate_policy(active, peak)
+    )
     config_file = tmp_path / "config.yaml"
     config_file.write_text("settings:\n  max_concurrency: 9\n")
     policies = [(f"p{i}.json", _CONCURRENCY_POLICY, None) for i in range(10)]
@@ -116,7 +121,9 @@ async def test_max_concurrency_explicit_argument_overrides_config(tmp_path, monk
 async def test_max_concurrency_below_one_is_clamped(monkeypatch, caplog, supplied):
     active = [0]
     peak = [0]
-    monkeypatch.setattr(policy_checks_module, "_validate_policy_with_registry", _tracking_validate_policy(active, peak))
+    monkeypatch.setattr(
+        "iam_validator.core.policy_checks._validate_policy_with_registry", _tracking_validate_policy(active, peak)
+    )
     policies = [(f"p{i}.json", _CONCURRENCY_POLICY, None) for i in range(5)]
 
     with caplog.at_level(logging.WARNING):
@@ -129,7 +136,9 @@ async def test_max_concurrency_below_one_is_clamped(monkeypatch, caplog, supplie
 async def test_max_concurrency_zero_in_config_is_clamped(tmp_path, monkeypatch, caplog):
     active = [0]
     peak = [0]
-    monkeypatch.setattr(policy_checks_module, "_validate_policy_with_registry", _tracking_validate_policy(active, peak))
+    monkeypatch.setattr(
+        "iam_validator.core.policy_checks._validate_policy_with_registry", _tracking_validate_policy(active, peak)
+    )
     config_file = tmp_path / "config.yaml"
     config_file.write_text("settings:\n  max_concurrency: 0\n")
     policies = [(f"p{i}.json", _CONCURRENCY_POLICY, None) for i in range(5)]
