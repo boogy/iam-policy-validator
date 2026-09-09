@@ -1,7 +1,6 @@
 """Third-party checks register through the `iam_validator.checks` entry-point group."""
 
-from iam_validator.core.check_registry import CheckRegistry, PolicyCheck
-from iam_validator.core.config.config_loader import ConfigLoader
+from iam_validator.core.check_registry import CheckRegistry, PolicyCheck, load_entry_point_checks
 
 
 class _FakeEntryPoint:
@@ -25,7 +24,7 @@ def test_entry_point_checks_are_registered(monkeypatch):
         lambda group: [_FakeEntryPoint()],
     )
     registry = CheckRegistry()
-    loaded = ConfigLoader.load_entry_point_checks(registry)
+    loaded = load_entry_point_checks(registry)
 
     assert loaded == ["fake_plugin_check"]
     assert registry.get_check("fake_plugin_check") is not None
@@ -59,7 +58,7 @@ def test_colliding_check_id_is_skipped_and_builtin_survives(monkeypatch, caplog)
     registry.register(builtin)
 
     with caplog.at_level(logging.WARNING):
-        loaded = ConfigLoader.load_entry_point_checks(registry)
+        loaded = load_entry_point_checks(registry)
 
     assert loaded == ["fake_plugin_check"]
     assert registry.get_check("wildcard_action") is builtin
@@ -81,7 +80,7 @@ def test_a_broken_entry_point_does_not_abort_discovery(monkeypatch, caplog):
     )
     registry = CheckRegistry()
     with caplog.at_level(logging.WARNING):
-        loaded = ConfigLoader.load_entry_point_checks(registry)
+        loaded = load_entry_point_checks(registry)
 
     assert loaded == ["fake_plugin_check"]
     assert any("broken" in r.message for r in caplog.records)
@@ -105,7 +104,7 @@ def test_non_policy_check_entry_point_is_skipped(monkeypatch, caplog):
     )
     registry = CheckRegistry()
     with caplog.at_level(logging.WARNING):
-        loaded = ConfigLoader.load_entry_point_checks(registry)
+        loaded = load_entry_point_checks(registry)
 
     assert loaded == ["fake_plugin_check"]
     assert registry.get_check("impostor") is None

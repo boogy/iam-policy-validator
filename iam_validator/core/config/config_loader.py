@@ -21,7 +21,6 @@ from iam_validator.core.check_registry import (
     CheckConfig,
     CheckRegistry,
     PolicyCheck,
-    load_entry_point_checks,
 )
 from iam_validator.core.config.defaults import get_default_config
 from iam_validator.core.constants import (
@@ -805,18 +804,6 @@ class ConfigLoader:
             logger.info(f"Auto-discovered {len(loaded_checks)} custom checks: {', '.join(loaded_checks)}")
 
         return loaded_checks
-
-    @staticmethod
-    def load_entry_point_checks(registry: CheckRegistry) -> list[str]:
-        """Register every PolicyCheck advertised under the ``iam_validator.checks`` entry-point group.
-
-        Args:
-            registry: Check registry to add discovered checks to
-
-        Returns:
-            List of loaded check IDs
-        """
-        return load_entry_point_checks(registry)
 
 
 def load_validator_config(config_path: str | None = None, allow_missing: bool = True) -> ValidatorConfig:
