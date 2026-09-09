@@ -362,7 +362,12 @@ class CheckRegistry:
         issues = await registry.execute_checks_parallel(statement, idx, fetcher)
     """
 
-    def __init__(self, enable_parallel: bool = True, suppress_superseded: bool = False):
+    def __init__(
+        self,
+        enable_parallel: bool = True,
+        suppress_superseded: bool = False,
+        on_check_error: str = "fail",
+    ):
         """
         Initialize the registry.
 
@@ -370,11 +375,69 @@ class CheckRegistry:
             enable_parallel: If True, execute checks in parallel (default: True)
             suppress_superseded: If True, suppress redundant findings when a superseding
                 check fires (default: False here; config layer enables it by default)
+            on_check_error: What to do when a check raises. "fail" reports a
+                `check_execution_error` finding so the run cannot pass on an
+                incomplete validation (default); "warn" only logs, which lets a
+                policy pass with that check's findings missing.
         """
         self._checks: dict[str, PolicyCheck] = {}
         self._configs: dict[str, CheckConfig] = {}
         self.enable_parallel = enable_parallel
         self.suppress_superseded = suppress_superseded
+        self.on_check_error = on_check_error
+
+    def _handle_check_error(
+        self,
+        check_id: str,
+        error: BaseException,
+        statement_idx: int,
+        statement_sid: str | None = None,
+    ) -> list[ValidationIssue]:
+        """Turn a check that raised into a finding, unless configured not to.
+
+        A check that raises produced no findings, so the statement it was given
+        went unvalidated by that check. Logging alone lets the run report clean,
+        which is a worse outcome than a policy AWS would reject: the result is
+        not merely wrong, it is unsound.
+
+        The finding deliberately bypasses `_process_issues`. It is not a finding
+        *from* the check, and routing it through the failing check's own
+        `ignore_patterns` and severity overrides would let a check silence the
+        notice that it crashed.
+
+        Args:
+            check_id: The check that raised
+            error: The exception it raised
+            statement_idx: Statement index for reporting (0 for policy-level checks)
+            statement_sid: Sid of the statement being checked, when there is one
+
+        Returns:
+            A single-issue list, or an empty list when on_check_error is "warn"
+        """
+        if self.on_check_error == "warn":
+            logger.warning("Check '%s' failed: %s", check_id, error, exc_info=error)
+            return []
+
+        logger.error("Check '%s' failed: %s", check_id, error, exc_info=error)
+        return [
+            ValidationIssue(
+                severity="error",
+                statement_sid=statement_sid,
+                statement_index=statement_idx,
+                issue_type="check_execution_error",
+                check_id=check_id,
+                message=(
+                    f"Check `{check_id}` raised `{type(error).__name__}: {error}` and produced "
+                    f"no findings, so this policy was not fully validated"
+                ),
+                suggestion=(
+                    "This is a bug in the check, not necessarily in the policy. Re-run with "
+                    "`--log-level DEBUG` for the traceback. Set `on_check_error: warn` under "
+                    "`settings` to downgrade this to a log line, accepting that a run can then "
+                    "pass with a check's findings missing."
+                ),
+            )
+        ]
 
     def register(self, check: PolicyCheck) -> None:
         """
@@ -528,30 +591,6 @@ class CheckRegistry:
                 )
         return {check_id: issues for check_id, issues in issues_map.items() if check_id not in suppressed_ids}
 
-    @staticmethod
-    def _issue_for_failed_check(
-        check_id: str,
-        statement_idx: int,
-        statement_sid: str | None,
-        exc: BaseException,
-    ) -> ValidationIssue:
-        return ValidationIssue(
-            severity="error",
-            statement_sid=statement_sid,
-            statement_index=statement_idx,
-            issue_type="check_execution_error",
-            message=(
-                f"Check `{check_id}` raised {type(exc).__name__}: {exc}. "
-                "This statement was NOT validated by that check — the result is incomplete, "
-                "not clean."
-            ),
-            suggestion=(
-                "Re-run with `--log-level debug` for the traceback. If the input is a valid "
-                "policy, this is a validator bug; please report it with the failing statement."
-            ),
-            check_id=check_id,
-        )
-
     async def execute_checks_parallel(
         self,
         statement: Statement,
@@ -593,8 +632,7 @@ class CheckRegistry:
                 try:
                     issues = await check.execute(statement, statement_idx, fetcher, config)
                 except Exception as exc:  # noqa: BLE001 - a crashed check must not abort the run
-                    logger.warning("Check '%s' failed: %s", check.check_id, exc, exc_info=exc)
-                    failures.append(self._issue_for_failed_check(check.check_id, statement_idx, statement.sid, exc))
+                    failures.extend(self._handle_check_error(check.check_id, exc, statement_idx, statement.sid))
                     continue
                 processed = self._process_issues(issues, check, config, filepath)
                 if processed:
@@ -624,8 +662,7 @@ class CheckRegistry:
         for idx, result in enumerate(results):
             check_id = task_checks[idx].check_id
             if isinstance(result, BaseException):
-                logger.warning("Check '%s' failed: %s", check_id, result, exc_info=result)
-                failures.append(self._issue_for_failed_check(check_id, statement_idx, statement.sid, result))
+                failures.extend(self._handle_check_error(check_id, result, statement_idx, statement.sid))
             elif isinstance(result, list):
                 processed = self._process_issues(result, task_checks[idx], configs[idx], filepath)
                 if processed:
@@ -671,8 +708,7 @@ class CheckRegistry:
             try:
                 issues = await check.execute(statement, statement_idx, fetcher, config)
             except Exception as exc:  # noqa: BLE001 - a crashed check must not abort the run
-                logger.warning("Check '%s' failed: %s", check.check_id, exc, exc_info=exc)
-                failures.append(self._issue_for_failed_check(check.check_id, statement_idx, statement.sid, exc))
+                failures.extend(self._handle_check_error(check.check_id, exc, statement_idx, statement.sid))
                 continue
             processed = self._process_issues(issues, check, config, filepath)
             if processed:
@@ -732,8 +768,7 @@ class CheckRegistry:
                         **kwargs,
                     )
                 except Exception as exc:  # noqa: BLE001 - a crashed check must not abort the run
-                    logger.warning("Policy check '%s' failed: %s", check.check_id, exc, exc_info=exc)
-                    all_issues.append(self._issue_for_failed_check(check.check_id, 0, None, exc))
+                    all_issues.extend(self._handle_check_error(check.check_id, exc, 0))
                     continue
                 all_issues.extend(self._process_issues(issues, check, config, policy_file))
             return all_issues
@@ -755,8 +790,7 @@ class CheckRegistry:
         for idx, result in enumerate(results):
             check = policy_level_checks[idx]
             if isinstance(result, BaseException):
-                logger.warning("Policy check '%s' failed: %s", check.check_id, result, exc_info=result)
-                all_issues.append(self._issue_for_failed_check(check.check_id, 0, None, result))
+                all_issues.extend(self._handle_check_error(check.check_id, result, 0))
             elif isinstance(result, list):
                 config = configs[idx]
                 all_issues.extend(self._process_issues(result, check, config, policy_file))
@@ -768,6 +802,7 @@ def create_default_registry(
     enable_parallel: bool = True,
     include_builtin_checks: bool = True,
     suppress_superseded: bool = False,
+    on_check_error: str = "fail",
 ) -> CheckRegistry:
     """
     Create a registry with all built-in checks registered.
@@ -780,11 +815,17 @@ def create_default_registry(
         include_builtin_checks: If True, register built-in checks (default: True)
         suppress_superseded: If True, suppress redundant findings when a superseding
             check fires (default: False here; config layer enables it by default)
+        on_check_error: "fail" to report a `check_execution_error` finding when a
+            check raises (default), "warn" to only log it
 
     Returns:
         CheckRegistry with all built-in checks registered (if include_builtin_checks=True)
     """
-    registry = CheckRegistry(enable_parallel=enable_parallel, suppress_superseded=suppress_superseded)
+    registry = CheckRegistry(
+        enable_parallel=enable_parallel,
+        suppress_superseded=suppress_superseded,
+        on_check_error=on_check_error,
+    )
 
     if include_builtin_checks:
         # Import and register built-in checks

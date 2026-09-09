@@ -10,6 +10,7 @@ Validation engine, models, AWS integration. Extends [../../CLAUDE.md](../../CLAU
 core/
 ├── cli.py                  # CLI entry point (argparse + ALL_COMMANDS dispatch)
 ├── check_registry.py       # PolicyCheck ABC, CheckConfig, CheckRegistry, create_default_registry
+│                           # a check that raises -> check_execution_error finding (settings.on_check_error)
 ├── models.py               # Pydantic v2: IAMPolicy, Statement, ValidationIssue, PolicyValidationResult
 ├── policy_loader.py        # JSON/YAML loading + auto-detect
 ├── policy_checks.py        # validate_policies() orchestrator
@@ -86,6 +87,12 @@ async with AWSServiceFetcher() as fetcher:  # offline: AWSServiceFetcher(aws_ser
     actions = await fetcher.expand_wildcard_action("s3:Get*")
     service = await fetcher.fetch_service_by_name("s3")  # .actions, .resources, .condition_keys
 ```
+
+`validate_action`, `validate_actions_batch` and `validate_condition_key` return their
+normal result type for an action they cannot parse (e.g. `*:Untag*`, whose service prefix
+AWS rejects outright) rather than raising `ValueError` — a raise reaches
+`check_registry`, which logs it and drops every finding from that check for the whole
+statement. `parse_action` still raises; `describe_action_format_error` builds the message.
 
 Two-layer cache: memory LRU (raw JSON + Pydantic models) → disk TTL (raw JSON only).
 Disk reads and writes run on a worker thread (`asyncio.to_thread`) so cache I/O never
