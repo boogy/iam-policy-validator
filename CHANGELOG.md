@@ -13,6 +13,7 @@ Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundar
 - `applies_to_policy_types` on `PolicyCheck` — the policy types a check is meaningful for; `None` (the default) means all
 - Third-party checks advertised under the `iam_validator.checks` entry-point group are discovered and registered automatically
 - `validate_policies(max_concurrency=...)` to bound how many policies validate at once from the SDK
+- `completion <shell> --install` writes the completion script to `~/.local/share/zsh/site-functions/_iam-validator` or `~/.local/share/bash-completion/completions/iam-validator` (honouring `XDG_DATA_HOME`) and prints the one-time shell-rc line; it always overwrites so the installed script cannot go stale
 
 ### Changed
 

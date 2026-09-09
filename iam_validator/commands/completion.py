@@ -16,10 +16,15 @@ Usage:
     # Zsh completion
     iam-validator completion zsh > ~/.zsh/completion/_iam-validator
     # Then add to ~/.zshrc: fpath=(~/.zsh/completion $fpath)
+
+    # Install to the XDG completion directory instead of printing
+    iam-validator completion zsh --install
 """
 
 import argparse
 import logging
+import os
+from pathlib import Path
 
 from iam_validator.commands.base import Command
 from iam_validator.core.aws_service.storage import ServiceFileStorage
@@ -58,6 +63,10 @@ examples:
 
   # Direct evaluation (zsh)
   eval "$(iam-validator completion zsh)"
+
+  # Install into the XDG completion directory
+  iam-validator completion zsh --install
+  iam-validator completion bash --install
 """
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
@@ -66,6 +75,11 @@ examples:
             "shell",
             choices=["bash", "zsh"],
             help="Shell type to generate completion for",
+        )
+        parser.add_argument(
+            "--install",
+            action="store_true",
+            help="Write the script to the user completion directory instead of stdout",
         )
 
     async def execute(self, args: argparse.Namespace) -> int:
@@ -76,12 +90,51 @@ examples:
             else:  # zsh
                 script = self._generate_zsh_completion()
 
+            if args.install:
+                return self._install(args.shell, script)
+
             print(script)
             return 0
 
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error(f"Failed to generate completion: {e}", exc_info=True)
             return 1
+
+    # (data subdirectory, completion filename) per shell
+    _INSTALL_TARGETS = {
+        "bash": ("bash-completion/completions", "iam-validator"),
+        "zsh": ("zsh/site-functions", "_iam-validator"),
+    }
+
+    def _install_path(self, shell: str) -> Path:
+        """Resolve the XDG completion path for a shell."""
+        data_home = os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share"
+        subdir, filename = self._INSTALL_TARGETS[shell]
+        return Path(data_home) / subdir / filename
+
+    def _install(self, shell: str, script: str) -> int:
+        """Write the completion script to the user completion directory."""
+        target = self._install_path(shell)
+        contents = script if script.endswith("\n") else script + "\n"
+
+        print(f"installing to {target}")
+        was_current = target.is_file() and target.read_text(encoding="utf-8") == contents
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(contents, encoding="utf-8")
+        if was_current:
+            print("already up to date")
+
+        print()
+        if shell == "zsh":
+            print("add this to ${ZDOTDIR:-$HOME}/.zshrc, once:")
+            print()
+            print(f"fpath+=('{target.parent}')")
+            print("autoload -Uz compinit && compinit")
+        else:
+            print("add this to ${HOME}/.bashrc, once:")
+            print()
+            print(f"source '{target}'")
+        return 0
 
     def _get_cached_services(self) -> list[str]:
         """Get list of cached AWS service names.
@@ -210,7 +263,7 @@ _iam_validator_completion() {{
             return 0
             ;;
         completion)
-            COMPREPLY=( $(compgen -W "bash zsh" -- "$cur") )
+            COMPREPLY=( $(compgen -W "bash zsh --install" -- "$cur") )
             return 0
             ;;
         --transport)
@@ -508,7 +561,8 @@ _iam_validator() {{
                     ;;
                 completion)
                     _arguments \\
-                        '1: :(bash zsh)'
+                        '1: :(bash zsh)' \\
+                        '--install[Write the script to the user completion directory]'
                     ;;
                 mcp)
                     _arguments \\

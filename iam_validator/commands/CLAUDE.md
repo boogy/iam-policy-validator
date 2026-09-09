@@ -19,16 +19,16 @@ Inside `execute()`, return `0` on success, non-zero on failure. Use Rich (`rich.
 
 ## Existing commands
 
-| Command         | File                   | Purpose                          |
-| --------------- | ---------------------- | -------------------------------- |
-| `validate`      | `validate.py`          | main validation entry point      |
-| `analyze`       | `analyze.py`           | AWS Access Analyzer integration  |
-| `post-to-pr`    | `post_to_pr.py`        | post a saved report to a PR      |
-| `cache`         | `cache.py`             | manage AWS service-data cache    |
-| `sync-services` | `download_services.py` | offline AWS definitions download |
-| `query`         | `query.py`             | query AWS service definitions    |
-| `completion`    | `completion.py`        | bash / zsh completion scripts    |
-| `mcp`           | `mcp.py`               | launch the MCP server            |
+| Command         | File                   | Purpose                                                             |
+| --------------- | ---------------------- | ------------------------------------------------------------------- |
+| `validate`      | `validate.py`          | main validation entry point                                         |
+| `analyze`       | `analyze.py`           | AWS Access Analyzer integration                                     |
+| `post-to-pr`    | `post_to_pr.py`        | post a saved report to a PR                                         |
+| `cache`         | `cache.py`             | manage AWS service-data cache                                       |
+| `sync-services` | `download_services.py` | offline AWS definitions download                                    |
+| `query`         | `query.py`             | query AWS service definitions                                       |
+| `completion`    | `completion.py`        | bash / zsh completions, `--install` writes them to the XDG data dir |
+| `mcp`           | `mcp.py`               | launch the MCP server                                               |
 
 `validate.py` is the largest — it orchestrates streaming mode, PR commenting, label
 management, and per-file policy-type resolution. When in doubt, mirror its patterns.
