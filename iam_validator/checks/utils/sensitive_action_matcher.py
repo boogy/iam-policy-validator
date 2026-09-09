@@ -10,6 +10,8 @@ Performance optimizations:
 """
 
 from collections.abc import Iterable
+from functools import lru_cache
+from typing import NamedTuple
 
 from iam_validator.checks.utils.aws_matching import action_matches
 from iam_validator.core.check_registry import CheckConfig
@@ -165,7 +167,8 @@ def check_actions_config(actions: list[str], config, default_actions: frozenset[
         returned as written in the statement, not as written in the configuration.
     """
     if not config:
-        matched = [a for a in actions if _matches_any(a, default_actions)]
+        index = _index_for(default_actions)
+        matched = [a for a in actions if _matches_any_indexed(a, index)]
         return len(matched) > 0, matched
 
     if isinstance(config, list):
@@ -181,20 +184,55 @@ def check_actions_config(actions: list[str], config, default_actions: frozenset[
 
     if isinstance(config, dict):
         if "any_of" in config:
-            matched = [a for a in actions if _matches_any(a, config["any_of"])]
+            index = _index_for(config["any_of"])
+            matched = [a for a in actions if _matches_any_indexed(a, index)]
             return len(matched) > 0, matched
 
         if "all_of" in config:
             required = list(config["all_of"])
-            matched = [a for a in actions if _matches_any(a, required)]
+            index = _index_for(required)
+            matched = [a for a in actions if _matches_any_indexed(a, index)]
             satisfied = all(any(action_matches(req, a) for a in actions) for req in required)
             return satisfied, matched
 
     return False, []
 
 
-def _matches_any(action: str, candidates: Iterable[str]) -> bool:
-    return any(action_matches(candidate, action) for candidate in candidates)
+class _CandidateIndex(NamedTuple):
+    """Candidates split into an O(1) literal set and the small glob remainder."""
+
+    literal: frozenset[str]
+    globs: tuple[str, ...]
+
+
+def _partition_candidates(candidates: tuple[str, ...] | frozenset[str]) -> _CandidateIndex:
+    literal: set[str] = set()
+    globs: list[str] = []
+    for candidate in candidates:
+        if "*" in candidate or "?" in candidate:
+            globs.append(candidate)
+        else:
+            literal.add(candidate.lower())
+    return _CandidateIndex(frozenset(literal), tuple(globs))
+
+
+_partition_candidates_cached = lru_cache(maxsize=64)(_partition_candidates)
+
+
+def _index_for(candidates: Iterable[str]) -> _CandidateIndex:
+    """Partition (and cache, keyed by content) a candidate list for repeated matching."""
+    hashable = candidates if isinstance(candidates, frozenset | tuple) else tuple(candidates)
+    return _partition_candidates_cached(hashable)
+
+
+def _matches_any_indexed(action: str, index: _CandidateIndex) -> bool:
+    # action_matches is bidirectional: a wildcard in the action (e.g. "iam:*") can
+    # itself cover a literal candidate, so it must fall back to the full scan.
+    if "*" in action or "?" in action:
+        return any(action_matches(candidate, action) for candidate in (*index.literal, *index.globs))
+    if action.lower() in index.literal:
+        return True
+    return any(action_matches(glob, action) for glob in index.globs)
 
 
 def check_patterns_config(actions: list[str], config) -> tuple[bool, list[str]]:
