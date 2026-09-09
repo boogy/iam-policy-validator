@@ -2,16 +2,16 @@
 
 import logging
 import subprocess
+from pathlib import Path
 
 from iam_validator.core.check_registry import CheckRegistry
 from iam_validator.core.config.config_loader import ConfigLoader, ValidatorConfig
 from iam_validator.core.config.defaults import DEFAULT_CONFIG
 
-DOCUMENTED_UNIMPLEMENTED = {
-    # Declared in defaults.py and documented at docs/user-guide/configuration.md:369,
-    # but neither base_url nor include_aws_docs has a consumer yet.
-    "documentation",
-}
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Declared in defaults.py and documented, but with no consumer yet (see docs/user-guide/configuration.md:369).
+DOCUMENTED_UNIMPLEMENTED = {"documentation"}
 
 
 def test_custom_check_load_failure_is_logged_not_printed(caplog, capsys):
@@ -29,7 +29,7 @@ def test_no_dead_settings_in_defaults():
         hits: list[str] = []
         for pattern in (f'"{key}"', f"'{key}'"):
             out = subprocess.run(
-                ["rg", "-n", "-F", pattern, "iam_validator/"],
+                ["rg", "-n", "-F", pattern, str(_REPO_ROOT / "iam_validator")],
                 capture_output=True,
                 text=True,
             ).stdout.splitlines()
