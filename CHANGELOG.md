@@ -40,7 +40,10 @@ Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundar
 - Trust-policy rule and condition-key lookups are now case-insensitive
 - Web-identity trust policies naming a bare provider domain (`cognito-identity.amazonaws.com`, `accounts.google.com`, `graph.facebook.com`, `www.amazon.com`) are no longer reported as an invalid provider format
 - `<provider>:amr` is now recognized as a multivalued context key, so a set operator on it is no longer flagged
-- Sid-format violations are reported once instead of twice, honour the `sid_uniqueness` severity setting, and now cover an empty `Sid`
+- The standard OIDC claims `aud`, `sub`, `oaud` and `amr` are accepted on `sts:AssumeRoleWithWebIdentity` for any provider URL, so GitHub Actions trust policies no longer report `token.actions.githubusercontent.com:aud` and `:sub` as invalid condition keys
+- Condition keys whose provider identifier AWS templates as `${Name}` — GitHub Enterprise, self-hosted Buildkite, CircleCI orgs — now match the concrete key a policy uses
+- Sid-format violations are reported once instead of twice and honour the `sid_uniqueness` severity setting
+- An empty `Sid` is treated like an omitted one and no longer reported, since a statement needs no `Sid`
 - MFA anti-pattern checks no longer flag AWS's own documented `Deny`-based MFA enforcement pattern
 - `NotAction`/`NotResource`/`NotPrincipal` checks compare `Effect` case-insensitively
 - AWS's managed `RCPFullAWSAccess` policy is no longer reported as an invalid RCP
