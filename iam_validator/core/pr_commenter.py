@@ -713,6 +713,9 @@ class PRCommenter:
                 # Detect "Statement": [ or "Statement" : [
                 if '"Statement"' in stripped or "'Statement'" in stripped:
                     in_statement_array = True
+                    if stripped.endswith("{"):
+                        mapping[statement_count] = line_num
+                        statement_count += 1
                     continue
 
                 # Detect statement object start
@@ -804,42 +807,27 @@ class PRCommenter:
         Returns:
             Line number or None
         """
+        start_line = self._get_line_mapping(policy_file).get(statement_idx)
+        if start_line is None:
+            return None
+
         try:
             with open(policy_file, encoding="utf-8-sig") as f:
                 lines = f.readlines()
-
-            # Find the statement block
-            statement_count = 0
-            in_statement = False
-            brace_depth = 0
-
-            for line_num, line in enumerate(lines, start=1):
-                stripped = line.strip()
-
-                # Track braces
-                brace_depth += stripped.count("{") - stripped.count("}")
-
-                # Detect statement start
-                if not in_statement and stripped.startswith("{") and brace_depth > 0:
-                    if statement_count == statement_idx:
-                        in_statement = True
-                        continue
-                    statement_count += 1
-
-                # Search within the statement
-                if in_statement:
-                    if search_term in line:
-                        return line_num
-
-                    # Exit statement when braces balance
-                    if brace_depth == 0:
-                        in_statement = False
-
-            return None
-
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.debug(f"Could not search {policy_file}: {e}")
             return None
+
+        depth = 0
+        for line_num, line in enumerate(lines[start_line - 1 :], start=start_line):
+            if search_term in line:
+                return line_num
+            stripped = line.strip()
+            depth += stripped.count("{") - stripped.count("}")
+            if depth <= 0:
+                return None
+
+        return None
 
     async def _process_ignore_commands(self) -> None:
         """Process pending ignore commands from PR comments."""

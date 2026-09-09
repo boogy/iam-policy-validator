@@ -1086,5 +1086,63 @@ class TestOffDiffCommentModeConfigValidation:
         assert schema.off_diff_comment_mode == "summary_only"
 
 
+class TestSearchForFieldLineScoping:
+    """Tests for PRCommenter._search_for_field_line statement scoping."""
+
+    def test_search_for_field_line_is_scoped_to_the_requested_statement(self, tmp_path):
+        policy = tmp_path / "policy.json"
+        policy.write_text(
+            """{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "First",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "*"
+    },
+    {
+      "Sid": "Second",
+      "Effect": "Deny",
+      "Action": "s3:PutObject",
+      "Resource": "*"
+    }
+  ]
+}
+""",
+            encoding="utf-8",
+        )
+        commenter = PRCommenter.__new__(PRCommenter)
+
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 0, "s3:GetObject") == 7
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 1, "s3:PutObject") == 13
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 0, "s3:PutObject") is None
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 1, "s3:GetObject") is None
+        # Terms present in both statements are the only ones the off-by-one defect shows up in.
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 1, '"Sid"') == 11
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 1, '"Resource"') == 14
+
+    def test_single_object_statement_resolves_via_line_mapping(self, tmp_path):
+        policy = tmp_path / "policy.json"
+        policy.write_text(
+            """{
+  "Version": "2012-10-17",
+  "Statement": {
+    "Sid": "Only",
+    "Effect": "Allow",
+    "Action": "s3:GetObject",
+    "Resource": "*"
+  }
+}
+""",
+            encoding="utf-8",
+        )
+        commenter = PRCommenter.__new__(PRCommenter)
+
+        assert PRCommenter._get_line_mapping(commenter, str(policy)) == {0: 3}
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 0, "s3:GetObject") == 6
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 0, "s3:PutObject") is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
