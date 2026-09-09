@@ -17,8 +17,6 @@ Optional argument: `$ARGUMENTS` (PR title or description hint).
 
 2. **Verify NOT on main/master** — if on main, stop and ask the user to create a feature branch first.
 
-3. **Prefer raw `git`**. Do NOT invoke `gh` in this repo — its auth is scoped to the wrong identity for `boogy/*` personal repos. If the repo owner is a Nexthink/other org, `gh` is fine; if uncertain, use the browser URL approach described in step 5.
-
 ## Steps
 
 ### 1. Gather context
