@@ -61,6 +61,10 @@ Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundar
 - `NullIfExists` and its casing variants are reported as an invalid operator — AWS does not accept `IfExists` on `Null`
 - `policy_structure` no longer rewrites the caller's policy dict in place when `Statement` is a single object
 - A policy file is read once per PR comment run instead of once per finding
+- `examples/configs/full-reference-config.yaml` now passes the validator's own config schema — `settings.hide_severities` was set to `None`, which YAML reads as the string `"None"` rather than a list
+- The reference config documents every option the validator reads, including `settings.suppress_superseded_findings`, `on_check_error`, `comment_tag`, `ignore_settings`, `documentation`, the top-level `policy_types:` glob mapping and `custom_checks:` list, the `ifexists_condition_usage` and `service_wildcard` options, `sensitive_action_patterns`, and the `merge_strategy` / requirement keys of `action_condition_enforcement`
+- The reference config no longer misreports `trust_policy_validation` as opt-in, nor omits the `inline_role_trust`, `scp` and `rcp` keys of `policy_size.size_limits`
+- `policy_type_validation` and `rcp_best_practices` no longer log "Unknown check ID" when configured — both were missing from `KNOWN_CHECK_IDS`
 
 ## [1.26.0] - 2026-09-03
 
