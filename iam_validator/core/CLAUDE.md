@@ -94,6 +94,11 @@ AWS rejects outright) rather than raising `ValueError` — a raise reaches
 `check_registry`, which logs it and drops every finding from that check for the whole
 statement. `parse_action` still raises; `describe_action_format_error` builds the message.
 
+`validate_condition_key` accepts what the Service Reference cannot enumerate: the standard
+OIDC claims (`aud`, `sub`, `oaud`, `amr`) on `sts:AssumeRoleWithWebIdentity` for any
+provider URL, and keys whose provider identifier AWS templates as `${Name}`
+(`token.actions.${Domain}.ghe.com:actor`). Constants live in `constants.py`.
+
 Two-layer cache: memory LRU (raw JSON + Pydantic models) → disk TTL (raw JSON only).
 Disk reads and writes run on a worker thread (`asyncio.to_thread`) so cache I/O never
 blocks the event loop.

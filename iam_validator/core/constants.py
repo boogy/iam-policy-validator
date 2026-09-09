@@ -45,6 +45,28 @@ MAX_ARN_LENGTH = 2048
 SID_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9]+$")
 
 # ============================================================================
+# Federated identity condition keys
+# ============================================================================
+# The AWS Service Reference enumerates condition keys only for the identity
+# providers AWS knows by name, and templates account-specific parts of a provider
+# identifier as ``${Name}``. Both shapes need matching that literal lookup cannot do.
+
+#: Actions that federate an external identity provider into a role session.
+WEB_IDENTITY_FEDERATION_ACTIONS: Final[frozenset[str]] = frozenset({"sts:assumerolewithwebidentity"})
+
+#: OIDC claims AWS exposes for every registered provider, whatever its URL.
+#: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_iam-condition-keys.html
+OIDC_STANDARD_CLAIMS: Final[frozenset[str]] = frozenset({"amr", "aud", "oaud", "sub"})
+
+#: Host, or host plus path, of an OIDC provider URL as it appears before the claim.
+OIDC_PROVIDER_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:/[^\s:]*)?$", re.IGNORECASE
+)
+
+#: ``${Name}`` placeholder AWS uses for the account-specific part of a condition key.
+SERVICE_REFERENCE_PLACEHOLDER_PATTERN: Final[re.Pattern[str]] = re.compile(r"\$\{[^}]*\}")
+
+# ============================================================================
 # IAM Policy Version Literals
 # ============================================================================
 # Centralized so MCP, fix tools, and templates can't drift. AWS recognises two
