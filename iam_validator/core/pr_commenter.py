@@ -125,6 +125,8 @@ class PRCommenter:
         self._ignored_findings: dict[str, Any] = {}
         # Cache for PolicyLineMap per file (for field-level line detection)
         self._policy_line_maps: dict[str, PolicyLineMap] = {}
+        # Cache for raw file lines per file (avoids re-reading for each lookup)
+        self._file_lines_cache: dict[str, list[str]] = {}
         # Track whether workspace path has been logged (avoid spam)
         self._logged_workspace: bool = False
 
@@ -690,6 +692,13 @@ class PRCommenter:
         )
         return None
 
+    def _read_policy_lines(self, policy_file: str) -> list[str]:
+        """Read a policy file's lines, caching so each file is read at most once."""
+        if policy_file not in self._file_lines_cache:
+            with open(policy_file, encoding="utf-8-sig") as f:
+                self._file_lines_cache[policy_file] = f.readlines()
+        return self._file_lines_cache[policy_file]
+
     def _get_line_mapping(self, policy_file: str) -> dict[int, int]:
         """Get mapping of statement indices to line numbers.
 
@@ -700,8 +709,7 @@ class PRCommenter:
             Dict mapping statement index to line number
         """
         try:
-            with open(policy_file, encoding="utf-8-sig") as f:
-                lines = f.readlines()
+            lines = self._read_policy_lines(policy_file)
 
             mapping: dict[int, int] = {}
             statement_count = 0
@@ -812,8 +820,7 @@ class PRCommenter:
             return None
 
         try:
-            with open(policy_file, encoding="utf-8-sig") as f:
-                lines = f.readlines()
+            lines = self._read_policy_lines(policy_file)
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.debug(f"Could not search {policy_file}: {e}")
             return None
