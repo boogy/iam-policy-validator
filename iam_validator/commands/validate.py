@@ -464,7 +464,12 @@ Examples:
         generator = ReportGenerator()
         config_path = getattr(args, "config", None)
         custom_checks_dir = getattr(args, "custom_checks_dir", None)
-        policy_type = cast(PolicyType, getattr(args, "policy_type", "IDENTITY_POLICY"))
+        aws_services_dir = getattr(args, "aws_services_dir", None)
+        # None means "user didn't pass --policy-type" → orchestrator runs
+        # per-file resolution (glob → auto-detect → default). Only cast when
+        # the user actually supplied a value.
+        policy_type_arg = getattr(args, "policy_type", None)
+        policy_type: PolicyType | None = cast(PolicyType, policy_type_arg) if policy_type_arg else None
 
         all_results = []
         total_processed = 0
@@ -484,6 +489,7 @@ Examples:
                 config_path=config_path,
                 custom_checks_dir=custom_checks_dir,
                 policy_type=policy_type,
+                aws_services_dir=aws_services_dir,
                 allow_config_custom_checks=getattr(args, "allow_config_custom_checks", False),
             )
 
