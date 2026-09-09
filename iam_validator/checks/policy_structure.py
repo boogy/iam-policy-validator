@@ -256,9 +256,8 @@ def validate_policy_document(policy_dict: dict[str, Any]) -> list[ValidationIssu
             )
         )
     elif isinstance(policy_dict["Statement"], dict):
-        # AWS accepts a single Statement object without array wrapping.
-        # Normalize it to a list so downstream validation works uniformly.
-        policy_dict["Statement"] = [policy_dict["Statement"]]
+        # AWS accepts a single Statement object without array wrapping; nothing to flag.
+        pass
     elif not isinstance(policy_dict["Statement"], list):
         issues.append(
             ValidationIssue(
@@ -522,9 +521,11 @@ class PolicyStructureCheck(PolicyCheck):
         if raw_policy_dict:
             issues.extend(validate_policy_document(raw_policy_dict))
 
-            # Validate each statement's structure
-            if isinstance(raw_policy_dict.get("Statement"), list):
-                for idx, stmt_dict in enumerate(raw_policy_dict["Statement"]):
+            statements = raw_policy_dict.get("Statement")
+            if isinstance(statements, dict):
+                statements = [statements]
+            if isinstance(statements, list):
+                for idx, stmt_dict in enumerate(statements):
                     if isinstance(stmt_dict, dict):
                         issues.extend(validate_statement_structure(stmt_dict, idx, policy_type))
 
