@@ -4,6 +4,7 @@ This module coordinates memory (LRU) and disk caching to optimize
 AWS service data retrieval performance.
 """
 
+import asyncio
 import logging
 from typing import Any
 
@@ -61,7 +62,7 @@ class ServiceCacheManager:
 
         # Check disk cache if URL provided and storage available
         if url and self._storage:
-            cached = self._storage.read_from_cache(url, base_url)
+            cached = await asyncio.to_thread(self._storage.read_from_cache, url, base_url)
             if cached is not None:
                 logger.debug(f"Disk cache hit for URL: {url}")
                 # Populate memory cache for faster future access
@@ -84,7 +85,7 @@ class ServiceCacheManager:
             Cached data if found (regardless of TTL), None otherwise
         """
         if url and self._storage:
-            cached = self._storage.read_from_cache(url, base_url, allow_stale=True)
+            cached = await asyncio.to_thread(self._storage.read_from_cache, url, base_url, allow_stale=True)
             if cached is not None:
                 logger.info(f"Using stale cache fallback for URL: {url}")
                 return cached
@@ -104,14 +105,14 @@ class ServiceCacheManager:
 
         # Store in disk cache if URL provided and storage available
         if url and self._storage:
-            self._storage.write_to_cache(url, value, base_url)
+            await asyncio.to_thread(self._storage.write_to_cache, url, value, base_url)
 
     async def clear(self) -> None:
         """Clear memory cache and optionally disk cache."""
         await self._memory_cache.clear()
 
         if self._storage:
-            self._storage.clear_disk_cache()
+            await asyncio.to_thread(self._storage.clear_disk_cache)
 
         logger.info("Cleared all caches")
 
