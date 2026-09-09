@@ -28,6 +28,10 @@ class ServiceWildcardCheck(PolicyCheck):
     check_id: ClassVar[str] = "service_wildcard"
     description: ClassVar[str] = "Checks for service-level wildcards (e.g., 'iam:*', 's3:*')"
     default_severity: ClassVar[str] = "high"
+    # SCP allow-list statements legitimately use service-level wildcards; that's normal SCP shape.
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset(
+        {"IDENTITY_POLICY", "RESOURCE_POLICY", "TRUST_POLICY", "RESOURCE_CONTROL_POLICY"}
+    )
 
     async def execute(
         self,

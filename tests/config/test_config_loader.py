@@ -450,3 +450,26 @@ class TestLoadValidatorConfig:
 
         assert isinstance(config, ValidatorConfig)
         assert config.is_check_enabled("test") is True
+
+
+def test_settings_schema_declares_every_setting_get_setting_reads():
+    from iam_validator.core.config.config_loader import SettingsSchema
+    from iam_validator.core.config.defaults import DEFAULT_CONFIG
+
+    declared = set(SettingsSchema.model_fields)
+    assert set(DEFAULT_CONFIG["settings"]) <= declared
+    assert {"max_concurrency", "cache_directory", "suppress_superseded_findings"} <= declared
+    assert "parallel" not in declared
+    assert "max_workers" not in declared
+
+
+def test_settings_schema_defaults_match_shipping_defaults():
+    """Every SettingsSchema field default must equal the value defaults.py ships."""
+    from iam_validator.core.config.config_loader import SettingsSchema
+    from iam_validator.core.config.defaults import DEFAULT_CONFIG
+
+    schema_defaults = SettingsSchema().model_dump()
+    for key, shipping_value in DEFAULT_CONFIG["settings"].items():
+        assert schema_defaults[key] == shipping_value, (
+            f"{key}: schema default {schema_defaults[key]!r} != {shipping_value!r}"
+        )

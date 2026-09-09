@@ -162,6 +162,10 @@ class WildcardResourceCheck(PolicyCheck):
     check_id: ClassVar[str] = "wildcard_resource"
     description: ClassVar[str] = "Checks for wildcard resources (*)"
     default_severity: ClassVar[str] = "medium"
+    # SCP allow-list statements legitimately use Resource: "*"; that's normal SCP shape, not a finding.
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset(
+        {"IDENTITY_POLICY", "RESOURCE_POLICY", "TRUST_POLICY", "RESOURCE_CONTROL_POLICY"}
+    )
 
     async def execute(
         self,

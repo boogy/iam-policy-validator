@@ -1,6 +1,9 @@
 """Unit tests for the validate_policies orchestrator."""
 
 import asyncio
+import logging
+
+import pytest
 
 import iam_validator.core.policy_checks as policy_checks_module
 from iam_validator.core import constants
@@ -107,3 +110,32 @@ async def test_max_concurrency_explicit_argument_overrides_config(tmp_path, monk
     await validate_policies(policies, config_path=str(config_file), max_concurrency=3)
 
     assert peak[0] == 3
+
+
+@pytest.mark.parametrize("supplied", [0, -1])
+async def test_max_concurrency_below_one_is_clamped(monkeypatch, caplog, supplied):
+    active = [0]
+    peak = [0]
+    monkeypatch.setattr(policy_checks_module, "_validate_policy_with_registry", _tracking_validate_policy(active, peak))
+    policies = [(f"p{i}.json", _CONCURRENCY_POLICY, None) for i in range(5)]
+
+    with caplog.at_level(logging.WARNING):
+        await validate_policies(policies, max_concurrency=supplied)
+
+    assert peak[0] == 1
+    assert any("max_concurrency argument" in r.getMessage() for r in caplog.records)
+
+
+async def test_max_concurrency_zero_in_config_is_clamped(tmp_path, monkeypatch, caplog):
+    active = [0]
+    peak = [0]
+    monkeypatch.setattr(policy_checks_module, "_validate_policy_with_registry", _tracking_validate_policy(active, peak))
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("settings:\n  max_concurrency: 0\n")
+    policies = [(f"p{i}.json", _CONCURRENCY_POLICY, None) for i in range(5)]
+
+    with caplog.at_level(logging.WARNING):
+        await validate_policies(policies, config_path=str(config_file))
+
+    assert peak[0] == 1
+    assert any("config setting max_concurrency" in r.getMessage() for r in caplog.records)

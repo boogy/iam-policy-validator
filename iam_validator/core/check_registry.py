@@ -223,10 +223,19 @@ class PolicyCheck(ABC):
     #: Check IDs whose findings this check supersedes when matches() returns True.
     supersedes: ClassVar[frozenset[str]] = frozenset()
 
+    #: PolicyType values this check is meaningful for; None means all types.
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = None
+
     def matches(self, statement: Statement) -> bool:
         """True if this check dominates the statement (enables suppression of supersedes set).
         Only relevant when supersedes is non-empty."""
         return True
+
+    def applies_to(self, policy_type: str | None) -> bool:
+        """True when this check is meaningful for ``policy_type``; ``None`` means all types."""
+        if self.applies_to_policy_types is None or policy_type is None:
+            return True
+        return policy_type in self.applies_to_policy_types
 
     def __init_subclass__(cls, **kwargs):
         """
@@ -549,6 +558,8 @@ class CheckRegistry:
         statement_idx: int,
         fetcher: AWSServiceFetcher,
         filepath: str = "",
+        *,
+        policy_type: str | None = None,
     ) -> list[ValidationIssue]:
         """
         Execute all enabled checks in parallel for maximum performance.
@@ -561,11 +572,12 @@ class CheckRegistry:
             statement_idx: Index of the statement in the policy
             fetcher: AWS service fetcher for API calls
             filepath: Path to the policy file (for ignore_patterns filtering)
+            policy_type: Policy type to filter checks by applicability; None runs all enabled checks
 
         Returns:
             List of all ValidationIssue objects from all checks (filtered by ignore_patterns)
         """
-        enabled_checks = self.get_enabled_checks()
+        enabled_checks = [c for c in self.get_enabled_checks() if c.applies_to(policy_type)]
 
         if not enabled_checks:
             return []
@@ -630,6 +642,8 @@ class CheckRegistry:
         statement_idx: int,
         fetcher: AWSServiceFetcher,
         filepath: str = "",
+        *,
+        policy_type: str | None = None,
     ) -> list[ValidationIssue]:
         """
         Execute all enabled checks sequentially.
@@ -641,11 +655,12 @@ class CheckRegistry:
             statement_idx: Index of the statement in the policy
             fetcher: AWS service fetcher for API calls
             filepath: Path to the policy file (for ignore_patterns filtering)
+            policy_type: Policy type to filter checks by applicability; None runs all enabled checks
 
         Returns:
             List of all ValidationIssue objects from all checks
         """
-        enabled_checks = self.get_enabled_checks()
+        enabled_checks = [c for c in self.get_enabled_checks() if c.applies_to(policy_type)]
         issues_map: dict[str, list[ValidationIssue]] = {}
         failures: list[ValidationIssue] = []
 
@@ -695,8 +710,8 @@ class CheckRegistry:
         all_issues = []
         enabled_checks = self.get_enabled_checks()
 
-        # Filter to only policy-level checks
-        policy_level_checks = [c for c in enabled_checks if c.is_policy_level_check()]
+        # Filter to only policy-level checks applicable to this policy type
+        policy_level_checks = [c for c in enabled_checks if c.is_policy_level_check() and c.applies_to(policy_type)]
 
         if not policy_level_checks:
             return []
@@ -823,5 +838,12 @@ def create_default_registry(
 
         # 8. GUARDRAIL POLICY GUIDANCE (Organizations policy types)
         registry.register(checks.RCPBestPracticesCheck())  # Policy-level: RCP deny-statement best practices
+
+    # Function-local import: config_loader imports from this module at module scope.
+    from iam_validator.core.config.config_loader import ConfigLoader  # pylint: disable=import-outside-toplevel
+
+    entry_point_checks = ConfigLoader.load_entry_point_checks(registry)
+    if entry_point_checks:
+        logger.info("Loaded %d entry-point plugin checks: %s", len(entry_point_checks), ", ".join(entry_point_checks))
 
     return registry

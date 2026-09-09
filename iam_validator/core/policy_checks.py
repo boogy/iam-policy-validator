@@ -149,6 +149,23 @@ def _should_fail_on_issue(issue: ValidationIssue, fail_on_severities: list[str] 
     return issue.severity in fail_on_severities
 
 
+def _resolve_max_concurrency(max_concurrency: int | None, config: ValidatorConfig) -> int:
+    """Resolve the policy-level concurrency limit, clamped to at least 1."""
+    if max_concurrency is None:
+        resolved = config.get_setting("max_concurrency", 10)
+        source = "config setting max_concurrency"
+    else:
+        resolved = max_concurrency
+        source = "max_concurrency argument"
+
+    if not isinstance(resolved, int) or isinstance(resolved, bool):
+        logger.warning("Ignoring non-integer %s=%r; clamping to 1", source, resolved)
+        return 1
+    if resolved < 1:
+        logger.warning("Ignoring invalid %s=%r; clamping to 1", source, resolved)
+    return max(1, resolved)
+
+
 async def validate_policies(
     policies: list[tuple[str, IAMPolicy]] | list[tuple[str, IAMPolicy, dict]],
     config_path: str | None = None,
@@ -180,7 +197,7 @@ async def validate_policies(
             SDK argument) is always honoured.
         max_concurrency: Maximum number of policies validated concurrently.
             When ``None`` (default), falls back to the config ``max_concurrency``
-            setting (default 10).
+            setting (default 10). Values below 1 are clamped to 1 with a warning.
 
     Returns:
         List of validation results
@@ -246,7 +263,7 @@ async def validate_policies(
     cache_directory = config.get_setting("cache_directory", None)
     # CLI argument takes precedence over config file
     services_dir = aws_services_dir or config.get_setting("aws_services_dir", None)
-    resolved_max_concurrency = max_concurrency or config.get_setting("max_concurrency", 10)
+    resolved_max_concurrency = _resolve_max_concurrency(max_concurrency, config)
     cache_ttl_seconds = cache_ttl_hours * constants.SECONDS_PER_HOUR
 
     # Validate policies using registry
@@ -325,8 +342,16 @@ async def _validate_policy_with_registry(
 
     # Pre-scan for full-wildcard statements so policy-level findings for those
     # statement indices can be suppressed below (same logic as statement-level).
+    # Suppression is only sound where full_wildcard actually fires: in a boundary
+    # policy it is excluded, so it flags nothing to make those findings redundant.
     suppressed_statement_indices: set[int] = set()
-    if registry.suppress_superseded and registry.is_enabled("full_wildcard"):
+    full_wildcard_check = registry.get_check("full_wildcard")
+    if (
+        registry.suppress_superseded
+        and registry.is_enabled("full_wildcard")
+        and full_wildcard_check is not None
+        and full_wildcard_check.applies_to(policy_type)
+    ):
         for idx, statement in enumerate(policy.statement or []):
             if statement.is_full_wildcard_allow():
                 suppressed_statement_indices.add(idx)
@@ -337,40 +362,30 @@ async def _validate_policy_with_registry(
         policy, policy_file, fetcher, policy_type, raw_policy_dict=raw_policy_dict
     )
 
-    # Drop policy-level findings that reference a suppressed statement — they are
-    # redundant when full_wildcard already flags the entire statement as */*.
-    if suppressed_statement_indices:
+    # Drop policy-level findings that reference a suppressed statement — but only
+    # for checks full_wildcard actually declares as redundant via `supersedes`.
+    if suppressed_statement_indices and full_wildcard_check is not None:
+        superseded_check_ids = full_wildcard_check.supersedes
         policy_level_issues = [
-            issue for issue in policy_level_issues if issue.statement_index not in suppressed_statement_indices
+            issue
+            for issue in policy_level_issues
+            if issue.statement_index not in suppressed_statement_indices
+            or issue.check_id is None
+            or issue.check_id not in superseded_check_ids
         ]
 
     result.issues.extend(policy_level_issues)  # pylint: disable=no-member
-
-    # Statement-level checks whose findings don't apply to guardrail policy
-    # types (checks themselves are policy-type-blind, so filter here):
-    # - RCPs must use `Principal: "*"` (AWS syntax rule), so the wildcard
-    #   public-access findings from principal_validation are structural noise.
-    # - SCP allow-list statements legitimately use `Resource: "*"` and
-    #   service wildcards, so the wildcard trio flags normal SCP shape.
-    skipped_check_ids: frozenset[str] = frozenset()
-    if policy_type == "RESOURCE_CONTROL_POLICY":
-        skipped_check_ids = frozenset({"principal_validation"})
-    elif policy_type == "SERVICE_CONTROL_POLICY":
-        skipped_check_ids = frozenset({"wildcard_resource", "service_wildcard", "full_wildcard"})
 
     # Statement order anchors ignore_patterns and PR-comment fingerprints.
     statements = list(policy.statement or [])
     statement_issue_lists = await asyncio.gather(
         *(
-            registry.execute_checks_parallel(statement, idx, fetcher, policy_file)
+            registry.execute_checks_parallel(statement, idx, fetcher, policy_file, policy_type=policy_type)
             for idx, statement in enumerate(statements)
         )
     )
 
     for statement, issues in zip(statements, statement_issue_lists):
-        if skipped_check_ids:
-            issues = [issue for issue in issues if issue.check_id not in skipped_check_ids]
-
         # Add issues to result
         result.issues.extend(issues)  # pylint: disable=no-member
 

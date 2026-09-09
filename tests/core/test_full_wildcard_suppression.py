@@ -351,6 +351,61 @@ class TestPolicyLevelSuppression:
         check_ids = {i.check_id for i in result.issues}
         assert "mock_policy_level2" in check_ids
 
+    async def test_scp_full_wildcard_allow_produces_no_wildcard_action_finding(self):
+        """Neither full_wildcard nor wildcard_action applies to SCPs; an SCP Allow */* reports neither."""
+        from iam_validator.checks.wildcard_action import WildcardActionCheck
+        from iam_validator.core.models import IAMPolicy
+
+        registry = CheckRegistry(suppress_superseded=True)
+        registry.register(FullWildcardCheck())
+        registry.register(WildcardActionCheck())
+        registry.configure_check("full_wildcard", CheckConfig(check_id="full_wildcard", enabled=True))
+        registry.configure_check("wildcard_action", CheckConfig(check_id="wildcard_action", enabled=True))
+
+        policy = IAMPolicy(Statement=[{"Effect": "Allow", "Action": "*", "Resource": "*"}])
+        fetcher = _make_mock_fetcher()
+
+        from iam_validator.core.policy_checks import _validate_policy_with_registry
+
+        result = await _validate_policy_with_registry(
+            policy=policy,
+            policy_file="test.json",
+            registry=registry,
+            fetcher=fetcher,
+            fail_on_severities=["error", "critical"],
+            policy_type="SERVICE_CONTROL_POLICY",
+        )
+
+        check_ids = {i.check_id for i in result.issues}
+        assert "wildcard_action" not in check_ids
+        assert "full_wildcard" not in check_ids
+
+    async def test_identity_policy_full_wildcard_allow_still_reports_wildcard_action(self):
+        """The same */* Allow statement in an identity policy still reports wildcard_action."""
+        from iam_validator.checks.wildcard_action import WildcardActionCheck
+        from iam_validator.core.models import IAMPolicy
+
+        registry = CheckRegistry(suppress_superseded=False)
+        registry.register(WildcardActionCheck())
+        registry.configure_check("wildcard_action", CheckConfig(check_id="wildcard_action", enabled=True))
+
+        policy = IAMPolicy(Statement=[{"Effect": "Allow", "Action": "*", "Resource": "*"}])
+        fetcher = _make_mock_fetcher()
+
+        from iam_validator.core.policy_checks import _validate_policy_with_registry
+
+        result = await _validate_policy_with_registry(
+            policy=policy,
+            policy_file="test.json",
+            registry=registry,
+            fetcher=fetcher,
+            fail_on_severities=["error", "critical"],
+            policy_type="IDENTITY_POLICY",
+        )
+
+        check_ids = {i.check_id for i in result.issues}
+        assert "wildcard_action" in check_ids
+
 
 def _issue(check_id: str) -> ValidationIssue:
     return ValidationIssue(

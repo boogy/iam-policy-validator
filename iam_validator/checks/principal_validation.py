@@ -58,6 +58,10 @@ class PrincipalValidationCheck(PolicyCheck):
     check_id: ClassVar[str] = "principal_validation"
     description: ClassVar[str] = "Validates Principal elements in resource policies for security best practices"
     default_severity: ClassVar[str] = "high"
+    # RCPs require Principal: "*" by AWS syntax rule, so wildcard-principal findings are structural noise there.
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset(
+        {"IDENTITY_POLICY", "RESOURCE_POLICY", "TRUST_POLICY", "SERVICE_CONTROL_POLICY"}
+    )
 
     async def execute(
         self,

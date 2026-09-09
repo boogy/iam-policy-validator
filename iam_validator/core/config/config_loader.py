@@ -11,6 +11,7 @@ import importlib.util
 import inspect
 import logging
 import sys
+from importlib.metadata import entry_points
 from pathlib import Path, PurePosixPath
 from typing import Any, get_args
 
@@ -22,6 +23,7 @@ from iam_validator.core.config.defaults import get_default_config
 from iam_validator.core.constants import (
     _COMMENT_TAG_RE,
     COMMENT_TAG_PATTERN,
+    DEFAULT_CACHE_TTL_HOURS,
     DEFAULT_CONFIG_FILENAMES,
     HIGH_SEVERITY_LEVELS,
 )
@@ -32,6 +34,9 @@ from iam_validator.core.models import PolicyType
 VALID_POLICY_TYPES = frozenset(get_args(PolicyType))
 
 logger = logging.getLogger(__name__)
+
+# Entry-point group third-party packages register PolicyCheck subclasses under.
+ENTRY_POINT_GROUP = "iam_validator.checks"
 
 # Valid severity levels for validation
 SEVERITY_LEVELS = frozenset(["error", "warning", "info", "critical", "high", "medium", "low"])
@@ -159,8 +164,14 @@ class SettingsSchema(BaseModel):
 
     model_config = ConfigDict(extra="allow")  # Allow additional settings
 
-    parallel: bool = True
-    max_workers: int | None = None
+    max_concurrency: int = 10
+    parallel_execution: bool = True
+    enable_builtin_checks: bool = True
+    suppress_superseded_findings: bool = True
+    aws_services_dir: str | None = None
+    cache_enabled: bool = True
+    cache_ttl_hours: int = DEFAULT_CACHE_TTL_HOURS
+    cache_directory: str | None = None
     fail_on_severity: list[str] = list(HIGH_SEVERITY_LEVELS)
     severity_labels: dict[str, str | list[str]] = {}
     ignore_settings: IgnoreSettingsSchema = IgnoreSettingsSchema()
@@ -785,6 +796,42 @@ class ConfigLoader:
             logger.info(f"Auto-discovered {len(loaded_checks)} custom checks: {', '.join(loaded_checks)}")
 
         return loaded_checks
+
+    @staticmethod
+    def load_entry_point_checks(registry: CheckRegistry) -> list[str]:
+        """Register every PolicyCheck advertised under the ``iam_validator.checks`` entry-point group.
+
+        Args:
+            registry: Check registry to add discovered checks to
+
+        Returns:
+            List of loaded check IDs
+        """
+        loaded: list[str] = []
+        for ep in entry_points(group=ENTRY_POINT_GROUP):
+            try:
+                check_cls = ep.load()
+                instance = check_cls()
+                if not isinstance(instance, PolicyCheck):
+                    logger.warning(
+                        "Plugin entry point '%s' resolved to %s, which is not a PolicyCheck; skipping.",
+                        ep.name,
+                        type(instance).__name__,
+                    )
+                    continue
+                if registry.get_check(instance.check_id) is not None:
+                    logger.warning(
+                        "Plugin entry point '%s' declares check_id '%s', which is already "
+                        "registered; skipping to avoid shadowing the existing check.",
+                        ep.name,
+                        instance.check_id,
+                    )
+                    continue
+                registry.register(instance)
+                loaded.append(instance.check_id)
+            except Exception as e:
+                logger.warning("Failed to load plugin check '%s': %s", ep.name, e)
+        return loaded
 
 
 def load_validator_config(config_path: str | None = None, allow_missing: bool = True) -> ValidatorConfig:

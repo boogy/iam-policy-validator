@@ -707,3 +707,50 @@ class TestCreateDefaultRegistry:
         registry = create_default_registry(enable_parallel=False, include_builtin_checks=False)
 
         assert registry.enable_parallel is False
+
+
+def test_checks_apply_to_all_policy_types_by_default():
+    from iam_validator.checks.sensitive_action import SensitiveActionCheck
+
+    check = SensitiveActionCheck()
+    assert check.applies_to_policy_types is None
+    assert check.applies_to("SERVICE_CONTROL_POLICY") is True
+    assert check.applies_to(None) is True
+
+
+def test_principal_validation_is_not_applied_to_rcps():
+    from iam_validator.checks.principal_validation import PrincipalValidationCheck
+
+    check = PrincipalValidationCheck()
+    assert check.applies_to("RESOURCE_CONTROL_POLICY") is False
+    assert check.applies_to("RESOURCE_POLICY") is True
+
+
+def test_wildcard_quartet_is_not_applied_to_scps():
+    from iam_validator.checks.full_wildcard import FullWildcardCheck
+    from iam_validator.checks.service_wildcard import ServiceWildcardCheck
+    from iam_validator.checks.wildcard_action import WildcardActionCheck
+    from iam_validator.checks.wildcard_resource import WildcardResourceCheck
+
+    for cls in (WildcardActionCheck, WildcardResourceCheck, ServiceWildcardCheck, FullWildcardCheck):
+        assert cls().applies_to("SERVICE_CONTROL_POLICY") is False
+        assert cls().applies_to("IDENTITY_POLICY") is True
+
+
+def test_action_condition_enforcement_is_not_applied_to_boundary_policies():
+    from iam_validator.checks.action_condition_enforcement import ActionConditionEnforcementCheck
+
+    check = ActionConditionEnforcementCheck()
+    assert check.applies_to("SERVICE_CONTROL_POLICY") is False
+    assert check.applies_to("RESOURCE_CONTROL_POLICY") is False
+    assert check.applies_to("IDENTITY_POLICY") is True
+
+
+def test_orchestrator_no_longer_hardcodes_check_ids():
+    import inspect
+
+    from iam_validator.core import policy_checks
+
+    src = inspect.getsource(policy_checks)
+    assert "skipped_check_ids" not in src
+    assert '"principal_validation"' not in src
