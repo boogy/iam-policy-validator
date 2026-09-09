@@ -11,7 +11,7 @@ core/
 ├── cli.py                  # CLI entry point (argparse + ALL_COMMANDS dispatch)
 ├── check_registry.py       # PolicyCheck ABC, CheckConfig, CheckRegistry, create_default_registry
 ├── models.py               # Pydantic v2: IAMPolicy, Statement, ValidationIssue, PolicyValidationResult
-├── policy_loader.py        # JSON/YAML loading + auto-detect (also embedded in CFN/Terraform)
+├── policy_loader.py        # JSON/YAML loading + auto-detect
 ├── policy_checks.py        # validate_policies() orchestrator
 ├── report.py               # ReportGenerator, ContextIssueInfo, IgnoredFindingInfo
 ├── pr_commenter.py         # diff-aware PR posting (3 tiers, off-diff pipeline)
@@ -45,10 +45,36 @@ PolicyLoader.load_*  →  validate_policies()
                         →  Formatter (console|json|markdown|sarif|csv|html)
 ```
 
+Policies are validated concurrently under an `asyncio.Semaphore` bounded by
+`max_concurrency` (CLI/SDK argument, else the config setting, default 10). Within a
+policy, statements are gathered concurrently and unbounded; statement order is preserved
+because `ignore_patterns` and PR-comment fingerprints anchor to it.
+
 `PRCommenter` then runs diff-aware filtering with 3 tiers (changed line → inline review
 comment, modified statement / unchanged line → off-diff pipeline → context-issue table
 in summary). `protected_fingerprints` keeps off-diff comments alive across the
 `update_or_create_review_comments` cleanup phase.
+
+---
+
+## Finding suppression
+
+Gated on `settings.suppress_superseded_findings` (default true) and applied in two
+places, both keyed on the superseding check's `supersedes` frozenset — a check id absent
+from it is never suppressed:
+
+- `check_registry._apply_supersedes()` — statement-level, drops findings from checks a
+  matching superseding check names.
+- `policy_checks` — policy-level, drops findings whose `statement_index` points at a
+  statement the `full_wildcard` check suppressed, again only for ids in `supersedes`.
+
+Both paths respect the superseding check's `applies_to_policy_types`: if it does not run
+for the policy type, nothing is suppressed.
+
+`ConfigLoader.load_entry_point_checks(registry)` registers third-party checks advertised
+under the `iam_validator.checks` entry-point group. An entry that is not a `PolicyCheck`,
+or whose `check_id` is already registered, is logged and skipped rather than aborting
+discovery.
 
 ---
 
@@ -62,6 +88,8 @@ async with AWSServiceFetcher() as fetcher:  # offline: AWSServiceFetcher(aws_ser
 ```
 
 Two-layer cache: memory LRU (raw JSON + Pydantic models) → disk TTL (raw JSON only).
+Disk reads and writes run on a worker thread (`asyncio.to_thread`) so cache I/O never
+blocks the event loop.
 Cache dirs: `~/Library/Caches` (macOS), `~/.cache` (Linux), `%LOCALAPPDATA%` (Win).
 Sub-files: `client.py` (httpx + retry + request coalescing), `cache.py`, `storage.py`,
 `validators.py`, `parsers.py`, `patterns.py` (compiled regex singletons).
@@ -94,3 +122,4 @@ config = load_validator_config("iam-validator.yaml")  # Priority: CLI > config >
 | New config option        | default in `config/defaults.py` → field on `ValidatorConfig` in `config/config_loader.py` → docs |
 | New global condition key | `config/aws_global_conditions.py`                                                                |
 | New sensitive action     | `config/sensitive_actions.py` with risk category                                                 |
+| Third-party check        | advertise the class under the `iam_validator.checks` entry-point group (no core edit)            |

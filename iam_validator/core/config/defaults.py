@@ -326,7 +326,7 @@ DEFAULT_CONFIG = {
         # Default rules validate:
         #   - sts:AssumeRole → AWS or Service principals
         #   - sts:AssumeRoleWithSAML → Federated (SAML provider) with SAML:aud
-        #   - sts:AssumeRoleWithWebIdentity → Federated (OIDC provider)
+        #   - sts:AssumeRoleWithWebIdentity → Federated (OIDC provider) with *:aud and one of *:sub, *:amr
         # Example custom rules:
         # "validation_rules": {
         #     "sts:AssumeRole": {

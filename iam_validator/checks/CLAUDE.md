@@ -21,6 +21,20 @@ Required `ClassVar`s on the subclass:
 - `default_severity: str` — `low|medium|high|critical|error|warning|none`
   (`none` suppresses output entirely)
 
+Optional `ClassVar`s:
+
+- `applies_to_policy_types: frozenset[str] | None` — policy types the check runs on;
+  `None` (the default) means all, as does an unresolved policy type. In an SCP or RCP an
+  `Allow` declines to restrict and never grants access, so grant-shaped checks exclude
+  `SERVICE_CONTROL_POLICY` and `RESOURCE_CONTROL_POLICY`. `principal_validation`
+  excludes only RCP, where `Principal: "*"` is required by AWS syntax.
+- `supersedes: frozenset[str]` — check ids made redundant when this check both
+  `matches()` the statement and reports a finding. Only the ids named here are ever
+  suppressed.
+
+Third-party checks skip steps 2-3 and advertise themselves under the
+`iam_validator.checks` entry-point group instead; see `core/CLAUDE.md`.
+
 ---
 
 ## Check kinds
@@ -67,9 +81,10 @@ Cached: memory LRU + disk TTL (7 days). Tests must mock — never hit the real A
 
 ## Common `issue_type` values
 
-`invalid_action`, `invalid_resource`, `invalid_condition_key`, `overly_permissive`,
-`missing_condition`, `privilege_escalation`, `public_access`, `policy_structure`,
-`resource_mismatch`.
+`invalid_action`, `invalid_resource`, `invalid_condition_key`, `invalid_operator`,
+`overly_permissive`, `missing_condition`, `privilege_escalation`, `public_access`,
+`policy_structure`, `resource_mismatch`, `check_execution_error` (emitted by the registry
+when a check raises, never by a check itself).
 
 ---
 
@@ -89,7 +104,7 @@ Cached: memory LRU + disk TTL (7 days). Tests must mock — never hit the real A
 | `sid_uniqueness.py`               | `sid_uniqueness`               | error    | policy-level                                       |
 | `set_operator_validation.py`      | `set_operator_validation`      | warning  | ForAllValues/ForAnyValue                           |
 | `ifexists_condition_check.py`     | `ifexists_condition_usage`     | warning  | IfExists patterns                                  |
-| `mfa_condition_check.py`          | `mfa_condition_antipattern`    | warning  | MFA anti-patterns                                  |
+| `mfa_condition_check.py`          | `mfa_condition_antipattern`    | warning  | anti-patterns #2 and #4 are `Allow`-only           |
 | `trust_policy_validation.py`      | `trust_policy_validation`      | high     | + confused deputy                                  |
 | `not_principal_validation.py`     | `not_principal_validation`     | warning  | NotPrincipal usage                                 |
 | `action_resource_matching.py`     | `action_resource_matching`     | medium   | actions ↔ resource types                           |
@@ -110,7 +125,10 @@ Custom-check examples: `examples/custom_checks/`.
 Use these instead of reimplementing:
 
 - `action_parser.py` — `parse_action()`, `is_wildcard_action()`, `extract_service()`
-- `wildcard_expansion.py` — `compile_wildcard_pattern()`, `expand_wildcard_actions()`
+- `wildcard_expansion.py` — `compile_wildcard_pattern()` (alias of `compile_iam_glob`),
+  `expand_wildcard_actions()`
+- `aws_matching.py` — `action_matches()`, `compile_iam_glob()`, `iam_glob_match()`
+- `condition_matching.py` — `base_operator()`, `is_negated_operator()`, `is_deny()`, `has_condition_key()`
 - `sensitive_action_matcher.py` — `get_sensitive_actions_by_categories()`, `check_sensitive_actions()`
 - `policy_level_checks.py` — `check_policy_level_actions()`, `_check_all_of_pattern()`
 - `formatting.py` — `format_list_with_backticks()`
