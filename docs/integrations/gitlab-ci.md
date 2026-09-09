@@ -94,7 +94,7 @@ validate-iam-policies:
     IAM_VALIDATOR_CACHE_DIR: .cache/
   before_script:
     - pip install iam-policy-validator
-    - iam-validator download-services
+    - iam-validator sync-services
   script:
     - iam-validator validate --path ./policies/
 ```

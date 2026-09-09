@@ -57,6 +57,7 @@ Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundar
 - Service-reference cache reads and writes no longer block validation while waiting on disk
 - Streaming validation honours `--aws-services-dir`, and resolves the policy type per file instead of forcing `IDENTITY_POLICY`
 - Inline PR comments attach to the correct line instead of drifting to the next statement, including when `Statement` is a single object
+- The documented `download-services` command and `completion fish` shell are corrected to the `sync-services` command and the `bash`/`zsh` shells the CLI actually provides
 - `NullIfExists` and its casing variants are reported as an invalid operator — AWS does not accept `IfExists` on `Null`
 - `policy_structure` no longer rewrites the caller's policy dict in place when `Statement` is a single object
 - A policy file is read once per PR comment run instead of once per finding

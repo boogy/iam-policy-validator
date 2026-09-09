@@ -343,7 +343,7 @@ Pre-download AWS service definitions for environments without internet access:
 
 ```yaml
 # First, generate the service definitions (run once, commit to repo)
-# iam-validator download-services --output-dir ./aws-services/
+# iam-validator sync-services --output-dir ./aws-services/
 
 - uses: boogy/iam-policy-validator@v1
   with:
