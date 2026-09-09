@@ -4,51 +4,53 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.27.0] - 2026-09-09
+
+Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundary rather than granting access, so grant-shaped checks no longer fire there. Action matching is case-insensitive and honours `?`, and third-party checks can register themselves without a core edit.
+
+### Added
+
+- `applies_to_policy_types` on `PolicyCheck` — the policy types a check is meaningful for; `None` (the default) means all
+- Third-party checks advertised under the `iam_validator.checks` entry-point group are discovered and registered automatically
+- `validate_policies(max_concurrency=...)` to bound how many policies validate at once from the SDK
 
 ### Changed
 
-- Policy validation now caps how many policies validate at once; statements within a policy and checks within a statement stay unbounded, and finding order is unchanged
-- The documented default for `fail_on_severity` now matches the config schema exactly; behavior is unchanged
-- Rename the `max_concurrency` setting from `max_concurrent`, and it now actually limits how many policies validate at once (default 10)
-- Remove the unused `fail_fast` setting; existing config files that still set it are unaffected
-- Third-party checks installed via the `iam_validator.checks` entry-point group are now discovered and enabled by default
-- Service control policies no longer report a wildcard-action finding; in an SCP an `Allow` sets a boundary rather than granting access, including when `Resource` is narrow
+- Rename the `max_concurrency` setting from `max_concurrent`, and it now actually bounds how many policies validate at once (default 10)
+- Statements within a policy are validated concurrently instead of one at a time; finding order is unchanged
+- Remove the unused `fail_fast` setting; config files that still set it are unaffected
+- Service control policies no longer report wildcard-action or missing-condition findings on their `Allow` statements
+- Resource control policies no longer report full-wildcard, wildcard-action, wildcard-resource, service-wildcard or missing-condition findings, matching the SCP behaviour
 - WebIdentity (OIDC) trust policies must now carry `*:aud` plus one of `*:sub` or `*:amr`
-- `fetch_multiple_services` no longer re-raises when a single service fails to fetch
-- Resource control policies no longer report wildcard-action, wildcard-resource or service-wildcard findings, matching the SCP behaviour
+- `fetch_multiple_services` no longer re-raises when a single service fails to fetch; failures are logged and omitted from the result
+- Service prefetch is bounded by the shared request semaphore instead of fixed batches of five
 
 ### Fixed
 
 - A `check_execution_error` finding now names the statement's `Sid`, logs the traceback, and can no longer be suppressed by another check's `supersedes`
-- Unknown IAM condition operators are now reported instead of silently ignored
-- A check's `supersedes` declaration now suppresses only the checks it names, not every other check
+- A check's `supersedes` declaration now suppresses only the checks it names, not every other check that reported on the statement
+- Policy-level findings are no longer dropped for checks `full_wildcard` does not supersede, nor for boundary policies where `full_wildcard` never runs
 - IAM action matching, including the sensitive-actions list, is now case-insensitive and treats `?` as a single-character wildcard, matching AWS
-- Negated condition operators, and a bare `Null` claim, no longer satisfy a required Allow or trust-policy condition
+- Unknown IAM condition operators are now reported instead of silently ignored
+- Negated condition operators, and a bare `Null` assertion, no longer satisfy a required `Allow` or trust-policy condition
 - ARN account segments must now be exactly 12 digits, a wildcard, or empty
 - A condition value of `*` for an ARN-typed key is no longer flagged as an invalid ARN format
-- Policies with a single `Statement` object, and files or `--stdin` input with a UTF-8 BOM, are now accepted
-- Custom checks with missing required class attributes now fail at load time instead of misbehaving silently
+- Policies with a single `Statement` object, and files or `--stdin` input carrying a UTF-8 BOM, are now accepted
+- A check missing `check_id` or `description` now fails when the class is defined instead of misbehaving silently
 - Trust-policy rule and condition-key lookups are now case-insensitive
-- Sid-format violations are now reported once instead of twice
-- The `sid_uniqueness` severity setting is now honored for invalid-SID-format findings, which previously always reported as errors
-- MFA anti-pattern checks no longer flag AWS's own documented `Deny`-based MFA enforcement pattern
-- `NotAction`/`NotResource`/`NotPrincipal` checks now compare `Effect` case-insensitively
-- A custom check that fails to load is now logged instead of printed, so it no longer corrupts `--format json` output
-- Service-reference cache reads and writes no longer block validation while waiting on disk
-- `--aws-services-dir` is now honored when validating a directory in streaming mode, so offline runs stay offline
-- Inline PR comments now attach to the correct line instead of drifting to the next statement
-- Policies whose `Statement` is a single object now get correct line numbers in PR comments too
 - Web-identity trust policies naming a bare provider domain (`cognito-identity.amazonaws.com`, `accounts.google.com`, `graph.facebook.com`, `www.amazon.com`) are no longer reported as an invalid provider format
 - `<provider>:amr` is now recognized as a multivalued context key, so a set operator on it is no longer flagged
-- A `max_concurrency` below 1 is now clamped to 1 with a warning instead of hanging or raising
-- The settings schema now declares every setting the validator reads and drops the phantom `parallel` and `max_workers` entries
-- An entry-point plugin that is not a `PolicyCheck` is now logged and skipped instead of aborting check registration
-- Policy-level findings are no longer dropped for boundary policies where the full-wildcard check does not apply
+- Sid-format violations are reported once instead of twice, honour the `sid_uniqueness` severity setting, and now cover an empty `Sid`
+- MFA anti-pattern checks no longer flag AWS's own documented `Deny`-based MFA enforcement pattern
+- `NotAction`/`NotResource`/`NotPrincipal` checks compare `Effect` case-insensitively
 - AWS's managed `RCPFullAWSAccess` policy is no longer reported as an invalid RCP
-- SCPs and RCPs no longer report missing-condition findings on their `Allow` statements
-- Policy-level findings are no longer dropped for checks `full_wildcard` does not supersede
-- The settings schema's published defaults now match the shipping defaults
+- A `max_concurrency` below 1 is clamped to 1 with a warning instead of hanging or raising
+- The settings schema now declares every setting the validator reads, matches the shipping defaults, and drops the phantom `parallel` and `max_workers` entries
+- An entry-point plugin that is not a `PolicyCheck`, or that duplicates a registered `check_id`, is logged and skipped instead of shadowing an existing check or aborting discovery
+- A custom check that fails to load is logged instead of printed, so it no longer corrupts `--format json` output
+- Service-reference cache reads and writes no longer block validation while waiting on disk
+- Streaming validation honours `--aws-services-dir`, and resolves the policy type per file instead of forcing `IDENTITY_POLICY`
+- Inline PR comments attach to the correct line instead of drifting to the next statement, including when `Statement` is a single object
 
 ## [1.26.0] - 2026-09-03
 
@@ -842,6 +844,7 @@ _First release._
 
 [#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
+[1.27.0]: https://github.com/boogy/iam-policy-validator/compare/v1.26.0...v1.27.0
 [1.26.0]: https://github.com/boogy/iam-policy-validator/compare/v1.25.1...v1.26.0
 [1.25.1]: https://github.com/boogy/iam-policy-validator/compare/v1.25.0...v1.25.1
 [1.25.0]: https://github.com/boogy/iam-policy-validator/compare/v1.24.0...v1.25.0
