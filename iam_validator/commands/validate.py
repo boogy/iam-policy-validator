@@ -347,9 +347,7 @@ Examples:
         config_path = getattr(args, "config", None)
         custom_checks_dir = getattr(args, "custom_checks_dir", None)
         aws_services_dir = getattr(args, "aws_services_dir", None)
-        # None means "user didn't pass --policy-type" → orchestrator runs
-        # per-file resolution (glob → auto-detect → default). Only cast when
-        # the user actually supplied a value.
+        # Cast only when the user actually supplied --policy-type; None means per-file resolution.
         policy_type_arg = getattr(args, "policy_type", None)
         policy_type: PolicyType | None = cast(PolicyType, policy_type_arg) if policy_type_arg else None
         results = await validate_policies(
@@ -465,9 +463,7 @@ Examples:
         config_path = getattr(args, "config", None)
         custom_checks_dir = getattr(args, "custom_checks_dir", None)
         aws_services_dir = getattr(args, "aws_services_dir", None)
-        # None means "user didn't pass --policy-type" → orchestrator runs
-        # per-file resolution (glob → auto-detect → default). Only cast when
-        # the user actually supplied a value.
+        # Cast only when the user actually supplied --policy-type; None means per-file resolution.
         policy_type_arg = getattr(args, "policy_type", None)
         policy_type: PolicyType | None = cast(PolicyType, policy_type_arg) if policy_type_arg else None
 
