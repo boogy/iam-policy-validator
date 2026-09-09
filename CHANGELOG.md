@@ -24,7 +24,8 @@ Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundar
 - WebIdentity (OIDC) trust policies must now carry `*:aud` plus one of `*:sub` or `*:amr`
 - `fetch_multiple_services` no longer re-raises when a single service fails to fetch; failures are logged and omitted from the result
 - Service prefetch is bounded by the shared request semaphore instead of fixed batches of five
-- Entry-point plugin discovery now lives in `check_registry.load_entry_point_checks`, breaking the `check_registry` ↔ `config_loader` import cycle; `ConfigLoader.load_entry_point_checks` delegates to it
+- Entry-point plugin discovery now lives in `check_registry.load_entry_point_checks`, breaking the `check_registry` ↔ `config_loader` import cycle
+- Sensitive-action matching indexes the candidate list into a literal set plus its glob remainder, so the 490-entry default list no longer costs a full scan per action
 
 ### Fixed
 
@@ -55,6 +56,9 @@ Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundar
 - Service-reference cache reads and writes no longer block validation while waiting on disk
 - Streaming validation honours `--aws-services-dir`, and resolves the policy type per file instead of forcing `IDENTITY_POLICY`
 - Inline PR comments attach to the correct line instead of drifting to the next statement, including when `Statement` is a single object
+- `NullIfExists` and its casing variants are reported as an invalid operator — AWS does not accept `IfExists` on `Null`
+- `policy_structure` no longer rewrites the caller's policy dict in place when `Statement` is a single object
+- A policy file is read once per PR comment run instead of once per finding
 
 ## [1.26.0] - 2026-09-03
 

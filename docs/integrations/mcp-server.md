@@ -256,17 +256,18 @@ The MCP server uses the same configuration format as the CLI validator. Configur
 
 | Section             | Type | Description                                        |
 | ------------------- | ---- | -------------------------------------------------- |
-| `settings`          | dict | Global settings (fail_on_severity, parallel, etc.) |
+| `settings`          | dict | Global settings (fail_on_severity, parallel_execution, etc.) |
 | `<check_id>`        | dict | Per-check configuration (enabled, severity, etc.)  |
 | `custom_checks`     | list | Custom check modules to load                       |
 | `custom_checks_dir` | str  | Directory for auto-discovered custom checks        |
 
 #### Common Settings
 
-| Setting            | Type | Description                                   |
-| ------------------ | ---- | --------------------------------------------- |
-| `fail_on_severity` | list | Severity levels that cause validation to fail |
-| `parallel`         | bool | Enable parallel check execution               |
+| Setting              | Type | Description                                    |
+| -------------------- | ---- | ----------------------------------------------- |
+| `fail_on_severity`   | list | Severity levels that cause validation to fail  |
+| `parallel_execution` | bool | Enable parallel check execution                |
+| `max_concurrency`    | int  | Max policies validated concurrently (default: 10) |
 
 #### Per-Check Options
 

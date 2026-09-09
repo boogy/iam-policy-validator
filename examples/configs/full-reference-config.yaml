@@ -284,8 +284,8 @@ sid_uniqueness:
   description: "Validates that Statement IDs (Sids) are unique and follow AWS naming requirements"
   # AWS SID requirements:
   # - Must be unique within the policy (duplicate_sid)
-  # - Must contain only alphanumeric characters, hyphens, and underscores (invalid_sid_format)
-  # - No spaces or special characters allowed
+  # - Must contain only alphanumeric characters (invalid_sid_format)
+  # - No spaces, hyphens, underscores, or other special characters allowed
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================

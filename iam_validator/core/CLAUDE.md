@@ -47,7 +47,9 @@ PolicyLoader.load_*  →  validate_policies()
 ```
 
 Policies are validated concurrently under an `asyncio.Semaphore` bounded by
-`max_concurrency` (CLI/SDK argument, else the config setting, default 10). Within a
+`max_concurrency` (the `validate_policies()` argument, else the config setting, default
+10 — there is no CLI flag; SDK shortcuts/context helpers don't forward it either, so
+only a direct `validate_policies()` call can override it). Within a
 policy, statements are gathered concurrently and unbounded; statement order is preserved
 because `ignore_patterns` and PR-comment fingerprints anchor to it.
 
@@ -76,8 +78,8 @@ for the policy type, nothing is suppressed.
 under the `iam_validator.checks` entry-point group (`ENTRY_POINT_GROUP`). An entry that is
 not a `PolicyCheck`, or whose `check_id` is already registered, is logged and skipped
 rather than aborting discovery. It lives in `check_registry` so `create_default_registry()`
-does not have to import `config_loader` — `ConfigLoader.load_entry_point_checks` remains as
-a thin delegator. Patch `iam_validator.core.check_registry.entry_points` in tests.
+does not have to import `config_loader`. Patch `iam_validator.core.check_registry.entry_points`
+in tests.
 
 ---
 

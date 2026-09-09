@@ -14,15 +14,18 @@ Use `/add-check my_check_name` to scaffold automatically. Manual steps:
 3. Register in `iam_validator/core/check_registry.py:create_default_registry()`.
 4. Test in `tests/checks/test_my_check.py` (see `tests/checks/conftest.py` for `mock_fetcher`).
 
-Required `ClassVar`s on the subclass:
+Required `ClassVar`s on the subclass (enforced by `PolicyCheck.__init_subclass__`; a
+missing one raises `NotImplementedError`):
 
 - `check_id: str` — unique snake_case id
 - `description: str` — short help text
-- `default_severity: str` — `low|medium|high|critical|error|warning|none`
-  (`none` suppresses output entirely)
 
 Optional `ClassVar`s:
 
+- `default_severity: str` — `low|medium|high|critical|error|warning|none`
+  (`none` suppresses output entirely). Defaults to `"warning"` when omitted; not
+  enforced by `__init_subclass__`, so set it explicitly whenever `"warning"` isn't
+  the intended severity.
 - `applies_to_policy_types: frozenset[str] | None` — policy types the check runs on;
   `None` (the default) means all, as does an unresolved policy type. In an SCP or RCP an
   `Allow` declines to restrict and never grants access, so grant-shaped checks exclude
