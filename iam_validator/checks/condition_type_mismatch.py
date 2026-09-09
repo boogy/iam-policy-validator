@@ -14,7 +14,7 @@ from iam_validator.core.aws_service.validators import (
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.condition_validators import (
     CONDITION_OPERATORS,
-    has_if_exists_suffix,
+    is_invalid_null_if_exists,
     is_known_operator,
     normalize_operator,
     translate_type,
@@ -73,6 +73,26 @@ class ConditionTypeMismatchCheck(PolicyCheck):
             # Normalize the operator and get its expected type
             base_operator, operator_type, _set_prefix = normalize_operator(operator)
 
+            # Detect NullIfExists as invalid syntax (must be BEFORE the unknown-operator
+            # branch, since normalize_operator() reports it as unknown too).
+            if is_invalid_null_if_exists(operator):
+                issues.append(
+                    ValidationIssue(
+                        severity=self.get_severity(config),
+                        message=(
+                            f"Invalid operator `{operator}`. The `Null` condition operator "
+                            f"does not support the `IfExists` suffix. The `Null` operator "
+                            f"already checks for key existence \u2014 use `Null` directly."
+                        ),
+                        statement_sid=statement_sid,
+                        statement_index=statement_idx,
+                        issue_type="invalid_operator",
+                        line_number=line_number,
+                        field_name="condition",
+                    )
+                )
+                continue
+
             if operator_type is None:
                 if not is_known_operator(operator):
                     issues.append(
@@ -89,25 +109,6 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                             field_name="condition",
                         )
                     )
-                continue
-
-            # Detect NullIfExists as invalid syntax (must be BEFORE skip_operators guard)
-            if base_operator == "Null" and has_if_exists_suffix(operator):
-                issues.append(
-                    ValidationIssue(
-                        severity=self.get_severity(config),
-                        message=(
-                            f"Invalid operator `{operator}`. The `Null` condition operator "
-                            f"does not support the `IfExists` suffix. The `Null` operator "
-                            f"already checks for key existence \u2014 use `Null` directly."
-                        ),
-                        statement_sid=statement_sid,
-                        statement_index=statement_idx,
-                        issue_type="invalid_operator",
-                        line_number=line_number,
-                        field_name="condition",
-                    )
-                )
                 continue
 
             if base_operator in skip_operators:

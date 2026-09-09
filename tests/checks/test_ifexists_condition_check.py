@@ -270,6 +270,31 @@ class TestIfExistsAlwaysPresentKeys:
         assert not any(i.issue_type == "ifexists_on_always_present_key" for i in issues)
 
 
+class TestNullIfExistsNotTreatedAsIfExistsUsage:
+    """NullIfExists is invalid syntax (condition_type_mismatch flags it); this check
+    must not also report it as legitimate IfExists usage."""
+
+    @pytest.fixture
+    def check(self):
+        return IfExistsConditionCheck()
+
+    @pytest.fixture
+    def config(self):
+        return CheckConfig(check_id="ifexists_condition_usage")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("operator", ["NullIfExists", "nullifexists", "ForAllValues:NullIfExists"])
+    async def test_null_ifexists_produces_no_findings(self, operator, check, config):
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={operator: {"aws:SourceIp": "false"}},
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert issues == []
+
+
 class TestCheckMetadata:
     """Test check metadata."""
 

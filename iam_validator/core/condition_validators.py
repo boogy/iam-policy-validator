@@ -72,6 +72,8 @@ SET_OPERATOR_PREFIXES = ["ForAllValues", "ForAnyValue"]
 
 _KNOWN_OPERATORS_LOWER: frozenset[str] = frozenset(op.lower() for op in CONDITION_OPERATORS)
 _SET_OPERATOR_PREFIXES_LOWER: frozenset[str] = frozenset(p.lower() for p in SET_OPERATOR_PREFIXES)
+_NULL_OPERATOR_LOWER = "null"
+_IFEXISTS_SUFFIX_LEN = len("IfExists")
 
 # Condition keys that are sometimes absent from the request context AND are
 # security-sensitive. Using IfExists with these keys in Allow statements can
@@ -117,6 +119,47 @@ ALWAYS_PRESENT_CONDITION_KEYS = frozenset(
 )
 
 
+def is_invalid_null_if_exists(operator: str) -> bool:
+    """
+    True if ``operator`` is the ``Null`` operator combined with the ``IfExists`` suffix.
+
+    AWS explicitly disallows this combination: "You can add IfExists to the end of
+    any condition operator name except the Null condition operator." ``Null`` already
+    answers the key-existence question, so ``NullIfExists`` (in any casing, with or
+    without a ``ForAllValues:``/``ForAnyValue:`` prefix) is rejected by AWS rather than
+    treated as a synonym for ``Null``.
+
+    Args:
+        operator: Raw operator string (e.g., "NullIfExists", "ForAllValues:nullifexists")
+
+    Returns:
+        True if the operator is an invalid Null+IfExists combination
+
+    Examples:
+        >>> is_invalid_null_if_exists("NullIfExists")
+        True
+        >>> is_invalid_null_if_exists("nullifexists")
+        True
+        >>> is_invalid_null_if_exists("Null")
+        False
+        >>> is_invalid_null_if_exists("ForAllValues:NullIfExists")
+        True
+        >>> is_invalid_null_if_exists("BoolIfExists")
+        False
+
+    Reference:
+        https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html
+    """
+    cleaned = operator.strip()
+    if ":" in cleaned:
+        prefix, _, rest = cleaned.partition(":")
+        if prefix.lower() in _SET_OPERATOR_PREFIXES_LOWER:
+            cleaned = rest
+    if not cleaned.lower().endswith("ifexists"):
+        return False
+    return cleaned[:-_IFEXISTS_SUFFIX_LEN].lower() == _NULL_OPERATOR_LOWER
+
+
 def normalize_operator(operator: str) -> tuple[str, str | None, str | None]:
     """
     Normalize condition operator, handling IfExists and ForAllValues/ForAnyValue prefixes.
@@ -157,6 +200,10 @@ def normalize_operator(operator: str) -> tuple[str, str | None, str | None]:
             set_prefix = parts[0]
             cleaned = parts[1]
 
+    # Null does not accept IfExists (AWS rejects the combination outright)
+    if is_invalid_null_if_exists(operator):
+        return operator, None, set_prefix
+
     # Remove IfExists suffix
     if cleaned.endswith("IfExists"):
         cleaned = cleaned[:-8]  # Remove "IfExists"
@@ -172,6 +219,8 @@ def normalize_operator(operator: str) -> tuple[str, str | None, str | None]:
 def is_known_operator(operator: str) -> bool:
     """True if ``operator`` is a real AWS condition operator, allowing prefix and suffix modifiers."""
     cleaned = operator.strip()
+    if is_invalid_null_if_exists(cleaned):
+        return False
     if ":" in cleaned:
         prefix, _, rest = cleaned.partition(":")
         if prefix.lower() not in _SET_OPERATOR_PREFIXES_LOWER:
@@ -184,16 +233,18 @@ def is_known_operator(operator: str) -> bool:
 
 def has_if_exists_suffix(operator: str) -> bool:
     """
-    Check if a condition operator has the IfExists suffix.
+    Check if a condition operator has the (valid) IfExists suffix.
 
     Handles set operator prefixes (ForAllValues/ForAnyValue).
     Case-sensitive for the IfExists suffix, matching AWS IAM behavior.
+    ``NullIfExists`` (any casing) returns False: AWS rejects that combination
+    outright, so it is not a legitimate IfExists usage — see is_invalid_null_if_exists().
 
     Args:
         operator: Raw operator string (e.g., "StringEqualsIfExists", "ForAllValues:StringLikeIfExists")
 
     Returns:
-        True if the operator has the IfExists suffix
+        True if the operator has a valid IfExists suffix
 
     Examples:
         >>> has_if_exists_suffix("StringEqualsIfExists")
@@ -204,7 +255,11 @@ def has_if_exists_suffix(operator: str) -> bool:
         True
         >>> has_if_exists_suffix("BoolIfExists")
         True
+        >>> has_if_exists_suffix("NullIfExists")
+        False
     """
+    if is_invalid_null_if_exists(operator):
+        return False
     cleaned = operator
     if ":" in operator:
         parts = operator.split(":", 1)

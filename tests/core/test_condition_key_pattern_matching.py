@@ -20,7 +20,12 @@ from iam_validator.core.aws_service.validators import (
     condition_key_in_list,
     find_matching_condition_key,
 )
-from iam_validator.core.condition_validators import _validate_single_value, is_known_operator
+from iam_validator.core.condition_validators import (
+    _validate_single_value,
+    has_if_exists_suffix,
+    is_known_operator,
+    normalize_operator,
+)
 from iam_validator.core.models import ConditionKey
 
 # =============================================================================
@@ -560,3 +565,56 @@ def test_unknown_operators_are_rejected(operator):
 @pytest.mark.parametrize("operator", ["stringequalsifexists", "forallvalues:stringlike", "FORANYVALUE:StringEquals"])
 def test_operator_modifiers_are_case_insensitive(operator):
     assert is_known_operator(operator) is True
+
+
+@pytest.mark.parametrize(
+    "operator",
+    [
+        "NullIfExists",
+        "nullifexists",
+        "NULLIFEXISTS",
+        "ForAllValues:NullIfExists",
+        "ForAnyValue:NullIfExists",
+        "ForAllValues:nullifexists",
+    ],
+)
+def test_null_if_exists_is_not_a_known_operator(operator):
+    """AWS rejects Null combined with IfExists; it must not be accepted as valid Null."""
+    assert is_known_operator(operator) is False
+
+
+@pytest.mark.parametrize(
+    "operator",
+    [
+        "NullIfExists",
+        "nullifexists",
+        "NULLIFEXISTS",
+        "ForAllValues:NullIfExists",
+        "ForAnyValue:NullIfExists",
+    ],
+)
+def test_normalize_operator_treats_null_if_exists_as_unknown(operator):
+    base_op, op_type, _set_prefix = normalize_operator(operator)
+    assert op_type is None
+    assert base_op == operator
+
+
+def test_normalize_operator_plain_null_is_still_valid():
+    assert normalize_operator("Null") == ("Null", "Bool", None)
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["NullIfExists", "nullifexists", "NULLIFEXISTS", "ForAllValues:NullIfExists", "ForAnyValue:NullIfExists"],
+)
+def test_has_if_exists_suffix_false_for_null_if_exists(operator):
+    """NullIfExists is invalid syntax, not a legitimate IfExists usage."""
+    assert has_if_exists_suffix(operator) is False
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["StringEqualsIfExists", "BoolIfExists", "ArnLikeIfExists", "ForAllValues:StringEqualsIfExists"],
+)
+def test_has_if_exists_suffix_true_for_other_operators(operator):
+    assert has_if_exists_suffix(operator) is True

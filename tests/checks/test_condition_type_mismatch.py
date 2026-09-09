@@ -250,6 +250,18 @@ class TestNullIfExistsDetection:
         assert len(issues) == 1
         assert issues[0].issue_type == "invalid_operator"
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "operator",
+        ["nullifexists", "NULLIFEXISTS", "NuLLifExists", "ForAllValues:nullifexists"],
+    )
+    async def test_null_ifexists_is_error_regardless_of_casing(self, operator, check, fetcher, config):
+        """Casing variants of NullIfExists must still be flagged, not silently accepted."""
+        statement = _make_statement({operator: {"aws:MultiFactorAuthPresent": "true"}})
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "invalid_operator"
+
 
 class TestUnknownOperatorDetection:
     @pytest.mark.asyncio
