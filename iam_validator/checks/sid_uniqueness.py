@@ -36,17 +36,14 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
     if not policy.statement:
         return []
 
-    # An empty Sid is a format error but is not a duplicate of another empty Sid.
+    # AWS treats an empty Sid the same as an omitted one, so it carries no finding.
     sids_with_indices: list[tuple[str, int]] = []
     for idx, statement in enumerate(policy.statement):
-        if statement.sid is None:
+        if not statement.sid:
             continue
 
         if not SID_PATTERN.match(statement.sid):
-            if not statement.sid:
-                issue_msg = "Statement ID is empty"
-                suggestion = "Provide a non-empty alphanumeric SID, or omit the `Sid` field"
-            elif " " in statement.sid:
+            if " " in statement.sid:
                 issue_msg = f"Statement ID `{statement.sid}` contains spaces, which are not allowed by AWS"
                 suggestion = f"Remove spaces from the SID. Example: `{statement.sid.replace(' ', '')}`"
             else:
@@ -67,8 +64,7 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
                 )
             )
 
-        if statement.sid:
-            sids_with_indices.append((statement.sid, idx))
+        sids_with_indices.append((statement.sid, idx))
 
     # Find duplicates
     sid_counts = Counter(sid for sid, _ in sids_with_indices)

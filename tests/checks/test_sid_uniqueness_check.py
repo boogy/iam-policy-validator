@@ -98,7 +98,7 @@ class TestSidUniquenessCheck:
         assert issues[0].severity == "warning"
 
     @pytest.mark.asyncio
-    async def test_empty_sid_is_reported_as_invalid_format(self, check, fetcher, config):
+    async def test_empty_sid_is_not_reported(self, check, fetcher, config):
         policy = IAMPolicy(
             Version="2012-10-17",
             Statement=[
@@ -106,9 +106,7 @@ class TestSidUniquenessCheck:
             ],
         )
         issues = await check.execute_policy(policy, "test.json", fetcher, config)
-        assert len(issues) == 1
-        assert issues[0].issue_type == "invalid_sid_format"
-        assert "empty" in issues[0].message
+        assert issues == []
 
     @pytest.mark.asyncio
     async def test_empty_sids_are_not_counted_as_duplicates(self, check, fetcher, config):
@@ -120,9 +118,7 @@ class TestSidUniquenessCheck:
             ],
         )
         issues = await check.execute_policy(policy, "test.json", fetcher, config)
-        issue_types = [i.issue_type for i in issues]
-        assert issue_types.count("invalid_sid_format") == 2
-        assert issue_types.count("duplicate_sid") == 0
+        assert issues == []
 
 
 async def test_malformed_sid_reported_exactly_once():
