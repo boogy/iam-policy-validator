@@ -682,3 +682,17 @@ class TestAWSServiceMetadataLookup:
         issues = await check.execute(statement, 0, fetcher, config)
         # Falls back to single-valued when fetcher fails
         assert any(i.issue_type == "set_operator_on_single_valued_key" for i in issues)
+
+
+@pytest.mark.asyncio
+async def test_provider_prefixed_amr_is_multivalued():
+    check = SetOperatorValidationCheck()
+    config = CheckConfig(check_id="set_operator_validation", enabled=True)
+    statement = Statement(
+        effect="Allow",
+        action=["sts:AssumeRoleWithWebIdentity"],
+        principal={"Federated": "cognito-identity.amazonaws.com"},
+        condition={"ForAnyValue:StringLike": {"cognito-identity.amazonaws.com:amr": "authenticated"}},
+    )
+    issues = await check.execute(statement, 0, None, config)
+    assert not [i for i in issues if i.issue_type == "set_operator_on_single_valued_key"]

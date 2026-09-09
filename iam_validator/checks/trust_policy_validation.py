@@ -50,11 +50,30 @@ from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.constants import ARN_PARTITION_REGEX
 from iam_validator.core.models import Statement, ValidationIssue
 
+RequiredCondition = str | list[str] | tuple[str, ...]
+
+# Web-identity providers AWS accepts as a bare domain in ``Principal.Federated``,
+# with no IAM OIDC provider ARN.
+WEB_IDENTITY_PROVIDER_DOMAINS: frozenset[str] = frozenset(
+    {
+        "accounts.google.com",
+        "cognito-identity.amazonaws.com",
+        "graph.facebook.com",
+        "www.amazon.com",
+    }
+)
+
+_WEB_IDENTITY_PROVIDER_ALTERNATION = "|".join(re.escape(domain) for domain in sorted(WEB_IDENTITY_PROVIDER_DOMAINS))
+
 
 def _asserts_key_absent(value: Any) -> bool:
     """True when a ``Null`` value asserts the key is absent; policy JSON gives bool, str, or list."""
     values = value if isinstance(value, list) else [value]
     return any(str(v).strip().lower() == "true" for v in values)
+
+
+def _condition_alternatives(required: RequiredCondition) -> list[str]:
+    return [required] if isinstance(required, str) else list(required)
 
 
 class TrustPolicyValidationCheck(PolicyCheck):
@@ -79,7 +98,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
     )
 
     # Default validation rules for assume actions
-    DEFAULT_RULES = {
+    DEFAULT_RULES: ClassVar[dict[str, dict[str, Any]]] = {
         "sts:AssumeRole": {
             "allowed_principal_types": ["AWS", "Service"],
             "description": "Standard role assumption",
@@ -92,8 +111,11 @@ class TrustPolicyValidationCheck(PolicyCheck):
         },
         "sts:AssumeRoleWithWebIdentity": {
             "allowed_principal_types": ["Federated"],
-            "provider_pattern": rf"^arn:{ARN_PARTITION_REGEX}:iam::\d{{12}}:oidc-provider/[\w./-]+$",
-            "required_conditions": ["*:aud", "*:sub"],
+            "provider_pattern": (
+                rf"^(?:arn:{ARN_PARTITION_REGEX}:iam::\d{{12}}:oidc-provider/[\w./-]+"
+                rf"|{_WEB_IDENTITY_PROVIDER_ALTERNATION})$"
+            ),
+            "required_conditions": ["*:aud", ["*:sub", "*:amr"]],
             "description": "OIDC-based federated role assumption",
         },
         "sts:TagSession": {
@@ -367,7 +389,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
         """
         issues: list[ValidationIssue] = []
 
-        required_conditions = rule.get("required_conditions", [])
+        required_conditions: list[RequiredCondition] = rule.get("required_conditions", [])
         if not required_conditions:
             return issues
 
@@ -386,28 +408,34 @@ class TrustPolicyValidationCheck(PolicyCheck):
                         continue
                     condition_keys.add(key)
 
-        # Check for missing required conditions (supports wildcards like *:aud)
-        missing_conditions = []
+        # Check for missing required conditions (supports wildcards like *:aud).
+        # A list entry is an any-of group: satisfied when any alternative is present.
+        missing_conditions: list[str] = []
         for required_cond in required_conditions:
-            if not any(iam_glob_match(required_cond, key) for key in condition_keys):
-                missing_conditions.append(required_cond)
+            alternatives = _condition_alternatives(required_cond)
+            if any(iam_glob_match(alt, key) for alt in alternatives for key in condition_keys):
+                continue
+            if len(alternatives) == 1:
+                missing_conditions.append(f"`{alternatives[0]}`")
+            else:
+                missing_conditions.append("one of: " + format_list_with_backticks(alternatives))
 
         if missing_conditions:
-            missing_list = format_list_with_backticks(missing_conditions)
+            missing_list = ", ".join(missing_conditions)
 
             issues.append(
                 ValidationIssue(
                     severity=self.get_severity(config),
                     issue_type="missing_required_condition_for_assume_action",
-                    message=f"Action `{action}` is missing required conditions: `{missing_list}`",
+                    message=f"Action `{action}` is missing required conditions: {missing_list}",
                     statement_index=statement_idx,
                     statement_sid=statement.sid,
                     line_number=statement.line_number,
                     action=action,
                     suggestion=f"Add required condition(s) to restrict when `{action}` can be performed. "
-                    f"Missing: `{missing_list}`\n\n"
+                    f"Missing: {missing_list}\n\n"
                     f"{rule.get('description', '')}",
-                    example=self._get_condition_example(action, required_conditions[0]),
+                    example=self._get_condition_example(action, _condition_alternatives(required_conditions[0])[0]),
                     field_name="condition",
                 )
             )

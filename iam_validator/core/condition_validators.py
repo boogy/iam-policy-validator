@@ -829,6 +829,7 @@ def is_multivalued_context_key(condition_key: str) -> bool:
       (organization paths)
     - aws:PrincipalServiceNamesList (service principal names of the calling service)
     - aws:CalledVia (ordered list of services in a forward access session chain)
+    - <provider>:amr (authentication methods reference, any web-identity provider)
 
     Service-specific multivalued keys are not listed here; they carry an ArrayOf prefix
     in the Service Authorization Reference and are resolved from that data instead.
@@ -876,6 +877,11 @@ def is_multivalued_context_key(condition_key: str) -> bool:
 
     # Check exact matches
     if key_lower in multivalued_keys:
+        return True
+
+    # ``<provider>:amr`` is multivalued for every web-identity provider; the provider
+    # prefix is a domain, so service-data lookup cannot resolve it.
+    if key_lower.rsplit(":", 1)[-1] == "amr":
         return True
 
     # Service-specific multivalued keys are resolved from their ArrayOf prefix by the caller.

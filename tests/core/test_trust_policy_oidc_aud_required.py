@@ -229,3 +229,63 @@ async def test_negated_operator_on_deny_does_satisfy_a_required_condition(mock_f
     )
     issues = await TrustPolicyValidationCheck().execute(statement, 0, mock_fetcher, default_config)
     assert not [i for i in issues if i.issue_type == "missing_required_condition_for_assume_action"]
+
+
+async def test_cognito_identity_pool_amr_satisfies_the_subject_group(mock_fetcher, default_config):
+    statement = Statement(
+        effect="Allow",
+        action=["sts:AssumeRoleWithWebIdentity"],
+        principal={"Federated": "cognito-identity.amazonaws.com"},
+        condition={
+            "StringEquals": {"cognito-identity.amazonaws.com:aud": "us-east-1:12345678-1234-1234-1234-123456790ab"},
+            "ForAnyValue:StringLike": {"cognito-identity.amazonaws.com:amr": "authenticated"},
+        },
+    )
+    issues = await TrustPolicyValidationCheck().execute(statement, 0, mock_fetcher, default_config)
+    assert issues == []
+
+
+async def test_google_web_identity_domain_principal_is_accepted(mock_fetcher, default_config):
+    statement = Statement(
+        effect="Allow",
+        action=["sts:AssumeRoleWithWebIdentity"],
+        principal={"Federated": "accounts.google.com"},
+        condition={
+            "StringEquals": {
+                "accounts.google.com:aud": "my-app-client-id",
+                "accounts.google.com:sub": "1234567890",
+            }
+        },
+    )
+    issues = await TrustPolicyValidationCheck().execute(statement, 0, mock_fetcher, default_config)
+    assert issues == []
+
+
+async def test_unknown_domain_federated_principal_is_still_flagged(mock_fetcher, default_config):
+    statement = Statement(
+        effect="Allow",
+        action=["sts:AssumeRoleWithWebIdentity"],
+        principal={"Federated": "evil.example.com"},
+        condition={
+            "StringEquals": {
+                "evil.example.com:aud": "aud",
+                "evil.example.com:sub": "sub",
+            }
+        },
+    )
+    issues = await TrustPolicyValidationCheck().execute(statement, 0, mock_fetcher, default_config)
+    assert any(i.issue_type == "invalid_provider_format" for i in issues)
+
+
+async def test_missing_subject_group_is_rendered_as_an_any_of_group(mock_fetcher, default_config):
+    statement = Statement(
+        effect="Allow",
+        action=["sts:AssumeRoleWithWebIdentity"],
+        principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+        condition={"StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"}},
+    )
+    issues = await TrustPolicyValidationCheck().execute(statement, 0, mock_fetcher, default_config)
+    missing = [i for i in issues if i.issue_type == "missing_required_condition_for_assume_action"]
+    assert len(missing) == 1
+    assert "one of: `*:sub`, `*:amr`" in missing[0].message
+    assert "['*:sub', '*:amr']" not in missing[0].message
