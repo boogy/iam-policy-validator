@@ -31,6 +31,22 @@ def _statement_principal_is_wildcard(statement: Statement) -> bool:
     return statement.principal == "*" or str(statement.principal) == "*"
 
 
+def _is_aws_managed_rcp_full_access(statement: Statement) -> bool:
+    """True for AWS's default ``RCPFullAWSAccess`` statement, the only Allow AWS permits in an RCP."""
+    return (
+        statement.effect is not None
+        and statement.effect.lower() == "allow"
+        and statement.principal is not None
+        and _statement_principal_is_wildcard(statement)
+        and statement.not_principal is None
+        and statement.not_action is None
+        and statement.not_resource is None
+        and statement.condition is None
+        and statement.get_actions() == ["*"]
+        and statement.get_resources() == ["*"]
+    )
+
+
 def _looks_like_rcp(policy: IAMPolicy) -> bool:
     """Heuristic: does this policy have the shape of a customer-managed RCP?
 
@@ -273,8 +289,11 @@ async def execute_policy(
             rcp_supported_services |= {str(s).strip().lower() for s in additional_rcp_services if str(s).strip()}
 
         for idx, statement in enumerate(policy.statement):
+            # AWS's own default RCP is the one Allow permitted; every other Allow is an error.
+            is_aws_managed_full_access = _is_aws_managed_rcp_full_access(statement)
+
             # 1. Effect MUST be Deny (only RCPFullAWSAccess can use Allow)
-            if statement.effect and statement.effect.lower() != "deny":
+            if statement.effect and statement.effect.lower() != "deny" and not is_aws_managed_full_access:
                 issues.append(
                     ValidationIssue(
                         severity="error",
@@ -352,6 +371,8 @@ async def execute_policy(
                     if isinstance(action, str):
                         # Check if action uses wildcard "*" alone (not allowed in customer RCPs)
                         if action == "*":
+                            if is_aws_managed_full_access:
+                                continue
                             issues.append(
                                 ValidationIssue(
                                     severity="error",

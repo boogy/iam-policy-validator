@@ -46,6 +46,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     # it as a finding so it appears under "Policies with Findings" rather than
     # "Policies with Errors (AWS-invalid)". Users can override via config.
     default_severity: ClassVar[str] = "high"
+    # In a boundary policy (SCP/RCP) an Allow declines to restrict; it never grants access.
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset(
+        {"IDENTITY_POLICY", "RESOURCE_POLICY", "TRUST_POLICY"}
+    )
 
     async def execute_policy(
         self,
