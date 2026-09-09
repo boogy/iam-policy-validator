@@ -146,5 +146,6 @@ async def test_malformed_sid_reported_exactly_once():
 
 def test_sid_pattern_is_defined_only_in_constants():
     literal = r're.compile(r"^[a-zA-Z0-9]+$")'
-    defining = [p for p in Path("iam_validator").rglob("*.py") if literal in p.read_text(encoding="utf-8")]
+    package = Path(__file__).resolve().parents[2] / "iam_validator"
+    defining = [p for p in package.rglob("*.py") if literal in p.read_text(encoding="utf-8")]
     assert [p.name for p in defining] == ["constants.py"]
