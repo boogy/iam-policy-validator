@@ -139,3 +139,14 @@ config = load_validator_config("iam-validator.yaml")  # Priority: CLI > config >
 | New global condition key | `config/aws_global_conditions.py`                                                                |
 | New sensitive action     | `config/sensitive_actions.py` with risk category                                                 |
 | Third-party check        | advertise the class under the `iam_validator.checks` entry-point group (no core edit)            |
+
+### Emoji in console output (gotcha)
+
+Rich sizes a fixed-width `Panel` with `rich.cells.cell_len`; the terminal advances by
+`wcwidth`. They disagree on a base codepoint followed by U+FE0F (`⚠️`, `ℹ️`, `🛡️`):
+Rich measures 2 cells, the terminal 1, and the panel's right border shifts left on
+every line carrying one. Anything printed to a `Console` may only use codepoints whose
+`unicodedata.east_asian_width` is `W` or `F` — use `constants.CONSOLE_ICON_WARNING` /
+`CONSOLE_ICON_INFO` rather than a literal. Markdown, HTML and PR-comment output are
+unaffected and keep the original emoji. `tests/core/test_console_alignment.py` enforces
+this for `formatters/enhanced.py` and `formatters/console.py`.

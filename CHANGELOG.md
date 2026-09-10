@@ -30,6 +30,8 @@ Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundar
 
 ### Fixed
 
+- Console panels no longer render with a ragged right border. `⚠️` and `ℹ️` are a base codepoint plus U+FE0F, which Rich measures as two cells while terminals advance one, so every line carrying one fell a column short of the panel width; console output now uses `constants.CONSOLE_ICON_WARNING` / `CONSOLE_ICON_INFO`, whose width Rich and the terminal agree on. Markdown, HTML and PR-comment output keep the original emoji
+- The final status panel says "2 policies", not "2 policys"
 - A `check_execution_error` finding now names the statement's `Sid`, logs the traceback, and can no longer be suppressed by another check's `supersedes`
 - A check's `supersedes` declaration now suppresses only the checks it names, not every other check that reported on the statement
 - Policy-level findings are no longer dropped for checks `full_wildcard` does not supersede, nor for boundary policies where `full_wildcard` never runs

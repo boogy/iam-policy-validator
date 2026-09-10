@@ -393,6 +393,12 @@ CONSOLE_PANEL_WIDTH = 100
 # Rich console color styles
 CONSOLE_HEADER_COLOR = "bright_blue"
 
+# Icons for console output. Only East_Asian_Width W/F codepoints belong here: a base
+# codepoint plus U+FE0F (⚠️, ℹ️) measures 2 cells in Rich but 1 in the terminal, which
+# shifts the right border of every fixed-width panel. Markdown/HTML output is unaffected.
+CONSOLE_ICON_WARNING = "❗"
+CONSOLE_ICON_INFO = "🔵"
+
 # ============================================================================
 # Cache and Timeout Settings
 # ============================================================================

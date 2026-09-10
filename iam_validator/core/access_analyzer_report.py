@@ -114,11 +114,11 @@ class AccessAnalyzerReportFormatter:
         # Icon and color based on finding type
         icons = {
             FindingType.ERROR: ("❌", "red"),
-            FindingType.SECURITY_WARNING: ("⚠️", "yellow"),
-            FindingType.WARNING: ("⚠️", "yellow"),
+            FindingType.SECURITY_WARNING: (constants.CONSOLE_ICON_WARNING, "yellow"),
+            FindingType.WARNING: (constants.CONSOLE_ICON_WARNING, "yellow"),
             FindingType.SUGGESTION: ("💡", "blue"),
         }
-        icon, color = icons.get(finding.finding_type, ("ℹ️", "white"))
+        icon, color = icons.get(finding.finding_type, (constants.CONSOLE_ICON_INFO, "white"))
 
         self.console.print(f"\n  {icon} [{color}]{finding.finding_type.value}[/{color}]")
         self.console.print(f"     Code: [bold]{finding.issue_code}[/bold]")
