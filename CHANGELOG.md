@@ -4,7 +4,7 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.28.0] - 2026-09-10
+## [1.27.1] - 2026-09-10
 
 A remediation release. Trust-policy validation, PR inline-comment line resolution and condition-operator polarity are corrected across the board, and the MCP check catalog now reports what validation will actually do rather than class defaults.
 
@@ -899,7 +899,7 @@ _First release._
 
 [#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
-[1.28.0]: https://github.com/boogy/iam-policy-validator/compare/v1.27.0...v1.28.0
+[1.27.1]: https://github.com/boogy/iam-policy-validator/compare/v1.27.0...v1.27.1
 [1.27.0]: https://github.com/boogy/iam-policy-validator/compare/v1.26.0...v1.27.0
 [1.26.0]: https://github.com/boogy/iam-policy-validator/compare/v1.25.1...v1.26.0
 [1.25.1]: https://github.com/boogy/iam-policy-validator/compare/v1.25.0...v1.25.1
