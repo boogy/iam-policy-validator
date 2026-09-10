@@ -69,7 +69,7 @@ If valid actions are reported as invalid:
 ```bash
 # Update AWS service cache
 iam-validator cache clear
-iam-validator download-services
+iam-validator sync-services
 ```
 
 ## Performance Issues
@@ -80,7 +80,7 @@ For large policy sets:
 
 ```bash
 # Pre-download service definitions
-iam-validator download-services
+iam-validator sync-services
 
 # Use JSON output (faster than enhanced)
 iam-validator validate --path ./policies/ --format json

@@ -17,12 +17,18 @@ from typing import Any, get_args
 import yaml
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from iam_validator.core.check_registry import CheckConfig, CheckRegistry, PolicyCheck
+from iam_validator.core.check_registry import (
+    CheckConfig,
+    CheckRegistry,
+    PolicyCheck,
+)
 from iam_validator.core.config.defaults import get_default_config
 from iam_validator.core.constants import (
     _COMMENT_TAG_RE,
     COMMENT_TAG_PATTERN,
+    DEFAULT_CACHE_TTL_HOURS,
     DEFAULT_CONFIG_FILENAMES,
+    HIGH_SEVERITY_LEVELS,
 )
 from iam_validator.core.models import PolicyType
 
@@ -51,7 +57,9 @@ KNOWN_CHECK_IDS = frozenset(
         "not_principal_validation",
         "policy_size",
         "policy_structure",
+        "policy_type_validation",
         "principal_validation",
+        "rcp_best_practices",
         "resource_validation",
         "sensitive_action",
         "service_wildcard",
@@ -158,16 +166,30 @@ class SettingsSchema(BaseModel):
 
     model_config = ConfigDict(extra="allow")  # Allow additional settings
 
-    fail_fast: bool = False
-    parallel: bool = True
-    max_workers: int | None = None
-    fail_on_severity: list[str] = ["error", "critical"]
+    max_concurrency: int = 10
+    parallel_execution: bool = True
+    enable_builtin_checks: bool = True
+    suppress_superseded_findings: bool = True
+    aws_services_dir: str | None = None
+    cache_enabled: bool = True
+    cache_ttl_hours: int = DEFAULT_CACHE_TTL_HOURS
+    cache_directory: str | None = None
+    fail_on_severity: list[str] = list(HIGH_SEVERITY_LEVELS)
     severity_labels: dict[str, str | list[str]] = {}
     ignore_settings: IgnoreSettingsSchema = IgnoreSettingsSchema()
     documentation: DocumentationSettingsSchema = DocumentationSettingsSchema()
     hide_severities: list[str] | None = None  # Global severity filtering
     off_diff_comment_mode: str = "summary_only"
     comment_tag: str | None = None
+    on_check_error: str = "fail"
+    allow_template_variables: bool = True  # Support ${var.name} in ARNs
+
+    @field_validator("on_check_error")
+    @classmethod
+    def validate_on_check_error(cls, v: str) -> str:
+        if v not in {"fail", "warn"}:
+            raise ValueError(f"Invalid on_check_error: {v}. Must be one of: ['fail', 'warn']")
+        return v
 
     @field_validator("off_diff_comment_mode")
     @classmethod
@@ -679,7 +701,7 @@ class ConfigLoader:
 
             except Exception as e:
                 # Log error but continue loading other checks
-                print(f"Warning: Failed to load custom check '{module_path}': {e}")
+                logger.warning("Failed to load custom check '%s': %s", module_path, e)
 
         return loaded_checks
 

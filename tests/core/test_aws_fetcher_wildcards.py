@@ -1,8 +1,14 @@
 """Tests for AWS fetcher wildcard action validation."""
 
+import json
+
 import pytest
 
+from iam_validator.checks.utils.action_parser import parse_action
 from iam_validator.core.aws_service import AWSServiceFetcher
+from iam_validator.core.aws_service.patterns import CompiledPatterns
+from iam_validator.core.models import IAMPolicy
+from iam_validator.core.policy_checks import validate_policies
 
 
 class TestWildcardMatching:
@@ -277,3 +283,39 @@ class TestActionValidationWithWildcards:
             assert is_valid is True
             assert error_msg is None
             assert is_wildcard is True
+
+
+@pytest.mark.parametrize(
+    "action",
+    ["s3:PutObjec?", "s3:GetObject?", "iam:???ateRole", "s3:Put*Objec?"],
+)
+def test_action_pattern_accepts_single_char_wildcard(action):
+    assert CompiledPatterns().action_pattern.match(action) is not None
+
+
+def test_parse_action_flags_question_mark_as_wildcard():
+    parsed = parse_action("s3:PutObjec?")
+    assert parsed.service == "s3"
+    assert parsed.action_name == "PutObjec?"
+    assert parsed.has_wildcard is True
+
+
+async def test_question_mark_action_does_not_erase_sibling_findings(tmp_path):
+    policy = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": ["s3:ThisActionDoesNotExistAtAll", "s3:PutObjec?"],
+                "Resource": "arn:aws:s3:::bucket/*",
+            }
+        ],
+    }
+    path = tmp_path / "policy.json"
+    path.write_text(json.dumps(policy))
+
+    results = await validate_policies([(str(path), IAMPolicy.model_validate(policy), policy)])
+
+    issue_types = {i.issue_type for r in results for i in r.issues}
+    assert "invalid_action" in issue_types
+    assert "check_execution_error" not in issue_types

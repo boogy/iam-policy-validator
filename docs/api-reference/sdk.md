@@ -1512,7 +1512,7 @@ The `AWSServiceFetcher` uses a multi-layer caching strategy:
 For offline environments, pre-download service definitions:
 
 ```bash
-iam-validator download-services
+iam-validator sync-services
 ```
 
 ### Async Patterns
@@ -1767,7 +1767,7 @@ If the SDK can't fetch AWS service definitions (e.g., no internet access), pre-d
 
 ```bash
 # Download all service definitions for offline use
-iam-validator download-services
+iam-validator sync-services
 ```
 
 Or catch the error programmatically:
@@ -1778,7 +1778,7 @@ from iam_validator.sdk import validate_file, AWSServiceError
 try:
     result = await validate_file("policy.json")
 except AWSServiceError:
-    print("Cannot reach AWS service API. Run 'iam-validator download-services' for offline use.")
+    print("Cannot reach AWS service API. Run 'iam-validator sync-services' for offline use.")
 ```
 
 ### validate_json Accepts Both dict and str

@@ -10,6 +10,7 @@ unintended access:
 
 from typing import ClassVar
 
+from iam_validator.checks.utils.condition_matching import is_deny
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
@@ -45,8 +46,9 @@ class NotPrincipalValidationCheck(PolicyCheck):
         if statement.not_principal is None:
             return issues
 
-        # Check 1: NotPrincipal with Effect: Allow is not supported by AWS
-        if statement.effect == "Allow":
+        # Check 1: NotPrincipal is only supported with Effect: Deny
+        if not is_deny(statement):
+            effect = (statement.effect or "").strip().title()
             issues.append(
                 ValidationIssue(
                     severity="error",
@@ -54,10 +56,10 @@ class NotPrincipalValidationCheck(PolicyCheck):
                     statement_index=statement_idx,
                     issue_type="not_principal_with_allow",
                     message=(
-                        "`NotPrincipal` with `Effect: Allow` is not supported by AWS. "
-                        "AWS IAM does not allow the `NotPrincipal` element in combination "
-                        "with `Effect: Allow`. This policy will be rejected or will not "
-                        "behave as expected."
+                        f"`NotPrincipal` with `Effect: {effect}` is not supported. "
+                        "`NotPrincipal` is only supported when used with `Effect: Deny`. "
+                        "Most resource-based policy types reject or ignore this "
+                        "combination with a non-`Deny` effect."
                     ),
                     suggestion=(
                         'Use `Principal: "*"` with a `Condition` element using '

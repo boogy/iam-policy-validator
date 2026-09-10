@@ -11,6 +11,7 @@ References:
 """
 
 import re
+from typing import Final
 
 # ============================================================================
 # ARN Validation
@@ -23,14 +24,49 @@ import re
 # Covers commercial, China, GovCloud, Europe sovereign, and all ISO partitions.
 ARN_PARTITION_REGEX = r"(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f)"
 
-# Lenient ARN format used by `resource_validation` — allows wildcards (*) in
-# region and account fields. Stricter than the structural parser in
-# CompiledPatterns but tolerant enough for policy-author conveniences.
-DEFAULT_ARN_VALIDATION_PATTERN = rf"^arn:{ARN_PARTITION_REGEX}:[a-z0-9\-]+:[a-z0-9\-*]*:[0-9*]*:.+$"
+# Lenient ARN format used by `resource_validation` — wildcards allowed in the
+# region and account fields, unlike CompiledPatterns' structural parser.
+# A purely numeric account id must be exactly twelve digits. AWS-owned managed
+# policies use the literal owner "aws" instead of an account id
+# (e.g., arn:aws:iam::aws:policy/ReadOnlyAccess).
+DEFAULT_ARN_VALIDATION_PATTERN = (
+    rf"^arn:{ARN_PARTITION_REGEX}:[a-z0-9\-]+:[a-z0-9\-*?]*:"
+    rf"(?:[0-9]{{12}}|[0-9]*[*?][0-9*?]*|aws)?:.+$"
+)
 
 # Maximum allowed ARN length to prevent ReDoS attacks
 # AWS maximum ARN length is approximately 2048 characters
 MAX_ARN_LENGTH = 2048
+
+# ============================================================================
+# IAM Policy Grammar
+# ============================================================================
+
+#: AWS IAM policy grammar allows only alphanumeric characters in a Sid.
+#: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_grammar.html
+SID_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9]+$")
+
+# ============================================================================
+# Federated identity condition keys
+# ============================================================================
+# The AWS Service Reference enumerates condition keys only for the identity
+# providers AWS knows by name, and templates account-specific parts of a provider
+# identifier as ``${Name}``. Both shapes need matching that literal lookup cannot do.
+
+#: Actions that federate an external identity provider into a role session.
+WEB_IDENTITY_FEDERATION_ACTIONS: Final[frozenset[str]] = frozenset({"sts:assumerolewithwebidentity"})
+
+#: OIDC claims AWS exposes for every registered provider, whatever its URL.
+#: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_iam-condition-keys.html
+OIDC_STANDARD_CLAIMS: Final[frozenset[str]] = frozenset({"amr", "aud", "oaud", "sub"})
+
+#: Host, or host plus path, of an OIDC provider URL as it appears before the claim.
+OIDC_PROVIDER_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?:/[^\s:]*)?$", re.IGNORECASE
+)
+
+#: ``${Name}`` placeholder AWS uses for the account-specific part of a condition key.
+SERVICE_REFERENCE_PLACEHOLDER_PATTERN: Final[re.Pattern[str]] = re.compile(r"\$\{[^}]*\}")
 
 # ============================================================================
 # IAM Policy Version Literals
@@ -358,6 +394,12 @@ CONSOLE_PANEL_WIDTH = 100
 
 # Rich console color styles
 CONSOLE_HEADER_COLOR = "bright_blue"
+
+# Icons for console output. Only East_Asian_Width W/F codepoints belong here: a base
+# codepoint plus U+FE0F (⚠️, ℹ️) measures 2 cells in Rich but 1 in the terminal, which
+# shifts the right border of every fixed-width panel. Markdown/HTML output is unaffected.
+CONSOLE_ICON_WARNING = "❗"
+CONSOLE_ICON_INFO = "🔵"
 
 # ============================================================================
 # Cache and Timeout Settings

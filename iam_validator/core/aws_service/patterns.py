@@ -45,7 +45,7 @@ class CompiledPatterns:
         )
 
         # Action format pattern
-        self.action_pattern = re.compile(r"^(?P<service>[a-zA-Z0-9_-]+):(?P<action>[a-zA-Z0-9*_-]+)$")
+        self.action_pattern = re.compile(r"^(?P<service>[a-zA-Z0-9_-]+):(?P<action>[a-zA-Z0-9*?_-]+)$")
 
         # Wildcard detection patterns
         self.wildcard_pattern = re.compile(r"\*")

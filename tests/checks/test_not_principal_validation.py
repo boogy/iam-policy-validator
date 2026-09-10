@@ -64,6 +64,7 @@ class TestNotPrincipalValidationCheck:
         assert issues[0].severity == "error"
         assert issues[0].issue_type == "not_principal_with_allow"
         assert "not supported" in issues[0].message.lower()
+        assert "Effect: Allow" in issues[0].message
         assert issues[0].suggestion is not None
         assert "Principal" in issues[0].suggestion
         assert issues[0].example is not None
@@ -159,3 +160,33 @@ class TestNotPrincipalValidationCheck:
         issues = await check.execute(statement, 0, mock_fetcher, custom_config)
         assert len(issues) == 1
         assert issues[0].severity == "error"
+
+
+class TestEffectNormalisation:
+    """Case-insensitive Effect handling via is_deny."""
+
+    @pytest.mark.asyncio
+    async def test_lowercase_allow_effect_is_treated_as_allow(self, check, config, mock_fetcher) -> None:
+        statement = Statement(
+            effect="allow",
+            not_principal={"AWS": "arn:aws:iam::123456789012:root"},
+            action=["s3:GetObject"],
+            resource=["*"],
+        )
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert [i.issue_type for i in issues] == ["not_principal_with_allow"]
+        assert "Effect: Allow" in issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_message_reflects_actual_non_deny_effect(self, check, config, mock_fetcher) -> None:
+        """The message must name the statement's real effect, not assume it is Allow."""
+        statement = Statement(
+            effect="Malformed",
+            not_principal={"AWS": "arn:aws:iam::123456789012:root"},
+            action=["s3:GetObject"],
+            resource=["*"],
+        )
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert [i.issue_type for i in issues] == ["not_principal_with_allow"]
+        assert "Effect: Malformed" in issues[0].message
+        assert "Effect: Allow" not in issues[0].message

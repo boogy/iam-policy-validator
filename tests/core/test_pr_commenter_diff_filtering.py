@@ -1086,5 +1086,127 @@ class TestOffDiffCommentModeConfigValidation:
         assert schema.off_diff_comment_mode == "summary_only"
 
 
+class TestSearchForFieldLineScoping:
+    """Tests for PRCommenter._search_for_field_line statement scoping."""
+
+    def test_search_for_field_line_is_scoped_to_the_requested_statement(self, tmp_path):
+        policy = tmp_path / "policy.json"
+        policy.write_text(
+            """{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "First",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "*"
+    },
+    {
+      "Sid": "Second",
+      "Effect": "Deny",
+      "Action": "s3:PutObject",
+      "Resource": "*"
+    }
+  ]
+}
+""",
+            encoding="utf-8",
+        )
+        commenter = _bare_commenter()
+
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 0, "s3:GetObject") == 7
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 1, "s3:PutObject") == 13
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 0, "s3:PutObject") is None
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 1, "s3:GetObject") is None
+        # Terms present in both statements are the only ones the off-by-one defect shows up in.
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 1, '"Sid"') == 11
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 1, '"Resource"') == 14
+
+    def test_single_object_statement_resolves_via_line_mapping(self, tmp_path):
+        policy = tmp_path / "policy.json"
+        policy.write_text(
+            """{
+  "Version": "2012-10-17",
+  "Statement": {
+    "Sid": "Only",
+    "Effect": "Allow",
+    "Action": "s3:GetObject",
+    "Resource": "*"
+  }
+}
+""",
+            encoding="utf-8",
+        )
+        commenter = _bare_commenter()
+
+        assert PRCommenter._get_line_mapping(commenter, str(policy)) == {0: 3}
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 0, "s3:GetObject") == 6
+        assert PRCommenter._search_for_field_line(commenter, str(policy), 0, "s3:PutObject") is None
+
+
+def _bare_commenter() -> PRCommenter:
+    """PRCommenter with only the caches its line-lookup helpers need."""
+    commenter = PRCommenter.__new__(PRCommenter)
+    commenter._file_lines_cache = {}
+    commenter._policy_line_maps = {}
+    return commenter
+
+
+class TestPolicyFileReadCaching:
+    """_search_for_field_line and _get_line_mapping must share one file read per policy."""
+
+    @pytest.fixture
+    def policy_file(self, tmp_path):
+        policy = tmp_path / "policy.json"
+        policy.write_text(
+            """{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "First",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "*"
+    }
+  ]
+}
+""",
+            encoding="utf-8",
+        )
+        return policy
+
+    def _count_opens_of(self, target_path):
+        real_open = open
+        calls = []
+
+        def counting_open(file, *args, **kwargs):
+            if str(file) == str(target_path):
+                calls.append(file)
+            return real_open(file, *args, **kwargs)
+
+        return calls, counting_open
+
+    def test_search_for_field_line_reads_file_once(self, policy_file):
+        commenter = _bare_commenter()
+        calls, counting_open = self._count_opens_of(policy_file)
+
+        with mock.patch("builtins.open", side_effect=counting_open):
+            result = PRCommenter._search_for_field_line(commenter, str(policy_file), 0, "s3:GetObject")
+
+        assert result == 7
+        assert len(calls) == 1  # before the fix: 2 (one via _get_line_mapping, one direct)
+
+    def test_get_line_mapping_reused_across_calls_reads_file_once(self, policy_file):
+        commenter = _bare_commenter()
+        calls, counting_open = self._count_opens_of(policy_file)
+
+        with mock.patch("builtins.open", side_effect=counting_open):
+            first = PRCommenter._get_line_mapping(commenter, str(policy_file))
+            second = PRCommenter._get_line_mapping(commenter, str(policy_file))
+
+        assert first == second == {0: 4}
+        assert len(calls) == 1
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

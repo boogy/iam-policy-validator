@@ -54,7 +54,10 @@ settings:
 # Strict - fail on everything
 fail_on_severity: [error, warning, info, critical, high, medium, low]
 
-# Default - serious issues only
+# Default - errors plus high-impact security findings
+fail_on_severity: [error, critical, high]
+
+# Serious issues only
 fail_on_severity: [error, critical]
 
 # Relaxed - IAM errors only
@@ -164,7 +167,10 @@ settings:
 The finding names the check and the exception, and is attributed to the failing check's
 `check_id`. It deliberately ignores that check's `ignore_patterns` and severity
 overrides: the finding is *about* the check, not *from* it, so the check cannot silence
-the notice that it crashed.
+the notice that it crashed. This also means a `check_execution_error` finding is exempt
+from `hide_severities` (global or per-check) and from `ignore_patterns` more generally —
+a run that cannot finish validating a policy must not be silently filtered into looking
+clean.
 
 **Opt out**
 
@@ -306,11 +312,11 @@ principal_validation:
 
 ## Custom Checks
 
-Load custom checks from a directory:
+Load custom checks from a directory. `custom_checks_dir` is a top-level key, not a
+`settings` field — nested under `settings:` it is silently ignored:
 
 ```yaml
-settings:
-  custom_checks_dir: "./my-checks"
+custom_checks_dir: "./my-checks"
 
 checks:
   my_custom_check:
@@ -347,9 +353,11 @@ All settings under the `settings` key:
 ```yaml
 settings:
   # Validation behavior
-  fail_fast: false # Stop on first error (default: false)
-  parallel: true # Enable parallel execution (default: true)
-  max_workers: null # Max concurrent workers (default: auto)
+  parallel_execution: true # Enable parallel execution of checks (default: true)
+  # Max policies validated concurrently (default: 10); values below 1 are
+  # clamped to 1 with a warning. There is no CLI flag for this — only the SDK's
+  # `validate_policies()` argument or this setting can override it.
+  max_concurrency: 10
 
   # Failure criteria
   fail_on_severity: # Severities that cause exit code 1
@@ -392,9 +400,6 @@ settings:
   # instead of overwriting the others. Unset by default.
   comment_tag: null
 
-  # Custom checks
-  custom_checks_dir: null # Auto-discover checks from directory
-
   # Ignore settings
   ignore_settings:
     enabled: true
@@ -405,6 +410,9 @@ settings:
   documentation:
     base_url: null # Custom docs base URL
     include_aws_docs: true # Include links to AWS docs
+
+# Custom checks: a TOP-LEVEL key, not a settings field — see "Custom Checks" above
+custom_checks_dir: null # Auto-discover checks from directory
 ```
 
 ### Check Configuration

@@ -16,7 +16,7 @@ Complete documentation for the `iam-validator` command-line interface.
 | `post-to-pr`        | Post results to GitHub PR                     |
 | `query`             | Query AWS service definitions                 |
 | `cache`             | Manage AWS service cache                      |
-| `download-services` | Download AWS definitions for offline use      |
+| `sync-services`     | Sync AWS definitions for offline use          |
 | `completion`        | Generate shell completion scripts             |
 | `mcp`               | Start MCP server for AI assistant integration |
 
@@ -322,35 +322,84 @@ iam-validator cache location
 | `--config` | all        | Path to configuration file                  |
 | `--format` | `list`     | Output format: `table`, `columns`, `simple` |
 
-## download-services
+## sync-services
 
 Download AWS service definitions for offline validation.
 
 ### Usage
 
 ```bash
-# Download all services
-iam-validator download-services
+# Sync all services to the default directory (aws_services/)
+iam-validator sync-services
 
-# Download specific services
-iam-validator download-services --services s3,iam,ec2
+# Sync to a custom directory
+iam-validator sync-services --output-dir /path/to/backup
+
+# Limit concurrent downloads
+iam-validator sync-services --max-concurrent 5
 ```
+
+### Options
+
+| Option             | Description                     | Default        |
+| ------------------ | ------------------------------- | -------------- |
+| `--output-dir`     | Output directory for downloads  | `aws_services` |
+| `--max-concurrent` | Maximum concurrent downloads    | `10`           |
 
 ## completion
 
-Generate shell completion scripts.
+Generate shell completion scripts for `bash` and `zsh`.
 
 ### Usage
 
 ```bash
-# Bash
-eval "$(iam-validator completion bash)"
+iam-validator completion {bash|zsh} [--install]
+```
 
-# Zsh
+### Options
+
+| Option      | Description                                                       | Default |
+| ----------- | ----------------------------------------------------------------- | ------- |
+| `--install` | Write the script to the user completion directory instead of stdout |         |
+
+### Install
+
+`--install` writes the completion script for you and prints the single line to
+add to your shell rc file:
+
+```console
+$ iam-validator completion zsh --install
+installed to /Users/you/.local/share/zsh/site-functions/_iam-validator
+
+add this to ${ZDOTDIR:-$HOME}/.zshrc, once:
+
+fpath+=('/Users/you/.local/share/zsh/site-functions')
+autoload -Uz compinit && compinit
+```
+
+Install locations:
+
+| Shell  | Path                                                     |
+| ------ | -------------------------------------------------------- |
+| `zsh`  | `~/.local/share/zsh/site-functions/_iam-validator`        |
+| `bash` | `~/.local/share/bash-completion/completions/iam-validator` |
+
+`XDG_DATA_HOME` is honoured when set, replacing `~/.local/share`. The script is
+rewritten every time, so re-running `--install` after an upgrade always leaves
+the completions current.
+
+### Print to stdout
+
+Without `--install` the script is written to stdout, for evaluating directly or
+redirecting somewhere else:
+
+```bash
+# Evaluate in the current shell
+eval "$(iam-validator completion bash)"
 eval "$(iam-validator completion zsh)"
 
-# Fish
-iam-validator completion fish | source
+# Or write it wherever you keep completions
+iam-validator completion bash > ~/.bash_completion.d/iam-validator
 ```
 
 ## mcp

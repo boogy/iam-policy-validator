@@ -41,12 +41,11 @@ This file is authoritative. Subdirectory `CLAUDE.md` files extend it.
 
 ### Procedural
 
-| Command               | Purpose                                  |
-| --------------------- | ---------------------------------------- |
-| `/create-pr`          | Stage commits and push a branch for a PR |
-| `/create-version-tag` | Bump version + create signed tag         |
-| `/update-changelog`   | Append entry following Common Changelog  |
-| `/benchmark`          | Run performance benchmarks               |
+| Command               | Purpose                                 |
+| --------------------- | --------------------------------------- |
+| `/create-version-tag` | Bump version + create signed tag        |
+| `/update-changelog`   | Append entry following Common Changelog |
+| `/benchmark`          | Run performance benchmarks              |
 
 ### Reasoning skills
 
@@ -156,6 +155,8 @@ literals. Add a constant there before introducing any of these inline:
 - ARN partitions (`ARN_PARTITION_REGEX` covers commercial, `aws-cn`, `aws-us-gov`,
   `aws-eusc`, all `aws-iso*`) — sourced by `DEFAULT_ARN_VALIDATION_PATTERN` and the
   trust-policy SAML/OIDC patterns
+- `SID_PATTERN` — the charset AWS's policy grammar allows in a `Sid` (`A-Z a-z 0-9`
+  only); consumed by `checks/sid_uniqueness.py`
 - AWS policy size limits (`MAX_MANAGED_POLICY_SIZE`, etc.)
 - GitHub comment limits (`GITHUB_COMMENT_HARD_LIMIT = 65536`,
   `GITHUB_MAX_COMMENT_LENGTH = 65000`, `GITHUB_COMMENT_SPLIT_LIMIT = 60000`)

@@ -125,6 +125,8 @@ class PRCommenter:
         self._ignored_findings: dict[str, Any] = {}
         # Cache for PolicyLineMap per file (for field-level line detection)
         self._policy_line_maps: dict[str, PolicyLineMap] = {}
+        # Cache for raw file lines per file (avoids re-reading for each lookup)
+        self._file_lines_cache: dict[str, list[str]] = {}
         # Track whether workspace path has been logged (avoid spam)
         self._logged_workspace: bool = False
 
@@ -690,6 +692,13 @@ class PRCommenter:
         )
         return None
 
+    def _read_policy_lines(self, policy_file: str) -> list[str]:
+        """Read a policy file's lines, caching so each file is read at most once."""
+        if policy_file not in self._file_lines_cache:
+            with open(policy_file, encoding="utf-8-sig") as f:
+                self._file_lines_cache[policy_file] = f.readlines()
+        return self._file_lines_cache[policy_file]
+
     def _get_line_mapping(self, policy_file: str) -> dict[int, int]:
         """Get mapping of statement indices to line numbers.
 
@@ -700,8 +709,7 @@ class PRCommenter:
             Dict mapping statement index to line number
         """
         try:
-            with open(policy_file, encoding="utf-8") as f:
-                lines = f.readlines()
+            lines = self._read_policy_lines(policy_file)
 
             mapping: dict[int, int] = {}
             statement_count = 0
@@ -713,6 +721,9 @@ class PRCommenter:
                 # Detect "Statement": [ or "Statement" : [
                 if '"Statement"' in stripped or "'Statement'" in stripped:
                     in_statement_array = True
+                    if stripped.endswith("{"):
+                        mapping[statement_count] = line_num
+                        statement_count += 1
                     continue
 
                 # Detect statement object start
@@ -782,7 +793,7 @@ class PRCommenter:
             return self._policy_line_maps[policy_file]
 
         try:
-            with open(policy_file, encoding="utf-8") as f:
+            with open(policy_file, encoding="utf-8-sig") as f:
                 content = f.read()
 
             policy_map = PolicyLoader.parse_statement_field_lines(content)
@@ -804,42 +815,26 @@ class PRCommenter:
         Returns:
             Line number or None
         """
-        try:
-            with open(policy_file, encoding="utf-8") as f:
-                lines = f.readlines()
-
-            # Find the statement block
-            statement_count = 0
-            in_statement = False
-            brace_depth = 0
-
-            for line_num, line in enumerate(lines, start=1):
-                stripped = line.strip()
-
-                # Track braces
-                brace_depth += stripped.count("{") - stripped.count("}")
-
-                # Detect statement start
-                if not in_statement and stripped.startswith("{") and brace_depth > 0:
-                    if statement_count == statement_idx:
-                        in_statement = True
-                        continue
-                    statement_count += 1
-
-                # Search within the statement
-                if in_statement:
-                    if search_term in line:
-                        return line_num
-
-                    # Exit statement when braces balance
-                    if brace_depth == 0:
-                        in_statement = False
-
+        start_line = self._get_line_mapping(policy_file).get(statement_idx)
+        if start_line is None:
             return None
 
+        try:
+            lines = self._read_policy_lines(policy_file)
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.debug(f"Could not search {policy_file}: {e}")
             return None
+
+        depth = 0
+        for line_num, line in enumerate(lines[start_line - 1 :], start=start_line):
+            if search_term in line:
+                return line_num
+            stripped = line.strip()
+            depth += stripped.count("{") - stripped.count("}")
+            if depth <= 0:
+                return None
+
+        return None
 
     async def _process_ignore_commands(self) -> None:
         """Process pending ignore commands from PR comments."""

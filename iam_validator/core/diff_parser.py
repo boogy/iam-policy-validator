@@ -292,7 +292,7 @@ class DiffParser:
             Line number where statement ends (1-indexed)
         """
         try:
-            with open(policy_file, encoding="utf-8") as f:
+            with open(policy_file, encoding="utf-8-sig") as f:
                 lines = f.readlines()
 
             # Start counting from the statement's opening brace

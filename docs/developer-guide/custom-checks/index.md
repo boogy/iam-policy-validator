@@ -81,3 +81,32 @@ checks:
     `--custom-checks-dir`) — the config file often lives in the same
     repository as the untrusted policies being validated, so its presence
     alone is not treated as consent to execute code.
+
+## Entry-Point Plugin Discovery
+
+Third-party packages can advertise checks under the `iam_validator.checks` entry-point
+group instead of (or in addition to) `custom_checks_dir`. `create_default_registry()`
+discovers and registers them automatically — no config flag or CLI argument required.
+
+```toml
+# pyproject.toml of a third-party package
+[project.entry-points."iam_validator.checks"]
+mfa_required = "my_package.checks:MFARequiredCheck"
+```
+
+Once the package is installed in the same environment as `iam-validator`, its checks
+show up alongside the built-in ones. An entry point that fails to load, resolves to
+something that isn't a `PolicyCheck`, or declares a `check_id` that duplicates an
+already-registered check is logged and skipped — it does not abort discovery of the
+other entry points, and it does not shadow the existing check.
+
+!!! danger "Discovery is unconditional — there is no opt-out flag"
+
+    Unlike `custom_checks_dir` (gated behind `--custom-checks-dir` /
+    `--allow-config-custom-checks`, with a warning in `--help`), entry-point discovery
+    has no equivalent flag. Any package installed in the environment that advertises
+    the `iam_validator.checks` entry-point group has its code loaded and executed as soon
+    as `create_default_registry()` builds a registry — which the CLI, the SDK and the MCP
+    server all do, including for commands that don't otherwise touch custom checks, and
+    even when `include_builtin_checks=False`. Only install packages you trust into an
+    environment that runs this validator.

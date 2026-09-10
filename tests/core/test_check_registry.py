@@ -1,5 +1,6 @@
 """Unit tests for Check Registry module."""
 
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 import pytest
@@ -233,16 +234,14 @@ class TestSeverityFiltering:
 class TestPolicyCheck:
     """Test the PolicyCheck abstract base class."""
 
-    def test_cannot_instantiate_abstract_class(self):
-        """Test that PolicyCheck raises error when check_id/description not defined."""
-        # PolicyCheck itself can be instantiated but will raise NotImplementedError
-        # when accessing check_id or description
+    def test_required_attributes_not_silently_present(self):
+        """Test that incomplete checks don't silently have required attributes."""
         check = PolicyCheck()
 
-        with pytest.raises(NotImplementedError, match="check_id"):
+        with pytest.raises(AttributeError):
             _ = check.check_id
 
-        with pytest.raises(NotImplementedError, match="description"):
+        with pytest.raises(AttributeError):
             _ = check.description
 
     def test_mock_check_implementation(self):
@@ -268,6 +267,132 @@ class TestPolicyCheck:
 
         severity = check.get_severity(config)
         assert severity == "error"
+
+    def test_hasattr_is_false_for_missing_required_attributes(self):
+        class Incomplete(PolicyCheck):
+            check_id: ClassVar[str] = "incomplete"
+            description: ClassVar[str] = "has both, but probe an unrelated name"
+
+            async def execute(self, statement, statement_idx, fetcher, config):
+                return []
+
+        check = Incomplete()
+        assert hasattr(check, "check_id") is True
+        assert hasattr(check, "not_a_real_attribute") is False
+
+    def test_missing_check_id_does_not_raise_at_class_definition(self):
+        async def execute(self, statement, statement_idx, fetcher, config):
+            return []
+
+        cls = type("MissingId", (PolicyCheck,), {"description": "no check_id", "execute": execute})
+        with pytest.raises(NotImplementedError, match="must define check_id"):
+            CheckRegistry().register(cls())
+
+
+class IntermediateBaseCheck(PolicyCheck):
+    """Shared base class with no check_id/description, as a custom-checks user might write."""
+
+    async def execute(self, statement, statement_idx, fetcher, config):
+        return []
+
+
+class ConcreteFromIntermediateCheck(IntermediateBaseCheck):
+    check_id: ClassVar[str] = "concrete_from_intermediate"
+    description: ClassVar[str] = "Concrete check built on a shared intermediate base"
+
+
+class EmptyCheckIdCheck(PolicyCheck):
+    check_id: ClassVar[str] = ""
+    description: ClassVar[str] = "Has an empty check_id"
+
+    async def execute(self, statement, statement_idx, fetcher, config):
+        return []
+
+
+class EmptyDescriptionCheck(PolicyCheck):
+    check_id: ClassVar[str] = "empty_description_check"
+    description: ClassVar[str] = ""
+
+    async def execute(self, statement, statement_idx, fetcher, config):
+        return []
+
+
+class PropertyCheckIdEmptyCheck(PolicyCheck):
+    """check_id implemented as a @property returning an empty string."""
+
+    description: ClassVar[str] = "check_id property is empty"
+
+    @property
+    def check_id(self) -> str:
+        return ""
+
+    async def execute(self, statement, statement_idx, fetcher, config):
+        return []
+
+
+class InvalidPolicyTypeCheck(PolicyCheck):
+    check_id: ClassVar[str] = "invalid_policy_type_check"
+    description: ClassVar[str] = "Declares a bogus policy type"
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset({"SCP"})
+
+    async def execute(self, statement, statement_idx, fetcher, config):
+        return []
+
+
+class ValidPolicyTypeCheck(PolicyCheck):
+    check_id: ClassVar[str] = "valid_policy_type_check"
+    description: ClassVar[str] = "Declares valid policy types"
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset({"IDENTITY_POLICY", "RESOURCE_POLICY"})
+
+    async def execute(self, statement, statement_idx, fetcher, config):
+        return []
+
+
+class TestRegisterValidation:
+    """B1: required-attribute enforcement moved to register(). N5: policy-type validation."""
+
+    def test_intermediate_base_without_classvars_can_be_defined(self):
+        """Defining IntermediateBaseCheck itself must not raise (regression check)."""
+        assert IntermediateBaseCheck is not None
+
+    def test_concrete_subclass_of_intermediate_base_registers_fine(self):
+        registry = CheckRegistry()
+        check = ConcreteFromIntermediateCheck()
+        registry.register(check)
+        assert registry.get_check("concrete_from_intermediate") is check
+
+    def test_empty_check_id_raises_at_register(self):
+        registry = CheckRegistry()
+        with pytest.raises(NotImplementedError, match="must define check_id"):
+            registry.register(EmptyCheckIdCheck())
+
+    def test_empty_description_raises_at_register(self):
+        registry = CheckRegistry()
+        with pytest.raises(NotImplementedError, match="must define description"):
+            registry.register(EmptyDescriptionCheck())
+
+    def test_property_check_id_returning_empty_string_is_rejected(self):
+        registry = CheckRegistry()
+        with pytest.raises(NotImplementedError, match="must define check_id"):
+            registry.register(PropertyCheckIdEmptyCheck())
+
+    def test_invalid_policy_type_raises_value_error(self):
+        registry = CheckRegistry()
+        with pytest.raises(ValueError, match="InvalidPolicyTypeCheck"):
+            registry.register(InvalidPolicyTypeCheck())
+
+    def test_valid_policy_types_register_fine(self):
+        registry = CheckRegistry()
+        check = ValidPolicyTypeCheck()
+        registry.register(check)
+        assert registry.get_check("valid_policy_type_check") is check
+
+    def test_unset_applies_to_policy_types_registers_fine(self):
+        registry = CheckRegistry()
+        check = MockCheck()
+        assert check.applies_to_policy_types is None
+        registry.register(check)
+        assert registry.get_check("mock_check") is check
 
 
 class TestCheckRegistry:
@@ -485,10 +610,10 @@ class TestCheckRegistry:
         # Should not raise, but continue with working check
         issues = await registry.execute_checks_parallel(mock_statement, 0, mock_fetcher)
 
-        # The working check's issue, plus a check_execution_error for the failing one:
-        # a check that raised validated nothing, so the run must not report clean.
+        # A check that raised validated nothing, so the run must not report clean.
         assert len(issues) == 2
         by_type = {issue.issue_type: issue for issue in issues}
+        assert set(by_type) == {"check_execution_error", "test_issue"}
         assert by_type["check_execution_error"].check_id == "failing_check"
         assert by_type["check_execution_error"].severity == "error"
 
@@ -530,9 +655,8 @@ class TestCheckRegistry:
 
         issues = await registry.execute_checks_sequential(mock_statement, 0, mock_fetcher)
 
-        # As in the parallel path: the working check's issue plus a check_execution_error.
         assert len(issues) == 2
-        assert {issue.issue_type for issue in issues} >= {"check_execution_error"}
+        assert {issue.issue_type for issue in issues} == {"check_execution_error", "test_issue"}
 
     @pytest.mark.asyncio
     async def test_parallel_disabled_falls_back_to_sequential(self, mock_statement, mock_fetcher):
@@ -690,6 +814,53 @@ class TestCreateDefaultRegistry:
         registry = create_default_registry(enable_parallel=False, include_builtin_checks=False)
 
         assert registry.enable_parallel is False
+
+
+def test_checks_apply_to_all_policy_types_by_default():
+    from iam_validator.checks.sensitive_action import SensitiveActionCheck
+
+    check = SensitiveActionCheck()
+    assert check.applies_to_policy_types is None
+    assert check.applies_to("SERVICE_CONTROL_POLICY") is True
+    assert check.applies_to(None) is True
+
+
+def test_principal_validation_is_not_applied_to_rcps():
+    from iam_validator.checks.principal_validation import PrincipalValidationCheck
+
+    check = PrincipalValidationCheck()
+    assert check.applies_to("RESOURCE_CONTROL_POLICY") is False
+    assert check.applies_to("RESOURCE_POLICY") is True
+
+
+def test_wildcard_quartet_is_not_applied_to_scps():
+    from iam_validator.checks.full_wildcard import FullWildcardCheck
+    from iam_validator.checks.service_wildcard import ServiceWildcardCheck
+    from iam_validator.checks.wildcard_action import WildcardActionCheck
+    from iam_validator.checks.wildcard_resource import WildcardResourceCheck
+
+    for cls in (WildcardActionCheck, WildcardResourceCheck, ServiceWildcardCheck, FullWildcardCheck):
+        assert cls().applies_to("SERVICE_CONTROL_POLICY") is False
+        assert cls().applies_to("IDENTITY_POLICY") is True
+
+
+def test_action_condition_enforcement_is_not_applied_to_boundary_policies():
+    from iam_validator.checks.action_condition_enforcement import ActionConditionEnforcementCheck
+
+    check = ActionConditionEnforcementCheck()
+    assert check.applies_to("SERVICE_CONTROL_POLICY") is False
+    assert check.applies_to("RESOURCE_CONTROL_POLICY") is False
+    assert check.applies_to("IDENTITY_POLICY") is True
+
+
+def test_orchestrator_no_longer_hardcodes_check_ids():
+    import inspect
+
+    from iam_validator.core import policy_checks
+
+    src = inspect.getsource(policy_checks)
+    assert "skipped_check_ids" not in src
+    assert '"principal_validation"' not in src
 
 
 class TestOnCheckError:

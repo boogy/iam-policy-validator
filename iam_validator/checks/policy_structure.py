@@ -19,7 +19,6 @@ By detecting these issues early, we can:
 - Help users fix policies that would otherwise be rejected by Pydantic validation
 """
 
-import re
 from typing import Any, ClassVar
 
 from iam_validator.core.aws_service import AWSServiceFetcher
@@ -52,10 +51,6 @@ VALID_POLICY_VERSIONS = {"2012-10-17", "2008-10-17"}
 
 # Valid Effect values
 VALID_EFFECTS = {"Allow", "Deny"}
-
-# SID format: alphanumeric characters only (no spaces, hyphens, or underscores in AWS strict grammar)
-# However, AWS console and APIs often accept hyphens and underscores, so we allow them
-SID_PATTERN = re.compile(r"^[a-zA-Z0-9]+$")
 
 # Assume role actions used in trust policies (frozen set for O(1) lookup performance)
 ASSUME_ROLE_ACTIONS = frozenset(
@@ -130,9 +125,10 @@ def is_trust_policy(policy: IAMPolicy) -> bool:
         if statement.action:
             actions = [statement.action] if isinstance(statement.action, str) else statement.action
 
-        # Check if any action is an assume action (O(1) set lookup)
+        # Check if any action is an assume action (O(1) set lookup). A bare "*" is
+        # excluded: it marks a full-access policy, not role assumption.
         has_assume_action = any(
-            action in ASSUME_ROLE_ACTIONS or action in ("sts:*", "*") for action in actions if isinstance(action, str)
+            action in ASSUME_ROLE_ACTIONS or action == "sts:*" for action in actions if isinstance(action, str)
         )
 
         if has_assume_action:
@@ -261,9 +257,8 @@ def validate_policy_document(policy_dict: dict[str, Any]) -> list[ValidationIssu
             )
         )
     elif isinstance(policy_dict["Statement"], dict):
-        # AWS accepts a single Statement object without array wrapping.
-        # Normalize it to a list so downstream validation works uniformly.
-        policy_dict["Statement"] = [policy_dict["Statement"]]
+        # AWS accepts a single Statement object without array wrapping; nothing to flag.
+        pass
     elif not isinstance(policy_dict["Statement"], list):
         issues.append(
             ValidationIssue(
@@ -372,7 +367,7 @@ def validate_statement_structure(
             )
         )
 
-    # Validate SID format (if present)
+    # Validate SID type; format is checked by SidUniquenessCheck
     if sid is not None:
         if not isinstance(sid, str):
             issues.append(
@@ -384,21 +379,6 @@ def validate_statement_structure(
                     message=f"`Sid` must be a `string`, not `{type(sid).__name__}`",
                     suggestion='Wrap the `Sid` value in quotes to make it a string: `"Sid": "AllowS3Access"`',
                     example='"Sid": "AllowS3Access"',
-                    field_name="sid",
-                )
-            )
-        elif not SID_PATTERN.match(sid):
-            # According to AWS grammar, SID should be alphanumeric only
-            # However, we issue a warning instead of error since some AWS services accept more
-            invalid_chars = "".join(set(c for c in sid if not c.isalnum()))
-            issues.append(
-                ValidationIssue(
-                    severity="warning",
-                    statement_sid=sid,
-                    statement_index=statement_idx,
-                    issue_type="invalid_sid_format",
-                    message=f"`Sid` `{sid}` contains non-alphanumeric characters: `{invalid_chars}`",
-                    suggestion="According to AWS IAM policy grammar, `Sid` should contain only alphanumeric characters `(A-Z, a-z, 0-9)`.",
                     field_name="sid",
                 )
             )
@@ -542,9 +522,11 @@ class PolicyStructureCheck(PolicyCheck):
         if raw_policy_dict:
             issues.extend(validate_policy_document(raw_policy_dict))
 
-            # Validate each statement's structure
-            if isinstance(raw_policy_dict.get("Statement"), list):
-                for idx, stmt_dict in enumerate(raw_policy_dict["Statement"]):
+            statements = raw_policy_dict.get("Statement")
+            if isinstance(statements, dict):
+                statements = [statements]
+            if isinstance(statements, list):
+                for idx, stmt_dict in enumerate(statements):
                     if isinstance(stmt_dict, dict):
                         issues.extend(validate_statement_structure(stmt_dict, idx, policy_type))
 

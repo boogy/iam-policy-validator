@@ -162,6 +162,10 @@ class WildcardResourceCheck(PolicyCheck):
     check_id: ClassVar[str] = "wildcard_resource"
     description: ClassVar[str] = "Checks for wildcard resources (*)"
     default_severity: ClassVar[str] = "medium"
+    # In a boundary policy (SCP/RCP) an Allow declines to restrict; it never grants access.
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset(
+        {"IDENTITY_POLICY", "RESOURCE_POLICY", "TRUST_POLICY"}
+    )
 
     async def execute(
         self,

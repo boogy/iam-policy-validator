@@ -5,31 +5,14 @@ to their actual action names using the AWS Service Reference API.
 """
 
 import logging
-import re
-from functools import lru_cache
 
+from iam_validator.checks.utils.aws_matching import compile_iam_glob
 from iam_validator.core.aws_service import AWSServiceFetcher
 
 logger = logging.getLogger(__name__)
 
-
-# Global cache for compiled wildcard patterns (shared across checks)
-# Using lru_cache for O(1) pattern reuse and 20-30x performance improvement
-@lru_cache(maxsize=512)
-def compile_wildcard_pattern(pattern: str) -> re.Pattern[str]:
-    """Compile and cache wildcard patterns for O(1) reuse.
-
-    Args:
-        pattern: Wildcard pattern (e.g., "s3:Get*")
-
-    Returns:
-        Compiled regex pattern
-
-    Performance:
-        20-30x speedup by avoiding repeated pattern compilation
-    """
-    regex_pattern = "^" + re.escape(pattern).replace(r"\*", ".*") + "$"
-    return re.compile(regex_pattern, re.IGNORECASE)
+# Alias kept for backward-compatible imports (documented in checks/CLAUDE.md).
+compile_wildcard_pattern = compile_iam_glob
 
 
 async def expand_wildcard_actions(actions: list[str], fetcher: AWSServiceFetcher) -> list[str]:

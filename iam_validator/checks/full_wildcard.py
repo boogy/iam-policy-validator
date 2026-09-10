@@ -13,6 +13,10 @@ class FullWildcardCheck(PolicyCheck):
     check_id: ClassVar[str] = "full_wildcard"
     description: ClassVar[str] = "Checks for both action and resource wildcards together (critical risk)"
     default_severity: ClassVar[str] = "critical"
+    # In a boundary policy (SCP/RCP) an Allow declines to restrict; it never grants access.
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset(
+        {"IDENTITY_POLICY", "RESOURCE_POLICY", "TRUST_POLICY"}
+    )
 
     supersedes: ClassVar[frozenset[str]] = frozenset(
         {

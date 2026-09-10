@@ -216,6 +216,26 @@ async def execute_policy(
     pass
 ```
 
+## Restricting to Policy Types
+
+Set `applies_to_policy_types` when a check is only meaningful for some policy types
+(e.g. a check about role assumption makes no sense on a service control policy):
+
+```python
+class MFARequiredCheck(PolicyCheck):
+    check_id: ClassVar[str] = "mfa_required"
+    description: ClassVar[str] = "Ensures sensitive actions require MFA"
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset(
+        {"IDENTITY_POLICY", "RESOURCE_POLICY"}
+    )
+```
+
+`None` (the default) means the check runs for every policy type. The valid members are
+the `PolicyType` values defined in `iam_validator/core/models.py` — currently
+`IDENTITY_POLICY`, `RESOURCE_POLICY`, `TRUST_POLICY`, `SERVICE_CONTROL_POLICY`, and
+`RESOURCE_CONTROL_POLICY`; check that module for the current list. Declaring a member
+that isn't one of these raises `ValueError` when the check is registered.
+
 ## Next Steps
 
 - [Examples](examples.md) — More check examples

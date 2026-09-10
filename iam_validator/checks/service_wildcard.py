@@ -28,6 +28,10 @@ class ServiceWildcardCheck(PolicyCheck):
     check_id: ClassVar[str] = "service_wildcard"
     description: ClassVar[str] = "Checks for service-level wildcards (e.g., 'iam:*', 's3:*')"
     default_severity: ClassVar[str] = "high"
+    # In a boundary policy (SCP/RCP) an Allow declines to restrict; it never grants access.
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset(
+        {"IDENTITY_POLICY", "RESOURCE_POLICY", "TRUST_POLICY"}
+    )
 
     async def execute(
         self,

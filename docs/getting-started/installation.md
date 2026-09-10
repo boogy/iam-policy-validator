@@ -70,7 +70,42 @@ iam-validator 1.17.0
 
 ## Shell Completion
 
-Enable shell completion for a better CLI experience:
+Enable shell completion for a better CLI experience.
+
+`--install` writes the completion script to your user completion directory and
+prints the one line to add to your shell rc file:
+
+=== "Bash"
+
+    ```bash
+    iam-validator completion bash --install
+    ```
+
+    Installs to `~/.local/share/bash-completion/completions/iam-validator`, then
+    add to `~/.bashrc`:
+
+    ```bash
+    source "$HOME/.local/share/bash-completion/completions/iam-validator"
+    ```
+
+=== "Zsh"
+
+    ```bash
+    iam-validator completion zsh --install
+    ```
+
+    Installs to `~/.local/share/zsh/site-functions/_iam-validator`, then add to
+    `~/.zshrc`:
+
+    ```bash
+    fpath+=("$HOME/.local/share/zsh/site-functions")
+    autoload -Uz compinit && compinit
+    ```
+
+Re-run the same command after upgrading — it always overwrites, so the
+completions never go stale.
+
+To evaluate the script directly instead of installing it, drop `--install`:
 
 === "Bash"
 

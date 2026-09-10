@@ -242,6 +242,30 @@ class TestIfExistsAlwaysPresentKeys:
         assert "StringEquals" in redundant[0].message
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("operator", "expected_base"),
+        [
+            ("StringEqualsIfExists", "StringEquals"),
+            ("stringequalsifexists", "StringEquals"),
+            ("ForAnyValue:StringLikeIfExists", "ForAnyValue:StringLike"),
+            ("foranyvalue:stringlikeifexists", "ForAnyValue:StringLike"),
+        ],
+    )
+    async def test_redundant_message_names_canonical_base_operator(self, check, config, operator, expected_base):
+        """The suggested replacement must be the canonical base operator, not the
+        original operator echoed back, whatever casing the policy used."""
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={operator: {"aws:PrincipalAccount": "123456789012"}},
+        )
+        issues = await check.execute(statement, 0, None, config)
+        redundant = [i for i in issues if i.issue_type == "ifexists_on_always_present_key"]
+        assert len(redundant) == 1
+        assert f"same effect as `{expected_base}`" in redundant[0].message
+
+    @pytest.mark.asyncio
     async def test_ifexists_on_sometimes_absent_key_no_redundant(self, check, config):
         """IfExists on sometimes-absent key should not flag as redundant."""
         statement = Statement(
@@ -268,6 +292,31 @@ class TestIfExistsAlwaysPresentKeys:
         )
         issues = await check.execute(statement, 0, None, config)
         assert not any(i.issue_type == "ifexists_on_always_present_key" for i in issues)
+
+
+class TestNullIfExistsNotTreatedAsIfExistsUsage:
+    """NullIfExists is invalid syntax (condition_type_mismatch flags it); this check
+    must not also report it as legitimate IfExists usage."""
+
+    @pytest.fixture
+    def check(self):
+        return IfExistsConditionCheck()
+
+    @pytest.fixture
+    def config(self):
+        return CheckConfig(check_id="ifexists_condition_usage")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("operator", ["NullIfExists", "nullifexists", "ForAllValues:NullIfExists"])
+    async def test_null_ifexists_produces_no_findings(self, operator, check, config):
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={operator: {"aws:SourceIp": "false"}},
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert issues == []
 
 
 class TestCheckMetadata:

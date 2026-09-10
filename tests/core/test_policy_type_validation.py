@@ -601,3 +601,66 @@ class TestRCPShapeHint:
     async def test_no_hint_when_declared_as_rcp(self):
         issues = await execute_policy(self._rcp_shaped_policy(), "test.json", policy_type="RESOURCE_CONTROL_POLICY")
         assert not [i for i in issues if i.issue_type == "policy_type_hint"]
+
+
+class TestRCPFullAWSAccessExemption:
+    """Only AWS's own RCPFullAWSAccess statement may use Allow in an RCP."""
+
+    @staticmethod
+    def _rcp(**overrides) -> IAMPolicy:
+        fields = {
+            "effect": "Allow",
+            "principal": "*",
+            "action": ["*"],
+            "resource": ["*"],
+        }
+        fields.update(overrides)
+        return IAMPolicy(version="2012-10-17", statement=[Statement(**fields)])
+
+    @pytest.mark.asyncio
+    async def test_rcp_full_aws_access_is_exempt(self):
+        policy = self._rcp(sid="RCPFullAWSAccess")
+        issues = await execute_policy(policy, "test.json", policy_type="RESOURCE_CONTROL_POLICY")
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_narrow_resource_allow_is_not_exempt(self):
+        policy = self._rcp(resource=["arn:aws:s3:::my-bucket"])
+        issues = await execute_policy(policy, "test.json", policy_type="RESOURCE_CONTROL_POLICY")
+        assert "invalid_rcp_effect" in {i.issue_type for i in issues}
+
+    @pytest.mark.asyncio
+    async def test_narrow_action_allow_is_not_exempt(self):
+        policy = self._rcp(action=["s3:GetObject"])
+        issues = await execute_policy(policy, "test.json", policy_type="RESOURCE_CONTROL_POLICY")
+        assert "invalid_rcp_effect" in {i.issue_type for i in issues}
+
+    @pytest.mark.asyncio
+    async def test_allow_without_principal_is_not_exempt(self):
+        policy = self._rcp(principal=None)
+        issues = await execute_policy(policy, "test.json", policy_type="RESOURCE_CONTROL_POLICY")
+        issue_types = {i.issue_type for i in issues}
+        assert "invalid_rcp_effect" in issue_types
+        assert "invalid_rcp_wildcard_action" in issue_types
+
+    @pytest.mark.asyncio
+    async def test_scoped_principal_allow_is_not_exempt(self):
+        policy = self._rcp(principal={"AWS": "arn:aws:iam::123456789012:root"})
+        issues = await execute_policy(policy, "test.json", policy_type="RESOURCE_CONTROL_POLICY")
+        assert "invalid_rcp_effect" in {i.issue_type for i in issues}
+
+    @pytest.mark.asyncio
+    async def test_conditional_allow_is_not_exempt(self):
+        policy = self._rcp(condition={"Bool": {"aws:SecureTransport": "false"}})
+        issues = await execute_policy(policy, "test.json", policy_type="RESOURCE_CONTROL_POLICY")
+        assert "invalid_rcp_effect" in {i.issue_type for i in issues}
+
+    @pytest.mark.asyncio
+    async def test_scp_allow_wildcard_action_unchanged(self):
+        """The SCP branch is untouched: FullAWSAccess stays clean without the RCP exemption."""
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[Statement(sid="FullAWSAccess", effect="Allow", action=["*"], resource=["*"])],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="SERVICE_CONTROL_POLICY")
+        assert issues == []

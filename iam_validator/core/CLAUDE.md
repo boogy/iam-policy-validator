@@ -12,7 +12,7 @@ core/
 ├── check_registry.py       # PolicyCheck ABC, CheckConfig, CheckRegistry, create_default_registry
 │                           # a check that raises -> check_execution_error finding (settings.on_check_error)
 ├── models.py               # Pydantic v2: IAMPolicy, Statement, ValidationIssue, PolicyValidationResult
-├── policy_loader.py        # JSON/YAML loading + auto-detect (also embedded in CFN/Terraform)
+├── policy_loader.py        # JSON/YAML loading + auto-detect
 ├── policy_checks.py        # validate_policies() orchestrator
 ├── report.py               # ReportGenerator, ContextIssueInfo, IgnoredFindingInfo
 ├── pr_commenter.py         # diff-aware PR posting (3 tiers, off-diff pipeline)
@@ -26,6 +26,8 @@ core/
 ├── ignored_findings.py     # storage (hidden PR comment with JSON payload)
 ├── codeowners.py
 ├── constants.py            # central markers, ARN partition regex, size limits
+├── aws_matching.py         # case-insensitive IAM glob matching (compile_iam_glob,
+│                           # iam_glob_match, action_matches); re-exported by checks/utils/
 ├── aws_service/            # service-reference fetcher (memory LRU + disk TTL 7 days)
 ├── config/                 # YAML config + sensitive_actions / condition_requirements
 └── formatters/             # 7 output formatters
@@ -46,10 +48,40 @@ PolicyLoader.load_*  →  validate_policies()
                         →  Formatter (console|json|markdown|sarif|csv|html)
 ```
 
+Policies are validated concurrently under an `asyncio.Semaphore` bounded by
+`max_concurrency` (the `validate_policies()` argument, else the config setting, default
+10 — there is no CLI flag; SDK shortcuts/context helpers don't forward it either, so
+only a direct `validate_policies()` call can override it). Within a
+policy, statements are gathered concurrently and unbounded; statement order is preserved
+because `ignore_patterns` and PR-comment fingerprints anchor to it.
+
 `PRCommenter` then runs diff-aware filtering with 3 tiers (changed line → inline review
 comment, modified statement / unchanged line → off-diff pipeline → context-issue table
 in summary). `protected_fingerprints` keeps off-diff comments alive across the
 `update_or_create_review_comments` cleanup phase.
+
+---
+
+## Finding suppression
+
+Gated on `settings.suppress_superseded_findings` (default true) and applied in two
+places, both keyed on the superseding check's `supersedes` frozenset — a check id absent
+from it is never suppressed:
+
+- `check_registry._apply_supersedes()` — statement-level, drops findings from checks a
+  matching superseding check names.
+- `policy_checks` — policy-level, drops findings whose `statement_index` points at a
+  statement the `full_wildcard` check suppressed, again only for ids in `supersedes`.
+
+Both paths respect the superseding check's `applies_to_policy_types`: if it does not run
+for the policy type, nothing is suppressed.
+
+`check_registry.load_entry_point_checks(registry)` registers third-party checks advertised
+under the `iam_validator.checks` entry-point group (`ENTRY_POINT_GROUP`). An entry that is
+not a `PolicyCheck`, or whose `check_id` is already registered, is logged and skipped
+rather than aborting discovery. It lives in `check_registry` so `create_default_registry()`
+does not have to import `config_loader`. Patch `iam_validator.core.check_registry.entry_points`
+in tests.
 
 ---
 
@@ -68,7 +100,14 @@ AWS rejects outright) rather than raising `ValueError` — a raise reaches
 `check_registry`, which logs it and drops every finding from that check for the whole
 statement. `parse_action` still raises; `describe_action_format_error` builds the message.
 
+`validate_condition_key` accepts what the Service Reference cannot enumerate: the standard
+OIDC claims (`aud`, `sub`, `oaud`, `amr`) on `sts:AssumeRoleWithWebIdentity` for any
+provider URL, and keys whose provider identifier AWS templates as `${Name}`
+(`token.actions.${Domain}.ghe.com:actor`). Constants live in `constants.py`.
+
 Two-layer cache: memory LRU (raw JSON + Pydantic models) → disk TTL (raw JSON only).
+Disk reads and writes run on a worker thread (`asyncio.to_thread`) so cache I/O never
+blocks the event loop.
 Cache dirs: `~/Library/Caches` (macOS), `~/.cache` (Linux), `%LOCALAPPDATA%` (Win).
 Sub-files: `client.py` (httpx + retry + request coalescing), `cache.py`, `storage.py`,
 `validators.py`, `parsers.py`, `patterns.py` (compiled regex singletons).
@@ -101,3 +140,15 @@ config = load_validator_config("iam-validator.yaml")  # Priority: CLI > config >
 | New config option        | default in `config/defaults.py` → field on `ValidatorConfig` in `config/config_loader.py` → docs |
 | New global condition key | `config/aws_global_conditions.py`                                                                |
 | New sensitive action     | `config/sensitive_actions.py` with risk category                                                 |
+| Third-party check        | advertise the class under the `iam_validator.checks` entry-point group (no core edit)            |
+
+### Emoji in console output (gotcha)
+
+Rich sizes a fixed-width `Panel` with `rich.cells.cell_len`; the terminal advances by
+`wcwidth`. They disagree on a base codepoint followed by U+FE0F (`⚠️`, `ℹ️`, `🛡️`):
+Rich measures 2 cells, the terminal 1, and the panel's right border shifts left on
+every line carrying one. Anything printed to a `Console` may only use codepoints whose
+`unicodedata.east_asian_width` is `W` or `F` — use `constants.CONSOLE_ICON_WARNING` /
+`CONSOLE_ICON_INFO` rather than a literal. Markdown, HTML and PR-comment output are
+unaffected and keep the original emoji. `tests/core/test_console_alignment.py` enforces
+this for `formatters/enhanced.py` and `formatters/console.py`.

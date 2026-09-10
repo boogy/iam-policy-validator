@@ -63,10 +63,8 @@ DEFAULT_CONFIG = {
     # Global Settings
     # ========================================================================
     "settings": {
-        # Stop validation on first error
-        "fail_fast": False,
         # Maximum number of concurrent policy validations
-        "max_concurrent": 10,
+        "max_concurrency": 10,
         # Enable/disable ALL built-in checks (set to False when using AWS Access Analyzer)
         "enable_builtin_checks": True,
         # Enable parallel execution of checks for better performance
@@ -333,7 +331,7 @@ DEFAULT_CONFIG = {
         # Default rules validate:
         #   - sts:AssumeRole → AWS or Service principals
         #   - sts:AssumeRoleWithSAML → Federated (SAML provider) with SAML:aud
-        #   - sts:AssumeRoleWithWebIdentity → Federated (OIDC provider)
+        #   - sts:AssumeRoleWithWebIdentity → Federated (OIDC provider) with *:aud and one of *:sub, *:amr
         # Example custom rules:
         # "validation_rules": {
         #     "sts:AssumeRole": {

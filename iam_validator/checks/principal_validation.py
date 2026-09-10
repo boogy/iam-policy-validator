@@ -41,6 +41,11 @@ import fnmatch
 from typing import Any, ClassVar
 
 from iam_validator.checks.utils import format_list_with_backticks
+from iam_validator.checks.utils.condition_matching import (
+    has_condition_key,
+    is_deny,
+    is_negated_operator,
+)
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.config.service_principals import is_aws_service_principal
@@ -53,6 +58,10 @@ class PrincipalValidationCheck(PolicyCheck):
     check_id: ClassVar[str] = "principal_validation"
     description: ClassVar[str] = "Validates Principal elements in resource policies for security best practices"
     default_severity: ClassVar[str] = "high"
+    # RCPs require Principal: "*" by AWS syntax rule, so wildcard-principal findings are structural noise there.
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset(
+        {"IDENTITY_POLICY", "RESOURCE_POLICY", "TRUST_POLICY", "SERVICE_CONTROL_POLICY"}
+    )
 
     async def execute(
         self,
@@ -83,7 +92,7 @@ class PrincipalValidationCheck(PolicyCheck):
         # "*" denies nobody. NotPrincipal spells that inversion with a principal (so it
         # falls through to the normal rules); ArnNotEquals & friends spell it with a
         # condition, which only this check catches.
-        if self._is_deny(statement) and statement.not_principal is None:
+        if is_deny(statement) and statement.not_principal is None:
             return self._check_deny_carve_out(statement, statement_idx, config)
 
         # Get configuration (defaults match defaults.py)
@@ -183,17 +192,6 @@ class PrincipalValidationCheck(PolicyCheck):
 
         return issues
 
-    #: Condition operators that carve principals *out* of a Deny (negated matching).
-    _NEGATED_OPERATORS: ClassVar[frozenset[str]] = frozenset(
-        {
-            "arnnotequals",
-            "arnnotlike",
-            "stringnotequals",
-            "stringnotequalsignorecase",
-            "stringnotlike",
-        }
-    )
-
     #: Condition keys that identify *who* the caller is, as opposed to what they request.
     _PRINCIPAL_CONDITION_KEYS: ClassVar[frozenset[str]] = frozenset(
         {
@@ -209,27 +207,10 @@ class PrincipalValidationCheck(PolicyCheck):
         }
     )
 
-    @staticmethod
-    def _is_deny(statement: Statement) -> bool:
-        """Return True only for an unambiguous Deny, so a malformed Effect is still checked.
-
-        Matched case-insensitively: policies reach the check straight from user files.
-        """
-        return isinstance(statement.effect, str) and statement.effect.strip().lower() == "deny"
-
     @classmethod
     def _is_principal_condition_key(cls, key: str) -> bool:
         normalized = key.strip().lower()
         return normalized in cls._PRINCIPAL_CONDITION_KEYS or normalized.startswith("aws:principaltag/")
-
-    @staticmethod
-    def _base_operator(operator: str) -> str:
-        """Lowercase operator without set prefix (ForAnyValue:/ForAllValues:) or IfExists suffix."""
-        return operator.strip().lower().rsplit(":", 1)[-1].removesuffix("ifexists")
-
-    @classmethod
-    def _is_negated_operator(cls, operator: str) -> bool:
-        return cls._base_operator(operator) in cls._NEGATED_OPERATORS
 
     def _check_deny_carve_out(
         self,
@@ -249,7 +230,7 @@ class PrincipalValidationCheck(PolicyCheck):
             return []
 
         for operator, entries in statement.condition.items():
-            if not self._is_negated_operator(operator) or not isinstance(entries, dict):
+            if not is_negated_operator(operator) or not isinstance(entries, dict):
                 continue
             for key, value in entries.items():
                 if not self._is_principal_condition_key(key):
@@ -675,74 +656,7 @@ class PrincipalValidationCheck(PolicyCheck):
         operator = condition_requirement.get("operator")
         expected_value = condition_requirement.get("expected_value")
 
-        return self._has_condition(statement, condition_key, operator, expected_value)
-
-    def _has_condition(
-        self,
-        statement: Statement,
-        condition_key: str,
-        operator: str | None = None,
-        expected_value: Any = None,
-    ) -> bool:
-        """Check if statement has the specified condition key.
-
-        Args:
-            statement: The IAM policy statement
-            condition_key: The condition key to look for
-            operator: Optional specific operator (e.g., "StringEquals")
-            expected_value: Optional expected value for the condition
-
-        Returns:
-            True if condition is present (and matches expected value if specified)
-        """
-        if not statement.condition:
-            return False
-
-        if operator:
-            wanted = operator.strip().lower()
-            operators_to_check = [op for op in statement.condition if op.strip().lower() == wanted]
-        else:
-            # Null only asserts a key's presence or absence; it never constrains the value.
-            operators_to_check = [op for op in statement.condition if self._base_operator(op) != "null"]
-
-        key_lower = condition_key.lower()
-
-        # Look through specified condition operators
-        for op in operators_to_check:
-            conditions = statement.condition[op]
-            if isinstance(conditions, dict):
-                actual_key = next((k for k in conditions if k.lower() == key_lower), None)
-                if actual_key is not None:
-                    # If no expected value specified, just presence is enough
-                    if expected_value is None:
-                        return True
-
-                    # Check if the value matches
-                    actual_value = conditions[actual_key]
-
-                    # Handle boolean values
-                    if isinstance(expected_value, bool):
-                        if isinstance(actual_value, bool):
-                            return actual_value == expected_value
-                        if isinstance(actual_value, str):
-                            return actual_value.lower() == str(expected_value).lower()
-
-                    # Handle exact matches
-                    if actual_value == expected_value:
-                        return True
-
-                    # Handle list values (actual can be string or list)
-                    if isinstance(expected_value, list):
-                        if isinstance(actual_value, list):
-                            return set(expected_value) == set(actual_value)
-                        if actual_value in expected_value:
-                            return True
-
-                    # Handle string matches for variable references like ${aws:PrincipalTag/owner}
-                    if str(actual_value) == str(expected_value):
-                        return True
-
-        return False
+        return has_condition_key(statement, condition_key, operator, expected_value)
 
     def _create_condition_issue(
         self,

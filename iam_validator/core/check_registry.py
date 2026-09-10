@@ -13,12 +13,13 @@ import asyncio
 import logging
 from abc import ABC
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar
+from importlib.metadata import entry_points
+from typing import TYPE_CHECKING, Any, ClassVar, get_args
 
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.config.check_documentation import CheckDocumentationRegistry
 from iam_validator.core.ignore_patterns import IgnorePatternMatcher
-from iam_validator.core.models import Statement, ValidationIssue
+from iam_validator.core.models import PolicyType, Statement, ValidationIssue
 
 if TYPE_CHECKING:
     from iam_validator.core.models import IAMPolicy
@@ -223,21 +224,23 @@ class PolicyCheck(ABC):
     #: Check IDs whose findings this check supersedes when matches() returns True.
     supersedes: ClassVar[frozenset[str]] = frozenset()
 
+    #: PolicyType values this check is meaningful for; None means all types.
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = None
+
     def matches(self, statement: Statement) -> bool:
         """True if this check dominates the statement (enables suppression of supersedes set).
         Only relevant when supersedes is non-empty."""
         return True
 
-    def __getattr__(self, name: str) -> Any:
-        """Raise NotImplementedError for required attributes not defined by subclass."""
-        if name in ("check_id", "description"):
-            raise NotImplementedError(f"Subclasses must define {name}")
-        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+    def applies_to(self, policy_type: str | None) -> bool:
+        """True when this check is meaningful for ``policy_type``; ``None`` means all types."""
+        if self.applies_to_policy_types is None or policy_type is None:
+            return True
+        return policy_type in self.applies_to_policy_types
 
     def __init_subclass__(cls, **kwargs):
         """
-        Validate that subclasses define required attributes and override
-        at least one execution method.
+        Validate that subclasses override at least one execution method.
 
         This ensures checks implement either execute() OR execute_policy() (or both).
         If neither is overridden, the check would never produce any results.
@@ -384,6 +387,7 @@ class CheckRegistry:
         check_id: str,
         error: BaseException,
         statement_idx: int,
+        statement_sid: str | None = None,
     ) -> list[ValidationIssue]:
         """Turn a check that raised into a finding, unless configured not to.
 
@@ -401,18 +405,20 @@ class CheckRegistry:
             check_id: The check that raised
             error: The exception it raised
             statement_idx: Statement index for reporting (0 for policy-level checks)
+            statement_sid: Sid of the statement being checked, when there is one
 
         Returns:
             A single-issue list, or an empty list when on_check_error is "warn"
         """
         if self.on_check_error == "warn":
-            logger.warning("Check '%s' failed: %s", check_id, error)
+            logger.warning("Check '%s' failed: %s", check_id, error, exc_info=error)
             return []
 
-        logger.error("Check '%s' failed: %s", check_id, error)
+        logger.error("Check '%s' failed: %s", check_id, error, exc_info=error)
         return [
             ValidationIssue(
                 severity="error",
+                statement_sid=statement_sid,
                 statement_index=statement_idx,
                 issue_type="check_execution_error",
                 check_id=check_id,
@@ -435,7 +441,26 @@ class CheckRegistry:
 
         Args:
             check: PolicyCheck instance to register
+
+        Raises:
+            NotImplementedError: If the check does not define a non-empty
+                ``check_id`` or ``description``.
+            ValueError: If the check declares an ``applies_to_policy_types``
+                member that is not a valid ``PolicyType``.
         """
+        for required in ("check_id", "description"):
+            if not getattr(check, required, None):
+                raise NotImplementedError(f"{type(check).__name__} must define {required}")
+
+        if check.applies_to_policy_types is not None:
+            valid_policy_types = set(get_args(PolicyType))
+            invalid = set(check.applies_to_policy_types) - valid_policy_types
+            if invalid:
+                raise ValueError(
+                    f"{type(check).__name__} declares invalid applies_to_policy_types "
+                    f"{sorted(invalid)}; valid values are {sorted(valid_policy_types)}"
+                )
+
         self._checks[check.check_id] = check
 
         # Create default config if not exists
@@ -556,8 +581,7 @@ class CheckRegistry:
     ) -> dict[str, list[ValidationIssue]]:
         """Post-process issues to suppress redundant findings when a superseding check fired.
 
-        Suppresses ALL other checks that produced issues for this statement — not just
-        the hardcoded supersedes set — so custom checks are automatically covered.
+        Only check IDs named in a superseding check's `supersedes` frozenset are suppressed.
         """
         superseding = [
             (check, issues_map.get(check.check_id, []))
@@ -567,7 +591,10 @@ class CheckRegistry:
         if not superseding:
             return issues_map
         superseder_ids = {check.check_id for check, _ in superseding}
-        suppressed_ids = set(issues_map.keys()) - superseder_ids
+        declared: set[str] = set()
+        for check, _ in superseding:
+            declared |= set(check.supersedes)
+        suppressed_ids = (declared & set(issues_map.keys())) - superseder_ids
         if not suppressed_ids:
             return issues_map
         for _, s_issues in superseding:
@@ -585,6 +612,8 @@ class CheckRegistry:
         statement_idx: int,
         fetcher: AWSServiceFetcher,
         filepath: str = "",
+        *,
+        policy_type: str | None = None,
     ) -> list[ValidationIssue]:
         """
         Execute all enabled checks in parallel for maximum performance.
@@ -597,11 +626,12 @@ class CheckRegistry:
             statement_idx: Index of the statement in the policy
             fetcher: AWS service fetcher for API calls
             filepath: Path to the policy file (for ignore_patterns filtering)
+            policy_type: Policy type to filter checks by applicability; None runs all enabled checks
 
         Returns:
             List of all ValidationIssue objects from all checks (filtered by ignore_patterns)
         """
-        enabled_checks = self.get_enabled_checks()
+        enabled_checks = [c for c in self.get_enabled_checks() if c.applies_to(policy_type)]
 
         if not enabled_checks:
             return []
@@ -609,17 +639,22 @@ class CheckRegistry:
         if not self.enable_parallel or len(enabled_checks) == 1:
             # Run sequentially if parallel disabled or only one check
             issues_map: dict[str, list[ValidationIssue]] = {}
+            failures: list[ValidationIssue] = []
             for check in enabled_checks:
                 config = self.get_config(check.check_id)
-                if config:
-                    try:
-                        issues = await check.execute(statement, statement_idx, fetcher, config)
-                        issues_map[check.check_id] = self._process_issues(issues, check, config, filepath)
-                    except Exception as e:  # pylint: disable=broad-exception-caught
-                        issues_map[check.check_id] = self._handle_check_error(check.check_id, e, statement_idx)
+                if not config:
+                    continue
+                try:
+                    issues = await check.execute(statement, statement_idx, fetcher, config)
+                except Exception as exc:  # noqa: BLE001 - a crashed check must not abort the run
+                    failures.extend(self._handle_check_error(check.check_id, exc, statement_idx, statement.sid))
+                    continue
+                processed = self._process_issues(issues, check, config, filepath)
+                if processed:
+                    issues_map[check.check_id] = processed
             if self.suppress_superseded:
                 issues_map = self._apply_supersedes(statement, enabled_checks, issues_map)
-            return [issue for issues in issues_map.values() for issue in issues]
+            return failures + [issue for issues in issues_map.values() for issue in issues]
 
         # Execute all checks in parallel
         tasks = []
@@ -638,19 +673,20 @@ class CheckRegistry:
 
         # Build issues_map, handling exceptions and applying filters
         issues_map = {}
+        failures = []
         for idx, result in enumerate(results):
-            if isinstance(result, Exception):
-                issues_map[task_checks[idx].check_id] = self._handle_check_error(
-                    task_checks[idx].check_id, result, statement_idx
-                )
+            check_id = task_checks[idx].check_id
+            if isinstance(result, BaseException):
+                failures.extend(self._handle_check_error(check_id, result, statement_idx, statement.sid))
             elif isinstance(result, list):
                 processed = self._process_issues(result, task_checks[idx], configs[idx], filepath)
-                issues_map[task_checks[idx].check_id] = processed
+                if processed:
+                    issues_map[check_id] = processed
 
         if self.suppress_superseded:
             issues_map = self._apply_supersedes(statement, enabled_checks, issues_map)
 
-        return [issue for issues in issues_map.values() for issue in issues]
+        return failures + [issue for issues in issues_map.values() for issue in issues]
 
     async def execute_checks_sequential(
         self,
@@ -658,6 +694,8 @@ class CheckRegistry:
         statement_idx: int,
         fetcher: AWSServiceFetcher,
         filepath: str = "",
+        *,
+        policy_type: str | None = None,
     ) -> list[ValidationIssue]:
         """
         Execute all enabled checks sequentially.
@@ -669,26 +707,32 @@ class CheckRegistry:
             statement_idx: Index of the statement in the policy
             fetcher: AWS service fetcher for API calls
             filepath: Path to the policy file (for ignore_patterns filtering)
+            policy_type: Policy type to filter checks by applicability; None runs all enabled checks
 
         Returns:
             List of all ValidationIssue objects from all checks
         """
-        enabled_checks = self.get_enabled_checks()
+        enabled_checks = [c for c in self.get_enabled_checks() if c.applies_to(policy_type)]
         issues_map: dict[str, list[ValidationIssue]] = {}
+        failures: list[ValidationIssue] = []
 
         for check in enabled_checks:
             config = self.get_config(check.check_id)
-            if config:
-                try:
-                    issues = await check.execute(statement, statement_idx, fetcher, config)
-                    issues_map[check.check_id] = self._process_issues(issues, check, config, filepath)
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    issues_map[check.check_id] = self._handle_check_error(check.check_id, e, statement_idx)
+            if not config:
+                continue
+            try:
+                issues = await check.execute(statement, statement_idx, fetcher, config)
+            except Exception as exc:  # noqa: BLE001 - a crashed check must not abort the run
+                failures.extend(self._handle_check_error(check.check_id, exc, statement_idx, statement.sid))
+                continue
+            processed = self._process_issues(issues, check, config, filepath)
+            if processed:
+                issues_map[check.check_id] = processed
 
         if self.suppress_superseded:
             issues_map = self._apply_supersedes(statement, enabled_checks, issues_map)
 
-        return [issue for issues in issues_map.values() for issue in issues]
+        return failures + [issue for issues in issues_map.values() for issue in issues]
 
     async def execute_policy_checks(
         self,
@@ -717,8 +761,8 @@ class CheckRegistry:
         all_issues = []
         enabled_checks = self.get_enabled_checks()
 
-        # Filter to only policy-level checks
-        policy_level_checks = [c for c in enabled_checks if c.is_policy_level_check()]
+        # Filter to only policy-level checks applicable to this policy type
+        policy_level_checks = [c for c in enabled_checks if c.is_policy_level_check() and c.applies_to(policy_type)]
 
         if not policy_level_checks:
             return []
@@ -727,19 +771,21 @@ class CheckRegistry:
             # Run sequentially if parallel disabled or only one check
             for check in policy_level_checks:
                 config = self.get_config(check.check_id)
-                if config:
-                    try:
-                        issues = await check.execute_policy(
-                            policy,
-                            policy_file,
-                            fetcher,
-                            config,
-                            policy_type=policy_type,
-                            **kwargs,
-                        )
-                        all_issues.extend(self._process_issues(issues, check, config, policy_file))
-                    except Exception as e:  # pylint: disable=broad-exception-caught
-                        all_issues.extend(self._handle_check_error(check.check_id, e, 0))
+                if not config:
+                    continue
+                try:
+                    issues = await check.execute_policy(
+                        policy,
+                        policy_file,
+                        fetcher,
+                        config,
+                        policy_type=policy_type,
+                        **kwargs,
+                    )
+                except Exception as exc:  # noqa: BLE001 - a crashed check must not abort the run
+                    all_issues.extend(self._handle_check_error(check.check_id, exc, 0))
+                    continue
+                all_issues.extend(self._process_issues(issues, check, config, policy_file))
             return all_issues
 
         # Execute all policy-level checks in parallel
@@ -757,16 +803,54 @@ class CheckRegistry:
 
         # Collect all issues, handling any exceptions and applying filters
         for idx, result in enumerate(results):
-            if isinstance(result, Exception):
-                # Report the failure but continue with other checks
-                check = policy_level_checks[idx]
+            check = policy_level_checks[idx]
+            if isinstance(result, BaseException):
                 all_issues.extend(self._handle_check_error(check.check_id, result, 0))
             elif isinstance(result, list):
-                check = policy_level_checks[idx]
                 config = configs[idx]
                 all_issues.extend(self._process_issues(result, check, config, policy_file))
 
         return all_issues
+
+
+#: Entry-point group third-party packages register PolicyCheck subclasses under.
+ENTRY_POINT_GROUP = "iam_validator.checks"
+
+
+def load_entry_point_checks(registry: "CheckRegistry") -> list[str]:
+    """Register every PolicyCheck advertised under the ``iam_validator.checks`` entry-point group.
+
+    Args:
+        registry: Check registry to add discovered checks to
+
+    Returns:
+        List of loaded check IDs
+    """
+    loaded: list[str] = []
+    for ep in entry_points(group=ENTRY_POINT_GROUP):
+        try:
+            check_cls = ep.load()
+            instance = check_cls()
+            if not isinstance(instance, PolicyCheck):
+                logger.warning(
+                    "Plugin entry point '%s' resolved to %s, which is not a PolicyCheck; skipping.",
+                    ep.name,
+                    type(instance).__name__,
+                )
+                continue
+            if registry.get_check(instance.check_id) is not None:
+                logger.warning(
+                    "Plugin entry point '%s' declares check_id '%s', which is already "
+                    "registered; skipping to avoid shadowing the existing check.",
+                    ep.name,
+                    instance.check_id,
+                )
+                continue
+            registry.register(instance)
+            loaded.append(instance.check_id)
+        except Exception as e:
+            logger.warning("Failed to load plugin check '%s': %s", ep.name, e)
+    return loaded
 
 
 def create_default_registry(
@@ -850,5 +934,9 @@ def create_default_registry(
 
         # 8. GUARDRAIL POLICY GUIDANCE (Organizations policy types)
         registry.register(checks.RCPBestPracticesCheck())  # Policy-level: RCP deny-statement best practices
+
+    entry_point_checks = load_entry_point_checks(registry)
+    if entry_point_checks:
+        logger.info("Loaded %d entry-point plugin checks: %s", len(entry_point_checks), ", ".join(entry_point_checks))
 
     return registry

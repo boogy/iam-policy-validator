@@ -138,7 +138,7 @@ class EnhancedFormatter(OutputFormatter):
             findings_pct = policies_with_findings * 100 // report.total_policies
             if policies_with_findings > 0:
                 metrics_table.add_row(
-                    "⚠️  Policies with Findings",
+                    f"{constants.CONSOLE_ICON_WARNING} Policies with Findings",
                     f"[yellow]{policies_with_findings} ({findings_pct}%)[/yellow]",
                 )
             else:
@@ -150,12 +150,12 @@ class EnhancedFormatter(OutputFormatter):
         # Total issues
         if report.total_issues > 0:
             metrics_table.add_row(
-                "⚠️  Total Issues Found",
+                f"{constants.CONSOLE_ICON_WARNING} Total Issues Found",
                 f"[red]{report.total_issues}[/red]",
             )
         else:
             metrics_table.add_row(
-                "⚠️  Total Issues Found",
+                f"{constants.CONSOLE_ICON_WARNING} Total Issues Found",
                 f"[green]{report.total_issues}[/green]",
             )
 
@@ -278,11 +278,11 @@ class EnhancedFormatter(OutputFormatter):
             # Check severity to determine the appropriate status
             has_critical = any(i.severity in constants.HIGH_SEVERITY_LEVELS for i in result.issues)
             if has_critical:
-                icon = "⚠️"
+                icon = constants.CONSOLE_ICON_WARNING
                 color = "red"
                 status_text = "VALID (with security issues)"
             else:
-                icon = "⚠️"
+                icon = constants.CONSOLE_ICON_WARNING
                 color = "yellow"
                 status_text = "VALID (with warnings)"
         else:
@@ -445,12 +445,15 @@ class EnhancedFormatter(OutputFormatter):
             # Structurally valid policies but may have security/best-practice findings
             has_critical = any(i.severity in constants.HIGH_SEVERITY_LEVELS for r in report.results for i in r.issues)
 
-            _p = lambda n, word: f"{n} {word}" + ("" if n == 1 else "s")  # noqa: E731
+            _p = lambda n, word, plural=None: f"{n} {word if n == 1 else plural or word + 's'}"  # noqa: E731
             if has_critical:
-                status = Text("⚠️ All Policies Structurally Valid (with findings)", style="bold red")
+                status = Text(
+                    f"{constants.CONSOLE_ICON_WARNING} All Policies Structurally Valid (with findings)",
+                    style="bold red",
+                )
                 message = Text(
                     f"All {report.total_policies} policies are structurally valid (AWS-accepted), but "
-                    f"{_p(policies_with_findings, 'policy')} "
+                    f"{_p(policies_with_findings, 'policy', 'policies')} "
                     f"{'has' if policies_with_findings == 1 else 'have'} "
                     f"{_p(report.total_issues, 'finding')} that must be addressed.",
                     style="red",
@@ -460,7 +463,7 @@ class EnhancedFormatter(OutputFormatter):
                 status = Text("✅ All Policies Structurally Valid (with advisories)", style="bold yellow")
                 message = Text(
                     f"All {report.total_policies} policies are structurally valid, but "
-                    f"{_p(policies_with_findings, 'policy')} "
+                    f"{_p(policies_with_findings, 'policy', 'policies')} "
                     f"{'has' if policies_with_findings == 1 else 'have'} "
                     f"{_p(report.total_issues, 'advisory finding')} that should be reviewed.",
                     style="yellow",

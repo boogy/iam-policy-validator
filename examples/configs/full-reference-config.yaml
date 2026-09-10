@@ -97,15 +97,35 @@
 # ============================================================================
 
 # ============================================================================
+# COMMON OPTIONS (Available for ALL Checks)
+# ============================================================================
+# Every check below accepts these keys, whether or not they are spelled out in
+# that check's section:
+#
+#   enabled:          true | false        Turn the check on or off
+#   severity:         error | warning | info | critical | high | medium | low
+#   description:      Free text shown in reports
+#   ignore_patterns:  See the section above
+#   hide_severities:  Drop findings of these severities from THIS check only.
+#                     Overrides settings.hide_severities for the check.
+#
+# Example — keep the check enabled but stop reporting its low findings:
+#   service_wildcard:
+#     enabled: true
+#     hide_severities:
+#       - low
+#
+# Unknown keys are accepted and passed through to the check, so custom checks
+# can define their own options.
+# ============================================================================
+
+# ============================================================================
 # GLOBAL SETTINGS
 # ============================================================================
 
 settings:
-  # Stop validation on first error
-  fail_fast: false
-
   # Maximum number of concurrent policy validations
-  max_concurrent: 10
+  max_concurrency: 10
 
   # Enable/disable ALL built-in checks (default: true)
   # Set to false when using AWS Access Analyzer to avoid redundant validation
@@ -114,6 +134,18 @@ settings:
 
   # Enable parallel execution of checks (default: true)
   parallel_execution: true
+
+  # Suppress findings that are already implied by a full_wildcard finding on
+  # the same statement (Action: * AND Resource: *). Keeps the report focused
+  # on the one critical issue instead of every wildcard sub-finding.
+  # Default: true
+  suppress_superseded_findings: true
+
+  # What to do when a check raises an exception instead of returning findings
+  #   fail: emit a `check_execution_error` finding (severity: error) so a run
+  #         cannot report clean on a validation that did not fully run (default)
+  #   warn: log only — the policy can pass with that check's findings missing
+  on_check_error: fail
 
   # AWS Service Definitions Source
   # Use pre-downloaded AWS service JSON files instead of calling the AWS API
@@ -164,7 +196,11 @@ settings:
   # Can be overridden per-check using check-level hide_severities
   # Valid values: "error", "warning", "info", "critical", "high", "medium", "low"
   # Example: ["low", "info"] - hide low and info severity findings
-  hide_severities: None
+  # Default: null (no filtering). Must be a YAML list when set.
+  hide_severities: null
+  # hide_severities:
+  #   - low
+  #   - info
 
   # How to handle findings on lines outside the PR diff
   # Controls whether off-diff issues get individual review comments or are
@@ -225,6 +261,44 @@ settings:
   #   - Deletes comments when issues are resolved
   # No configuration needed - this happens automatically for all PR reviews.
 
+  # Optional run scope tag appended to the PR summary, review,
+  # ignored-findings and analyzer HTML markers. Lets several validator runs on
+  # the SAME pull request keep independent comment threads (e.g. one run per
+  # policy type). 1-32 chars from [A-Za-z0-9._-].
+  # Default: null (legacy un-scoped markers, one thread per PR)
+  # comment_tag: null
+  # comment_tag: "scp"          # e.g. the SCP-only run
+  # comment_tag: "identity"     # e.g. the identity-policy run
+
+  # CODEOWNERS-based finding ignore settings
+  # Lets code owners suppress a finding by replying "ignore" to its PR comment.
+  # Ignored findings do not fail the run and are not re-posted as comments.
+  ignore_settings:
+    # Enable/disable the CODEOWNERS ignore feature (default: true)
+    enabled: true
+
+    # Fallback list of GitHub usernames allowed to ignore findings when the
+    # repository has no CODEOWNERS file. Empty + no CODEOWNERS = every ignore
+    # request is denied (fail secure).
+    # Example: ["security-team-lead", "platform-admin"]
+    allowed_users: []
+
+    # Post a visible reply explaining why an ignore request was denied.
+    # When false (default) denials are only logged.
+    post_denial_feedback: false
+
+  # Organization-specific documentation URLs
+  # Replaces the default AWS documentation links in findings with your own
+  # runbooks, so reviewers land on internal guidance instead of AWS docs.
+  documentation:
+    # Base URL for org runbooks. Findings link to {base_url}/{check_id}.
+    # null (default) = link to AWS documentation only.
+    # Example: "https://wiki.mycompany.com/security/iam-checks"
+    base_url: null
+
+    # Also include the AWS documentation link alongside the org link
+    include_aws_docs: true
+
   # Template Variable Support (applies to all ARN validation checks)
   #
   # When enabled, the validator is POSITION-AWARE and supports ANY variable name
@@ -254,7 +328,42 @@ settings:
   allow_template_variables: true
 
 # ============================================================================
-# BUILT-IN CHECKS - AWS Validation (22 checks total)
+# POLICY TYPE RESOLUTION (per-file glob mapping)
+# ============================================================================
+# Maps file globs to a policy type. Only consulted when --policy-type is NOT
+# passed on the CLI (an explicit --policy-type applies to EVERY policy in the
+# run and skips both this mapping and content auto-detection).
+#
+# Resolution order when --policy-type is omitted:
+#   1. policy_types: glob mapping below (first match wins)
+#   2. content auto-detect (trust / resource / identity)
+#   3. default: IDENTITY_POLICY
+#
+# SCP and RCP are structurally identical to identity/resource policies and
+# CANNOT be auto-detected — they need this mapping or an explicit flag.
+#
+# Valid types: IDENTITY_POLICY, RESOURCE_POLICY, TRUST_POLICY,
+#              SERVICE_CONTROL_POLICY, RESOURCE_CONTROL_POLICY
+#
+# Patterns match the POSIX form of the path; a leading "**/" is also tried
+# stripped, so "**/scp/*.json" matches both "a/b/scp/org.json" and "scp/org.json".
+#
+# Debug the resolved type with --log-level debug:
+#   policy_type=SERVICE_CONTROL_POLICY source=config-glob pattern_present=true ... file=org.json
+#
+# Default: [] (no mapping)
+# policy_types:
+#   - pattern: "**/scp/*.json"
+#     type: SERVICE_CONTROL_POLICY
+#   - pattern: "**/rcp/*.json"
+#     type: RESOURCE_CONTROL_POLICY
+#   - pattern: "**/trust-policies/*.json"
+#     type: TRUST_POLICY
+#   - pattern: "**/bucket-policies/*.json"
+#     type: RESOURCE_POLICY
+
+# ============================================================================
+# BUILT-IN CHECKS - AWS Validation (23 checks total)
 # ============================================================================
 # These validate that policies conform to AWS requirements
 # Disable all with: settings.enable_builtin_checks: false (useful with Access Analyzer)
@@ -287,8 +396,8 @@ sid_uniqueness:
   description: "Validates that Statement IDs (Sids) are unique and follow AWS naming requirements"
   # AWS SID requirements:
   # - Must be unique within the policy (duplicate_sid)
-  # - Must contain only alphanumeric characters, hyphens, and underscores (invalid_sid_format)
-  # - No spaces or special characters allowed
+  # - Must contain only alphanumeric characters (invalid_sid_format)
+  # - No spaces, hyphens, underscores, or other special characters allowed
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
@@ -299,20 +408,27 @@ policy_size:
   severity: error
   description: "Validates that IAM policies don't exceed AWS size limits"
   # ignore_patterns available - see top of file for usage examples
-  # Policy type determines which AWS limit to enforce
-  # Options: managed, inline_user, inline_group, inline_role
+  # Pin which AWS limit to enforce, overriding the resolved policy type.
+  # Omit this key to let the limit follow the resolved policy type
+  # (see POLICY TYPE RESOLUTION above): SERVICE_CONTROL_POLICY -> scp,
+  # RESOURCE_CONTROL_POLICY -> rcp, TRUST_POLICY -> inline_role_trust,
+  # everything else -> managed. An unknown key falls back to managed.
+  # Valid keys: managed, inline_user, inline_group, inline_role,
+  #             inline_role_trust, scp, rcp
   policy_type: "managed"
-  # Optional: Override default AWS size limits (in characters, excluding whitespace)
-  # Default limits:
-  #   managed: 6144
-  #   inline_user: 2048
-  #   inline_group: 5120
-  #   inline_role: 10240
+
+  # Optional: override the AWS size limits. Sizes are measured as the UTF-8
+  # byte length of the policy serialized as compact JSON (no whitespace),
+  # which is how AWS measures them.
+  # Defaults (from constants.AWS_POLICY_SIZE_LIMITS):
   # size_limits:
   #   managed: 6144
   #   inline_user: 2048
   #   inline_group: 5120
   #   inline_role: 10240
+  #   inline_role_trust: 2048
+  #   scp: 5120
+  #   rcp: 5120
 
 # ============================================================================
 # 4. ACTION VALIDATION
@@ -380,6 +496,30 @@ ifexists_condition_usage:
   enabled: true
   severity: warning
   description: "Validates IfExists condition operator usage and detects weakened security controls"
+
+  # Warn when an Allow statement uses *IfExists on a security-sensitive key
+  # (MFA, SourceIp, PrincipalOrgID, SecureTransport, ...). The suffix makes the
+  # condition pass when the key is absent from the request, silently defeating
+  # the control. Default: true
+  warn_security_sensitive_allow: true
+
+  # Warn when *IfExists is used on a key AWS always populates (e.g.
+  # aws:PrincipalArn, aws:CurrentTime) — the suffix is dead weight there.
+  # Default: true
+  warn_always_present_keys: true
+
+  # Also flag *IfExists inside Deny statements and suggest dropping the suffix.
+  # Off by default: IfExists in a Deny is often a deliberate fail-open choice.
+  # Default: false
+  suggest_deny_ifexists: false
+
+  # Extra condition keys to treat as security-sensitive, on top of the built-in
+  # set. Compared case-insensitively.
+  # Default: []
+  # additional_security_sensitive_keys:
+  #   - "mycompany:RequireApproval"
+  #   - "mycompany:DataClassification"
+
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
@@ -526,7 +666,7 @@ principal_validation:
   # not public internet access.
   #
   allowed_service_principals:
-    - "aws:*"  # Allow all AWS services (default)
+    - "aws:*" # Allow all AWS services (default)
     #
     # Or restrict to specific services:
     # - "lambda.amazonaws.com"
@@ -596,18 +736,37 @@ principal_validation:
 # Complements principal_validation (allowlists/blocklists) and
 # action_condition_enforcement (required conditions)
 #
-# DISABLED by default - enable for trust policy validation (--policy-type TRUST_POLICY)
+# Enabled by default. Runs when the resolved policy type is TRUST_POLICY
+# (--policy-type TRUST_POLICY, a policy_types: glob, or content auto-detect).
 trust_policy_validation:
-  enabled: false # Opt-in feature for trust policy validation
+  enabled: true
   severity: high # Security issue
   description: "Validates trust policies for role assumption security"
   # ignore_patterns available - see top of file for usage examples
 
-  # Optional: Custom validation rules (override defaults)
-  # Default rules:
-  #   sts:AssumeRole → AWS or Service principals
-  #   sts:AssumeRoleWithSAML → Federated (SAML) with SAML:aud condition
-  #   sts:AssumeRoleWithWebIdentity → Federated (OIDC)
+  # Optional: Custom validation rules. Providing this key REPLACES the default
+  # rule set entirely, so copy the entries you still want.
+  # Default rules (see trust_policy_validation.DEFAULT_RULES):
+  #   sts:AssumeRole                → AWS or Service principals
+  #   sts:AssumeRoleWithSAML        → Federated (SAML), provider ARN pattern,
+  #                                   requires SAML:aud
+  #   sts:AssumeRoleWithWebIdentity → Federated (OIDC), provider ARN pattern,
+  #                                   requires *:aud and one of *:sub / *:amr
+  #   sts:TagSession                → AWS, Service or Federated
+  #   sts:SetSourceIdentity         → AWS, Service or Federated
+  #   sts:SetContext                → AWS, Service or Federated
+  #
+  # Per-action rule keys:
+  #   allowed_principal_types: list of AWS | Service | Federated | CanonicalUser
+  #   provider_pattern:        regex the Federated provider ARN must match
+  #   required_conditions:     condition keys that must be present. A nested
+  #                            list means "at least one of these" —
+  #                            e.g. ["*:aud", ["*:sub", "*:amr"]]
+  #   description:             free text used in the finding
+  #
+  # Confused-deputy detection also runs on Allow statements with a Service
+  # principal; only ec2, lambda and edgelambda are exempt. Satisfy it with any
+  # of aws:SourceArn, aws:SourceAccount, aws:SourceOrgID, aws:SourceOrgPaths.
   #
   # Example custom rules:
   # validation_rules:
@@ -863,6 +1022,22 @@ service_wildcard:
   # allowed_services:
   #   - "logs"
   #   - "cloudwatch"
+
+  # Customize messages. {action} and {service} are substituted.
+  # message: "Service-level wildcard `{action}` grants all permissions for `{service}` service"
+  # suggestion: "Replace `{service}:*` with the specific actions you need"
+  # example: |
+  #   "Action": ["s3:GetObject", "s3:PutObject"]
+
+  # ABAC-mitigated downgrade
+  # When the statement carries ABAC tag conditions that scope access to
+  # resources the principal owns, the wildcard is a much smaller risk. Those
+  # findings are reported at this severity and with this message instead of the
+  # `severity` / `message` above.
+  # Default severity: low
+  # abac_mitigated_severity: low
+  # abac_mitigated_message: "Service-level wildcard `{action}` grants all permissions for `{service}` service, but ABAC tag conditions restrict access to owned resources"
+
   # ignore_patterns available - see top of file for usage examples
 
 # ============================================================================
@@ -936,6 +1111,33 @@ sensitive_action:
   #       - "iam:CreateUser"
   #       - "iam:AttachUserPolicy"
 
+  # Optional: regex-based sensitive action matching
+  # Same any_of / all_of / plain-list shapes as sensitive_actions, but each
+  # entry is a regex matched against the action instead of a literal/glob.
+  # Findings from sensitive_actions and sensitive_action_patterns are merged.
+  # Default: unset
+  # sensitive_action_patterns:
+  #   - "^iam:.*Policy$"           # any IAM policy-mutating action
+  #   - "^kms:(Create|Schedule).*"
+  # Or grouped:
+  # sensitive_action_patterns:
+  #   any_of:
+  #     - "^iam:Create.*"
+  #     - "^iam:Attach.*"
+  # sensitive_action_patterns:
+  #   - all_of:                     # flag only when BOTH shapes are present
+  #       - "^iam:CreateUser$"
+  #       - "^iam:Attach.*Policy$"
+
+  # How your sensitive_actions / sensitive_action_patterns combine with the
+  # built-in defaults:
+  #   append              Defaults AND your patterns both apply (default)
+  #   user_only           Disable ALL defaults; only your patterns apply
+  #   defaults_only       Ignore your patterns; only defaults apply
+  #   replace_all         Your patterns replace all defaults when provided
+  #   per_action_override Your patterns replace defaults for matching actions
+  # merge_strategy: append
+
   # Optional: Ignore specific actions from being considered sensitive
   # This is useful when you want to use the default 490 actions but exclude some
   # ignore_patterns:
@@ -994,6 +1196,34 @@ action_condition_enforcement:
   # To see what's included, run:
   #   python -c "from iam_validator.core.config import get_default_requirements; import json; print(json.dumps([r.get('actions', r.get('action_patterns', [])) for r in get_default_requirements()], indent=2))"
   #
+  # THE THREE REQUIREMENT KEYS
+  #   requirements:                   Primary key. Read by the sensitive_action
+  #                                   check too, so actions covered here are not
+  #                                   double-reported as "sensitive without
+  #                                   conditions". Prefer this key.
+  #   policy_level_requirements:      Fallback used only when `requirements` is
+  #                                   absent. Same list shape.
+  #   action_condition_requirements:  Treated as the USER layer that
+  #                                   merge_strategy combines with the two keys
+  #                                   above. Use it when you want to add to the
+  #                                   defaults instead of replacing them.
+  #
+  # How the user layer combines with the defaults:
+  #   append              Defaults AND action_condition_requirements both apply (default)
+  #   user_only           Only action_condition_requirements apply; all defaults off
+  #   defaults_only       Ignore action_condition_requirements
+  #   replace_all         action_condition_requirements replace ALL defaults when provided
+  #   per_action_override action_condition_requirements replace defaults only for
+  #                      the actions they name; other defaults are kept
+  # merge_strategy: append
+  #
+  # action_condition_requirements:
+  #   - actions: ["kms:Decrypt"]
+  #     severity: high
+  #     required_conditions:
+  #       - condition_key: "kms:EncryptionContext:tenant"
+  #         description: "Scope decryption to the caller's tenant"
+
   # To override, uncomment and customize:
   # Configure condition requirements (use "requirements" key for automatic deduplication)
   # This key is also used by sensitive_action check to avoid duplicate warnings
@@ -1107,7 +1337,7 @@ action_condition_enforcement:
 # grant more access than intended.
 not_action_not_resource:
   enabled: true
-  severity: high  # Security issue: high severity for unconditioned NotAction
+  severity: high # Security issue: high severity for unconditioned NotAction
   description: "Checks for dangerous NotAction/NotResource patterns"
 
   # Customize messages (optional)
@@ -1143,13 +1373,55 @@ not_principal_validation:
 # ============================================================================
 # CUSTOM CHECKS - Business Rules
 # ============================================================================
-# These enforce your organization's specific requirements
-# Configured via custom_checks_dir and the checks section below
+# Two ways to load your own PolicyCheck subclasses. They can be combined.
+# For examples, see: examples/custom_checks/
 # ============================================================================
 
-# Custom checks directory - auto-discover PolicyCheck subclasses
+# 1. Directory auto-discovery
+# Every PolicyCheck subclass found in *.py under this directory is registered
+# using its own check_id. Relative paths resolve from the working directory.
+# CLI equivalent: --custom-checks-dir ./custom_checks
+# Default: null
 # custom_checks_dir: "./custom_checks"
 
-# Configure custom checks loaded from custom_checks_dir
-# The check_id corresponds to the check's check_id property
-# For examples of custom business-specific checks, see: examples/custom-business-rules.yaml
+# 2. Explicit module list
+# Each entry names one class as "package.module.ClassName". Use this when the
+# check lives in an installed package rather than a local directory.
+# Default: []
+# custom_checks:
+#   - module: "my_org.iam_checks.require_owner_tag.RequireOwnerTag"
+#     enabled: true
+#     severity: high
+#     description: "Every statement must be scoped by an Owner tag"
+#     # Passed to the check as its own config namespace
+#     config:
+#       required_tag: "Owner"
+#       exempt_sids:
+#         - "AllowPublicRead"
+#
+#   - module: "my_org.iam_checks.naming.RoleNamingConvention"
+#     enabled: false
+
+# Once a custom check is registered, configure it exactly like a built-in one —
+# a top-level block keyed by its check_id. The loader logs
+# "Unknown check ID '<id>' ... may be a custom check or a typo" for any block it
+# does not recognize as built-in; that warning is expected for custom checks.
+# require_owner_tag:
+#   enabled: true
+#   severity: high
+#   hide_severities:
+#     - low
+#   ignore_patterns:
+#     - filepath: "^examples/.*"
+
+# ============================================================================
+# LEGACY: NESTED `checks:` BLOCK
+# ============================================================================
+# The flat layout used above (one top-level block per check_id) is the current
+# form. A legacy nested layout is still accepted, and a `checks:` key at the top
+# level makes it the ONLY source of check config — top-level check blocks are
+# then ignored. Do not mix the two.
+# checks:
+#   wildcard_action:
+#     enabled: true
+#     severity: medium

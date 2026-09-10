@@ -198,17 +198,14 @@ class AWSServiceFetcher:
         await self.fetch_services()
 
         async def fetch_service(name: str) -> None:
-            try:
-                await self.fetch_service_by_name(name)
-                self._prefetched_services.add(name)
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                logger.warning(f"Failed to prefetch service {name}: {e}")
+            async with self._request_semaphore:
+                try:
+                    await self.fetch_service_by_name(name)
+                    self._prefetched_services.add(name)
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    logger.warning(f"Failed to prefetch service {name}: {e}")
 
-        # Fetch in batches to avoid overwhelming the API
-        batch_size = 5
-        for i in range(0, len(self.COMMON_SERVICES), batch_size):
-            batch = self.COMMON_SERVICES[i : i + batch_size]
-            await asyncio.gather(*[fetch_service(name) for name in batch])
+        await asyncio.gather(*(fetch_service(name) for name in self.COMMON_SERVICES), return_exceptions=True)
 
         logger.info(f"Pre-fetched {len(self._prefetched_services)} services successfully")
 
@@ -359,7 +356,12 @@ class AWSServiceFetcher:
 
         raise ValueError(f"Service `{service_name}` not found")
 
-    async def fetch_multiple_services(self, service_names: list[str]) -> dict[str, ServiceDetail]:
+    async def fetch_multiple_services(
+        self,
+        service_names: list[str],
+        *,
+        strict: bool = True,
+    ) -> dict[str, ServiceDetail]:
         """Fetch multiple services concurrently with controlled parallelism.
 
         Uses a semaphore to limit concurrent requests and prevent overwhelming
@@ -367,12 +369,14 @@ class AWSServiceFetcher:
 
         Args:
             service_names: List of service names to fetch
+            strict: If True (default), re-raise the first per-service fetch
+                failure. If False, log the failure at warning level and omit
+                that service from the result.
 
         Returns:
-            Dictionary mapping service names to ServiceDetail objects
-
-        Raises:
-            Exception: If any service fetch fails
+            Dictionary mapping service names to ServiceDetail objects. When
+            ``strict=False``, services that fail to fetch are omitted instead
+            of raising.
 
         Example:
             >>> async with AWSServiceFetcher() as fetcher:
@@ -381,27 +385,22 @@ class AWSServiceFetcher:
         """
 
         async def fetch_single(name: str) -> tuple[str, ServiceDetail]:
-            # Use semaphore to limit concurrent requests
             async with self._request_semaphore:
-                try:
-                    detail = await self.fetch_service_by_name(name)
-                    return name, detail
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    logger.error(f"Failed to fetch service {name}: {e}")
-                    raise
+                return name, await self.fetch_service_by_name(name)
 
         # Fetch all services concurrently (semaphore controls parallelism)
         tasks = [fetch_single(name) for name in service_names]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         services: dict[str, ServiceDetail] = {}
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error(f"Failed to fetch service {service_names[i]}: {result}")
-                raise result
-            if isinstance(result, tuple):
-                name, detail = result
-                services[name] = detail
+        for name, result in zip(service_names, results, strict=True):
+            if isinstance(result, BaseException):
+                if strict:
+                    raise result
+                logger.warning(f"Failed to fetch service {name}: {result}")
+                continue
+            _, detail = result
+            services[name] = detail
 
         return services
 

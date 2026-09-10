@@ -20,6 +20,13 @@ from iam_validator.core.aws_service.validators import (
     condition_key_in_list,
     find_matching_condition_key,
 )
+from iam_validator.core.condition_validators import (
+    _validate_single_value,
+    has_if_exists_suffix,
+    is_known_operator,
+    is_multivalued_context_key,
+    normalize_operator,
+)
 from iam_validator.core.models import ConditionKey
 
 # =============================================================================
@@ -529,3 +536,154 @@ class TestCheckDocumentationBackwardCompatibility:
             )
         )
         assert CheckDocumentationRegistry.get_short_description("_test_with_desc") == "My Check"
+
+
+@pytest.mark.parametrize("value", ["*", "arn:aws:iam::123456789012:role/App"])
+def test_wildcard_is_a_valid_arn_condition_value(value):
+    ok, _ = _validate_single_value("ARN", value)
+    assert ok is True
+
+
+def test_malformed_arn_condition_value_is_still_rejected():
+    ok, message = _validate_single_value("ARN", "not-an-arn")
+    assert ok is False
+    assert "ARN" in message
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["StringEquals", "stringequals", "ForAnyValue:StringLike", "StringEqualsIfExists", "Null", "ArnLike"],
+)
+def test_known_operators_are_recognised(operator):
+    assert is_known_operator(operator) is True
+
+
+@pytest.mark.parametrize("operator", ["StringEqual", "BoolEquals", "ForSomeValues:StringEquals", "Nul"])
+def test_unknown_operators_are_rejected(operator):
+    assert is_known_operator(operator) is False
+
+
+@pytest.mark.parametrize("operator", ["stringequalsifexists", "forallvalues:stringlike", "FORANYVALUE:StringEquals"])
+def test_operator_modifiers_are_case_insensitive(operator):
+    assert is_known_operator(operator) is True
+
+
+@pytest.mark.parametrize(
+    "operator",
+    [
+        "NullIfExists",
+        "nullifexists",
+        "NULLIFEXISTS",
+        "ForAllValues:NullIfExists",
+        "ForAnyValue:NullIfExists",
+        "ForAllValues:nullifexists",
+    ],
+)
+def test_null_if_exists_is_not_a_known_operator(operator):
+    """AWS rejects Null combined with IfExists; it must not be accepted as valid Null."""
+    assert is_known_operator(operator) is False
+
+
+@pytest.mark.parametrize(
+    "operator",
+    [
+        "NullIfExists",
+        "nullifexists",
+        "NULLIFEXISTS",
+        "ForAllValues:NullIfExists",
+        "ForAnyValue:NullIfExists",
+    ],
+)
+def test_normalize_operator_treats_null_if_exists_as_unknown(operator):
+    base_op, op_type, _set_prefix = normalize_operator(operator)
+    assert op_type is None
+    assert base_op == operator
+
+
+def test_normalize_operator_plain_null_is_still_valid():
+    assert normalize_operator("Null") == ("Null", "Bool", None)
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["NullIfExists", "nullifexists", "NULLIFEXISTS", "ForAllValues:NullIfExists", "ForAnyValue:NullIfExists"],
+)
+def test_has_if_exists_suffix_false_for_null_if_exists(operator):
+    """NullIfExists is invalid syntax, not a legitimate IfExists usage."""
+    assert has_if_exists_suffix(operator) is False
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["StringEqualsIfExists", "BoolIfExists", "ArnLikeIfExists", "ForAllValues:StringEqualsIfExists"],
+)
+def test_has_if_exists_suffix_true_for_other_operators(operator):
+    assert has_if_exists_suffix(operator) is True
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["stringequalsifexists", "STRINGEQUALSIFEXISTS", "forallvalues:stringequalsifexists"],
+)
+def test_has_if_exists_suffix_is_case_insensitive(operator):
+    """The IfExists suffix must be case-insensitive, matching the base-operator
+    lookup (is_known_operator, CONDITION_OPERATORS), which already is."""
+    assert has_if_exists_suffix(operator) is True
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["stringequalsifexists", "STRINGEQUALSIFEXISTS", "StringEqualsIFEXISTS"],
+)
+def test_normalize_operator_strips_if_exists_case_insensitively(operator):
+    base_op, op_type, _set_prefix = normalize_operator(operator)
+    assert (base_op, op_type) == ("StringEquals", "String")
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["nullifexists", "NULLIFEXISTS", "NullIfExists"],
+)
+def test_normalize_operator_still_rejects_null_if_exists_any_casing(operator):
+    base_op, op_type, _set_prefix = normalize_operator(operator)
+    assert op_type is None
+    assert base_op == operator
+
+
+@pytest.mark.parametrize(
+    ("operator", "expected"),
+    [
+        ("foranyvalue:stringlikeifexists", ("StringLike", "String", "ForAnyValue")),
+        ("FORANYVALUE:StringLike", ("StringLike", "String", "ForAnyValue")),
+        ("forallvalues:stringequals", ("StringEquals", "String", "ForAllValues")),
+        ("ForAllValues:StringEquals", ("StringEquals", "String", "ForAllValues")),
+    ],
+)
+def test_normalize_operator_set_prefix_is_case_insensitive(operator, expected):
+    """A lowercased ForAllValues:/ForAnyValue: prefix must be recognized the same
+    as the canonical casing, and the returned prefix must use canonical casing
+    since callers (e.g. set_operator_validation.py) compare it against
+    "ForAllValues"/"ForAnyValue" literals."""
+    assert normalize_operator(operator) == expected
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["foranyvalue:stringlikeifexists", "FORANYVALUE:StringLikeIfExists"],
+)
+def test_has_if_exists_suffix_with_lowercase_set_prefix(operator):
+    assert has_if_exists_suffix(operator) is True
+
+
+@pytest.mark.parametrize(
+    "condition_key",
+    ["cognito-identity.amazonaws.com:amr", "accounts.google.com:amr"],
+)
+def test_amr_is_multivalued_for_oidc_providers(condition_key):
+    assert is_multivalued_context_key(condition_key) is True
+
+
+@pytest.mark.parametrize("condition_key", ["myservice:amr", "s3:amr"])
+def test_amr_is_not_multivalued_for_non_provider_prefixes(condition_key):
+    """``amr`` is only multivalued as an OIDC/web-identity provider claim."""
+    assert is_multivalued_context_key(condition_key) is False

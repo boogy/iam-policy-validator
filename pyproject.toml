@@ -65,6 +65,10 @@ iam-policy-validator = "iam_validator.core.cli:main"  # Alias matching package n
 iam-validator = "iam_validator.core.cli:main"
 iam-validator-mcp = "iam_validator.mcp:run_server"
 
+# Third-party checks register here:
+# [project.entry-points."iam_validator.checks"]
+# my_check = "my_package.checks:MyCheck"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

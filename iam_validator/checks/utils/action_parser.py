@@ -18,7 +18,7 @@ class ParsedAction:
     Attributes:
         service: The AWS service prefix (e.g., "s3", "ec2", "iam")
         action_name: The action name (e.g., "GetObject", "DescribeInstances")
-        has_wildcard: True if the service or action contains "*"
+        has_wildcard: True if the service or action contains "*" or "?"
         original: The original action string as provided
     """
 
@@ -76,7 +76,7 @@ def parse_action(action: str) -> ParsedAction | None:
     return ParsedAction(
         service=service,
         action_name=action_name,
-        has_wildcard="*" in service or "*" in action_name,
+        has_wildcard="*" in service or "?" in service or "*" in action_name or "?" in action_name,
         original=action,
     )
 
@@ -88,7 +88,7 @@ def is_wildcard_action(action: str) -> bool:
         action: The action string to check
 
     Returns:
-        True if the action is "*" or contains "*" in service or action name
+        True if the action is "*" or contains "*" or "?" in service or action name
     """
     if action == "*":
         return True

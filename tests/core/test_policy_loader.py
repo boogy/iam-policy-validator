@@ -283,6 +283,19 @@ class TestPolicyLoader:
         # Line numbers should point to the Sid lines (1-indexed)
         assert all(isinstance(num, int) and num > 0 for num in line_numbers)
 
+    def test_find_yaml_statement_line_numbers_single_object_statement(self, loader):
+        """A bare Statement mapping (not a sequence) must still yield one line number."""
+        policy_yaml = """Version: '2012-10-17'
+Statement:
+  Sid: OnlyStatement
+  Effect: Allow
+  Action: s3:GetObject
+  Resource: "*"
+"""
+        line_numbers = loader._find_yaml_statement_line_numbers(policy_yaml)
+
+        assert len(line_numbers) == 1
+
     def test_policy_with_line_numbers(self, loader):
         """Test that loaded JSON policies have line numbers attached to statements."""
         policy_dict = {
@@ -482,3 +495,15 @@ class TestLoaderRobustness:
         policy = PolicyLoader.parse_policy_string(json.dumps(valid_policy_dict))
         assert policy is not None
         assert policy.version == "2012-10-17"
+
+
+def test_policy_file_with_utf8_bom_loads(tmp_path):
+    path = tmp_path / "bom.json"
+    path.write_text(
+        '{"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]}',
+        encoding="utf-8-sig",
+    )
+
+    loaded = PolicyLoader().load_from_paths([str(path)], recursive=False)
+
+    assert len(loaded) == 1

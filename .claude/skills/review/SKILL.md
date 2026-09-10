@@ -23,7 +23,7 @@ Categorize modified files by type (check, command, core, tests, docs).
 
 **Python code**: Type hints on public functions? Async patterns correct? Pydantic models proper? Error handling appropriate?
 
-**Checks** (`iam_validator/checks/`): Inherits `PolicyCheck`? Has `check_id`, `description`, `default_severity` ClassVars? Uses `self.get_severity(config)`? Returns `list[ValidationIssue]`?
+**Checks** (`iam_validator/checks/`): Inherits `PolicyCheck`? Has required `check_id`, `description` ClassVars (and `default_severity` if it shouldn't default to `"warning"`)? Uses `self.get_severity(config)`? Returns `list[ValidationIssue]`?
 
 **Tests**: Uses `@pytest.mark.asyncio`? Mock fixtures for AWS calls? Both positive and negative cases? Config overrides tested?
 

@@ -43,10 +43,37 @@ import re
 from typing import Any, ClassVar
 
 from iam_validator.checks.utils import format_list_with_backticks
+from iam_validator.checks.utils.aws_matching import action_matches, iam_glob_match
+from iam_validator.checks.utils.condition_matching import base_operator, is_deny, is_negated_operator
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.constants import ARN_PARTITION_REGEX
 from iam_validator.core.models import Statement, ValidationIssue
+
+RequiredCondition = str | list[str] | tuple[str, ...]
+
+# Web-identity providers AWS accepts as a bare domain in ``Principal.Federated``,
+# with no IAM OIDC provider ARN.
+WEB_IDENTITY_PROVIDER_DOMAINS: frozenset[str] = frozenset(
+    {
+        "accounts.google.com",
+        "cognito-identity.amazonaws.com",
+        "graph.facebook.com",
+        "www.amazon.com",
+    }
+)
+
+_WEB_IDENTITY_PROVIDER_ALTERNATION = "|".join(re.escape(domain) for domain in sorted(WEB_IDENTITY_PROVIDER_DOMAINS))
+
+
+def _asserts_key_absent(value: Any) -> bool:
+    """True when a ``Null`` value asserts the key is absent; policy JSON gives bool, str, or list."""
+    values = value if isinstance(value, list) else [value]
+    return any(str(v).strip().lower() == "true" for v in values)
+
+
+def _condition_alternatives(required: RequiredCondition) -> list[str]:
+    return [required] if isinstance(required, str) else list(required)
 
 
 class TrustPolicyValidationCheck(PolicyCheck):
@@ -71,7 +98,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
     )
 
     # Default validation rules for assume actions
-    DEFAULT_RULES = {
+    DEFAULT_RULES: ClassVar[dict[str, dict[str, Any]]] = {
         "sts:AssumeRole": {
             "allowed_principal_types": ["AWS", "Service"],
             "description": "Standard role assumption",
@@ -84,8 +111,11 @@ class TrustPolicyValidationCheck(PolicyCheck):
         },
         "sts:AssumeRoleWithWebIdentity": {
             "allowed_principal_types": ["Federated"],
-            "provider_pattern": rf"^arn:{ARN_PARTITION_REGEX}:iam::\d{{12}}:oidc-provider/[\w./-]+$",
-            "required_conditions": ["*:aud"],  # Require audience condition (provider-specific key)
+            "provider_pattern": (
+                rf"^(?:arn:{ARN_PARTITION_REGEX}:iam::\d{{12}}:oidc-provider/[\w./-]+"
+                rf"|{_WEB_IDENTITY_PROVIDER_ALTERNATION})$"
+            ),
+            "required_conditions": ["*:aud", ["*:sub", "*:amr"]],
             "description": "OIDC-based federated role assumption",
         },
         "sts:TagSession": {
@@ -141,11 +171,13 @@ class TrustPolicyValidationCheck(PolicyCheck):
         # Check each assume action
         for action in actions:
             # Skip full wildcard (too broad to validate specifically)
-            if action == "*":
+            if action.strip() == "*":
                 continue
 
-            # Treat sts:* as matching all STS assume actions
-            if action == "sts:*":
+            # Treat the literal sts:* wildcard as matching all STS assume actions.
+            # (A concrete action like sts:AssumeRole is handled below via
+            # _find_matching_rule, which validates it against its own single rule.)
+            if action.strip().lower() == "sts:*":
                 for rule_action, rule in validation_rules.items():
                     principal_issues = self._validate_principal_type(
                         statement, rule_action, rule, statement_idx, config
@@ -202,30 +234,12 @@ class TrustPolicyValidationCheck(PolicyCheck):
         """
         return statement.get_actions()
 
-    def _find_matching_rule(self, action: str, rules: dict[str, Any]) -> dict[str, Any] | None:
-        """Find validation rule matching the action.
-
-        Supports wildcards in action names.
-
-        Args:
-            action: Action to find rule for (e.g., "sts:AssumeRole")
-            rules: Validation rules dict
-
-        Returns:
-            Matching rule dict or None
-        """
-        # Exact match first (performance optimization)
-        if action in rules:
-            return rules[action]
-
-        # Check for wildcard patterns in action
+    @staticmethod
+    def _find_matching_rule(action: str, rules: dict[str, Any]) -> dict[str, Any] | None:
+        """Find the rule covering ``action``, matching case-insensitively in both directions."""
         for rule_action, rule_config in rules.items():
-            # Support wildcards in the action being validated
-            if "*" in action:
-                pattern = action.replace("*", ".*")
-                if re.match(f"^{pattern}$", rule_action):
-                    return rule_config
-
+            if action_matches(action, rule_action):
+                return rule_config
         return None
 
     def _extract_principal_types(self, statement: Statement) -> dict[str, list[str]]:
@@ -377,46 +391,53 @@ class TrustPolicyValidationCheck(PolicyCheck):
         """
         issues: list[ValidationIssue] = []
 
-        required_conditions = rule.get("required_conditions", [])
+        required_conditions: list[RequiredCondition] = rule.get("required_conditions", [])
         if not required_conditions:
             return issues
 
         # Get all condition keys from statement
         condition_keys: set[str] = set()
         if statement.condition:
-            for _operator, keys_dict in statement.condition.items():
-                if isinstance(keys_dict, dict):
-                    condition_keys.update(keys_dict.keys())
+            accept_negated = is_deny(statement)
+            for operator, keys_dict in statement.condition.items():
+                if not isinstance(keys_dict, dict):
+                    continue
+                if not accept_negated and is_negated_operator(operator):
+                    continue
+                is_null_op = base_operator(operator) == "null"
+                for key, value in keys_dict.items():
+                    if is_null_op and _asserts_key_absent(value):
+                        continue
+                    condition_keys.add(key)
 
-        # Check for missing required conditions (supports wildcards like *:aud)
-        missing_conditions = []
+        # Check for missing required conditions (supports wildcards like *:aud).
+        # A list entry is an any-of group: satisfied when any alternative is present.
+        missing_conditions: list[str] = []
         for required_cond in required_conditions:
-            if "*:" in required_cond:
-                # Wildcard pattern - check if any key ends with the suffix
-                suffix = required_cond.split("*:")[1]
-                if not any(key.endswith(f":{suffix}") for key in condition_keys):
-                    missing_conditions.append(required_cond)
+            alternatives = _condition_alternatives(required_cond)
+            if any(iam_glob_match(alt, key) for alt in alternatives for key in condition_keys):
+                continue
+            if len(alternatives) == 1:
+                missing_conditions.append(f"`{alternatives[0]}`")
             else:
-                # Exact match
-                if required_cond not in condition_keys:
-                    missing_conditions.append(required_cond)
+                missing_conditions.append("one of: " + format_list_with_backticks(alternatives))
 
         if missing_conditions:
-            missing_list = format_list_with_backticks(missing_conditions)
+            missing_list = ", ".join(missing_conditions)
 
             issues.append(
                 ValidationIssue(
                     severity=self.get_severity(config),
                     issue_type="missing_required_condition_for_assume_action",
-                    message=f"Action `{action}` is missing required conditions: `{missing_list}`",
+                    message=f"Action `{action}` is missing required conditions: {missing_list}",
                     statement_index=statement_idx,
                     statement_sid=statement.sid,
                     line_number=statement.line_number,
                     action=action,
                     suggestion=f"Add required condition(s) to restrict when `{action}` can be performed. "
-                    f"Missing: `{missing_list}`\n\n"
+                    f"Missing: {missing_list}\n\n"
                     f"{rule.get('description', '')}",
-                    example=self._get_condition_example(action, required_conditions[0]),
+                    example=self._get_condition_example(action, _condition_alternatives(required_conditions[0])[0]),
                     field_name="condition",
                 )
             )

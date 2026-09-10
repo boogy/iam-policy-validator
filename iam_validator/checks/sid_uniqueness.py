@@ -11,12 +11,12 @@ This is implemented as a policy-level check that runs once when processing the f
 statement, examining all statements in the policy to find duplicates and format issues.
 """
 
-import re
 from collections import Counter
 from typing import ClassVar
 
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
+from iam_validator.core.constants import SID_PATTERN
 from iam_validator.core.models import IAMPolicy, ValidationIssue
 
 
@@ -29,46 +29,46 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
 
     Returns:
         List of ValidationIssue objects for duplicate or invalid SIDs
+
+    Note:
+        An empty ``Sid`` is treated as absent for uniqueness purposes and is
+        deliberately not flagged; this is a project choice, not a documented
+        AWS behavior.
     """
     issues: list[ValidationIssue] = []
-
-    # AWS SID requirements: alphanumeric characters only per AWS IAM policy grammar
-    # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_grammar.html
-    sid_pattern = re.compile(r"^[a-zA-Z0-9]+$")
 
     # Handle policies with no statements
     if not policy.statement:
         return []
 
-    # Collect all SIDs (ignoring None/empty values) and check format
     sids_with_indices: list[tuple[str, int]] = []
     for idx, statement in enumerate(policy.statement):
-        if statement.sid:  # Only check statements that have a SID
-            # Check SID format
-            if not sid_pattern.match(statement.sid):
-                # Identify the issue
-                if " " in statement.sid:
-                    issue_msg = f"Statement ID `{statement.sid}` contains spaces, which are not allowed by AWS"
-                    suggestion = f"Remove spaces from the SID. Example: `{statement.sid.replace(' ', '')}`"
-                else:
-                    invalid_chars = "".join(set(c for c in statement.sid if not c.isalnum()))
-                    issue_msg = f"Statement ID `{statement.sid}` contains invalid characters: `{invalid_chars}`"
-                    suggestion = "SIDs must contain only alphanumeric characters (A-Z, a-z, 0-9)"
+        if not statement.sid:
+            continue
 
-                issues.append(
-                    ValidationIssue(
-                        severity="error",  # Invalid SID format is an error
-                        statement_sid=statement.sid,
-                        statement_index=idx,
-                        issue_type="invalid_sid_format",
-                        message=issue_msg,
-                        suggestion=suggestion,
-                        line_number=statement.line_number,
-                        field_name="sid",
-                    )
+        if not SID_PATTERN.match(statement.sid):
+            if " " in statement.sid:
+                issue_msg = f"Statement ID `{statement.sid}` contains spaces, which are not allowed by AWS"
+                suggestion = f"Remove spaces from the SID. Example: `{statement.sid.replace(' ', '')}`"
+            else:
+                invalid_chars = "".join(set(c for c in statement.sid if not c.isalnum()))
+                issue_msg = f"Statement ID `{statement.sid}` contains invalid characters: `{invalid_chars}`"
+                suggestion = "SIDs must contain only alphanumeric characters (A-Z, a-z, 0-9)"
+
+            issues.append(
+                ValidationIssue(
+                    severity=severity,
+                    statement_sid=statement.sid,
+                    statement_index=idx,
+                    issue_type="invalid_sid_format",
+                    message=issue_msg,
+                    suggestion=suggestion,
+                    line_number=statement.line_number,
+                    field_name="sid",
                 )
+            )
 
-            sids_with_indices.append((statement.sid, idx))
+        sids_with_indices.append((statement.sid, idx))
 
     # Find duplicates
     sid_counts = Counter(sid for sid, _ in sids_with_indices)

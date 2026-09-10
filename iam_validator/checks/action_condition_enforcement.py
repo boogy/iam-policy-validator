@@ -22,6 +22,8 @@ import re
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from iam_validator.checks.utils import format_list_with_backticks
+from iam_validator.checks.utils.aws_matching import action_matches
+from iam_validator.checks.utils.condition_matching import has_condition_key
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.ignore_patterns import IgnorePatternMatcher
@@ -44,6 +46,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     # it as a finding so it appears under "Policies with Findings" rather than
     # "Policies with Errors (AWS-invalid)". Users can override via config.
     default_severity: ClassVar[str] = "high"
+    # In a boundary policy (SCP/RCP) an Allow declines to restrict; it never grants access.
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset(
+        {"IDENTITY_POLICY", "RESOURCE_POLICY", "TRUST_POLICY"}
+    )
 
     async def execute_policy(
         self,
@@ -920,43 +926,14 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         - statement_action="iam:Create*" matches required_action="iam:CreateUser"
         - statement_action="iam:C*" matches pattern="^iam:Create" (by checking actual AWS actions)
         """
-        if statement_action == "*":
+        # Exact match, and bidirectional case-insensitive wildcard match
+        # (statement_action="*" or "iam:Create*", required_action="iam:CreateUser" or "iam:Creat*")
+        if action_matches(statement_action, required_action):
             return True
-
-        # Exact match
-        if statement_action == required_action:
-            return True
-
-        # AWS wildcard match in required_action (e.g., "s3:*", "s3:Get*")
-        if "*" in required_action:
-            # Convert AWS wildcard to regex and cache compilation
-            wildcard_pattern = required_action.replace("*", ".*").replace("?", ".")
-            try:
-                compiled_pattern = compile_and_cache(f"^{wildcard_pattern}$")
-                if compiled_pattern.match(statement_action):
-                    return True
-            except re.error:
-                # Invalid regex pattern - skip this match attempt
-                pass
 
         # AWS wildcard match in statement_action (e.g., "iam:Creat*" in policy)
         # Check if this wildcard would grant access to actions matching our patterns
         if "*" in statement_action:
-            # Convert statement wildcard to regex pattern
-            stmt_wildcard_pattern = statement_action.replace("*", ".*").replace("?", ".")
-
-            # Check if statement wildcard overlaps with required action
-            if "*" not in required_action:
-                # Required action is specific (e.g., "iam:CreateUser")
-                # Check if statement wildcard would grant it
-                try:
-                    compiled_pattern = compile_and_cache(f"^{stmt_wildcard_pattern}$")
-                    if compiled_pattern.match(required_action):
-                        return True
-                except re.error:
-                    # Invalid regex pattern - skip this match attempt
-                    pass
-
             # Check if statement wildcard overlaps with any of our action patterns
             # Strategy: Use real AWS actions from the fetcher instead of hardcoded guesses
             # For example: "iam:C*" should match pattern "^iam:Create" because:
@@ -1133,11 +1110,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         return issues
 
-    @staticmethod
-    def _base_operator(operator: str) -> str:
-        """Lowercase operator without set prefix (ForAnyValue:/ForAllValues:) or IfExists suffix."""
-        return operator.strip().lower().rsplit(":", 1)[-1].removesuffix("ifexists")
-
     def _has_condition_requirement(self, statement: Statement, condition_requirement: dict[str, Any]) -> bool:
         """Check if statement has the required condition."""
         condition_key = condition_requirement.get("condition_key")
@@ -1147,75 +1119,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         operator = condition_requirement.get("operator")
         expected_value = condition_requirement.get("expected_value")
 
-        return self._has_condition(statement, condition_key, operator, expected_value)
-
-    def _has_condition(
-        self,
-        statement: Statement,
-        condition_key: str,
-        operator: str | None = None,
-        expected_value: Any = None,
-    ) -> bool:
-        """
-        Check if statement has the specified condition key.
-
-        Args:
-            statement: The IAM policy statement
-            condition_key: The condition key to look for
-            operator: Optional specific operator (e.g., "StringEquals")
-            expected_value: Optional expected value for the condition
-
-        Returns:
-            True if condition is present (and matches expected value if specified)
-        """
-        if not statement.condition:
-            return False
-
-        if operator:
-            wanted = operator.strip().lower()
-            operators_to_check = [op for op in statement.condition if op.strip().lower() == wanted]
-        else:
-            # Null only asserts a key's presence or absence; it never constrains the value.
-            operators_to_check = [op for op in statement.condition if self._base_operator(op) != "null"]
-
-        key_lower = condition_key.lower()
-
-        # Look through specified condition operators
-        for op in operators_to_check:
-            conditions = statement.condition[op]
-            if isinstance(conditions, dict):
-                actual_key = next((k for k in conditions if k.lower() == key_lower), None)
-                if actual_key is not None:
-                    # If no expected value specified, just presence is enough
-                    if expected_value is None:
-                        return True
-
-                    # Check if the value matches
-                    actual_value = conditions[actual_key]
-
-                    # Handle boolean values
-                    if isinstance(expected_value, bool):
-                        if isinstance(actual_value, bool):
-                            return actual_value == expected_value
-                        if isinstance(actual_value, str):
-                            return actual_value.lower() == str(expected_value).lower()
-
-                    # Handle exact matches
-                    if actual_value == expected_value:
-                        return True
-
-                    # Handle list values (actual can be string or list)
-                    if isinstance(expected_value, list):
-                        if isinstance(actual_value, list):
-                            return set(expected_value) == set(actual_value)
-                        if actual_value in expected_value:
-                            return True
-
-                    # Handle string matches for variable references like ${aws:PrincipalTag/owner}
-                    if str(actual_value) == str(expected_value):
-                        return True
-
-        return False
+        return has_condition_key(statement, condition_key, operator, expected_value)
 
     def _create_issue(
         self,

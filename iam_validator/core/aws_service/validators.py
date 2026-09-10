@@ -7,12 +7,17 @@ including actions, condition keys, and ARN formats.
 import logging
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 from iam_validator.core.aws_service.parsers import ServiceParser
 from iam_validator.core.constants import (
     AWS_TAG_KEY_ALLOWED_CHARS,
     AWS_TAG_KEY_MAX_LENGTH,
+    OIDC_PROVIDER_PATTERN,
+    OIDC_STANDARD_CLAIMS,
+    SERVICE_REFERENCE_PLACEHOLDER_PATTERN,
+    WEB_IDENTITY_FEDERATION_ACTIONS,
 )
 from iam_validator.core.models import ServiceDetail
 
@@ -60,6 +65,9 @@ def find_matching_condition_key(condition_key: str, condition_keys: list[str] | 
     the prefix before the FIRST "/" must match the condition key's prefix and the
     suffix after that "/" in the condition_key must be a valid AWS tag key.
 
+    Patterns whose provider identifier is templated — ``token.actions.${Domain}.ghe.com:actor``
+    — match any value in the placeholder's position; see :func:`_compile_placeholder_pattern`.
+
     Matching is case-insensitive, per AWS: "Condition key names are not case-sensitive"
     and "Tag keys are not case-sensitive". The tag key after the "/" is only
     charset-validated, never compared, so its case is irrelevant here.
@@ -85,7 +93,12 @@ def find_matching_condition_key(condition_key: str, condition_keys: list[str] | 
         if key.lower() == key_lower:
             return key
 
-    # Pattern matching only applies when the condition key contains "/"
+    for pattern in condition_keys:
+        placeholder = _compile_placeholder_pattern(pattern)
+        if placeholder is not None and placeholder.match(condition_key):
+            return pattern
+
+    # Tag-key matching only applies when the condition key contains "/"
     if "/" not in condition_key:
         return None
 
@@ -102,6 +115,23 @@ def find_matching_condition_key(condition_key: str, condition_keys: list[str] | 
             return pattern
 
     return None
+
+
+@lru_cache(maxsize=512)
+def _compile_placeholder_pattern(pattern: str) -> re.Pattern[str] | None:
+    """Compile a provider-templated condition key, or None when the pattern is not one.
+
+    AWS templates the account-specific part of a provider identifier as ``${Name}``
+    (``token.actions.${Domain}.ghe.com:actor``), which never matches a real key
+    literally. Only placeholders left of the final ":" are treated this way, so
+    tag-key patterns such as ``aws:ResourceTag/${TagKey}`` keep their own matching.
+    """
+    prefix, separator, _ = pattern.rpartition(":")
+    if not separator or "${" not in prefix:
+        return None
+    literals = SERVICE_REFERENCE_PLACEHOLDER_PATTERN.split(pattern)
+    body = "[^:]+".join(re.escape(literal) for literal in literals)
+    return re.compile(f"^{body}$", re.IGNORECASE)
 
 
 def condition_key_in_list(condition_key: str, condition_keys: list[str]) -> bool:
@@ -265,7 +295,7 @@ class ServiceValidator:
                 get_global_conditions,
             )
 
-            _, action_name = self._parser.parse_action(action)
+            service_prefix, action_name = self._parser.parse_action(action)
 
             # Check if it's a global condition key
             # Note: Some aws: prefixed keys like aws:RequestTag/* and aws:ResourceTag/* are NOT
@@ -313,6 +343,9 @@ class ServiceValidator:
                 if self._action_supports_condition_key(action_detail, condition_key, service_detail):
                     return ConditionKeyValidationResult(is_valid=True)
 
+            if self._is_web_identity_claim(service_prefix, actions_to_check, condition_key):
+                return ConditionKeyValidationResult(is_valid=True)
+
             # Handle global keys
             if is_global_key:
                 if any_has_condition_keys:
@@ -335,6 +368,18 @@ class ServiceValidator:
                 is_valid=False,
                 error_message=f"Failed to validate condition key: {e!s}",
             )
+
+    @staticmethod
+    def _is_web_identity_claim(service_prefix: str, action_names: list[str], condition_key: str) -> bool:
+        """True for a standard OIDC claim on a provider AWS cannot enumerate ahead of time."""
+        provider, separator, claim = condition_key.rpartition(":")
+        if not separator or claim.lower() not in OIDC_STANDARD_CLAIMS:
+            return False
+        if not OIDC_PROVIDER_PATTERN.match(provider):
+            return False
+        return any(
+            f"{service_prefix}:{action_name}".lower() in WEB_IDENTITY_FEDERATION_ACTIONS for action_name in action_names
+        )
 
     @staticmethod
     def _action_supports_condition_key(
