@@ -6,7 +6,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ## [1.27.0] - 2026-09-09
 
-Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundary rather than granting access, so grant-shaped checks no longer fire there. Action matching is case-insensitive and honours `?`, and third-party checks can register themselves without a core edit.
+Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundary rather than granting access, so grant-shaped checks no longer fire there. Action matching is case-insensitive and honours `?`, and third-party checks can register themselves without a core edit. Custom checks built on an abstract base class load again, since required-attribute enforcement moved from class definition to registration.
 
 ### Added
 
@@ -15,17 +15,21 @@ Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundar
 - `validate_policies(max_concurrency=...)` to bound how many policies validate at once from the SDK
 - `completion <shell> --install` writes the completion script to `~/.local/share/zsh/site-functions/_iam-validator` or `~/.local/share/bash-completion/completions/iam-validator` (honouring `XDG_DATA_HOME`) and prints the one-time shell-rc line; it always overwrites so the installed script cannot go stale
 - `fetch_multiple_services(strict=False)` opts into logging a per-service fetch failure and omitting it from the result; the default (`strict=True`) still re-raises, matching the 1.26.0 contract
+- Example fixtures for AWS's default organization policies and a Cognito identity-pool trust policy: `examples/iam-test-policies/service-control-policies/full-aws-access.json`, `examples/iam-test-policies/resource-control-policies/rcp-valid-full-aws-access.json` and `examples/trust-policies/cognito-identity-pool-trust-policy.json`. The two organization fixtures validate clean only with an explicit `--policy-type`, or a `policy_types:` glob, since neither shape is auto-detectable
 
 ### Changed
 
 - Rename the `max_concurrency` setting from `max_concurrent`, and it now actually bounds how many policies validate at once (default 10). A config that still sets `max_concurrent:` under `settings:` is accepted but ignored without a warning, since the settings schema allows unknown keys — rename it to keep the bound you configured
 - Statements within a policy are validated concurrently instead of one at a time; finding order is unchanged
 - Remove the unused `fail_fast` setting; config files that still set it are unaffected
+- The shipped `examples/configs/offline-validation.yaml` and `strict-security.yaml` drop `fail_fast` and use `max_concurrency`
 - Service control policies no longer report wildcard-action or missing-condition findings on their `Allow` statements
 - Resource control policies no longer report full-wildcard, wildcard-action, wildcard-resource, service-wildcard or missing-condition findings, matching the SCP behaviour
 - WebIdentity (OIDC) trust policies must now carry `*:aud` plus one of `*:sub` or `*:amr`
 - Service prefetch is bounded by the shared request semaphore instead of fixed batches of five
 - Entry-point plugin discovery now lives in `check_registry.load_entry_point_checks`, breaking the `check_registry` ↔ `config_loader` import cycle
+- Condition-operator semantics — the negated-operator set, `IfExists` handling and the `Deny` test — are consolidated in the new `checks/utils/condition_matching.py`, so `action_condition_enforcement`, `principal_validation`, `mfa_condition_check`, `trust_policy_validation` and `not_principal_validation` now agree on them instead of each carrying its own copy
+- Glob-aware IAM matching moved to the new `core/aws_matching.py` (`core` must never import from `checks`); `checks/utils/aws_matching.py` re-exports `action_matches`, `compile_iam_glob` and `iam_glob_match`, so the historical import path still works
 - Sensitive-action matching indexes the candidate list into a literal set plus its glob remainder, so the 490-entry default list no longer costs a full scan per action
 - **Breaking-ish (intended):** `check_id`/`description` enforcement moved from `PolicyCheck.__init_subclass__` to `CheckRegistry.register()` — an intermediate base class that doesn't declare them can be defined again (previously, defining one raised at class-definition time and silently lost every check in the module that imported it), and enforcement now checks the instance, so a `check_id` implemented as a `@property` returning an empty string is caught instead of skipped
 
