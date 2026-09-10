@@ -145,3 +145,36 @@ def test_sid_pattern_is_defined_only_in_constants():
     package = Path(__file__).resolve().parents[2] / "iam_validator"
     defining = [p for p in package.rglob("*.py") if literal in p.read_text(encoding="utf-8")]
     assert [p.name for p in defining] == ["constants.py"]
+
+
+class TestInvalidSidCharacterReporting:
+    @pytest.fixture
+    def check(self):
+        return SidUniquenessCheck()
+
+    @pytest.fixture
+    def config(self):
+        return CheckConfig(check_id="sid_uniqueness")
+
+    @pytest.fixture
+    def fetcher(self):
+        return AWSServiceFetcher()
+
+    async def _report(self, check, config, fetcher, sid):
+        policy = IAMPolicy(
+            Version="2012-10-17",
+            Statement=[Statement(Sid=sid, Effect="Allow", Action=["s3:GetObject"], Resource=["*"])],
+        )
+        issues = await check.execute_policy(policy, "test.json", fetcher, config)
+        assert len(issues) == 1
+        return issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_non_ascii_letters_are_reported(self, check, config, fetcher):
+        message = await self._report(check, config, fetcher, "Statementé")
+        assert "invalid characters: `é`" in message
+
+    @pytest.mark.asyncio
+    async def test_repeated_characters_listed_once_in_first_seen_order(self, check, config, fetcher):
+        message = await self._report(check, config, fetcher, "a-b_c-d_e.f")
+        assert "invalid characters: `-_.`" in message

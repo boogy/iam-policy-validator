@@ -28,6 +28,9 @@ core/
 ├── constants.py            # central markers, ARN partition regex, size limits
 ├── aws_matching.py         # case-insensitive IAM glob matching (compile_iam_glob,
 │                           # iam_glob_match, action_matches); re-exported by checks/utils/
+├── condition_validators.py # operator normalisation + polarity (normalize_operator,
+│                           # base_operator, is_negated_operator, NEGATED_OPERATORS);
+│                           # re-exported by checks/utils/condition_matching.py
 ├── aws_service/            # service-reference fetcher (memory LRU + disk TTL 7 days)
 ├── config/                 # YAML config + sensitive_actions / condition_requirements
 └── formatters/             # 7 output formatters
@@ -54,6 +57,10 @@ Policies are validated concurrently under an `asyncio.Semaphore` bounded by
 only a direct `validate_policies()` call can override it). Within a
 policy, statements are gathered concurrently and unbounded; statement order is preserved
 because `ignore_patterns` and PR-comment fingerprints anchor to it.
+
+`PRCommenter` resolves a finding's line through `PolicyLoader.find_statement_line_numbers`
+(JSON and YAML), memoized per file, so its mapping agrees with the `line_number` the
+validator attached; a field search is bounded by the next statement's line.
 
 `PRCommenter` then runs diff-aware filtering with 3 tiers (changed line → inline review
 comment, modified statement / unchanged line → off-diff pipeline → context-issue table

@@ -156,7 +156,8 @@ literals. Add a constant there before introducing any of these inline:
   `aws-eusc`, all `aws-iso*`) — sourced by `DEFAULT_ARN_VALIDATION_PATTERN` and the
   trust-policy SAML/OIDC patterns
 - `SID_PATTERN` — the charset AWS's policy grammar allows in a `Sid` (`A-Z a-z 0-9`
-  only); consumed by `checks/sid_uniqueness.py`
+  only), with `SID_INVALID_CHAR_PATTERN` for the complement (ASCII-only, unlike
+  `str.isalnum()`); both consumed by `checks/sid_uniqueness.py`
 - AWS policy size limits (`MAX_MANAGED_POLICY_SIZE`, etc.)
 - GitHub comment limits (`GITHUB_COMMENT_HARD_LIMIT = 65536`,
   `GITHUB_MAX_COMMENT_LENGTH = 65000`, `GITHUB_COMMENT_SPLIT_LIMIT = 60000`)

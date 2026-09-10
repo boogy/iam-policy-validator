@@ -687,3 +687,21 @@ def test_amr_is_multivalued_for_oidc_providers(condition_key):
 def test_amr_is_not_multivalued_for_non_provider_prefixes(condition_key):
     """``amr`` is only multivalued as an OIDC/web-identity provider claim."""
     assert is_multivalued_context_key(condition_key) is False
+
+
+def test_plain_patterns_do_not_reach_the_placeholder_cache():
+    """Only templated patterns are compiled, so the LRU keeps real provider patterns."""
+    from iam_validator.core.aws_service.validators import _compile_placeholder_pattern
+
+    _compile_placeholder_pattern.cache_clear()
+    assert find_matching_condition_key("s3:prefix", ["s3:delimiter", "aws:ResourceTag/tag-key"]) is None
+    assert _compile_placeholder_pattern.cache_info().currsize == 0
+
+    assert (
+        find_matching_condition_key(
+            "token.actions.acme.ghe.com:actor",
+            ["token.actions.${Domain}.ghe.com:actor"],
+        )
+        == "token.actions.${Domain}.ghe.com:actor"
+    )
+    assert _compile_placeholder_pattern.cache_info().currsize == 1

@@ -86,3 +86,17 @@ async def test_curated_entry_returns_example_pair(check_id: str):
     result = await get_issue_guidance(check_id)
     assert result["example_before"] is not None, f"missing example_before for {check_id}"
     assert result["example_after"] is not None, f"missing example_after for {check_id}"
+
+
+async def test_get_check_details_configuration_reflects_session_config():
+    """get_check_details reports the session config's enablement and severity, not defaults."""
+    from iam_validator.mcp.session_config import SessionConfigManager
+
+    SessionConfigManager.clear_config()
+    try:
+        SessionConfigManager.set_config({"checks": {"wildcard_action": {"enabled": False, "severity": "low"}}})
+        result = await get_check_details("wildcard_action")
+        assert result["configuration"] == {"enabled": False, "severity": "low"}
+        assert result["default_severity"] != "low"
+    finally:
+        SessionConfigManager.clear_config()

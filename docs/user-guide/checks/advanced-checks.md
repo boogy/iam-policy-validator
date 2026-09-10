@@ -167,6 +167,46 @@ Only services where the role is directly bound to a compute resource owned by th
 !!! warning "All Other Services Require Conditions"
 All other AWS service principals -- including services that typically use service-linked roles (e.g., `guardduty`, `elasticloadbalancing`, `organizations`) -- require `aws:SourceArn` or `aws:SourceAccount` conditions when used in custom trust policies. If a customer writes a custom trust policy for any of these services, the confused deputy risk applies to that custom role.
 
+### Required Conditions per Assume Action
+
+Each `sts:` assume action carries its own rule. A glob action (`sts:*`, `sts:AssumeRole*`)
+is validated against every rule it covers, because it grants all of them.
+
+| Action                            | Principal types         | Required conditions              |
+| --------------------------------- | ----------------------- | -------------------------------- |
+| `sts:AssumeRole`                  | AWS, Service            | --                               |
+| `sts:AssumeRoleWithSAML`          | Federated               | `SAML:aud`                       |
+| `sts:AssumeRoleWithWebIdentity`   | Federated               | `<provider>:aud` and one of `<provider>:sub` / `<provider>:amr` |
+| `sts:TagSession`                  | AWS, Service, Federated | --                               |
+| `sts:SetSourceIdentity`           | AWS, Service, Federated | --                               |
+
+A list inside `required_conditions` is an "any one of" group. Provider-scoped keys are
+written `*:aud` in configuration and rendered against the statement's own provider
+(`token.actions.githubusercontent.com:aud`) in the finding.
+
+Negated operators (`StringNotEquals`) on an `Allow`, and `Null` conditions asserting a
+key is _absent_, do not count as constraining the key.
+
+### Overriding or Opting Out of the Rules
+
+`validation_rules` replaces `DEFAULT_RULES` wholesale, so it is the opt-out for any
+individual requirement -- redefine the action with only the parts you want enforced:
+
+```yaml
+checks:
+  trust_policy_validation:
+    enabled: true
+    validation_rules:
+      sts:AssumeRoleWithWebIdentity:
+        allowed_principal_types: ["Federated"]
+        # `*:aud` only; drops the `*:sub` / `*:amr` requirement
+        required_conditions: ["*:aud"]
+```
+
+Omit `required_conditions` entirely to enforce no conditions for that action, and omit
+`provider_pattern` to skip provider-ARN format validation. Actions left out of
+`validation_rules` are not validated at all.
+
 ### Trust Policy Types
 
 #### AWS Service

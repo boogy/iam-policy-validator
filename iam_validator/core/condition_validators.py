@@ -79,6 +79,21 @@ _SET_OPERATOR_PREFIXES_LOWER: frozenset[str] = frozenset(p.lower() for p in SET_
 # casing used in the policy (matching the case-insensitive base-operator lookup).
 _SET_OPERATOR_PREFIX_CANONICAL: dict[str, str] = {p.lower(): p for p in SET_OPERATOR_PREFIXES}
 _NULL_OPERATOR_LOWER = "null"
+
+#: Operators that exclude a value rather than constrain to one. On an ``Allow`` these
+#: do not satisfy a "this key must be constrained" requirement; on a ``Deny`` they do.
+NEGATED_OPERATORS: frozenset[str] = frozenset(
+    {
+        "arnnotequals",
+        "arnnotlike",
+        "datenotequals",
+        "notipaddress",
+        "numericnotequals",
+        "stringnotequals",
+        "stringnotequalsignorecase",
+        "stringnotlike",
+    }
+)
 _IFEXISTS_SUFFIX_LEN = len("IfExists")
 
 # Condition keys that are sometimes absent from the request context AND are
@@ -676,6 +691,11 @@ def is_condition_key_match(documented_key: str, policy_key: str) -> bool:
     return False
 
 
+def base_operator(operator: str) -> str:
+    """Lowercase operator without set prefix (ForAnyValue:/ForAllValues:) or IfExists suffix."""
+    return operator.strip().lower().rsplit(":", 1)[-1].removesuffix("ifexists")
+
+
 def is_negated_operator(operator: str) -> bool:
     """
     Determine if a condition operator is negated (NotEquals, NotLike, etc.).
@@ -705,19 +725,7 @@ def is_negated_operator(operator: str) -> bool:
     Reference:
         https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html
     """
-    # Remove set operator prefix if present (case-insensitive, see SET_OPERATOR_PREFIXES)
-    cleaned = operator
-    if ":" in operator:
-        parts = operator.split(":", 1)
-        if parts[0].lower() in _SET_OPERATOR_PREFIXES_LOWER:
-            cleaned = parts[1]
-
-    # Remove IfExists suffix
-    if cleaned.endswith("IfExists"):
-        cleaned = cleaned[:-8]
-
-    # Check if operator contains "Not" (case-insensitive)
-    return "not" in cleaned.lower()
+    return base_operator(operator) in NEGATED_OPERATORS
 
 
 def is_operator_supports_policy_variables(operator: str) -> bool:

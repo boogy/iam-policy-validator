@@ -45,6 +45,12 @@ mcp/
 `server.py` lifespan owns one shared `AWSServiceFetcher` AND a per-`(region,
 profile)` boto3 session cache so all tool calls reuse them.
 
+`server.py:_get_registry()` builds the metadata registry lazily (not at import — it
+loads third-party entry-point plugins). `_get_check_catalog()` and `get_check_details`
+resolve each check's `enabled` / `severity` through `SessionConfigManager` on every
+call, so the catalog agrees with what `validate_policy` runs; nothing memoizes the
+resolved values.
+
 ---
 
 ## Tools (33) — tagged for `--profile` gating
@@ -93,7 +99,8 @@ Static resources cache client-side and don't count against per-turn token
 budget the way tool descriptions do:
 
 - `iam://templates` — list of available policy templates
-- `iam://checks` — registered check catalog (id, description, default_severity)
+- `iam://checks` — registered check catalog (id, description, default_severity, plus
+  the session-config-resolved `severity` and `enabled`)
 - `iam://sensitive-categories` — sensitive-action category descriptions
 - `iam://sensitive-actions/{category}` — actions for a category (parameterized)
 - `iam://checks/{check_id}` — per-check docs, registry-driven (parameterized)

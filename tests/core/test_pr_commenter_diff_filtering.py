@@ -1139,7 +1139,7 @@ class TestSearchForFieldLineScoping:
         )
         commenter = _bare_commenter()
 
-        assert PRCommenter._get_line_mapping(commenter, str(policy)) == {0: 3}
+        assert PRCommenter._get_line_mapping(commenter, str(policy)) == {0: 4}
         assert PRCommenter._search_for_field_line(commenter, str(policy), 0, "s3:GetObject") == 6
         assert PRCommenter._search_for_field_line(commenter, str(policy), 0, "s3:PutObject") is None
 
@@ -1149,6 +1149,7 @@ def _bare_commenter() -> PRCommenter:
     commenter = PRCommenter.__new__(PRCommenter)
     commenter._file_lines_cache = {}
     commenter._policy_line_maps = {}
+    commenter._statement_line_maps = {}
     return commenter
 
 
@@ -1204,8 +1205,41 @@ class TestPolicyFileReadCaching:
             first = PRCommenter._get_line_mapping(commenter, str(policy_file))
             second = PRCommenter._get_line_mapping(commenter, str(policy_file))
 
-        assert first == second == {0: 4}
+        assert first == second == {0: 5}
         assert len(calls) == 1
+
+
+class TestYamlLineMapping:
+    """YAML policies must resolve statement lines like JSON ones."""
+
+    @pytest.fixture
+    def yaml_policy(self, tmp_path):
+        policy = tmp_path / "policy.yaml"
+        policy.write_text(
+            """Version: "2012-10-17"
+Statement:
+  - Sid: First
+    Effect: Allow
+    Action: s3:GetObject
+    Resource: "*"
+  - Sid: Second
+    Effect: Deny
+    Action: s3:PutObject
+    Resource: "*"
+""",
+            encoding="utf-8",
+        )
+        return policy
+
+    def test_get_line_mapping_handles_yaml(self, yaml_policy):
+        commenter = _bare_commenter()
+        assert PRCommenter._get_line_mapping(commenter, str(yaml_policy)) == {0: 3, 1: 7}
+
+    def test_search_for_field_line_is_scoped_per_yaml_statement(self, yaml_policy):
+        commenter = _bare_commenter()
+        assert PRCommenter._search_for_field_line(commenter, str(yaml_policy), 0, "s3:GetObject") == 5
+        assert PRCommenter._search_for_field_line(commenter, str(yaml_policy), 1, "s3:PutObject") == 9
+        assert PRCommenter._search_for_field_line(commenter, str(yaml_policy), 0, "s3:PutObject") is None
 
 
 if __name__ == "__main__":

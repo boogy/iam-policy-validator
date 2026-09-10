@@ -229,10 +229,10 @@ class TestTrustPolicyValidationCheck:
         assert "missing_required_condition_for_assume_action" in issue_types
 
     @pytest.mark.asyncio
-    async def test_sts_glob_action_only_validated_against_matching_rule(self, check, fetcher, config):
-        """A glob narrower than the full sts:* wildcard (e.g. sts:AssumeRole*) is
-        validated against its single matching rule via _find_matching_rule, not
-        broadened to every STS assume-role rule."""
+    async def test_sts_glob_action_validated_against_every_rule_it_covers(self, check, fetcher, config):
+        """A glob narrower than sts:* (e.g. sts:AssumeRole*) still grants
+        AssumeRoleWithSAML and AssumeRoleWithWebIdentity, so their provider and
+        condition requirements apply too."""
         statement = Statement(
             Effect="Allow",
             Principal={"Federated": "arn:aws:iam::123456789012:saml-provider/MyProvider"},
@@ -241,7 +241,11 @@ class TestTrustPolicyValidationCheck:
         issues = await check.execute(statement, 0, fetcher, config)
         issue_types = {issue.issue_type for issue in issues}
         assert "invalid_principal_type_for_assume_action" in issue_types
-        assert "missing_required_condition_for_assume_action" not in issue_types
+        assert "missing_required_condition_for_assume_action" in issue_types
+        assert {i.action for i in issues if i.issue_type == "missing_required_condition_for_assume_action"} == {
+            "sts:AssumeRoleWithSAML",
+            "sts:AssumeRoleWithWebIdentity",
+        }
 
     @pytest.mark.asyncio
     async def test_custom_validation_rules(self, check, fetcher):
@@ -597,20 +601,115 @@ class TestTrustPolicyPartitionCoverage:
         assert any(i.issue_type == "invalid_provider_format" for i in issues)
 
 
-def test_find_matching_rule_is_case_insensitive():
+def test_find_matching_rules_is_case_insensitive():
     check = TrustPolicyValidationCheck()
     rules = {"sts:AssumeRole": {"allowed_principal_types": ["AWS"]}}
-    assert check._find_matching_rule("sts:assumerole", rules) is not None
-    assert check._find_matching_rule("STS:ASSUMEROLE", rules) is not None
+    assert [a for a, _ in check._find_matching_rules("sts:assumerole", rules)] == ["sts:AssumeRole"]
+    assert [a for a, _ in check._find_matching_rules("STS:ASSUMEROLE", rules)] == ["sts:AssumeRole"]
 
 
-def test_find_matching_rule_matches_statement_glob_against_rule():
+def test_find_matching_rules_returns_every_rule_a_glob_covers():
     check = TrustPolicyValidationCheck()
-    rules = {"sts:AssumeRoleWithWebIdentity": {"allowed_principal_types": ["Federated"]}}
-    assert check._find_matching_rule("sts:AssumeRoleWith*", rules) is not None
+    matched = [a for a, _ in check._find_matching_rules("sts:AssumeRole*", check.DEFAULT_RULES)]
+    assert matched == ["sts:AssumeRole", "sts:AssumeRoleWithSAML", "sts:AssumeRoleWithWebIdentity"]
 
 
-def test_find_matching_rule_returns_none_for_unrelated_action():
+def test_find_matching_rules_prefers_the_exact_rule_over_globs():
+    check = TrustPolicyValidationCheck()
+    rules = {
+        "sts:AssumeRole*": {"allowed_principal_types": ["AWS"]},
+        "sts:AssumeRole": {"allowed_principal_types": ["Service"]},
+    }
+    assert [a for a, _ in check._find_matching_rules("sts:AssumeRole", rules)] == ["sts:AssumeRole"]
+
+
+def test_find_matching_rules_returns_empty_for_unrelated_action():
     check = TrustPolicyValidationCheck()
     rules = {"sts:AssumeRole": {"allowed_principal_types": ["AWS"]}}
-    assert check._find_matching_rule("s3:GetObject", rules) is None
+    assert check._find_matching_rules("s3:GetObject", rules) == []
+
+
+class TestConfusedDeputyOperatorPolarity:
+    @pytest.mark.asyncio
+    async def test_negated_source_account_on_allow_is_not_protection(self, check, fetcher, config):
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Service": "sns.amazonaws.com"},
+            Action=["sts:AssumeRole"],
+            Condition={"StringNotEquals": {"aws:SourceAccount": "123456789012"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert any(i.issue_type == "confused_deputy_risk" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_null_asserting_absence_is_not_protection(self, check, fetcher, config):
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Service": "sns.amazonaws.com"},
+            Action=["sts:AssumeRole"],
+            Condition={"Null": {"aws:SourceArn": "true"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert any(i.issue_type == "confused_deputy_risk" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_positive_source_account_is_protection(self, check, fetcher, config):
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Service": "sns.amazonaws.com"},
+            Action=["sts:AssumeRole"],
+            Condition={"StringEquals": {"aws:SourceAccount": "123456789012"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert not any(i.issue_type == "confused_deputy_risk" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_negated_source_account_on_deny_is_protection(self, check, fetcher, config):
+        statement = Statement(
+            Effect="Deny",
+            Principal={"Service": "sns.amazonaws.com"},
+            Action=["sts:AssumeRole"],
+            Condition={"StringNotEquals": {"aws:SourceAccount": "123456789012"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert not any(i.issue_type == "confused_deputy_risk" for i in issues)
+
+
+class TestRequiredConditionRendering:
+    @pytest.mark.asyncio
+    async def test_oidc_requirement_is_rendered_for_the_statement_provider(self, check, fetcher, config):
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+            Action=["sts:AssumeRoleWithWebIdentity"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        issue = next(i for i in issues if i.issue_type == "missing_required_condition_for_assume_action")
+        assert "`token.actions.githubusercontent.com:aud`" in issue.message
+        assert "`token.actions.githubusercontent.com:sub`" in issue.message
+        assert "*:aud" not in issue.message
+        assert "token.actions.githubusercontent.com:aud" in (issue.example or "")
+
+    @pytest.mark.asyncio
+    async def test_bare_web_identity_domain_is_rendered(self, check, fetcher, config):
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Federated": "accounts.google.com"},
+            Action=["sts:AssumeRoleWithWebIdentity"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        issue = next(i for i in issues if i.issue_type == "missing_required_condition_for_assume_action")
+        assert "`accounts.google.com:aud`" in issue.message
+
+    @pytest.mark.asyncio
+    async def test_example_uses_the_first_missing_group_not_the_first_requirement(self, check, fetcher, config):
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},
+            Action=["sts:AssumeRoleWithWebIdentity"],
+            Condition={"StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        issue = next(i for i in issues if i.issue_type == "missing_required_condition_for_assume_action")
+        assert "token.actions.githubusercontent.com:sub" in (issue.example or "")
+        assert ":aud" not in (issue.example or "")

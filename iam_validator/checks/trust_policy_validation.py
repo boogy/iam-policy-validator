@@ -174,47 +174,21 @@ class TrustPolicyValidationCheck(PolicyCheck):
             if action.strip() == "*":
                 continue
 
-            # Treat the literal sts:* wildcard as matching all STS assume actions.
-            # (A concrete action like sts:AssumeRole is handled below via
-            # _find_matching_rule, which validates it against its own single rule.)
-            if action.strip().lower() == "sts:*":
-                for rule_action, rule in validation_rules.items():
-                    principal_issues = self._validate_principal_type(
+            for rule_action, rule in self._find_matching_rules(action, validation_rules):
+                principal_issues = self._validate_principal_type(statement, rule_action, rule, statement_idx, config)
+                issues.extend(principal_issues)
+
+                if "provider_pattern" in rule:
+                    provider_issues = self._validate_provider_format(
                         statement, rule_action, rule, statement_idx, config
                     )
-                    issues.extend(principal_issues)
+                    issues.extend(provider_issues)
 
-                    if "provider_pattern" in rule:
-                        provider_issues = self._validate_provider_format(
-                            statement, rule_action, rule, statement_idx, config
-                        )
-                        issues.extend(provider_issues)
-
-                    if "required_conditions" in rule:
-                        condition_issues = self._validate_required_conditions(
-                            statement, rule_action, rule, statement_idx, config
-                        )
-                        issues.extend(condition_issues)
-                continue
-
-            # Find matching rule (exact matches for assume actions)
-            rule = self._find_matching_rule(action, validation_rules)
-            if not rule:
-                continue  # Not an assume action we validate
-
-            # Validate principal type for this action
-            principal_issues = self._validate_principal_type(statement, action, rule, statement_idx, config)
-            issues.extend(principal_issues)
-
-            # Validate provider ARN format if required
-            if "provider_pattern" in rule:
-                provider_issues = self._validate_provider_format(statement, action, rule, statement_idx, config)
-                issues.extend(provider_issues)
-
-            # Validate required conditions
-            if "required_conditions" in rule:
-                condition_issues = self._validate_required_conditions(statement, action, rule, statement_idx, config)
-                issues.extend(condition_issues)
+                if "required_conditions" in rule:
+                    condition_issues = self._validate_required_conditions(
+                        statement, rule_action, rule, statement_idx, config
+                    )
+                    issues.extend(condition_issues)
 
         # Check for confused deputy vulnerability (only on Allow statements with Service principals)
         if statement.effect == "Allow":
@@ -235,12 +209,59 @@ class TrustPolicyValidationCheck(PolicyCheck):
         return statement.get_actions()
 
     @staticmethod
-    def _find_matching_rule(action: str, rules: dict[str, Any]) -> dict[str, Any] | None:
-        """Find the rule covering ``action``, matching case-insensitively in both directions."""
+    def _find_matching_rules(action: str, rules: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+        """Rules covering ``action``, matched case-insensitively.
+
+        An action naming a rule exactly is validated against that rule alone; a glob
+        (``sts:*``, ``sts:AssumeRole*``) is validated against every rule it covers,
+        since it grants all of them.
+        """
+        normalized = action.strip().lower()
         for rule_action, rule_config in rules.items():
-            if action_matches(action, rule_action):
-                return rule_config
-        return None
+            if normalized == rule_action.strip().lower():
+                return [(rule_action, rule_config)]
+        return [
+            (rule_action, rule_config)
+            for rule_action, rule_config in rules.items()
+            if action_matches(action, rule_action)
+        ]
+
+    @staticmethod
+    def _effective_condition_keys(statement: Statement) -> set[str]:
+        """Condition keys that actually constrain the statement.
+
+        A negated operator outside a ``Deny`` and a ``Null`` asserting a key's absence
+        restrict nothing, so neither satisfies a condition requirement.
+        """
+        keys: set[str] = set()
+        if not statement.condition:
+            return keys
+
+        accept_negated = is_deny(statement)
+        for operator, keys_dict in statement.condition.items():
+            if not isinstance(keys_dict, dict):
+                continue
+            if not accept_negated and is_negated_operator(operator):
+                continue
+            is_null_op = base_operator(operator) == "null"
+            for key, value in keys_dict.items():
+                if is_null_op and _asserts_key_absent(value):
+                    continue
+                keys.add(key)
+        return keys
+
+    def _resolve_condition_key(self, required: str, statement: Statement) -> str:
+        """Render a glob requirement such as ``*:aud`` against the statement's provider."""
+        if not required.startswith("*:"):
+            return required
+
+        suffix = required[2:]
+        for principal in self._extract_principal_types(statement).get("Federated", []):
+            if ":oidc-provider/" in principal:
+                return f"{principal.split(':oidc-provider/', 1)[1]}:{suffix}"
+            if principal.lower() in WEB_IDENTITY_PROVIDER_DOMAINS:
+                return f"{principal}:{suffix}"
+        return f"<provider-url>:{suffix}"
 
     def _extract_principal_types(self, statement: Statement) -> dict[str, list[str]]:
         """Extract principals grouped by type (AWS, Service, Federated, etc.).
@@ -395,32 +416,23 @@ class TrustPolicyValidationCheck(PolicyCheck):
         if not required_conditions:
             return issues
 
-        # Get all condition keys from statement
-        condition_keys: set[str] = set()
-        if statement.condition:
-            accept_negated = is_deny(statement)
-            for operator, keys_dict in statement.condition.items():
-                if not isinstance(keys_dict, dict):
-                    continue
-                if not accept_negated and is_negated_operator(operator):
-                    continue
-                is_null_op = base_operator(operator) == "null"
-                for key, value in keys_dict.items():
-                    if is_null_op and _asserts_key_absent(value):
-                        continue
-                    condition_keys.add(key)
+        condition_keys = self._effective_condition_keys(statement)
 
         # Check for missing required conditions (supports wildcards like *:aud).
         # A list entry is an any-of group: satisfied when any alternative is present.
         missing_conditions: list[str] = []
+        example_key: str | None = None
         for required_cond in required_conditions:
             alternatives = _condition_alternatives(required_cond)
             if any(iam_glob_match(alt, key) for alt in alternatives for key in condition_keys):
                 continue
-            if len(alternatives) == 1:
-                missing_conditions.append(f"`{alternatives[0]}`")
+            resolved = [self._resolve_condition_key(alt, statement) for alt in alternatives]
+            if example_key is None:
+                example_key = resolved[0]
+            if len(resolved) == 1:
+                missing_conditions.append(f"`{resolved[0]}`")
             else:
-                missing_conditions.append("one of: " + format_list_with_backticks(alternatives))
+                missing_conditions.append("one of: " + format_list_with_backticks(resolved))
 
         if missing_conditions:
             missing_list = ", ".join(missing_conditions)
@@ -437,7 +449,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
                     suggestion=f"Add required condition(s) to restrict when `{action}` can be performed. "
                     f"Missing: {missing_list}\n\n"
                     f"{rule.get('description', '')}",
-                    example=self._get_condition_example(action, _condition_alternatives(required_conditions[0])[0]),
+                    example=self._get_condition_example(action, example_key or ""),
                     field_name="condition",
                 )
             )
@@ -474,11 +486,7 @@ class TrustPolicyValidationCheck(PolicyCheck):
             return issues
 
         # Check if conditions include confused deputy protections
-        condition_keys: set[str] = set()
-        if statement.condition:
-            for _operator, keys_dict in statement.condition.items():
-                if isinstance(keys_dict, dict):
-                    condition_keys.update(k.lower() for k in keys_dict.keys())
+        condition_keys = {key.lower() for key in self._effective_condition_keys(statement)}
 
         # aws:SourceOrgID / aws:SourceOrgPaths are the org-wide equivalents of
         # aws:SourceArn / aws:SourceAccount and count as protection too.

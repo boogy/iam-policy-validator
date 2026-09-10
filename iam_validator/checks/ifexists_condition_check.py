@@ -22,6 +22,22 @@ from iam_validator.core.condition_validators import (
 )
 from iam_validator.core.models import Statement, ValidationIssue
 
+_IFEXISTS = "IfExists"
+
+
+def _render_operator(operator: str, *, if_exists: bool) -> str:
+    """Spell ``operator`` with or without ``IfExists``, keeping its set prefix once."""
+    base_op, expected_type, set_prefix = normalize_operator(operator)
+    if expected_type is None:
+        # Unresolved operator: normalize_operator echoes the raw string, prefix included.
+        stem = operator.split(":", 1)[1] if set_prefix else operator
+        if stem.lower().endswith(_IFEXISTS.lower()):
+            stem = stem[: -len(_IFEXISTS)]
+    else:
+        stem = base_op
+    name = f"{stem}{_IFEXISTS}" if if_exists else stem
+    return f"{set_prefix}:{name}" if set_prefix else name
+
 
 class IfExistsConditionCheck(PolicyCheck):
     """Check for improper or risky usage of IfExists condition operators."""
@@ -70,7 +86,6 @@ class IfExistsConditionCheck(PolicyCheck):
         for operator, conditions in statement.condition.items():
             has_ifexists = has_if_exists_suffix(operator)
             is_negated = is_negated_operator(operator)
-            base_op, _, _ = normalize_operator(operator)
 
             for condition_key in conditions:
                 # Normalize condition key for case-insensitive comparison
@@ -85,9 +100,7 @@ class IfExistsConditionCheck(PolicyCheck):
                     if warn_always_present_keys:
                         always_present_match = any(k.lower() == key_lower for k in ALWAYS_PRESENT_CONDITION_KEYS)
                         if always_present_match:
-                            # Reconstruct the operator without IfExists for the message
-                            base_op, _base_type, base_prefix = normalize_operator(operator)
-                            base_without_ifexists = f"{base_prefix}:{base_op}" if base_prefix else base_op
+                            base_without_ifexists = _render_operator(operator, if_exists=False)
 
                             issues.append(
                                 ValidationIssue(
@@ -172,15 +185,17 @@ class IfExistsConditionCheck(PolicyCheck):
                         is_always_present = any(k.lower() == key_lower for k in ALWAYS_PRESENT_CONDITION_KEYS)
                         is_security_key = any(k.lower() == key_lower for k in security_keys)
                         if not is_always_present and is_security_key:
+                            plain_operator = _render_operator(operator, if_exists=False)
+                            ifexists_operator = _render_operator(operator, if_exists=True)
                             issues.append(
                                 ValidationIssue(
                                     severity="info",
                                     message=(
-                                        f"Consider using `{base_op}IfExists` instead "
-                                        f"of `{base_op}` in this Deny statement. "
+                                        f"Consider using `{ifexists_operator}` instead "
+                                        f"of `{plain_operator}` in this Deny statement. "
                                         f"Without `IfExists`, the `Deny` does not apply "
                                         f"when `{condition_key}` is missing from the "
-                                        f"request context. With `{base_op}IfExists`, "
+                                        f"request context. With `{ifexists_operator}`, "
                                         f"the `Deny` still applies even when the key is "
                                         f"absent."
                                     ),

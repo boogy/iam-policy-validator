@@ -16,7 +16,7 @@ from typing import ClassVar
 
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
-from iam_validator.core.constants import SID_PATTERN
+from iam_validator.core.constants import SID_INVALID_CHAR_PATTERN, SID_PATTERN
 from iam_validator.core.models import IAMPolicy, ValidationIssue
 
 
@@ -51,7 +51,7 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
                 issue_msg = f"Statement ID `{statement.sid}` contains spaces, which are not allowed by AWS"
                 suggestion = f"Remove spaces from the SID. Example: `{statement.sid.replace(' ', '')}`"
             else:
-                invalid_chars = "".join(set(c for c in statement.sid if not c.isalnum()))
+                invalid_chars = "".join(dict.fromkeys(SID_INVALID_CHAR_PATTERN.findall(statement.sid)))
                 issue_msg = f"Statement ID `{statement.sid}` contains invalid characters: `{invalid_chars}`"
                 suggestion = "SIDs must contain only alphanumeric characters (A-Z, a-z, 0-9)"
 

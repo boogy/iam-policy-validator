@@ -118,3 +118,11 @@ def test_accept_negated_override_wins_over_effect():
 def test_is_deny_is_case_and_whitespace_insensitive():
     assert is_deny(Statement(effect=" deny ", action=["*"], resource=["*"])) is True
     assert is_deny(Statement(effect="Allow", action=["*"], resource=["*"])) is False
+
+
+def test_operator_polarity_helpers_are_reexports_of_core():
+    from iam_validator.core import condition_validators
+
+    assert NEGATED_OPERATORS is condition_validators.NEGATED_OPERATORS
+    assert base_operator is condition_validators.base_operator
+    assert is_negated_operator is condition_validators.is_negated_operator

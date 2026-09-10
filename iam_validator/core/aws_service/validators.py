@@ -94,6 +94,8 @@ def find_matching_condition_key(condition_key: str, condition_keys: list[str] | 
             return key
 
     for pattern in condition_keys:
+        if "${" not in pattern:
+            continue
         placeholder = _compile_placeholder_pattern(pattern)
         if placeholder is not None and placeholder.match(condition_key):
             return pattern

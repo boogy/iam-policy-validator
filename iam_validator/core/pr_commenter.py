@@ -10,6 +10,7 @@ from typing import Any
 
 from iam_validator.core.constants import (
     BOT_IDENTIFIER,
+    HIGH_SEVERITY_LEVELS,
     REVIEW_IDENTIFIER,
     SUMMARY_IDENTIFIER,
     scoped_marker,
@@ -107,7 +108,7 @@ class PRCommenter:
         """
         self.github = github
         self.cleanup_old_comments = cleanup_old_comments
-        self.fail_on_severities = fail_on_severities or ["error", "critical"]
+        self.fail_on_severities = fail_on_severities or list(HIGH_SEVERITY_LEVELS)
         self.severity_labels = severity_labels or {}
         self.enable_codeowners_ignore = enable_codeowners_ignore
         self.allowed_ignore_users = allowed_ignore_users or []
@@ -127,6 +128,7 @@ class PRCommenter:
         self._policy_line_maps: dict[str, PolicyLineMap] = {}
         # Cache for raw file lines per file (avoids re-reading for each lookup)
         self._file_lines_cache: dict[str, list[str]] = {}
+        self._statement_line_maps: dict[str, dict[int, int]] = {}
         # Track whether workspace path has been logged (avoid spam)
         self._logged_workspace: bool = False
 
@@ -700,42 +702,24 @@ class PRCommenter:
         return self._file_lines_cache[policy_file]
 
     def _get_line_mapping(self, policy_file: str) -> dict[int, int]:
-        """Get mapping of statement indices to line numbers.
+        """Map each statement index to its starting line, for JSON and YAML alike.
 
-        Args:
-            policy_file: Path to policy file
-
-        Returns:
-            Dict mapping statement index to line number
+        Shares ``PolicyLoader``'s scanners so the mapping agrees with the
+        ``line_number`` the validator attaches to statements.
         """
+        cached = self._statement_line_maps.get(policy_file)
+        if cached is not None:
+            return cached
+
+        mapping: dict[int, int] = {}
         try:
-            lines = self._read_policy_lines(policy_file)
-
-            mapping: dict[int, int] = {}
-            statement_count = 0
-            in_statement_array = False
-
-            for line_num, line in enumerate(lines, start=1):
-                stripped = line.strip()
-
-                # Detect "Statement": [ or "Statement" : [
-                if '"Statement"' in stripped or "'Statement'" in stripped:
-                    in_statement_array = True
-                    if stripped.endswith("{"):
-                        mapping[statement_count] = line_num
-                        statement_count += 1
-                    continue
-
-                # Detect statement object start
-                if in_statement_array and stripped.startswith("{"):
-                    mapping[statement_count] = line_num
-                    statement_count += 1
-
-            return mapping
-
+            content = "".join(self._read_policy_lines(policy_file))
+            mapping = dict(enumerate(PolicyLoader.find_statement_line_numbers(content, policy_file)))
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning(f"Could not parse {policy_file} for line mapping: {e}")
-            return {}
+
+        self._statement_line_maps[policy_file] = mapping
+        return mapping
 
     def _find_issue_line(
         self,
@@ -815,7 +799,8 @@ class PRCommenter:
         Returns:
             Line number or None
         """
-        start_line = self._get_line_mapping(policy_file).get(statement_idx)
+        mapping = self._get_line_mapping(policy_file)
+        start_line = mapping.get(statement_idx)
         if start_line is None:
             return None
 
@@ -825,14 +810,12 @@ class PRCommenter:
             logger.debug(f"Could not search {policy_file}: {e}")
             return None
 
-        depth = 0
-        for line_num, line in enumerate(lines[start_line - 1 :], start=start_line):
+        following = [line for line in mapping.values() if line > start_line]
+        end_line = min(following) if following else len(lines) + 1
+
+        for line_num, line in enumerate(lines[start_line - 1 : end_line - 1], start=start_line):
             if search_term in line:
                 return line_num
-            stripped = line.strip()
-            depth += stripped.count("{") - stripped.count("}")
-            if depth <= 0:
-                return None
 
         return None
 
@@ -957,7 +940,7 @@ async def post_report_to_pr(
         )
 
         config = ConfigLoader.load_config(config_path)
-        fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+        fail_on_severities = config.get_setting("fail_on_severity", list(HIGH_SEVERITY_LEVELS))
         severity_labels = config.get_setting("severity_labels", {})
 
         # Get ignore settings

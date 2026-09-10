@@ -341,3 +341,44 @@ class TestCheckMetadata:
         )
         issues = await check.execute(statement, 0, None, config)
         assert len(issues) == 0
+
+
+class TestOperatorRendering:
+    """Message operator names keep the set prefix once and never echo IfExists back."""
+
+    @pytest.fixture
+    def check(self):
+        return IfExistsConditionCheck()
+
+    @pytest.mark.asyncio
+    async def test_unresolved_operator_keeps_prefix_once_and_drops_suffix(self, check):
+        config = CheckConfig(check_id="ifexists_condition_usage")
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={"ForAllValues:StringBogusIfExists": {"aws:PrincipalAccount": "123456789012"}},
+        )
+        issues = await check.execute(statement, 0, None, config)
+        redundant = [i for i in issues if i.issue_type == "ifexists_on_always_present_key"]
+        assert len(redundant) == 1
+        assert "same effect as `ForAllValues:StringBogus`" in redundant[0].message
+
+    @pytest.mark.asyncio
+    async def test_deny_suggestion_keeps_set_prefix(self, check):
+        config = CheckConfig(
+            check_id="ifexists_condition_usage",
+            config={"suggest_deny_ifexists": True},
+        )
+        statement = Statement(
+            Effect="Deny",
+            Action=["*"],
+            Resource=["*"],
+            Condition={"ForAnyValue:StringNotEquals": {"aws:SourceVpc": "vpc-123456"}},
+        )
+        issues = await check.execute(statement, 0, None, config)
+        suggestions = [i for i in issues if i.issue_type == "ifexists_deny_suggestion"]
+        assert len(suggestions) == 1
+        message = suggestions[0].message
+        assert "`ForAnyValue:StringNotEqualsIfExists`" in message
+        assert "instead of `ForAnyValue:StringNotEquals`" in message

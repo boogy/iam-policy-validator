@@ -108,31 +108,51 @@ def get_shared_fetcher(ctx: Any) -> AWSServiceFetcher | None:
 
 
 # =============================================================================
-# Cached Registry for list_checks and registry-driven guidance
+# Check catalog for the iam://checks resources and registry-driven guidance
 # =============================================================================
-
-# Module-level: built once at import. Tools just read.
-# create_default_registry() is sync and cheap (no I/O, just instantiates check
-# classes), so eager init eliminates any race-condition surface.
-_REGISTRY: CheckRegistry = create_default_registry()
 
 
 @functools.lru_cache(maxsize=1)
-def _get_cached_checks() -> tuple[dict[str, Any], ...]:
-    """Get cached check registry (initialized once, thread-safe via lru_cache)."""
-    return tuple(
-        sorted(
-            [
-                {
-                    "check_id": check_instance.check_id,
-                    "description": check_instance.description,
-                    "default_severity": check_instance.default_severity,
-                }
-                for check_instance in _REGISTRY.get_all_checks()
-            ],
-            key=lambda x: x["check_id"],
-        )
+def _get_registry() -> CheckRegistry:
+    """Registry backing the catalog resources; built on first use, not at import.
+
+    create_default_registry() imports and instantiates third-party entry-point
+    plugins, which must not run as a side effect of importing this module.
+    """
+    return create_default_registry()
+
+
+def _effective_check_settings(check_id: str, default_severity: str) -> tuple[bool, str]:
+    """``(enabled, severity)`` after the session config that validate_policy applies."""
+    from iam_validator.mcp.session_config import SessionConfigManager
+
+    config = SessionConfigManager.get_config()
+    if config is None:
+        return True, default_severity
+    return (
+        config.is_check_enabled(check_id),
+        config.get_check_severity(check_id) or default_severity,
     )
+
+
+def _get_check_catalog() -> tuple[dict[str, Any], ...]:
+    """Every registered check, with session-config enablement and severity resolved.
+
+    Not cached: the session config can change between calls.
+    """
+    catalog: list[dict[str, Any]] = []
+    for check_instance in _get_registry().get_all_checks():
+        enabled, severity = _effective_check_settings(check_instance.check_id, check_instance.default_severity)
+        catalog.append(
+            {
+                "check_id": check_instance.check_id,
+                "description": check_instance.description,
+                "default_severity": check_instance.default_severity,
+                "severity": severity,
+                "enabled": enabled,
+            }
+        )
+    return tuple(sorted(catalog, key=lambda x: x["check_id"]))
 
 
 # =============================================================================
@@ -909,7 +929,7 @@ async def get_issue_guidance(check_id: str) -> dict[str, Any]:
     """
     from iam_validator.mcp.check_metadata import get_check_metadata
 
-    check = _REGISTRY.get_check(check_id)
+    check = _get_registry().get_check(check_id)
     metadata = get_check_metadata(check_id)
 
     if check is None and not metadata:
@@ -962,7 +982,7 @@ async def get_check_details(check_id: str) -> dict[str, Any]:
     """
     from iam_validator.mcp.check_metadata import get_check_metadata
 
-    check = _REGISTRY.get_check(check_id)
+    check = _get_registry().get_check(check_id)
     metadata = get_check_metadata(check_id)
 
     if check is None:
@@ -977,6 +997,8 @@ async def get_check_details(check_id: str) -> dict[str, Any]:
             "related": metadata.get("related", []),
         }
 
+    enabled, severity = _effective_check_settings(check_id, check.default_severity)
+
     return {
         "check_id": check_id,
         "description": check.description,
@@ -984,7 +1006,7 @@ async def get_check_details(check_id: str) -> dict[str, Any]:
         "category": metadata.get("category", "general"),
         "example_violation": metadata.get("example_violation"),
         "example_fix": metadata.get("example_fix"),
-        "configuration": {"enabled": True, "severity": check.default_severity},
+        "configuration": {"enabled": enabled, "severity": severity},
         "related": metadata.get("related", []),
     }
 
@@ -1983,12 +2005,13 @@ async def templates_resource() -> str:
 async def checks_resource() -> str:
     """List of all available validation checks.
 
-    This resource provides metadata about all validation checks
-    including their IDs, descriptions, and default severities.
+    Each entry carries the check's id, description and class ``default_severity``
+    plus the ``severity`` and ``enabled`` flag the current session config resolves
+    to, so the catalog matches what validate_policy will actually run.
     """
     import json
 
-    return json.dumps(_get_cached_checks(), indent=2)
+    return json.dumps(_get_check_catalog(), indent=2)
 
 
 @mcp.resource("iam://sensitive-categories")
