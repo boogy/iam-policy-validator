@@ -369,7 +369,7 @@ add to your shell rc file:
 
 ```console
 $ iam-validator completion zsh --install
-installing to /Users/you/.local/share/zsh/site-functions/_iam-validator
+installed to /Users/you/.local/share/zsh/site-functions/_iam-validator
 
 add this to ${ZDOTDIR:-$HOME}/.zshrc, once:
 

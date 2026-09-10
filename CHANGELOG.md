@@ -14,19 +14,20 @@ Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundar
 - Third-party checks advertised under the `iam_validator.checks` entry-point group are discovered and registered automatically
 - `validate_policies(max_concurrency=...)` to bound how many policies validate at once from the SDK
 - `completion <shell> --install` writes the completion script to `~/.local/share/zsh/site-functions/_iam-validator` or `~/.local/share/bash-completion/completions/iam-validator` (honouring `XDG_DATA_HOME`) and prints the one-time shell-rc line; it always overwrites so the installed script cannot go stale
+- `fetch_multiple_services(strict=False)` opts into logging a per-service fetch failure and omitting it from the result; the default (`strict=True`) still re-raises, matching the 1.26.0 contract
 
 ### Changed
 
-- Rename the `max_concurrency` setting from `max_concurrent`, and it now actually bounds how many policies validate at once (default 10)
+- Rename the `max_concurrency` setting from `max_concurrent`, and it now actually bounds how many policies validate at once (default 10). A config that still sets `max_concurrent:` under `settings:` is accepted but ignored without a warning, since the settings schema allows unknown keys — rename it to keep the bound you configured
 - Statements within a policy are validated concurrently instead of one at a time; finding order is unchanged
 - Remove the unused `fail_fast` setting; config files that still set it are unaffected
 - Service control policies no longer report wildcard-action or missing-condition findings on their `Allow` statements
 - Resource control policies no longer report full-wildcard, wildcard-action, wildcard-resource, service-wildcard or missing-condition findings, matching the SCP behaviour
 - WebIdentity (OIDC) trust policies must now carry `*:aud` plus one of `*:sub` or `*:amr`
-- `fetch_multiple_services` no longer re-raises when a single service fails to fetch; failures are logged and omitted from the result
 - Service prefetch is bounded by the shared request semaphore instead of fixed batches of five
 - Entry-point plugin discovery now lives in `check_registry.load_entry_point_checks`, breaking the `check_registry` ↔ `config_loader` import cycle
 - Sensitive-action matching indexes the candidate list into a literal set plus its glob remainder, so the 490-entry default list no longer costs a full scan per action
+- **Breaking-ish (intended):** `check_id`/`description` enforcement moved from `PolicyCheck.__init_subclass__` to `CheckRegistry.register()` — an intermediate base class that doesn't declare them can be defined again (previously, defining one raised at class-definition time and silently lost every check in the module that imported it), and enforcement now checks the instance, so a `check_id` implemented as a `@property` returning an empty string is caught instead of skipped
 
 ### Fixed
 
@@ -38,28 +39,36 @@ Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundar
 - IAM action matching, including the sensitive-actions list, is now case-insensitive and treats `?` as a single-character wildcard, matching AWS
 - Unknown IAM condition operators are now reported instead of silently ignored
 - Negated condition operators, and a bare `Null` assertion, no longer satisfy a required `Allow` or trust-policy condition
-- ARN account segments must now be exactly 12 digits, a wildcard, or empty
+- ARN account segments must now be exactly 12 digits, a wildcard, empty, or the literal owner `aws` used by AWS-managed policies (e.g. `arn:aws:iam::aws:policy/ReadOnlyAccess`), which was previously reported as `invalid_resource`
 - A condition value of `*` for an ARN-typed key is no longer flagged as an invalid ARN format
 - Policies with a single `Statement` object, and files or `--stdin` input carrying a UTF-8 BOM, are now accepted
-- A check missing `check_id` or `description` now fails when the class is defined instead of misbehaving silently
+- A check missing `check_id` or `description` now fails when it is registered instead of misbehaving silently
 - Trust-policy rule and condition-key lookups are now case-insensitive
 - Web-identity trust policies naming a bare provider domain (`cognito-identity.amazonaws.com`, `accounts.google.com`, `graph.facebook.com`, `www.amazon.com`) are no longer reported as an invalid provider format
-- `<provider>:amr` is now recognized as a multivalued context key, so a set operator on it is no longer flagged
-- The standard OIDC claims `aud`, `sub`, `oaud` and `amr` are accepted on `sts:AssumeRoleWithWebIdentity` for any provider URL, so GitHub Actions trust policies no longer report `token.actions.githubusercontent.com:aud` and `:sub` as invalid condition keys
+- `<provider>:amr` is now recognized as a multivalued context key when `<provider>` looks like a domain (e.g. `cognito-identity.amazonaws.com:amr`), so a set operator on it is no longer flagged; a bare service-style key like `myservice:amr` is unaffected
+- The OIDC claims `aud`, `sub`, `oaud` and `amr` are accepted on `sts:AssumeRoleWithWebIdentity` for any provider URL, so GitHub Actions trust policies no longer report `token.actions.githubusercontent.com:aud` and `:sub` as invalid condition keys. This is deliberately more permissive than AWS, which documents a different claim set per provider — `graph.facebook.com` exposes only `app_id`/`id`, and `www.amazon.com` only `app_id`/`sub`/`user_id` — so a claim valid for one provider is not rejected on another
 - Condition keys whose provider identifier AWS templates as `${Name}` — GitHub Enterprise, self-hosted Buildkite, CircleCI orgs — now match the concrete key a policy uses
 - Sid-format violations are reported once instead of twice and honour the `sid_uniqueness` severity setting
 - An empty `Sid` is treated like an omitted one and no longer reported, since a statement needs no `Sid`
 - MFA anti-pattern checks no longer flag AWS's own documented `Deny`-based MFA enforcement pattern
 - `NotAction`/`NotResource`/`NotPrincipal` checks compare `Effect` case-insensitively
-- AWS's managed `RCPFullAWSAccess` policy is no longer reported as an invalid RCP
+- The `NotPrincipal` finding message now names the statement's actual `Effect` instead of always claiming `Allow`
+- AWS's managed `RCPFullAWSAccess` policy is no longer reported as an invalid RCP, when validated with an explicit `--policy-type RESOURCE_CONTROL_POLICY` or a `policy_types:` glob mapping — RCP has no shape auto-detection can recognize, so without one the same statement is read as a resource/identity policy and its full-wildcard grant is still flagged
+- A bare `Action: "*"` is no longer treated as evidence of a trust policy, so AWS's default RCP shape no longer auto-detects as `TRUST_POLICY`
+- A check declaring an `applies_to_policy_types` member that isn't a valid policy type now raises `ValueError` at registration instead of silently never running
+- Condition operators with a lowercase or mixed-case `IfExists` suffix (e.g. `boolifexists`, `numericlessthanifexists`) are no longer silently skipped for type and value validation, matching the already-case-insensitive base-operator lookup; the `ForAnyValue:`/`ForAllValues:` set-operator prefix is likewise matched case-insensitively, and the redundant-`IfExists` suggestion now names the canonical base operator (e.g. `StringEquals`) instead of echoing back the same miscased operator it flagged
+- In trust policies, a colon-less action glob such as `sts*` or `s*` was accidentally treated as matching every assume-role rule, because the glob was matched against the literal `sts:*` rather than the other way around; only the literal `sts:*` now does that. Such actions have no `service:` prefix and are still reported as `invalid_action`, so no valid policy loses coverage
+- `completion <shell> --install` now prints exactly one accurate outcome — `installed to`, `updated`, or `is already up to date` — instead of always claiming to be installing before knowing whether the file changed
+- `allow_template_variables` is now declared on the settings schema; it was already read by `resource_validation` and `action_resource_matching` but undeclared
 - A `max_concurrency` below 1 is clamped to 1 with a warning instead of hanging or raising
 - The settings schema now declares every setting the validator reads, matches the shipping defaults, and drops the phantom `parallel` and `max_workers` entries
+- The MCP server's "Minimal Validation" org-config template no longer suggests the phantom `parallel` setting, and the `fail_on_severity` presets in the configuration guide no longer label `[error, critical]` as the default, which contradicted the documented `[error, critical, high]` in the same page
 - An entry-point plugin that is not a `PolicyCheck`, or that duplicates a registered `check_id`, is logged and skipped instead of shadowing an existing check or aborting discovery
 - A custom check that fails to load is logged instead of printed, so it no longer corrupts `--format json` output
 - Service-reference cache reads and writes no longer block validation while waiting on disk
 - Streaming validation honours `--aws-services-dir`, and resolves the policy type per file instead of forcing `IDENTITY_POLICY`
 - Inline PR comments attach to the correct line instead of drifting to the next statement, including when `Statement` is a single object
-- The documented `download-services` command and `completion fish` shell are corrected to the `sync-services` command and the `bash`/`zsh` shells the CLI actually provides
+- The documented `download-services` command and `completion fish` shell are corrected to the `sync-services` command and the `bash`/`zsh` shells the CLI actually provides, including the `--aws-services-dir` entry in the CLI's own `--help` output
 - `NullIfExists` and its casing variants are reported as an invalid operator — AWS does not accept `IfExists` on `Null`
 - `policy_structure` no longer rewrites the caller's policy dict in place when `Statement` is a single object
 - A policy file is read once per PR comment run instead of once per finding

@@ -38,7 +38,6 @@ To use a workflow: read the corresponding file and follow its instructions, repl
 | **Add Check**        | [`.claude/skills/add-check/SKILL.md`](.claude/skills/add-check/SKILL.md)           | Scaffold a new IAM policy validation check     |
 | **Review**           | [`.claude/skills/review/SKILL.md`](.claude/skills/review/SKILL.md)                 | Comprehensive code review of recent changes    |
 | **Fix Issue**        | [`.claude/skills/fix-issue/SKILL.md`](.claude/skills/fix-issue/SKILL.md)           | Analyze and fix a GitHub issue                 |
-| **Create PR**        | [`.claude/commands/create-pr.md`](.claude/commands/create-pr.md)                   | Stage commits and push a branch for a PR       |
 | **Version Tag**      | [`.claude/commands/create-version-tag.md`](.claude/commands/create-version-tag.md) | Bump version and create a signed tag           |
 | **Benchmark**        | [`.claude/commands/benchmark.md`](.claude/commands/benchmark.md)                   | Run performance benchmarks                     |
 | **Update CHANGELOG** | [`.claude/commands/update-changelog.md`](.claude/commands/update-changelog.md)     | Update CHANGELOG.md following Common Changelog |

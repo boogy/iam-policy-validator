@@ -26,6 +26,8 @@ core/
 ├── ignored_findings.py     # storage (hidden PR comment with JSON payload)
 ├── codeowners.py
 ├── constants.py            # central markers, ARN partition regex, size limits
+├── aws_matching.py         # case-insensitive IAM glob matching (compile_iam_glob,
+│                           # iam_glob_match, action_matches); re-exported by checks/utils/
 ├── aws_service/            # service-reference fetcher (memory LRU + disk TTL 7 days)
 ├── config/                 # YAML config + sensitive_actions / condition_requirements
 └── formatters/             # 7 output formatters

@@ -54,7 +54,10 @@ settings:
 # Strict - fail on everything
 fail_on_severity: [error, warning, info, critical, high, medium, low]
 
-# Default - serious issues only
+# Default - errors plus high-impact security findings
+fail_on_severity: [error, critical, high]
+
+# Serious issues only
 fail_on_severity: [error, critical]
 
 # Relaxed - IAM errors only
@@ -164,7 +167,10 @@ settings:
 The finding names the check and the exception, and is attributed to the failing check's
 `check_id`. It deliberately ignores that check's `ignore_patterns` and severity
 overrides: the finding is *about* the check, not *from* it, so the check cannot silence
-the notice that it crashed.
+the notice that it crashed. This also means a `check_execution_error` finding is exempt
+from `hide_severities` (global or per-check) and from `ignore_patterns` more generally —
+a run that cannot finish validating a policy must not be silently filtered into looking
+clean.
 
 **Opt out**
 
