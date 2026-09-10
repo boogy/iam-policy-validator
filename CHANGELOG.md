@@ -4,7 +4,7 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.27.0] - 2026-09-09
+## [1.27.0] - 2026-09-10
 
 Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundary rather than granting access, so grant-shaped checks no longer fire there. Action matching is case-insensitive and honours `?`, and third-party checks can register themselves without a core edit. Custom checks built on an abstract base class load again, since required-attribute enforcement moved from class definition to registration.
 
