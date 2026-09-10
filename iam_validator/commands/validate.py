@@ -218,7 +218,7 @@ Examples:
             "--aws-services-dir",
             help="Path to directory containing pre-downloaded AWS service definitions "
             "(enables offline mode, avoids API rate limiting). "
-            "Use 'iam-validator download-services' to create this directory.",
+            "Use 'iam-validator sync-services' to create this directory.",
         )
 
         parser.add_argument(

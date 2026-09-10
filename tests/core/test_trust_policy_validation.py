@@ -215,6 +215,35 @@ class TestTrustPolicyValidationCheck:
         assert len(issues) == 0
 
     @pytest.mark.asyncio
+    async def test_sts_wildcard_action_validated_against_all_sts_rules(self, check, fetcher, config):
+        """The literal sts:* action must be checked against every assume-role rule,
+        since it covers AssumeRole, AssumeRoleWithSAML, AssumeRoleWithWebIdentity, etc."""
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Federated": "arn:aws:iam::123456789012:saml-provider/MyProvider"},
+            Action=["sts:*"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        issue_types = {issue.issue_type for issue in issues}
+        assert "invalid_principal_type_for_assume_action" in issue_types
+        assert "missing_required_condition_for_assume_action" in issue_types
+
+    @pytest.mark.asyncio
+    async def test_sts_glob_action_only_validated_against_matching_rule(self, check, fetcher, config):
+        """A glob narrower than the full sts:* wildcard (e.g. sts:AssumeRole*) is
+        validated against its single matching rule via _find_matching_rule, not
+        broadened to every STS assume-role rule."""
+        statement = Statement(
+            Effect="Allow",
+            Principal={"Federated": "arn:aws:iam::123456789012:saml-provider/MyProvider"},
+            Action=["sts:AssumeRole*"],
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        issue_types = {issue.issue_type for issue in issues}
+        assert "invalid_principal_type_for_assume_action" in issue_types
+        assert "missing_required_condition_for_assume_action" not in issue_types
+
+    @pytest.mark.asyncio
     async def test_custom_validation_rules(self, check, fetcher):
         """Test custom validation rules override defaults."""
         custom_config = CheckConfig(

@@ -18,6 +18,8 @@ import re
 from datetime import datetime
 from typing import Any
 
+from iam_validator.core.constants import OIDC_PROVIDER_PATTERN
+
 # Pre-compiled regex patterns for performance (compiled once at module load)
 # Timezone offset pattern for ISO 8601 dates (e.g., 2025-01-01T12:00:00+00:00)
 _TZ_OFFSET_PATTERN = re.compile(
@@ -72,6 +74,10 @@ SET_OPERATOR_PREFIXES = ["ForAllValues", "ForAnyValue"]
 
 _KNOWN_OPERATORS_LOWER: frozenset[str] = frozenset(op.lower() for op in CONDITION_OPERATORS)
 _SET_OPERATOR_PREFIXES_LOWER: frozenset[str] = frozenset(p.lower() for p in SET_OPERATOR_PREFIXES)
+# Canonical casing for a set operator prefix, keyed by its lowercased form, so
+# normalize_operator() can report "ForAnyValue"/"ForAllValues" regardless of the
+# casing used in the policy (matching the case-insensitive base-operator lookup).
+_SET_OPERATOR_PREFIX_CANONICAL: dict[str, str] = {p.lower(): p for p in SET_OPERATOR_PREFIXES}
 _NULL_OPERATOR_LOWER = "null"
 _IFEXISTS_SUFFIX_LEN = len("IfExists")
 
@@ -193,20 +199,23 @@ def normalize_operator(operator: str) -> tuple[str, str | None, str | None]:
     set_prefix = None
     cleaned = operator
 
-    # Remove ForAllValues/ForAnyValue prefix
+    # Remove ForAllValues/ForAnyValue prefix (case-insensitive, consistent with the
+    # case-insensitive base-operator lookup below and with is_known_operator())
     if ":" in operator:
         parts = operator.split(":", 1)
-        if parts[0] in SET_OPERATOR_PREFIXES:
-            set_prefix = parts[0]
+        canonical_prefix = _SET_OPERATOR_PREFIX_CANONICAL.get(parts[0].lower())
+        if canonical_prefix is not None:
+            set_prefix = canonical_prefix
             cleaned = parts[1]
 
     # Null does not accept IfExists (AWS rejects the combination outright)
     if is_invalid_null_if_exists(operator):
         return operator, None, set_prefix
 
-    # Remove IfExists suffix
-    if cleaned.endswith("IfExists"):
-        cleaned = cleaned[:-8]  # Remove "IfExists"
+    # Remove IfExists suffix (case-insensitive, consistent with the case-insensitive
+    # base-operator lookup below and with is_known_operator())
+    if cleaned.lower().endswith("ifexists"):
+        cleaned = cleaned[:-_IFEXISTS_SUFFIX_LEN]
 
     # Look up the base operator (case-insensitive)
     for base_op, op_type in CONDITION_OPERATORS.items():
@@ -236,7 +245,12 @@ def has_if_exists_suffix(operator: str) -> bool:
     Check if a condition operator has the (valid) IfExists suffix.
 
     Handles set operator prefixes (ForAllValues/ForAnyValue).
-    Case-sensitive for the IfExists suffix, matching AWS IAM behavior.
+    Case-insensitive for the IfExists suffix, matching how the rest of this module
+    already treats operator base names (e.g., ``is_known_operator`` and the
+    ``CONDITION_OPERATORS`` lookup in ``normalize_operator`` are both
+    case-insensitive) — a mixed-case suffix like ``stringequalsIfexists``
+    is otherwise treated as a known operator by callers but never reported as
+    having the suffix, which is an internal inconsistency.
     ``NullIfExists`` (any casing) returns False: AWS rejects that combination
     outright, so it is not a legitimate IfExists usage — see is_invalid_null_if_exists().
 
@@ -263,9 +277,9 @@ def has_if_exists_suffix(operator: str) -> bool:
     cleaned = operator
     if ":" in operator:
         parts = operator.split(":", 1)
-        if parts[0] in SET_OPERATOR_PREFIXES:
+        if parts[0].lower() in _SET_OPERATOR_PREFIXES_LOWER:
             cleaned = parts[1]
-    return cleaned.endswith("IfExists")
+    return cleaned.lower().endswith("ifexists")
 
 
 def translate_type(doc_type: str) -> str:
@@ -691,11 +705,11 @@ def is_negated_operator(operator: str) -> bool:
     Reference:
         https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html
     """
-    # Remove set operator prefix if present
+    # Remove set operator prefix if present (case-insensitive, see SET_OPERATOR_PREFIXES)
     cleaned = operator
     if ":" in operator:
         parts = operator.split(":", 1)
-        if parts[0] in SET_OPERATOR_PREFIXES:
+        if parts[0].lower() in _SET_OPERATOR_PREFIXES_LOWER:
             cleaned = parts[1]
 
     # Remove IfExists suffix
@@ -936,7 +950,8 @@ def is_multivalued_context_key(condition_key: str) -> bool:
 
     # ``<provider>:amr`` is multivalued for every web-identity provider; the provider
     # prefix is a domain, so service-data lookup cannot resolve it.
-    if key_lower.rsplit(":", 1)[-1] == "amr":
+    provider, separator, claim = key_lower.rpartition(":")
+    if separator and claim == "amr" and OIDC_PROVIDER_PATTERN.match(provider):
         return True
 
     # Service-specific multivalued keys are resolved from their ArrayOf prefix by the caller.

@@ -280,12 +280,119 @@ class TestPolicyCheck:
         assert hasattr(check, "check_id") is True
         assert hasattr(check, "not_a_real_attribute") is False
 
-    def test_missing_check_id_raises_at_class_definition_not_at_access(self):
+    def test_missing_check_id_does_not_raise_at_class_definition(self):
         async def execute(self, statement, statement_idx, fetcher, config):
             return []
 
-        with pytest.raises((NotImplementedError, TypeError, AttributeError)):
-            type("MissingId", (PolicyCheck,), {"description": "no check_id", "execute": execute})
+        cls = type("MissingId", (PolicyCheck,), {"description": "no check_id", "execute": execute})
+        with pytest.raises(NotImplementedError, match="must define check_id"):
+            CheckRegistry().register(cls())
+
+
+class IntermediateBaseCheck(PolicyCheck):
+    """Shared base class with no check_id/description, as a custom-checks user might write."""
+
+    async def execute(self, statement, statement_idx, fetcher, config):
+        return []
+
+
+class ConcreteFromIntermediateCheck(IntermediateBaseCheck):
+    check_id: ClassVar[str] = "concrete_from_intermediate"
+    description: ClassVar[str] = "Concrete check built on a shared intermediate base"
+
+
+class EmptyCheckIdCheck(PolicyCheck):
+    check_id: ClassVar[str] = ""
+    description: ClassVar[str] = "Has an empty check_id"
+
+    async def execute(self, statement, statement_idx, fetcher, config):
+        return []
+
+
+class EmptyDescriptionCheck(PolicyCheck):
+    check_id: ClassVar[str] = "empty_description_check"
+    description: ClassVar[str] = ""
+
+    async def execute(self, statement, statement_idx, fetcher, config):
+        return []
+
+
+class PropertyCheckIdEmptyCheck(PolicyCheck):
+    """check_id implemented as a @property returning an empty string."""
+
+    description: ClassVar[str] = "check_id property is empty"
+
+    @property
+    def check_id(self) -> str:
+        return ""
+
+    async def execute(self, statement, statement_idx, fetcher, config):
+        return []
+
+
+class InvalidPolicyTypeCheck(PolicyCheck):
+    check_id: ClassVar[str] = "invalid_policy_type_check"
+    description: ClassVar[str] = "Declares a bogus policy type"
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset({"SCP"})
+
+    async def execute(self, statement, statement_idx, fetcher, config):
+        return []
+
+
+class ValidPolicyTypeCheck(PolicyCheck):
+    check_id: ClassVar[str] = "valid_policy_type_check"
+    description: ClassVar[str] = "Declares valid policy types"
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset({"IDENTITY_POLICY", "RESOURCE_POLICY"})
+
+    async def execute(self, statement, statement_idx, fetcher, config):
+        return []
+
+
+class TestRegisterValidation:
+    """B1: required-attribute enforcement moved to register(). N5: policy-type validation."""
+
+    def test_intermediate_base_without_classvars_can_be_defined(self):
+        """Defining IntermediateBaseCheck itself must not raise (regression check)."""
+        assert IntermediateBaseCheck is not None
+
+    def test_concrete_subclass_of_intermediate_base_registers_fine(self):
+        registry = CheckRegistry()
+        check = ConcreteFromIntermediateCheck()
+        registry.register(check)
+        assert registry.get_check("concrete_from_intermediate") is check
+
+    def test_empty_check_id_raises_at_register(self):
+        registry = CheckRegistry()
+        with pytest.raises(NotImplementedError, match="must define check_id"):
+            registry.register(EmptyCheckIdCheck())
+
+    def test_empty_description_raises_at_register(self):
+        registry = CheckRegistry()
+        with pytest.raises(NotImplementedError, match="must define description"):
+            registry.register(EmptyDescriptionCheck())
+
+    def test_property_check_id_returning_empty_string_is_rejected(self):
+        registry = CheckRegistry()
+        with pytest.raises(NotImplementedError, match="must define check_id"):
+            registry.register(PropertyCheckIdEmptyCheck())
+
+    def test_invalid_policy_type_raises_value_error(self):
+        registry = CheckRegistry()
+        with pytest.raises(ValueError, match="InvalidPolicyTypeCheck"):
+            registry.register(InvalidPolicyTypeCheck())
+
+    def test_valid_policy_types_register_fine(self):
+        registry = CheckRegistry()
+        check = ValidPolicyTypeCheck()
+        registry.register(check)
+        assert registry.get_check("valid_policy_type_check") is check
+
+    def test_unset_applies_to_policy_types_registers_fine(self):
+        registry = CheckRegistry()
+        check = MockCheck()
+        assert check.applies_to_policy_types is None
+        registry.register(check)
+        assert registry.get_check("mock_check") is check
 
 
 class TestCheckRegistry:

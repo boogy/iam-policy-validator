@@ -174,8 +174,10 @@ class TrustPolicyValidationCheck(PolicyCheck):
             if action.strip() == "*":
                 continue
 
-            # Treat sts:* as matching all STS assume actions
-            if iam_glob_match(action, "sts:*"):
+            # Treat the literal sts:* wildcard as matching all STS assume actions.
+            # (A concrete action like sts:AssumeRole is handled below via
+            # _find_matching_rule, which validates it against its own single rule.)
+            if action.strip().lower() == "sts:*":
                 for rule_action, rule in validation_rules.items():
                     principal_issues = self._validate_principal_type(
                         statement, rule_action, rule, statement_idx, config

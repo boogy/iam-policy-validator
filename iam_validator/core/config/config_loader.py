@@ -182,6 +182,7 @@ class SettingsSchema(BaseModel):
     off_diff_comment_mode: str = "summary_only"
     comment_tag: str | None = None
     on_check_error: str = "fail"
+    allow_template_variables: bool = True  # Support ${var.name} in ARNs
 
     @field_validator("on_check_error")
     @classmethod

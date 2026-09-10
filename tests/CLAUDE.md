@@ -12,7 +12,8 @@ Test layout mirrors `iam_validator/`. Extends [../CLAUDE.md](../CLAUDE.md).
 ```
 tests/
 ├── checks/                  # one file per check, plus shared conftest
-│   └── conftest.py          # mock_fetcher, default_config, statement/policy fixtures
+│   ├── conftest.py          # mock_fetcher, default_config, statement/policy fixtures
+│   └── utils/               # mirrors iam_validator/checks/utils/
 ├── core/                    # core engine tests + their conftest
 ├── commands/
 ├── config/

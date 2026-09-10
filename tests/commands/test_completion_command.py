@@ -227,7 +227,7 @@ class TestCompletionInstall:
 
         out = capsys.readouterr().out
         assert "#compdef" not in out
-        assert "installing to " in out
+        assert "installed to " in out
 
     async def test_install_overwrites_even_when_already_current(
         self, completion_cmd: CompletionCommand, _xdg, capsys
@@ -242,6 +242,7 @@ class TestCompletionInstall:
 
         assert "already up to date" not in first
         assert "already up to date" in second
+        assert "installed to" not in second
         assert target.stat().st_mtime_ns != 0
 
     async def test_install_rewrites_stale_file(self, completion_cmd: CompletionCommand, _xdg, capsys) -> None:

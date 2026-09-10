@@ -2221,7 +2221,7 @@ settings:
   fail_on_severity:
     - error
     - critical
-  parallel: true
+  parallel_execution: true
 
 # Only critical checks
 policy_structure:

@@ -125,9 +125,10 @@ def is_trust_policy(policy: IAMPolicy) -> bool:
         if statement.action:
             actions = [statement.action] if isinstance(statement.action, str) else statement.action
 
-        # Check if any action is an assume action (O(1) set lookup)
+        # Check if any action is an assume action (O(1) set lookup). A bare "*" is
+        # excluded: it marks a full-access policy, not role assumption.
         has_assume_action = any(
-            action in ASSUME_ROLE_ACTIONS or action in ("sts:*", "*") for action in actions if isinstance(action, str)
+            action in ASSUME_ROLE_ACTIONS or action == "sts:*" for action in actions if isinstance(action, str)
         )
 
         if has_assume_action:

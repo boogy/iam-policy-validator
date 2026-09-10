@@ -126,6 +126,35 @@ class TestSetOperatorValidationCheck:
         assert "single-valued" in issues[0].message.lower()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("operator", "canonical"),
+        [
+            ("foranyvalue:stringlikeifexists", "ForAnyValue:StringLikeIfExists"),
+            ("FORANYVALUE:StringLike", "ForAnyValue:StringLike"),
+            ("forallvalues:stringequals", "ForAllValues:StringEquals"),
+        ],
+    )
+    async def test_set_operator_prefix_is_case_insensitive(self, operator, canonical, check, config):
+        """A lowercased/mixed-case ForAllValues:/ForAnyValue: prefix must be recognized
+        the same as the canonical casing, not fall through unvalidated."""
+        statement = Statement(
+            effect="Allow",
+            action=["iam:GetUser"],
+            resource=["*"],
+            condition={operator: {"aws:username": ["alice", "bob"]}},
+        )
+        canonical_statement = Statement(
+            effect="Allow",
+            action=["iam:GetUser"],
+            resource=["*"],
+            condition={canonical: {"aws:username": ["alice", "bob"]}},
+        )
+        issues = await check.execute(statement, 0, None, config)
+        canonical_issues = await check.execute(canonical_statement, 0, None, config)
+        assert {i.issue_type for i in issues} == {i.issue_type for i in canonical_issues}
+        assert "set_operator_on_single_valued_key" in {i.issue_type for i in issues}
+
+    @pytest.mark.asyncio
     async def test_foranyvalue_with_calledvia(self, check, config):
         """Test ForAnyValue with aws:CalledVia is accepted.
 

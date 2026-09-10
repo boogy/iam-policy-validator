@@ -14,12 +14,12 @@ import logging
 from abc import ABC
 from dataclasses import dataclass, field
 from importlib.metadata import entry_points
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, get_args
 
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.config.check_documentation import CheckDocumentationRegistry
 from iam_validator.core.ignore_patterns import IgnorePatternMatcher
-from iam_validator.core.models import Statement, ValidationIssue
+from iam_validator.core.models import PolicyType, Statement, ValidationIssue
 
 if TYPE_CHECKING:
     from iam_validator.core.models import IAMPolicy
@@ -240,8 +240,7 @@ class PolicyCheck(ABC):
 
     def __init_subclass__(cls, **kwargs):
         """
-        Validate that subclasses define required attributes and override
-        at least one execution method.
+        Validate that subclasses override at least one execution method.
 
         This ensures checks implement either execute() OR execute_policy() (or both).
         If neither is overridden, the check would never produce any results.
@@ -251,10 +250,6 @@ class PolicyCheck(ABC):
         # Skip validation for abstract classes
         if ABC in cls.__bases__:
             return
-
-        for required in ("check_id", "description"):
-            if not getattr(cls, required, None):
-                raise NotImplementedError(f"{cls.__name__} must define {required}")
 
         # Check if at least one method is overridden
         has_execute = cls.execute is not PolicyCheck.execute
@@ -446,7 +441,26 @@ class CheckRegistry:
 
         Args:
             check: PolicyCheck instance to register
+
+        Raises:
+            NotImplementedError: If the check does not define a non-empty
+                ``check_id`` or ``description``.
+            ValueError: If the check declares an ``applies_to_policy_types``
+                member that is not a valid ``PolicyType``.
         """
+        for required in ("check_id", "description"):
+            if not getattr(check, required, None):
+                raise NotImplementedError(f"{type(check).__name__} must define {required}")
+
+        if check.applies_to_policy_types is not None:
+            valid_policy_types = set(get_args(PolicyType))
+            invalid = set(check.applies_to_policy_types) - valid_policy_types
+            if invalid:
+                raise ValueError(
+                    f"{type(check).__name__} declares invalid applies_to_policy_types "
+                    f"{sorted(invalid)}; valid values are {sorted(valid_policy_types)}"
+                )
+
         self._checks[check.check_id] = check
 
         # Create default config if not exists

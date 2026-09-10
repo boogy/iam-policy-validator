@@ -356,7 +356,12 @@ class AWSServiceFetcher:
 
         raise ValueError(f"Service `{service_name}` not found")
 
-    async def fetch_multiple_services(self, service_names: list[str]) -> dict[str, ServiceDetail]:
+    async def fetch_multiple_services(
+        self,
+        service_names: list[str],
+        *,
+        strict: bool = True,
+    ) -> dict[str, ServiceDetail]:
         """Fetch multiple services concurrently with controlled parallelism.
 
         Uses a semaphore to limit concurrent requests and prevent overwhelming
@@ -364,10 +369,14 @@ class AWSServiceFetcher:
 
         Args:
             service_names: List of service names to fetch
+            strict: If True (default), re-raise the first per-service fetch
+                failure. If False, log the failure at warning level and omit
+                that service from the result.
 
         Returns:
-            Dictionary mapping service names to ServiceDetail objects. Services that
-            fail to fetch are omitted; failures are logged at warning level.
+            Dictionary mapping service names to ServiceDetail objects. When
+            ``strict=False``, services that fail to fetch are omitted instead
+            of raising.
 
         Example:
             >>> async with AWSServiceFetcher() as fetcher:
@@ -384,8 +393,10 @@ class AWSServiceFetcher:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         services: dict[str, ServiceDetail] = {}
-        for name, result in zip(service_names, results):
+        for name, result in zip(service_names, results, strict=True):
             if isinstance(result, BaseException):
+                if strict:
+                    raise result
                 logger.warning(f"Failed to fetch service {name}: {result}")
                 continue
             _, detail = result

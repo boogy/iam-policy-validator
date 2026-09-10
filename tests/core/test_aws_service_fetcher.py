@@ -4,6 +4,8 @@ import asyncio
 import logging
 import time
 
+import pytest
+
 from iam_validator.core.aws_service.cache import ServiceCacheManager
 
 
@@ -32,7 +34,7 @@ async def test_fetch_multiple_services_returns_successes_when_one_service_fails(
         return object()
 
     monkeypatch.setattr(fetcher, "fetch_service_by_name", fake_fetch)
-    result = await fetcher.fetch_multiple_services(["s3", "brokensvc", "ec2"])
+    result = await fetcher.fetch_multiple_services(["s3", "brokensvc", "ec2"], strict=False)
 
     assert set(result) == {"s3", "ec2"}
 
@@ -47,8 +49,38 @@ async def test_fetch_multiple_services_failure_is_logged(monkeypatch, caplog):
 
     monkeypatch.setattr(fetcher, "fetch_service_by_name", fake_fetch)
     with caplog.at_level(logging.WARNING):
-        assert await fetcher.fetch_multiple_services(["s3"]) == {}
+        assert await fetcher.fetch_multiple_services(["s3"], strict=False) == {}
     assert any("s3" in r.message for r in caplog.records)
+
+
+async def test_fetch_multiple_services_strict_raises_original_exception(monkeypatch):
+    from iam_validator.core.aws_service.fetcher import AWSServiceFetcher
+
+    fetcher = AWSServiceFetcher()
+
+    async def fake_fetch(name):
+        if name == "brokensvc":
+            raise RuntimeError("503 from AWS")
+        return object()
+
+    monkeypatch.setattr(fetcher, "fetch_service_by_name", fake_fetch)
+
+    with pytest.raises(RuntimeError, match="503 from AWS"):
+        await fetcher.fetch_multiple_services(["s3", "brokensvc", "ec2"], strict=True)
+
+
+async def test_fetch_multiple_services_default_is_strict(monkeypatch):
+    from iam_validator.core.aws_service.fetcher import AWSServiceFetcher
+
+    fetcher = AWSServiceFetcher()
+
+    async def fake_fetch(name):
+        raise RuntimeError("503 from AWS")
+
+    monkeypatch.setattr(fetcher, "fetch_service_by_name", fake_fetch)
+
+    with pytest.raises(RuntimeError, match="503 from AWS"):
+        await fetcher.fetch_multiple_services(["s3"])
 
 
 async def test_cache_get_does_not_block_the_event_loop(monkeypatch):

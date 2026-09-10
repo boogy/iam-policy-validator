@@ -117,12 +117,17 @@ examples:
         target = self._install_path(shell)
         contents = script if script.endswith("\n") else script + "\n"
 
-        print(f"installing to {target}")
-        was_current = target.is_file() and target.read_text(encoding="utf-8") == contents
+        existed = target.is_file()
+        was_current = existed and target.read_text(encoding="utf-8") == contents
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(contents, encoding="utf-8")
+
         if was_current:
-            print("already up to date")
+            print(f"{target} is already up to date")
+        elif existed:
+            print(f"updated {target}")
+        else:
+            print(f"installed to {target}")
 
         print()
         if shell == "zsh":

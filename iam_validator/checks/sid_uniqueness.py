@@ -29,6 +29,11 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
 
     Returns:
         List of ValidationIssue objects for duplicate or invalid SIDs
+
+    Note:
+        An empty ``Sid`` is treated as absent for uniqueness purposes and is
+        deliberately not flagged; this is a project choice, not a documented
+        AWS behavior.
     """
     issues: list[ValidationIssue] = []
 
@@ -36,7 +41,6 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
     if not policy.statement:
         return []
 
-    # AWS treats an empty Sid the same as an omitted one, so it carries no finding.
     sids_with_indices: list[tuple[str, int]] = []
     for idx, statement in enumerate(policy.statement):
         if not statement.sid:

@@ -292,6 +292,35 @@ class TestARNValidation:
     @pytest.mark.parametrize(
         "arn",
         [
+            "arn:aws:iam::aws:policy/ReadOnlyAccess",
+            "arn:aws:iam::123456789012:role/MyRole",
+            "arn:aws:s3:::my-bucket",
+            "arn:aws:s3:::my-bucket/*",
+            "arn:aws-cn:iam::aws:policy/ReadOnlyAccess",
+            "arn:aws-us-gov:iam::123456789012:role/X",
+            "arn:aws:iam::*:role/X",
+            "arn:aws:ec2:us-east-1:123456789012:instance/*",
+        ],
+    )
+    def test_aws_managed_policy_owner_accepted(self, arn_pattern, arn):
+        """AWS-managed policy ARNs use the literal owner "aws" instead of an account id."""
+        assert arn_pattern.match(arn) is not None
+
+    @pytest.mark.parametrize(
+        "arn",
+        [
+            "arn:aws:iam::notanaccount:role/X",
+            "arn:aws:iam::12345:role/X",
+            "not-an-arn",
+            "arn:aws:iam::aws:",
+        ],
+    )
+    def test_aws_managed_policy_owner_rejects_invalid_arns(self, arn_pattern, arn):
+        assert arn_pattern.match(arn) is None
+
+    @pytest.mark.parametrize(
+        "arn",
+        [
             "arn:aws:s3:us-east-1:123:bucket",
             "arn:aws:iam::1234567890123:role/App",
             "arn:aws:iam::12345678901:role/App",

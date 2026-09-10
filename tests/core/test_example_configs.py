@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 import pytest
+import yaml
 
 from iam_validator.core.check_registry import create_default_registry
 from iam_validator.core.config.config_loader import (
@@ -54,3 +55,17 @@ def test_reference_config_documents_every_settings_key():
     text = REFERENCE_CONFIG.read_text()
     missing = [key for key in SettingsSchema.model_fields if key not in text]
     assert not missing, f"undocumented settings keys: {missing}"
+
+
+def test_reference_config_has_no_phantom_settings_keys():
+    """Every active key under `settings:` must be a declared SettingsSchema field.
+
+    Unlike the "documents" check above (which also matches commented-out
+    examples), this parses the live YAML so a typo'd or invented settings key
+    can't silently pass as documented.
+    """
+    from iam_validator.core.config.config_loader import SettingsSchema
+
+    settings = yaml.safe_load(REFERENCE_CONFIG.read_text())["settings"]
+    phantom = set(settings) - set(SettingsSchema.model_fields)
+    assert not phantom, f"reference config settings keys missing from SettingsSchema: {sorted(phantom)}"

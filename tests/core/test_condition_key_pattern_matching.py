@@ -24,6 +24,7 @@ from iam_validator.core.condition_validators import (
     _validate_single_value,
     has_if_exists_suffix,
     is_known_operator,
+    is_multivalued_context_key,
     normalize_operator,
 )
 from iam_validator.core.models import ConditionKey
@@ -618,3 +619,71 @@ def test_has_if_exists_suffix_false_for_null_if_exists(operator):
 )
 def test_has_if_exists_suffix_true_for_other_operators(operator):
     assert has_if_exists_suffix(operator) is True
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["stringequalsifexists", "STRINGEQUALSIFEXISTS", "forallvalues:stringequalsifexists"],
+)
+def test_has_if_exists_suffix_is_case_insensitive(operator):
+    """The IfExists suffix must be case-insensitive, matching the base-operator
+    lookup (is_known_operator, CONDITION_OPERATORS), which already is."""
+    assert has_if_exists_suffix(operator) is True
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["stringequalsifexists", "STRINGEQUALSIFEXISTS", "StringEqualsIFEXISTS"],
+)
+def test_normalize_operator_strips_if_exists_case_insensitively(operator):
+    base_op, op_type, _set_prefix = normalize_operator(operator)
+    assert (base_op, op_type) == ("StringEquals", "String")
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["nullifexists", "NULLIFEXISTS", "NullIfExists"],
+)
+def test_normalize_operator_still_rejects_null_if_exists_any_casing(operator):
+    base_op, op_type, _set_prefix = normalize_operator(operator)
+    assert op_type is None
+    assert base_op == operator
+
+
+@pytest.mark.parametrize(
+    ("operator", "expected"),
+    [
+        ("foranyvalue:stringlikeifexists", ("StringLike", "String", "ForAnyValue")),
+        ("FORANYVALUE:StringLike", ("StringLike", "String", "ForAnyValue")),
+        ("forallvalues:stringequals", ("StringEquals", "String", "ForAllValues")),
+        ("ForAllValues:StringEquals", ("StringEquals", "String", "ForAllValues")),
+    ],
+)
+def test_normalize_operator_set_prefix_is_case_insensitive(operator, expected):
+    """A lowercased ForAllValues:/ForAnyValue: prefix must be recognized the same
+    as the canonical casing, and the returned prefix must use canonical casing
+    since callers (e.g. set_operator_validation.py) compare it against
+    "ForAllValues"/"ForAnyValue" literals."""
+    assert normalize_operator(operator) == expected
+
+
+@pytest.mark.parametrize(
+    "operator",
+    ["foranyvalue:stringlikeifexists", "FORANYVALUE:StringLikeIfExists"],
+)
+def test_has_if_exists_suffix_with_lowercase_set_prefix(operator):
+    assert has_if_exists_suffix(operator) is True
+
+
+@pytest.mark.parametrize(
+    "condition_key",
+    ["cognito-identity.amazonaws.com:amr", "accounts.google.com:amr"],
+)
+def test_amr_is_multivalued_for_oidc_providers(condition_key):
+    assert is_multivalued_context_key(condition_key) is True
+
+
+@pytest.mark.parametrize("condition_key", ["myservice:amr", "s3:amr"])
+def test_amr_is_not_multivalued_for_non_provider_prefixes(condition_key):
+    """``amr`` is only multivalued as an OIDC/web-identity provider claim."""
+    assert is_multivalued_context_key(condition_key) is False

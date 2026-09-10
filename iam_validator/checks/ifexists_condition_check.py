@@ -86,16 +86,8 @@ class IfExistsConditionCheck(PolicyCheck):
                         always_present_match = any(k.lower() == key_lower for k in ALWAYS_PRESENT_CONDITION_KEYS)
                         if always_present_match:
                             # Reconstruct the operator without IfExists for the message
-                            raw_base = operator
-                            if ":" in operator:
-                                parts = operator.split(":", 1)
-                                if parts[0] in ("ForAllValues", "ForAnyValue"):
-                                    raw_base = parts[1]
-                            base_without_ifexists = raw_base[:-8] if raw_base.endswith("IfExists") else raw_base
-                            if ":" in operator:
-                                parts = operator.split(":", 1)
-                                if parts[0] in ("ForAllValues", "ForAnyValue"):
-                                    base_without_ifexists = f"{parts[0]}:{base_without_ifexists}"
+                            base_op, _base_type, base_prefix = normalize_operator(operator)
+                            base_without_ifexists = f"{base_prefix}:{base_op}" if base_prefix else base_op
 
                             issues.append(
                                 ValidationIssue(

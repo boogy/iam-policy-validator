@@ -263,6 +263,46 @@ class TestNullIfExistsDetection:
         assert issues[0].issue_type == "invalid_operator"
 
 
+class TestLowercaseIfExistsSuffixStillValidates:
+    """A lowercase/mixed-case IfExists suffix must not silently skip type/value
+    validation. is_known_operator already treats it as known, so without
+    case-insensitive suffix-stripping in normalize_operator, these operators
+    escaped invalid_operator *and* every downstream type check.
+
+    Uses a real AWSServiceFetcher (not the MagicMock `fetcher` fixture) because
+    the type-mismatch checks below depend on real service condition-key data.
+    """
+
+    @pytest.mark.asyncio
+    async def test_boolifexists_matches_canonical_casing(self, check, config):
+        real_fetcher = AWSServiceFetcher()
+        canonical = _make_statement({"BoolIfExists": {"aws:PrincipalTag/team": "not-a-bool"}})
+        lowercase = _make_statement({"boolifexists": {"aws:PrincipalTag/team": "not-a-bool"}})
+        canonical_issues = await check.execute(canonical, 0, real_fetcher, config)
+        lowercase_issues = await check.execute(lowercase, 0, real_fetcher, config)
+        assert {i.issue_type for i in lowercase_issues} == {i.issue_type for i in canonical_issues}
+        assert {i.issue_type for i in lowercase_issues}  # canonical is not clean either
+
+    @pytest.mark.asyncio
+    async def test_numericlessthanifexists_matches_canonical_casing(self, check, config):
+        real_fetcher = AWSServiceFetcher()
+        canonical = _make_statement({"NumericLessThanIfExists": {"aws:PrincipalTag/team": "not-a-number"}})
+        lowercase = _make_statement({"numericlessthanifexists": {"aws:PrincipalTag/team": "not-a-number"}})
+        canonical_issues = await check.execute(canonical, 0, real_fetcher, config)
+        lowercase_issues = await check.execute(lowercase, 0, real_fetcher, config)
+        assert {i.issue_type for i in lowercase_issues} == {i.issue_type for i in canonical_issues}
+        assert {i.issue_type for i in lowercase_issues}  # canonical is not clean either
+
+    @pytest.mark.asyncio
+    async def test_stringequalsifexists_lowercase_stays_clean(self, check, config):
+        """No-false-positive guard: a valid operator+value combination must not
+        start producing findings just because the suffix is now recognized."""
+        real_fetcher = AWSServiceFetcher()
+        statement = _make_statement({"stringequalsifexists": {"aws:PrincipalTag/team": "backend"}})
+        issues = await check.execute(statement, 0, real_fetcher, config)
+        assert issues == []
+
+
 class TestUnknownOperatorDetection:
     @pytest.mark.asyncio
     async def test_misspelled_operator_is_flagged(self, check, fetcher, config):
