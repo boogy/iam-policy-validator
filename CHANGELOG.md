@@ -4,6 +4,28 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- A superseding check's suppression notice now lists only the check ids that check itself suppressed, and a superseder with nothing to suppress is no longer annotated
+- `--log-level debug` emits one `skipped_checks=` line per policy naming the enabled checks that do not apply to the resolved policy type, so a boundary policy's excluded grant-shaped checks are visible
+- `checks/utils/condition_matching.py` re-exports `base_operator`, `is_negated_operator` and `NEGATED_OPERATORS` from `core/condition_validators.py` instead of carrying a second copy; the core helper now uses the explicit negated-operator set rather than substring-matching `not`
+- The trust-policy `validation_rules` opt-out — redefining an action with only the requirements you want enforced — is documented, along with the per-action condition requirements and the operator-polarity rules
+
+### Fixed
+
+- A trust-policy action glob (`sts:AssumeRole*`) is validated against every rule it covers, not just the first one; an action naming a rule exactly is still validated against that rule alone
+- Confused-deputy detection no longer accepts a negated operator on an `Allow`, or a `Null` condition asserting the key is absent, as source restriction — the same operator-polarity rule the required-condition check already applied
+- A missing OIDC condition is reported against the statement's own provider (`token.actions.githubusercontent.com:sub`) instead of the raw `*:sub` pattern, and the example names the group that is actually missing
+- Inline PR comments resolve field lines in YAML policies again: statement line mapping is shared with `PolicyLoader` (which now also handles a `Statement` key opening on the same line as its first statement) and the field scan is bounded by the next statement instead of counting braces, which never worked for YAML
+- Statement line mapping is computed once per file per PR comment run instead of once per finding
+- `fail_on_severity` falls back to `constants.HIGH_SEVERITY_LEVELS` everywhere; `pr_commenter` previously defaulted to `["error", "critical"]`, dropping `high` findings from the failure decision
+- `suppress_superseded_findings` defaults to `true` at the config layer, matching the settings schema, defaults and docs
+- The redundant-`IfExists` and `Deny`-suggestion messages keep a `ForAllValues:`/`ForAnyValue:` prefix exactly once and drop the `IfExists` suffix even when the operator is unknown, instead of printing `ForAllValues:ForAllValues:StringBogusIfExists`
+- A `Sid` containing non-ASCII letters is reported with the characters AWS actually rejects, listed once each in the order they appear, instead of an empty or run-to-run-varying list
+- Condition-key lookup only compiles patterns that contain `${`, so the placeholder cache is no longer filled with plain keys
+
 ## [1.27.0] - 2026-09-10
 
 Detections are now policy-type aware: in an SCP or RCP an `Allow` sets a boundary rather than granting access, so grant-shaped checks no longer fire there. Action matching is case-insensitive and honours `?`, and third-party checks can register themselves without a core edit. Custom checks built on an abstract base class load again, since required-attribute enforcement moved from class definition to registration.

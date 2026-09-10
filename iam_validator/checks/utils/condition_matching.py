@@ -2,32 +2,20 @@
 
 from typing import Any
 
+from iam_validator.core.condition_validators import (
+    NEGATED_OPERATORS,
+    base_operator,
+    is_negated_operator,
+)
 from iam_validator.core.models import Statement
 
-#: Operators that exclude a value rather than constrain to one. On an ``Allow`` these
-#: do not satisfy a "this key must be constrained" requirement; on a ``Deny`` they do.
-NEGATED_OPERATORS: frozenset[str] = frozenset(
-    {
-        "arnnotequals",
-        "arnnotlike",
-        "datenotequals",
-        "notipaddress",
-        "numericnotequals",
-        "stringnotequals",
-        "stringnotequalsignorecase",
-        "stringnotlike",
-    }
-)
-
-
-def base_operator(operator: str) -> str:
-    """Lowercase operator without set prefix (ForAnyValue:/ForAllValues:) or IfExists suffix."""
-    return operator.strip().lower().rsplit(":", 1)[-1].removesuffix("ifexists")
-
-
-def is_negated_operator(operator: str) -> bool:
-    """True if the operator excludes values instead of constraining them."""
-    return base_operator(operator) in NEGATED_OPERATORS
+__all__ = [
+    "NEGATED_OPERATORS",
+    "base_operator",
+    "has_condition_key",
+    "is_deny",
+    "is_negated_operator",
+]
 
 
 def is_deny(statement: Statement) -> bool:

@@ -413,7 +413,7 @@ Examples:
             # Load config to get fail_on_severity, severity_labels, and ignore settings
             config_path = getattr(args, "config", None)
             config = ConfigLoader.load_config(config_path)
-            fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+            fail_on_severities = config.get_setting("fail_on_severity", list(constants.HIGH_SEVERITY_LEVELS))
             severity_labels = config.get_setting("severity_labels", {})
 
             # Get ignore settings from config

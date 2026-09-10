@@ -698,3 +698,52 @@ def test_supersedes_only_suppresses_declared_ids():
     assert "1 checks suppressed" in result["dominant"][0].message
     assert "subsumed" in result["dominant"][0].message
     assert "unrelated" not in result["dominant"][0].message
+
+
+class TestSuppressionNoticeAttribution:
+    """Each superseding check names only the findings it made redundant."""
+
+    async def _run_two_superseders(self):
+        registry = _make_registry(suppress=True)
+
+        for superseder, superseded in (("super_a", "victim_a"), ("super_b", "victim_b")):
+            cls = _make_issue_check_class(superseder)
+            cls.supersedes = frozenset({superseded})
+            registry.register(cls())
+            registry.configure_check(superseder, CheckConfig(check_id=superseder, enabled=True))
+            _add_issue_check(registry, superseded)
+
+        statement = Statement(effect="Allow", action=["*"], resource=["*"])
+        issues = await registry.execute_checks_parallel(statement, 0, _make_mock_fetcher())
+        return {issue.check_id: issue.message for issue in issues}
+
+    async def test_notice_lists_only_the_checks_that_check_suppressed(self):
+        messages = await self._run_two_superseders()
+
+        assert set(messages) == {"super_a", "super_b"}
+        assert "victim_a" in messages["super_a"]
+        assert "victim_b" not in messages["super_a"]
+        assert "victim_b" in messages["super_b"]
+        assert "victim_a" not in messages["super_b"]
+        assert "**1 checks suppressed**" in messages["super_a"]
+
+    async def test_superseder_with_nothing_to_suppress_is_not_annotated(self):
+        registry = _make_registry(suppress=True)
+
+        cls = _make_issue_check_class("super_a")
+        cls.supersedes = frozenset({"victim_a"})
+        registry.register(cls())
+        registry.configure_check("super_a", CheckConfig(check_id="super_a", enabled=True))
+        _add_issue_check(registry, "victim_a")
+
+        quiet = _make_issue_check_class("super_quiet")
+        quiet.supersedes = frozenset({"absent_check"})
+        registry.register(quiet())
+        registry.configure_check("super_quiet", CheckConfig(check_id="super_quiet", enabled=True))
+
+        statement = Statement(effect="Allow", action=["*"], resource=["*"])
+        issues = await registry.execute_checks_parallel(statement, 0, _make_mock_fetcher())
+        messages = {issue.check_id: issue.message for issue in issues}
+
+        assert "suppressed" in messages["super_a"]
+        assert "suppressed" not in messages["super_quiet"]

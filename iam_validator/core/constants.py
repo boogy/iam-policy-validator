@@ -46,6 +46,9 @@ MAX_ARN_LENGTH = 2048
 #: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_grammar.html
 SID_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9]+$")
 
+#: Characters ``SID_PATTERN`` rejects. ASCII-only, unlike ``str.isalnum()``.
+SID_INVALID_CHAR_PATTERN: Final[re.Pattern[str]] = re.compile(r"[^a-zA-Z0-9]")
+
 # ============================================================================
 # Federated identity condition keys
 # ============================================================================

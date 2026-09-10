@@ -591,19 +591,26 @@ class CheckRegistry:
         if not superseding:
             return issues_map
         superseder_ids = {check.check_id for check, _ in superseding}
-        declared: set[str] = set()
-        for check, _ in superseding:
-            declared |= set(check.supersedes)
-        suppressed_ids = (declared & set(issues_map.keys())) - superseder_ids
+        present = set(issues_map.keys())
+        suppressed_by: dict[str, set[str]] = {
+            check.check_id: (set(check.supersedes) & present) - superseder_ids for check, _ in superseding
+        }
+        suppressed_ids: set[str] = set()
+        for own in suppressed_by.values():
+            suppressed_ids |= own
         if not suppressed_ids:
             return issues_map
-        for _, s_issues in superseding:
+        for check, s_issues in superseding:
+            own = suppressed_by[check.check_id]
+            if not own:
+                continue
+            note = (
+                f"\n\n**{len(own)} checks suppressed** for this statement "
+                f"({', '.join(sorted(own))}). "
+                "Scope the statement and re-run to see remaining findings."
+            )
             for issue in s_issues:
-                issue.message = (
-                    issue.message + f"\n\n**{len(suppressed_ids)} checks suppressed** for this statement "
-                    f"({', '.join(sorted(suppressed_ids))}). "
-                    "Scope the statement and re-run to see remaining findings."
-                )
+                issue.message += note
         return {check_id: issues for check_id, issues in issues_map.items() if check_id not in suppressed_ids}
 
     async def execute_checks_parallel(

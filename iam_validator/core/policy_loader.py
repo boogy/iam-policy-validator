@@ -171,13 +171,13 @@ class PolicyLoader:
         current_statement_first_field = None
 
         for line_num, line in enumerate(lines, start=1):
-            # Look for "Statement" array
-            if '"Statement"' in line or "'Statement'" in line:
-                in_statement_array = True
-                continue
-
             if not in_statement_array:
-                continue
+                key_match = re.search(r"[\"']Statement[\"']", line)
+                if not key_match:
+                    continue
+                in_statement_array = True
+                # A statement may open on the same line as the key ("Statement": [{).
+                line = line[key_match.end() :]
 
             # Track opening braces for statement objects
             for char in line:
@@ -265,6 +265,13 @@ class PolicyLoader:
                     statement_line_numbers.append(stmt["__line__"])
 
         return statement_line_numbers
+
+    @staticmethod
+    def find_statement_line_numbers(file_content: str, file_path: str | Path) -> list[int]:
+        """Line number of each statement, picking the JSON or YAML scanner by suffix."""
+        if str(file_path).lower().endswith((".yaml", ".yml")):
+            return PolicyLoader._find_yaml_statement_line_numbers(file_content)
+        return PolicyLoader._find_statement_line_numbers(file_content)
 
     @staticmethod
     def parse_statement_field_lines(file_content: str) -> PolicyLineMap:

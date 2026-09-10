@@ -6,6 +6,7 @@ import os
 from typing import cast
 
 from iam_validator.commands.base import Command
+from iam_validator.core import constants
 from iam_validator.core.models import PolicyType, ValidationReport
 from iam_validator.core.policy_checks import validate_policies
 from iam_validator.core.policy_loader import PolicyLoader
@@ -406,7 +407,7 @@ Examples:
 
             # Load config to get fail_on_severity, severity_labels, and ignore settings
             config = ConfigLoader.load_config(config_path)
-            fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+            fail_on_severities = config.get_setting("fail_on_severity", list(constants.HIGH_SEVERITY_LEVELS))
             severity_labels = config.get_setting("severity_labels", {})
 
             # Get ignore settings from config, but CLI flag can override
@@ -569,7 +570,7 @@ Examples:
 
             # Load config to get fail_on_severity, severity_labels, and ignore settings
             config = ConfigLoader.load_config(config_path)
-            fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+            fail_on_severities = config.get_setting("fail_on_severity", list(constants.HIGH_SEVERITY_LEVELS))
             severity_labels = config.get_setting("severity_labels", {})
 
             # Get ignore settings from config, but CLI flag can override
@@ -642,7 +643,7 @@ Examples:
                 # Load config to get fail_on_severity and ignore settings
                 config_path = getattr(args, "config", None)
                 config = ConfigLoader.load_config(config_path)
-                fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+                fail_on_severities = config.get_setting("fail_on_severity", list(constants.HIGH_SEVERITY_LEVELS))
 
                 # Get ignore settings from config, but CLI flag can override
                 ignore_settings = config.get_setting("ignore_settings", {})
@@ -754,7 +755,7 @@ Examples:
                 # Load config
                 config_path = getattr(args, "config", None)
                 config = ConfigLoader.load_config(config_path)
-                fail_on_severities = config.get_setting("fail_on_severity", ["error", "critical"])
+                fail_on_severities = config.get_setting("fail_on_severity", list(constants.HIGH_SEVERITY_LEVELS))
                 severity_labels = config.get_setting("severity_labels", {})
 
                 # Get ignore settings

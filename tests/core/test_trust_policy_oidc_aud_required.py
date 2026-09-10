@@ -287,5 +287,6 @@ async def test_missing_subject_group_is_rendered_as_an_any_of_group(mock_fetcher
     issues = await TrustPolicyValidationCheck().execute(statement, 0, mock_fetcher, default_config)
     missing = [i for i in issues if i.issue_type == "missing_required_condition_for_assume_action"]
     assert len(missing) == 1
-    assert "one of: `*:sub`, `*:amr`" in missing[0].message
+    provider = "token.actions.githubusercontent.com"
+    assert f"one of: `{provider}:sub`, `{provider}:amr`" in missing[0].message
     assert "['*:sub', '*:amr']" not in missing[0].message

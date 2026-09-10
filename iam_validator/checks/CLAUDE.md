@@ -14,8 +14,10 @@ Use `/add-check my_check_name` to scaffold automatically. Manual steps:
 3. Register in `iam_validator/core/check_registry.py:create_default_registry()`.
 4. Test in `tests/checks/test_my_check.py` (see `tests/checks/conftest.py` for `mock_fetcher`).
 
-Required `ClassVar`s on the subclass (enforced by `PolicyCheck.__init_subclass__`; a
-missing one raises `NotImplementedError`):
+Required `ClassVar`s on the subclass (enforced by `CheckRegistry.register()`, which
+raises `NotImplementedError` for a missing or empty one — `PolicyCheck.__init_subclass__`
+only enforces that a subclass overrides `execute()` or `execute_policy()`, raising
+`TypeError` when neither is):
 
 - `check_id: str` — unique snake_case id
 - `description: str` — short help text
@@ -23,11 +25,12 @@ missing one raises `NotImplementedError`):
 Optional `ClassVar`s:
 
 - `default_severity: str` — `low|medium|high|critical|error|warning|none`
-  (`none` suppresses output entirely). Defaults to `"warning"` when omitted; not
-  enforced by `__init_subclass__`, so set it explicitly whenever `"warning"` isn't
-  the intended severity.
+  (`none` suppresses output entirely). Defaults to `"warning"` when omitted and is
+  never enforced, so set it explicitly whenever `"warning"` isn't the intended
+  severity.
 - `applies_to_policy_types: frozenset[str] | None` — policy types the check runs on;
-  `None` (the default) means all, as does an unresolved policy type. In an SCP or RCP an
+  `None` (the default) means all, as does an unresolved policy type. `register()` raises
+  `ValueError` on a value that is not a `PolicyType`. In an SCP or RCP an
   `Allow` declines to restrict and never grants access, so grant-shaped checks exclude
   `SERVICE_CONTROL_POLICY` and `RESOURCE_CONTROL_POLICY`. `principal_validation`
   excludes only RCP, where `Principal: "*"` is required by AWS syntax.
@@ -131,7 +134,9 @@ Use these instead of reimplementing:
 - `wildcard_expansion.py` — `compile_wildcard_pattern()` (alias of `compile_iam_glob`),
   `expand_wildcard_actions()`
 - `aws_matching.py` — `action_matches()`, `compile_iam_glob()`, `iam_glob_match()`
-- `condition_matching.py` — `base_operator()`, `is_negated_operator()`, `is_deny()`, `has_condition_key()`
+- `condition_matching.py` — `is_deny()`, `has_condition_key()`; re-exports
+  `base_operator()`, `is_negated_operator()`, `NEGATED_OPERATORS` from
+  `core/condition_validators.py` (the single definition)
 - `sensitive_action_matcher.py` — `get_sensitive_actions_by_categories()`, `check_sensitive_actions()`
 - `policy_level_checks.py` — `check_policy_level_actions()`, `_check_all_of_pattern()`
 - `formatting.py` — `format_list_with_backticks()`

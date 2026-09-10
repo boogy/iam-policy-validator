@@ -209,7 +209,7 @@ async def validate_policies(
     enable_parallel = config.get_setting("parallel_execution", True)
     enable_builtin_checks = config.get_setting("enable_builtin_checks", True)
 
-    suppress_superseded = config.get_setting("suppress_superseded_findings", False)
+    suppress_superseded = config.get_setting("suppress_superseded_findings", True)
     on_check_error = config.get_setting("on_check_error", "fail")
     registry = create_default_registry(
         enable_parallel=enable_parallel,
@@ -331,6 +331,16 @@ async def _validate_policy_with_registry(
         PolicyValidationResult with all findings
     """
     result = PolicyValidationResult(policy_file=policy_file, is_valid=True, policy_type=policy_type)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        skipped = sorted(c.check_id for c in registry.get_enabled_checks() if not c.applies_to(policy_type))
+        if skipped:
+            logger.debug(
+                "policy_type=%s file=%s skipped_checks=%s",
+                policy_type,
+                Path(policy_file).name,
+                ",".join(skipped),
+            )
 
     # Load raw dict if not provided (for structural validation)
     if raw_policy_dict is None:
