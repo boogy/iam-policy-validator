@@ -1745,8 +1745,11 @@ class GitHubIntegration:
     async def get_comment_by_id(self, comment_id: int) -> dict[str, Any] | None:
         """Get a specific review comment by ID.
 
-        Used for verifying that ignore command replies still exist
-        (tamper-resistant verification).
+        No production caller: ignore verification used to fetch one comment
+        per record this way and now reads ``get_review_comment_authors()``
+        instead. Kept as part of the client surface. Note the return cannot
+        tell "deleted" from "request failed", so it is unsuitable for any
+        decision that treats absence as meaningful.
 
         Args:
             comment_id: The ID of the review comment to fetch
