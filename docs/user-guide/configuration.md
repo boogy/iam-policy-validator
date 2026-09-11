@@ -388,6 +388,9 @@ settings:
   allow_template_variables: true # Support ${var.name} in ARNs
 
   # GitHub integration
+  # Labels are reconciled on every run: a severity that is still found gets
+  # its label added, a severity that is no longer found gets it removed.
+  # Label names may contain any character GitHub allows, "/" and "#" included.
   severity_labels: # Map severities to PR labels
     error: "iam-validity-error"
     critical: "iam-security-critical"

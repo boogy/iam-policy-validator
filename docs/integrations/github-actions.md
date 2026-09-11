@@ -436,6 +436,12 @@ A summary comment is posted showing:
 
 When `allow-owner-ignore: true`, code owners can reply "ignore" to dismiss specific findings. This is useful for acknowledged exceptions.
 
+Ignore records live in a hidden PR comment and are reconciled on every run: once a
+finding stops being reported — the policy was fixed — its record is dropped, so the
+summary's **Ignored Findings** count and table only ever describe live findings.
+Reconciliation is scoped to the files a run actually validated, so a run driven by a
+changed-files list cannot discard ignores belonging to policies it never looked at.
+
 ---
 
 ## Job Summary

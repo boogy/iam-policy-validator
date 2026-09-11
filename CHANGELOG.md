@@ -4,6 +4,16 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.2] - 2026-09-11
+
+Fixes the "everything is fixed but the PR still looks dirty" case: PR labels whose names are not URL-safe could never be removed, and ignore records outlived the findings they silenced.
+
+### Fixed
+
+- `remove_label` percent-encodes the label name before putting it in the request path. httpx only escapes spaces, so a label containing `/`, `#`, `%` or `+` produced a wrong path and the delete silently 404'd — labels could be added (a JSON body) but never removed
+- `get_labels` reads through pagination instead of a single page. GitHub caps the endpoint at 30 labels per page, so on a PR carrying more than that the validator's own labels could fall outside the "current" set and never be removed
+- Ignore records are reconciled against each run's findings: once a finding is no longer reported, its record is dropped from the storage comment, so the PR summary stops showing an **Ignored Findings** count and table for issues that were already fixed. Reconciliation is scoped to the files a run validated, so a partial run cannot discard ignores for policies it never looked at
+
 ## [1.27.1] - 2026-09-10
 
 A remediation release. Trust-policy validation, PR inline-comment line resolution and condition-operator polarity are corrected across the board, and the MCP check catalog now reports what validation will actually do rather than class defaults.
