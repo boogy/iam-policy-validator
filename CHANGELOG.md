@@ -6,7 +6,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ## [1.27.2] - 2026-09-11
 
-Fixes the "everything is fixed but the PR still looks dirty" case: PR labels whose names are not URL-safe could never be removed, and ignore records outlived the findings they silenced.
+Fixes the "everything is fixed but the PR still looks dirty" case — PR labels whose names are not URL-safe could never be removed, and ignore records outlived the findings they silenced — and enforces the ignore store's anti-tampering guarantee, which had no callers and so had never been applied.
 
 ### Fixed
 
@@ -910,6 +910,7 @@ _First release._
 
 [#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
+[1.27.2]: https://github.com/boogy/iam-policy-validator/compare/v1.27.1...v1.27.2
 [1.27.1]: https://github.com/boogy/iam-policy-validator/compare/v1.27.0...v1.27.1
 [1.27.0]: https://github.com/boogy/iam-policy-validator/compare/v1.26.0...v1.27.0
 [1.26.0]: https://github.com/boogy/iam-policy-validator/compare/v1.25.1...v1.26.0
