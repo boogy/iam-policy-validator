@@ -18,7 +18,10 @@ Surface organized by concern:
 - **Comment lifecycle helpers** — `_sync_comments_with_identifier` (used by both
   general and multi-part summary paths), `_find_all_comments_with_identifier` (paginated)
 - **Deduplication** — `_get_bot_comments_by_fingerprint`, `_extract_finding_id`
-- **Labels** — `add_labels`, `remove_label`, `get_labels`, `set_labels`
+- **Labels** — `add_labels`, `remove_label`, `get_labels`, `set_labels`.
+  `remove_label` percent-encodes the name (it is a path segment; httpx escapes
+  only spaces, so `/`, `#`, `%` and `+` must be encoded or the delete 404s).
+  `get_labels` is paginated — the endpoint defaults to 30 per page.
 - **PR info** — `get_pr_info`, `get_pr_files`, `get_pr_commits`
 - **Status checks** — `set_commit_status`
 - **CODEOWNERS** — `get_codeowners_content`, `get_team_members`, `is_user_codeowner`
@@ -84,6 +87,7 @@ Mock the API surface — no real HTTP. See `tests/integrations/`:
 
 - `test_github_pagination.py` — paginated request behaviour
 - `test_label_manager.py` — severity → label mapping
+- `test_github_labels.py` — label-name encoding and paginated `get_labels`
 - `test_comment_deduplication.py` — fingerprint and location matching
 - `test_review_comment_noise.py` — inline noise-minimization invariants
 - `test_summary_comment_staleness.py` — summary lifecycle (paginated find, orphan cleanup)

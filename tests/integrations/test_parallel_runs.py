@@ -30,6 +30,7 @@ from iam_validator.core.constants import (
 )
 from iam_validator.core.ignored_findings import IgnoredFinding, IgnoredFindingsStore
 from iam_validator.core.pr_commenter import PRCommenter
+from iam_validator.core.report import ReportGenerator
 from iam_validator.integrations.github_integration import GitHubIntegration
 
 
@@ -503,7 +504,9 @@ class TestIgnoredFindingsScoped:
         )
 
         commenter = PRCommenter(github=github, comment_tag="role")
-        await commenter._load_ignored_findings()
+        # An empty report validates no files, so nothing is pruned and the
+        # test stays about which store the commenter reads from.
+        await commenter._load_ignored_findings(ReportGenerator().generate_report([]))
 
         # The role-tagged commenter must see ONLY the role store. If the
         # plumbing is broken (no comment_tag forwarded), it would load the

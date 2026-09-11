@@ -171,7 +171,7 @@ class PRCommenter:
 
         # Load ignored findings for filtering
         if self.enable_codeowners_ignore:
-            await self._load_ignored_findings()
+            await self._load_ignored_findings(report)
 
         # Note: Cleanup is now handled smartly by update_or_create_review_comments()
         # It will update existing comments, create new ones, and delete resolved ones
@@ -837,8 +837,20 @@ class PRCommenter:
         if ignored_count > 0:
             logger.info(f"Processed {ignored_count} ignore command(s)")
 
-    async def _load_ignored_findings(self) -> None:
-        """Load ignored findings for the current PR."""
+    async def _load_ignored_findings(self, report: ValidationReport) -> None:
+        """Load ignored findings for the current PR, dropping resolved ones.
+
+        Ignore records outlive the findings they silence: nothing removes them
+        when the policy is fixed, so the PR summary keeps reporting an
+        "Ignored Findings" count and table for issues that no longer exist.
+        Reconciling the store against this run's findings clears them, scoped
+        to the files this run validated so a partial run cannot discard
+        ignores it has no evidence about.
+
+        Args:
+            report: The current validation report, used to determine which
+                findings are still live and which files were validated.
+        """
         if not self.github:
             return
 
@@ -849,10 +861,49 @@ class PRCommenter:
         store = IgnoredFindingsStore(self.github, comment_tag=self.comment_tag)
         # Load full ignored findings for display in summary
         self._ignored_findings = await store.load()
+
+        if self._ignored_findings:
+            live_finding_ids, validated_files = self._live_finding_scope(report)
+            pruned = await store.prune_resolved(live_finding_ids, validated_files)
+            if pruned:
+                logger.info(f"Cleared {pruned} ignore record(s) for findings that are no longer reported")
+                self._ignored_findings = await store.load()
+
         # Also get just the IDs for fast lookup
         self._ignored_finding_ids = frozenset(self._ignored_findings.keys())
         if self._ignored_finding_ids:
             logger.debug(f"Loaded {len(self._ignored_finding_ids)} ignored finding(s)")
+
+    def _live_finding_scope(self, report: ValidationReport) -> tuple[frozenset[str], set[str]]:
+        """Collect this run's finding IDs and the files they were found in.
+
+        Every issue is fingerprinted, ignored ones included — an ignored
+        finding that is still reported must keep its ignore record. Files
+        whose path cannot be made repository-relative are left out of both
+        sets so they are treated as "not validated" rather than "clean".
+
+        Args:
+            report: The current validation report
+
+        Returns:
+            Tuple of (finding IDs present in this run, validated file paths)
+        """
+        from iam_validator.core.finding_fingerprint import (  # pylint: disable=import-outside-toplevel
+            FindingFingerprint,
+        )
+
+        live_finding_ids: set[str] = set()
+        validated_files: set[str] = set()
+
+        for result in report.results:
+            relative_path = self._make_relative_path(result.policy_file)
+            if not relative_path:
+                continue
+            validated_files.add(relative_path)
+            for issue in result.issues:
+                live_finding_ids.add(FindingFingerprint.from_issue(issue, relative_path).to_hash())
+
+        return frozenset(live_finding_ids), validated_files
 
     def _is_issue_ignored(self, issue: ValidationIssue, file_path: str) -> bool:
         """Check if an issue should be ignored.

@@ -262,6 +262,62 @@ class IgnoredFindingsStore:
             return await self.save()
         return False
 
+    async def prune_resolved(
+        self,
+        live_finding_ids: frozenset[str] | set[str],
+        validated_files: set[str],
+    ) -> int:
+        """Drop ignore records whose finding no longer exists.
+
+        An ignore record is only meaningful while the finding it silences is
+        still being reported. Once the policy is fixed the record is dead
+        weight: it keeps inflating the "Ignored Findings" count and table in
+        the PR summary long after the underlying issue is gone.
+
+        Pruning is scoped to ``validated_files``. A run that covers a subset
+        of the repository's policies (streaming per-file passes, or a workflow
+        driven by a changed-files list) has no evidence about findings in
+        files it never looked at, so records for those files are kept.
+
+        Args:
+            live_finding_ids: Finding IDs reported by the current run, for
+                every issue in the validated files regardless of whether the
+                issue is itself ignored.
+            validated_files: Relative paths of the policy files this run
+                actually validated.
+
+        Returns:
+            Number of records removed (0 means nothing was saved).
+        """
+        if not validated_files:
+            return 0
+
+        findings = await self.load()
+        stale_ids = [
+            finding_id
+            for finding_id, finding in findings.items()
+            if finding.file_path in validated_files and finding_id not in live_finding_ids
+        ]
+        if not stale_ids:
+            return 0
+
+        # Keep the pre-prune snapshot so a failed save leaves the in-memory
+        # store agreeing with what GitHub still holds; the next run retries.
+        original = dict(findings)
+        for finding_id in stale_ids:
+            logger.info(
+                f"Pruning ignore record for resolved finding {finding_id[:8]}... "
+                f"({findings[finding_id].file_path}: {findings[finding_id].issue_type})"
+            )
+            del findings[finding_id]
+
+        self._cache = findings
+        if not await self.save():
+            logger.warning("Failed to save pruned ignored findings storage")
+            self._cache = original
+            return 0
+        return len(stale_ids)
+
     async def _find_storage_comment(self) -> dict[str, Any] | None:
         """Find the storage comment on the PR.
 

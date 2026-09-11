@@ -12,6 +12,7 @@ import re
 import time
 from enum import Enum
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 import httpx
 
@@ -1384,6 +1385,11 @@ class GitHubIntegration:
     async def remove_label(self, label: str) -> bool:
         """Remove a label from the PR.
 
+        The label name is percent-encoded because it is a path segment.
+        httpx only escapes spaces, so an unencoded name containing "/", "#",
+        "%" or "+" would produce a wrong path and the delete would silently
+        404 while ``add_labels`` (a JSON body) kept working.
+
         Args:
             label: Label name to remove
 
@@ -1392,7 +1398,7 @@ class GitHubIntegration:
         """
         result = await self._make_request(
             "DELETE",
-            f"issues/{self.pr_number}/labels/{label}",
+            f"issues/{self.pr_number}/labels/{quote(label, safe='')}",
         )
 
         if result is not None:  # DELETE returns empty dict on success
@@ -1406,20 +1412,19 @@ class GitHubIntegration:
         Returns:
             List of label names
         """
-        result = await self._make_request(
-            "GET",
-            f"issues/{self.pr_number}/labels",
-        )
+        # Paginated: GitHub caps this endpoint at 30 items per page by
+        # default, so a PR carrying more labels than that would report an
+        # incomplete "current" set and validator labels past the cut-off
+        # would never be removed.
+        result = await self._make_paginated_request(f"issues/{self.pr_number}/labels")
 
-        if result and isinstance(result, list):
-            labels: list[str] = []
-            for label in result:
-                if isinstance(label, dict):
-                    name = label.get("name")
-                    if isinstance(name, str):
-                        labels.append(name)
-            return labels
-        return []
+        labels: list[str] = []
+        for label in result:
+            if isinstance(label, dict):
+                name = label.get("name")
+                if isinstance(name, str):
+                    labels.append(name)
+        return labels
 
     async def set_labels(self, labels: list[str]) -> bool:
         """Set labels on the PR, replacing any existing labels.
