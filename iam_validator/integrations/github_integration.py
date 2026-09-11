@@ -431,7 +431,9 @@ class GitHubIntegration:
             logger.error(f"Request failed: {e}")
             return None
 
-    async def _make_paginated_request(self, endpoint: str, max_pages: int = 100) -> list[dict[str, Any]]:
+    async def _make_paginated_request(
+        self, endpoint: str, max_pages: int = 100, raise_on_error: bool = False
+    ) -> list[dict[str, Any]]:
         """Make a paginated GET request to GitHub API, fetching all pages.
 
         GitHub API returns at most 100 items per page for list endpoints.
@@ -440,6 +442,11 @@ class GitHubIntegration:
         Args:
             endpoint: API endpoint path (e.g., "pulls/123/comments")
             max_pages: Maximum number of pages to fetch (safety limit)
+            raise_on_error: Re-raise instead of returning the pages fetched so
+                far. Callers that treat "absent" as a decision — a missing
+                comment meaning a revoked ignore, say — must set this: a
+                silently truncated listing is indistinguishable from items
+                that genuinely no longer exist.
 
         Returns:
             Combined list of all items across all pages
@@ -494,13 +501,19 @@ class GitHubIntegration:
 
             except httpx.HTTPStatusError as e:
                 logger.error(f"HTTP error during pagination: {e.response.status_code}")
+                if raise_on_error:
+                    raise
                 break
             except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.error(f"Error during pagination: {e}")
+                if raise_on_error:
+                    raise
                 break
 
-        if page_count >= max_pages:
+        if page_count >= max_pages and url:
             logger.warning(f"Reached max pages limit ({max_pages}), results may be incomplete")
+            if raise_on_error:
+                raise RuntimeError(f"Paginated listing of {endpoint} truncated at {max_pages} pages")
 
         logger.debug(f"Paginated request complete: {len(all_items)} total items from {page_count} page(s)")
         return all_items
@@ -1732,8 +1745,11 @@ class GitHubIntegration:
     async def get_comment_by_id(self, comment_id: int) -> dict[str, Any] | None:
         """Get a specific review comment by ID.
 
-        Used for verifying that ignore command replies still exist
-        (tamper-resistant verification).
+        No production caller: ignore verification used to fetch one comment
+        per record this way and now reads ``get_review_comment_authors()``
+        instead. Kept as part of the client surface. Note the return cannot
+        tell "deleted" from "request failed", so it is unsuitable for any
+        decision that treats absence as meaningful.
 
         Args:
             comment_id: The ID of the review comment to fetch
@@ -1749,6 +1765,35 @@ class GitHubIntegration:
         if result and isinstance(result, dict):
             return result
         return None
+
+    async def get_review_comment_authors(self) -> dict[int, str] | None:
+        """Map every review comment on the PR to its author's login.
+
+        One paginated sweep replaces a per-comment fetch: the endpoint returns
+        replies alongside top-level review comments, so an ignore reply can be
+        looked up in memory.
+
+        Returns:
+            ``{comment_id: login}`` for the whole PR, or ``None`` when the
+            listing could not be completed. ``None`` means "unknown", never
+            "empty" — a caller must not read a failed fetch as proof that the
+            comments are gone.
+        """
+        try:
+            comments = await self._make_paginated_request(f"pulls/{self.pr_number}/comments", raise_on_error=True)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning(f"Could not list review comments to verify ignore replies: {e}")
+            return None
+
+        authors: dict[int, str] = {}
+        for comment in comments:
+            if not isinstance(comment, dict):
+                continue
+            comment_id = comment.get("id")
+            login = (comment.get("user") or {}).get("login")
+            if isinstance(comment_id, int) and isinstance(login, str):
+                authors[comment_id] = login
+        return authors
 
     async def post_reply_to_review_comment(
         self,

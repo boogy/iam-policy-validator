@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -401,62 +402,91 @@ class IgnoredFindingsStore:
         self._cache = None
         self._comment_id = None
 
-    async def verify_ignored_findings(self) -> list[str]:
-        """Verify all ignored findings have valid reply comments.
+    def verify_ignored_findings(self, comment_authors: Mapping[int, str]) -> list[str]:
+        """Find ignore records whose reply comment no longer backs them.
 
-        Checks that the original reply comment still exists and was authored
-        by the user recorded in ignored_by. This prevents tampering with the
-        JSON storage by manually editing the comment.
+        An ignore is only as good as the reply that requested it: the record
+        is trusted because an authorized user wrote "ignore" in a specific
+        comment. If that comment is gone the ignore was revoked, and if it is
+        now authored by someone else the stored ``ignored_by`` is a forgery —
+        which is what stops a hand-edited storage comment from silencing
+        findings on someone else's authority.
+
+        Pure and synchronous: the caller supplies the full comment→author map
+        so this costs no API calls, however many records are stored.
+
+        Args:
+            comment_authors: Login by review comment id for the whole PR, as
+                returned by ``get_review_comment_authors()``. Must be complete
+                — a partial map would read missing entries as deletions.
 
         Returns:
-            List of finding_ids that are no longer valid (should be removed).
+            Finding IDs that no longer verify and should be removed.
         """
-        findings = await self.load()
         invalid_ids: list[str] = []
+        # Reads the loaded cache; call load() (or remove_invalid_findings,
+        # which does) before this, or there is nothing to verify.
+        findings = self._cache or {}
 
         for finding_id, finding in findings.items():
             if not finding.reply_comment_id:
-                # Legacy finding without ID - skip verification
+                # Legacy record predating reply tracking - nothing to verify
                 continue
 
-            # Try to fetch the comment
-            comment = await self.github.get_comment_by_id(finding.reply_comment_id)
-            if not comment:
-                # Comment was deleted - ignore is invalid
-                logger.warning(f"Reply comment {finding.reply_comment_id} for finding {finding_id} was deleted")
+            author = comment_authors.get(finding.reply_comment_id)
+            if author is None:
+                logger.warning(
+                    f"Reply comment {finding.reply_comment_id} for finding {finding_id} is gone - ignore revoked"
+                )
                 invalid_ids.append(finding_id)
                 continue
 
-            # Verify author matches stored ignored_by
-            author = comment.get("user", {}).get("login", "").lower()
-            if author != finding.ignored_by.lower():
+            if author.lower() != finding.ignored_by.lower():
                 logger.warning(
                     f"Author mismatch for finding {finding_id}: stored={finding.ignored_by}, actual={author}"
                 )
                 invalid_ids.append(finding_id)
 
         if invalid_ids:
-            logger.info(f"Found {len(invalid_ids)} invalid ignored finding(s)")
+            logger.info(f"Found {len(invalid_ids)} ignore record(s) that no longer verify")
 
         return invalid_ids
 
-    async def remove_invalid_findings(self) -> int:
-        """Verify and remove invalid ignored findings.
+    async def remove_invalid_findings(self, comment_authors: Mapping[int, str] | None) -> int:
+        """Drop ignore records that no longer verify against their reply.
+
+        Args:
+            comment_authors: Login by review comment id for the whole PR, or
+                ``None`` when that listing could not be fetched. ``None`` is a
+                no-op: without a complete map every record would look deleted,
+                so a transient API failure must never revoke a valid ignore.
 
         Returns:
-            Number of findings removed.
+            Number of records removed (0 means nothing was saved).
         """
-        invalid_ids = await self.verify_ignored_findings()
-        if not invalid_ids:
+        if comment_authors is None:
+            logger.debug("Skipping ignore verification - review comment listing unavailable")
             return 0
 
         findings = await self.load()
+        if not findings:
+            return 0
+
+        invalid_ids = self.verify_ignored_findings(comment_authors)
+        if not invalid_ids:
+            return 0
+
+        # Keep the pre-removal snapshot so a failed save leaves the in-memory
+        # store agreeing with what GitHub still holds; the next run retries.
+        original = dict(findings)
         for finding_id in invalid_ids:
-            if finding_id in findings:
-                del findings[finding_id]
+            del findings[finding_id]
 
         self._cache = findings
-        await self.save()
+        if not await self.save():
+            logger.warning("Failed to save verified ignored findings storage")
+            self._cache = original
+            return 0
 
-        logger.info(f"Removed {len(invalid_ids)} invalid ignored finding(s)")
+        logger.info(f"Removed {len(invalid_ids)} ignore record(s) that no longer verify")
         return len(invalid_ids)

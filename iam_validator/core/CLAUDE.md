@@ -25,7 +25,10 @@ core/
 ├── ignore_processor.py     # ignore-command parser
 ├── ignored_findings.py     # storage (hidden PR comment with JSON payload);
 │                           # prune_resolved() drops records whose finding is no
-│                           # longer reported, scoped to the run's validated files
+│                           # longer reported, scoped to the run's validated files;
+│                           # remove_invalid_findings() drops records whose reply
+│                           # comment is gone or no longer authored by ignored_by
+│                           # (None author map = unknown, verification skipped)
 ├── codeowners.py
 ├── constants.py            # central markers, ARN partition regex, size limits
 ├── aws_matching.py         # case-insensitive IAM glob matching (compile_iam_glob,

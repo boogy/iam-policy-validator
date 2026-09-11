@@ -55,6 +55,7 @@ def mock_github():
     github.post_multipart_comments = AsyncMock(return_value=True)
     github.update_or_create_review_comments = AsyncMock(return_value=True)
     github.scan_for_ignore_commands = AsyncMock(return_value=[])
+    github.get_review_comment_authors = AsyncMock(return_value={})
     return github
 
 

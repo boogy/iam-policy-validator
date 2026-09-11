@@ -442,6 +442,17 @@ summary's **Ignored Findings** count and table only ever describe live findings.
 Reconciliation is scoped to the files a run actually validated, so a run driven by a
 changed-files list cannot discard ignores belonging to policies it never looked at.
 
+Each record is also checked against the reply that requested it. An ignore is trusted
+because an authorized user wrote it in a specific comment, so the record is dropped if
+that comment is gone — deleting your "ignore" reply revokes the ignore — or if it now
+belongs to someone other than the recorded user. That is what stops a hand-edited
+storage comment from silencing findings under another user's name. Records created
+before reply tracking have nothing to verify against and are left alone.
+
+If the review-comment listing cannot be fetched, verification is skipped for that run
+rather than treating every reply as deleted, so a transient API failure never revokes a
+valid ignore.
+
 ---
 
 ## Job Summary
