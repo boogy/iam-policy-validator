@@ -869,6 +869,19 @@ class PRCommenter:
                 logger.info(f"Cleared {pruned} ignore record(s) for findings that are no longer reported")
                 self._ignored_findings = await store.load()
 
+        if self._ignored_findings:
+            # An ignore is trusted because an authorized user asked for it in
+            # a specific reply. Re-check that the reply still exists and is
+            # still theirs, so a hand-edited storage comment cannot silence
+            # findings on someone else's authority. One listing covers every
+            # record; a failed listing skips verification rather than
+            # revoking valid ignores.
+            authors = await self.github.get_review_comment_authors()
+            revoked = await store.remove_invalid_findings(authors)
+            if revoked:
+                logger.info(f"Dropped {revoked} ignore record(s) that no longer verify against their reply comment")
+                self._ignored_findings = await store.load()
+
         # Also get just the IDs for fast lookup
         self._ignored_finding_ids = frozenset(self._ignored_findings.keys())
         if self._ignored_finding_ids:

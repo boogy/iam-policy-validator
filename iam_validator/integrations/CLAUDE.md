@@ -25,11 +25,15 @@ Surface organized by concern:
 - **PR info** — `get_pr_info`, `get_pr_files`, `get_pr_commits`
 - **Status checks** — `set_commit_status`
 - **CODEOWNERS** — `get_codeowners_content`, `get_team_members`, `is_user_codeowner`
-- **Ignore commands** — `scan_for_ignore_commands`, `extract_finding_id`, `extract_ignore_reason`
+- **Ignore commands** — `scan_for_ignore_commands`, `extract_finding_id`, `extract_ignore_reason`,
+  `get_review_comment_authors` (one paginated sweep backing ignore tamper verification;
+  returns `None` for "listing unavailable", which callers must not read as "no comments")
 
 Retry: `MAX_RETRIES`, `INITIAL_BACKOFF_SECONDS` constants on the module. Errors:
 `GitHubRateLimitError`, `GitHubRetryableError`. Concurrency cap:
-`MAX_CONCURRENT_API_CALLS`. Pagination: `_make_paginated_request`.
+`MAX_CONCURRENT_API_CALLS`. Pagination: `_make_paginated_request` — pass
+`raise_on_error=True` when an absent item drives a decision, since the default
+returns the pages fetched so far and a truncated listing then looks like deletion.
 
 Enums: `PRState`, `ReviewEvent`.
 
@@ -88,6 +92,7 @@ Mock the API surface — no real HTTP. See `tests/integrations/`:
 - `test_github_pagination.py` — paginated request behaviour
 - `test_label_manager.py` — severity → label mapping
 - `test_github_labels.py` — label-name encoding and paginated `get_labels`
+- `test_review_comment_authors.py` — author map + incomplete-listing signalling
 - `test_comment_deduplication.py` — fingerprint and location matching
 - `test_review_comment_noise.py` — inline noise-minimization invariants
 - `test_summary_comment_staleness.py` — summary lifecycle (paginated find, orphan cleanup)
