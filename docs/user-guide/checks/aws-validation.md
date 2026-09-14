@@ -223,7 +223,8 @@ not changed.
     reports both sizes so you can tell which case you are in, and
     `organizations_measurement: compact` makes compact the measurement. Policies
     validated from a dict or a YAML source fall back to the compact measurement,
-    since there is no submitted document to measure. A UTF-8 byte-order mark is
+    since there is no submitted document to measure, as does a policy whose
+    `.json` file on disk no longer parses to the policy being validated. A UTF-8 byte-order mark is
     never counted.
 
     ```yaml

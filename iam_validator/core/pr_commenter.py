@@ -757,19 +757,14 @@ class PRCommenter:
         if issue.statement_index in line_mapping:
             return line_mapping[issue.statement_index]
 
+        # The caller's policy-level branch relocates this to a changed line.
+        if issue.statement_index == -1:
+            return 1
+
         # Fallback: try to find specific field in file by searching
         search_term = issue.action or issue.resource or issue.condition_key
         if search_term:
             return self._search_for_field_line(policy_file, issue.statement_index, search_term)
-
-        # Policy-level findings (statement_index == -1) belong to the document,
-        # not to any statement, so no mapping or field search can place them.
-        # Anchor them at line 1; the caller's policy-level branch then relocates
-        # the comment to a changed line. Without this they resolve to None and
-        # get dropped before that branch runs — which silently hid every
-        # policy_size and policy_structure finding from the inline review.
-        if issue.statement_index == -1:
-            return 1
 
         return None
 

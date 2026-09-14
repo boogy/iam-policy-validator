@@ -625,6 +625,42 @@ class TestOrganizationsWhitespaceCounting:
         assert issues == []
 
     @pytest.mark.asyncio
+    async def test_unrelated_json_file_falls_back_to_compact(self, check, fetcher, config, tmp_path):
+        path, _, _, written = self._write_indented(tmp_path, "scp.json", 6500)
+        assert written > 10240
+        raw = {
+            "Version": "2012-10-17",
+            "Statement": [{"Sid": "A", "Effect": "Deny", "Action": ["s3:*"], "Resource": "*"}],
+        }
+
+        issues = await check.execute_policy(
+            policy=IAMPolicy.model_validate(raw),
+            policy_file=str(path),
+            fetcher=fetcher,
+            config=config,
+            policy_type="SERVICE_CONTROL_POLICY",
+            raw_policy_dict=raw,
+        )
+
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_sdk_dict_named_like_existing_file_is_measured_from_dict(self, tmp_path, monkeypatch):
+        from iam_validator.sdk import validate_json
+
+        path, _, _, written = self._write_indented(tmp_path, "scp.json", 12000)
+        assert written > 10240
+        monkeypatch.chdir(tmp_path)
+        raw = {
+            "Version": "2012-10-17",
+            "Statement": [{"Sid": "A", "Effect": "Deny", "Action": ["s3:*"], "Resource": "*"}],
+        }
+
+        result = await validate_json(raw, policy_name=path.name, policy_type="SERVICE_CONTROL_POLICY")
+
+        assert [i for i in result.issues if i.check_id == "policy_size"] == []
+
+    @pytest.mark.asyncio
     async def test_compact_measurement_opt_out(self, check, fetcher, tmp_path):
         path, raw, compact, written = self._write_indented(tmp_path, "scp.json", 6500)
         assert compact < 10240 < written
