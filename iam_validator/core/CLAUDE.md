@@ -110,6 +110,12 @@ rather than aborting discovery. It lives in `check_registry` so `create_default_
 does not have to import `config_loader`. Patch `iam_validator.core.check_registry.entry_points`
 in tests.
 
+`validate_policies` runs `ConfigLoader.apply_config_to_registry` again after custom checks
+load, so it must layer the check's top-level config section over the registry's existing
+`CheckConfig` (per key for options; `enabled`, `severity`, `description` only when set), never
+replace it — a `custom_checks:` module entry's `severity`, `description` and `config:` exist
+only in that registered config.
+
 ---
 
 ## AWS Service Fetcher
