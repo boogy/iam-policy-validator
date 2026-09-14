@@ -1,8 +1,4 @@
-"""`analyze` applies `settings.hide_severities` to Access Analyzer findings.
-
-The command never read the config file, so hidden severities leaked into its
-console output, its PR comment, its job summary and its exit code.
-"""
+"""`analyze` config loading, `settings.hide_severities` filtering and exit code."""
 
 import argparse
 
@@ -13,6 +9,8 @@ from iam_validator.core.access_analyzer import (
     AccessAnalyzerFinding,
     AccessAnalyzerReport,
     AccessAnalyzerResult,
+    CheckResultType,
+    CustomCheckResult,
     FindingType,
 )
 
@@ -114,6 +112,36 @@ class TestAnalyzeHideSeverities:
 
         assert await AnalyzeCommand().execute(_args(None, fail_on_warnings=True)) == 1
         assert await AnalyzeCommand().execute(_args(config_file(["info"]), fail_on_warnings=True)) == 0
+
+
+class TestAnalyzeExitCode:
+    async def test_policy_that_could_not_be_analyzed_fails(self, monkeypatch):
+        report = AccessAnalyzerReport(
+            total_policies=1,
+            valid_policies=0,
+            invalid_policies=1,
+            total_findings=0,
+            results=[AccessAnalyzerResult(policy_file="policy.json", is_valid=False, findings=[], error="throttled")],
+        )
+        monkeypatch.setattr(
+            "iam_validator.commands.analyze.validate_policies_with_analyzer",
+            lambda **_: report,
+        )
+
+        assert await AnalyzeCommand().execute(_args(None)) == 1
+
+    @pytest.mark.parametrize(("result", "expected"), [(CheckResultType.FAIL, 1), (CheckResultType.PASS, 0)])
+    async def test_custom_check_result_sets_exit_code(self, monkeypatch, result, expected):
+        report = _report()
+        report.results[0].custom_checks = [
+            CustomCheckResult(check_type="AccessNotGranted", result=result, message="", reasons=[])
+        ]
+        monkeypatch.setattr(
+            "iam_validator.commands.analyze.validate_policies_with_analyzer",
+            lambda **_: report,
+        )
+
+        assert await AnalyzeCommand().execute(_args(None)) == expected
 
 
 class TestAnalyzeConfigLoading:

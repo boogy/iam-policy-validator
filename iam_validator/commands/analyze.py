@@ -316,10 +316,9 @@ Examples:
                 self._write_github_actions_summary(report)
 
             # Determine exit code based on validation results
-            if args.fail_on_warnings:
-                exit_code = 0 if report.total_findings == 0 else 1
-            else:
-                exit_code = 0 if report.total_errors == 0 else 1
+            failing_findings = report.total_findings if args.fail_on_warnings else report.total_errors
+            hard_failures = any(r.error or r.failed_custom_checks for r in report.results)
+            exit_code = 1 if failing_findings or hard_failures else 0
 
             # If Access Analyzer passes and --run-all-checks is set, run full validation
             if exit_code == 0 and getattr(args, "run_all_checks", False):
