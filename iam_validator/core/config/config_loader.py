@@ -661,9 +661,10 @@ class ConfigLoader:
             check_config_dict = config.get_check_config(check_id)
             config.warn_on_nested_check_options(check_id)
 
-            # Get existing config to preserve defaults set during registration
-            existing_config = registry.get_config(check_id)
-            existing_enabled = existing_config.enabled if existing_config else True
+            # The file section overlays what registration or a custom_checks: entry set
+            existing_config = registry.get_config(check_id) or CheckConfig(
+                check_id=check_id, description=check.description
+            )
 
             # Parse hide_severities: per-check overrides global
             hide_severities = check_config_dict.get("hide_severities")
@@ -672,14 +673,12 @@ class ConfigLoader:
             if hide_severities is not None:
                 hide_severities = frozenset(hide_severities)
 
-            # Create CheckConfig object
-            # If there's explicit config, use it; otherwise preserve existing enabled state
             check_config = CheckConfig(
                 check_id=check_id,
-                enabled=check_config_dict.get("enabled", existing_enabled),
-                severity=check_config_dict.get("severity"),
-                config=check_config_dict,
-                description=check_config_dict.get("description", check.description),
+                enabled=check_config_dict.get("enabled", existing_config.enabled),
+                severity=check_config_dict.get("severity", existing_config.severity),
+                config={**existing_config.config, **check_config_dict},
+                description=check_config_dict.get("description", existing_config.description or check.description),
                 root_config=config.config_dict,  # Pass full config for cross-check access
                 ignore_patterns=check_config_dict.get("ignore_patterns", []),
                 hide_severities=hide_severities,

@@ -1420,7 +1420,9 @@ not_principal_validation:
 #     enabled: false
 
 # Once a custom check is registered, configure it exactly like a built-in one —
-# a top-level block keyed by its check_id. The loader logs
+# a top-level block keyed by its check_id. For a module entry above, that block
+# is layered on the entry: a key set in both takes the block's value, keys set
+# only in the entry (including its `config:` options) are kept. The loader logs
 # "Unknown check ID '<id>' ... may be a custom check or a typo" for any block it
 # does not recognize as built-in; that warning is expected for custom checks.
 # require_owner_tag:
