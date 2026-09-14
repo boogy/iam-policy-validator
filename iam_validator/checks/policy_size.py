@@ -39,7 +39,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from iam_validator.checks.policy_type_validation import looks_like_rcp
 from iam_validator.core.aws_service import AWSServiceFetcher
@@ -111,7 +111,7 @@ class PolicySizeCheck(PolicyCheck):
             **kwargs: May include ``policy_type`` (AWS policy type),
                 ``raw_policy_dict`` (original parsed JSON/YAML, preferred for
                 accurate size measurement) and ``policy_type_source`` (how the
-                policy type was arrived at — see ``_check_type_ambiguity``).
+                policy type was arrived at — see ``_ambiguous_limit_key``).
 
         Returns:
             List of ValidationIssue objects if policy exceeds size limits
@@ -162,7 +162,7 @@ class PolicySizeCheck(PolicyCheck):
         if measure_as_written and (
             limit_key in _WHITESPACE_COUNTING_LIMITS or candidate_key in _WHITESPACE_COUNTING_LIMITS
         ):
-            as_written_size = await self._measure_as_written(policy_file, policy)
+            as_written_size = await self._measure_as_written(policy_file, policy, raw_policy_dict)
 
         def size_for(key: str) -> int:
             if key in _WHITESPACE_COUNTING_LIMITS and as_written_size is not None:
@@ -244,10 +244,12 @@ class PolicySizeCheck(PolicyCheck):
         return issues
 
     @staticmethod
-    async def _measure_as_written(policy_file: str, policy: IAMPolicy) -> int | None:
+    async def _measure_as_written(
+        policy_file: str, policy: IAMPolicy, raw_policy_dict: dict[str, Any] | None
+    ) -> int | None:
         """Byte length of the ``.json`` document on disk, excluding a UTF-8 BOM.
 
-        ``None`` when there is no readable ``.json`` file that parses to ``policy``
+        ``None`` when there is no readable ``.json`` file that parses to the validated document
         (an SDK dict, a YAML source, or an unrelated file of the same name), so the
         caller falls back to the compact size.
         """
@@ -260,11 +262,15 @@ class PolicySizeCheck(PolicyCheck):
             return None
         document = data.removeprefix(_UTF8_BOM)
         try:
-            if IAMPolicy.model_validate(json.loads(document)) != policy:
-                return None
+            parsed = json.loads(document)
+            if raw_policy_dict is not None:
+                matches = parsed == raw_policy_dict
+            else:
+                # Model equality would compare the excluded, loader-set `line_number`.
+                matches = IAMPolicy.model_validate(parsed).model_dump(by_alias=True) == policy.model_dump(by_alias=True)
         except ValueError:
             return None
-        return len(document)
+        return len(document) if matches else None
 
     @staticmethod
     def _ambiguous_limit_key(policy: IAMPolicy, *, runtime_policy_type: str, policy_type_source: str) -> str | None:

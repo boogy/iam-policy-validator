@@ -661,6 +661,44 @@ class TestOrganizationsWhitespaceCounting:
         assert [i for i in result.issues if i.check_id == "policy_size"] == []
 
     @pytest.mark.asyncio
+    async def test_file_loaded_rcp_measured_as_written_end_to_end(self, tmp_path):
+        from iam_validator.core.policy_checks import validate_policies
+        from iam_validator.core.policy_loader import PolicyLoader
+
+        path, _, compact, written = self._write_indented(tmp_path, "rcp.json", 3200)
+        assert compact < 5120 < written
+        policies = PolicyLoader().load_from_paths([str(path)], recursive=False)
+
+        results = await validate_policies(policies, policy_type="RESOURCE_CONTROL_POLICY")
+
+        size_issues = [i for r in results for i in r.issues if i.check_id == "policy_size"]
+        assert [i.issue_type for i in size_issues] == ["policy_size_exceeded"]
+        assert f"{written:,} bytes as written" in size_issues[0].message
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("pass_raw_dict", [True, False])
+    async def test_policy_with_statement_line_numbers_measured_as_written(
+        self, check, fetcher, config, tmp_path, pass_raw_dict
+    ):
+        path, raw, compact, written = self._write_indented(tmp_path, "scp.json", 6500)
+        assert compact < 10240 < written
+        policy = IAMPolicy.model_validate(raw)
+        for index, statement in enumerate(policy.statement or []):
+            statement.line_number = index + 3
+
+        issues = await check.execute_policy(
+            policy=policy,
+            policy_file=str(path),
+            fetcher=fetcher,
+            config=config,
+            policy_type="SERVICE_CONTROL_POLICY",
+            raw_policy_dict=raw if pass_raw_dict else None,
+        )
+
+        assert [i.issue_type for i in issues] == ["policy_size_exceeded"]
+        assert f"{written:,} bytes as written" in issues[0].message
+
+    @pytest.mark.asyncio
     async def test_compact_measurement_opt_out(self, check, fetcher, tmp_path):
         path, raw, compact, written = self._write_indented(tmp_path, "scp.json", 6500)
         assert compact < 10240 < written
