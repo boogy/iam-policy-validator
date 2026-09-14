@@ -356,7 +356,7 @@ async def _validate_policy_with_registry(
     if raw_policy_dict is None:
         loader = PolicyLoader()
         loaded_result = loader.load_from_file(policy_file, return_raw_dict=True)
-        if loaded_result and isinstance(loaded_result, tuple):
+        if loaded_result and isinstance(loaded_result, tuple) and loaded_result[0] == policy:
             raw_policy_dict = loaded_result[1]
 
     # Policy-type validation now runs as the registered `policy_type_validation`

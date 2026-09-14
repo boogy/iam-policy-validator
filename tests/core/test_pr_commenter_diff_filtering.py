@@ -1247,13 +1247,7 @@ if __name__ == "__main__":
 
 
 class TestPolicyLevelIssueLineResolution:
-    """Policy-level findings carry ``statement_index=-1`` and no line number.
-
-    ``_post_review_comments`` has a dedicated branch for those, but it sits
-    *after* the ``if not line_number: continue`` guard — so findings that never
-    resolve a line (policy_size, every policy_structure finding) were dropped
-    before reaching it and never appeared in the inline review.
-    """
+    """Policy-level findings (``statement_index=-1``) must resolve to a line."""
 
     @pytest.fixture
     def commenter(self, mock_github):
@@ -1289,8 +1283,22 @@ class TestPolicyLevelIssueLineResolution:
 
         assert commenter._find_issue_line(issue, policy_file, line_mapping) == 1
 
+    def test_policy_level_finding_with_action_resolves_to_line_one(self, commenter, policy_file):
+        issue = ValidationIssue(
+            severity="error",
+            statement_sid=None,
+            statement_index=-1,
+            issue_type="policy_structure",
+            message="policy-level finding naming an action",
+            suggestion="fix",
+            action="s3:*",
+            line_number=None,
+        )
+        line_mapping = commenter._get_line_mapping(policy_file)
+
+        assert commenter._find_issue_line(issue, policy_file, line_mapping) == 1
+
     def test_explicit_line_number_still_wins(self, commenter, policy_file):
-        """The fallback must not override a line the check already determined."""
         issue = ValidationIssue(
             severity="error",
             statement_sid=None,
@@ -1305,7 +1313,6 @@ class TestPolicyLevelIssueLineResolution:
         assert commenter._find_issue_line(issue, policy_file, line_mapping) == 4
 
     def test_statement_level_issue_without_line_is_unaffected(self, commenter, policy_file):
-        """Only ``-1`` gets the line-1 fallback; statement findings keep their mapping."""
         issue = ValidationIssue(
             severity="error",
             statement_sid=None,

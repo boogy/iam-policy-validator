@@ -142,7 +142,8 @@ Whitespace counting differs by service, so `policy_size` measures two ways:
 - **Organizations** (`scp`, `rcp` -> `_WHITESPACE_COUNTING_LIMITS`) strips whitespace
   only on a console save; a CLI/SDK/Terraform deploy stores the document verbatim ->
   measured **as written** from the `.json` file (~1.7x compact for 2-space indent),
-  excluding a UTF-8 BOM. No `.json` file (a dict from the SDK, or a YAML source) or
+  excluding a UTF-8 BOM. No `.json` file that parses to the validated policy (a dict
+  from the SDK, a YAML source, an unrelated file of the same name) or
   `organizations_measurement: compact` falls back to compact.
 
 SCP is 10,240 bytes since 2026-05-15, RCP still 5,120 — they are no longer equal.

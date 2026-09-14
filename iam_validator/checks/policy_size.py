@@ -39,16 +39,13 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 
 from iam_validator.checks.policy_type_validation import looks_like_rcp
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.constants import AWS_POLICY_SIZE_LIMITS, AWS_POLICY_TYPE_TO_SIZE_KEY
-from iam_validator.core.models import ValidationIssue
-
-if TYPE_CHECKING:
-    from iam_validator.core.models import IAMPolicy
+from iam_validator.core.models import IAMPolicy, ValidationIssue
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +82,7 @@ class PolicySizeCheck(PolicyCheck):
 
     async def execute_policy(
         self,
-        policy: "IAMPolicy",
+        policy: IAMPolicy,
         policy_file: str,
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
@@ -165,7 +162,7 @@ class PolicySizeCheck(PolicyCheck):
         if measure_as_written and (
             limit_key in _WHITESPACE_COUNTING_LIMITS or candidate_key in _WHITESPACE_COUNTING_LIMITS
         ):
-            as_written_size = await self._measure_as_written(policy_file)
+            as_written_size = await self._measure_as_written(policy_file, policy)
 
         def size_for(key: str) -> int:
             if key in _WHITESPACE_COUNTING_LIMITS and as_written_size is not None:
@@ -247,11 +244,12 @@ class PolicySizeCheck(PolicyCheck):
         return issues
 
     @staticmethod
-    async def _measure_as_written(policy_file: str) -> int | None:
+    async def _measure_as_written(policy_file: str, policy: IAMPolicy) -> int | None:
         """Byte length of the ``.json`` document on disk, excluding a UTF-8 BOM.
 
-        ``None`` when there is no readable ``.json`` file (an SDK dict or a YAML
-        source), so the caller falls back to the compact size.
+        ``None`` when there is no readable ``.json`` file that parses to ``policy``
+        (an SDK dict, a YAML source, or an unrelated file of the same name), so the
+        caller falls back to the compact size.
         """
         path = Path(policy_file)
         if path.suffix.lower() != ".json":
@@ -260,10 +258,16 @@ class PolicySizeCheck(PolicyCheck):
             data = await asyncio.to_thread(path.read_bytes)
         except OSError:
             return None
-        return len(data) - len(_UTF8_BOM) if data.startswith(_UTF8_BOM) else len(data)
+        document = data.removeprefix(_UTF8_BOM)
+        try:
+            if IAMPolicy.model_validate(json.loads(document)) != policy:
+                return None
+        except ValueError:
+            return None
+        return len(document)
 
     @staticmethod
-    def _ambiguous_limit_key(policy: "IAMPolicy", *, runtime_policy_type: str, policy_type_source: str) -> str | None:
+    def _ambiguous_limit_key(policy: IAMPolicy, *, runtime_policy_type: str, policy_type_source: str) -> str | None:
         """Limit key of the Organizations policy type an inferred document is indistinguishable from.
 
         An SCP has the identity-policy shape and an RCP the ``Principal: "*"``
