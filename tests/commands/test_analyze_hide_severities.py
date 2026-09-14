@@ -189,3 +189,34 @@ class TestAnalyzeConfigLoading:
 
         assert len(loads) == 1
         assert received["config"].get_setting("hide_severities") == ["info"]
+
+
+class TestAnalyzeCommentTag:
+    @pytest.mark.parametrize(("cli_tag", "expected"), [(None, "prod"), ("staging", "staging")])
+    async def test_comment_tag_falls_back_to_config(self, monkeypatch, tmp_path, cli_tag, expected):
+        config = tmp_path / "iam-validator.yaml"
+        config.write_text("settings:\n  comment_tag: prod\n")
+        monkeypatch.setattr(
+            "iam_validator.commands.analyze.validate_policies_with_analyzer",
+            lambda **_: _report(),
+        )
+
+        class FakeGitHub:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+        monkeypatch.setattr("iam_validator.commands.analyze.GitHubIntegration", FakeGitHub)
+        received = {}
+
+        async def fake_post(self, github, report, formatter, comment_tag=None):
+            received["comment_tag"] = comment_tag
+            return True
+
+        monkeypatch.setattr(AnalyzeCommand, "_post_to_github", fake_post)
+
+        args = _args(str(config), github_comment=True, comment_tag=cli_tag)
+        assert await AnalyzeCommand().execute(args) == 0
+        assert received == {"comment_tag": expected}

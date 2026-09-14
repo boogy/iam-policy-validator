@@ -39,6 +39,7 @@ class ContextIssue:
         line_number: int,
         issue: ValidationIssue,
         in_modified_statement: bool = False,
+        in_pr_diff: bool = True,
     ):
         """Initialize context issue.
 
@@ -48,12 +49,14 @@ class ContextIssue:
             line_number: Line number where the issue exists
             issue: The validation issue
             in_modified_statement: Whether the issue is in a statement that was modified in the PR
+            in_pr_diff: False when the file is absent from a fetched PR diff, so GitHub rejects any comment on it
         """
         self.file_path = file_path
         self.statement_index = statement_index
         self.line_number = line_number
         self.issue = issue
         self.in_modified_statement = in_modified_statement
+        self.in_pr_diff = in_pr_diff
 
 
 class PRCommenter:
@@ -346,7 +349,9 @@ class PRCommenter:
                         )
                         if line_num:
                             self._context_issues.append(
-                                ContextIssue(relative_path, issue.statement_index, line_num, issue)
+                                ContextIssue(
+                                    relative_path, issue.statement_index, line_num, issue, in_pr_diff=not parsed_diffs
+                                )
                             )
                             context_issue_count += 1
                 continue
@@ -472,8 +477,11 @@ class PRCommenter:
         protected_fingerprints: set[str] = set()
         if self._context_issues:
             if self.off_diff_comment_mode == "individual":
-                # Post all off-diff issues as individual comments
-                protected_fingerprints, self._context_issues = await self._post_off_diff_comments(self._context_issues)
+                postable = [ci for ci in self._context_issues if ci.in_pr_diff]
+                unpostable = [ci for ci in self._context_issues if not ci.in_pr_diff]
+                if postable:
+                    protected_fingerprints, remaining = await self._post_off_diff_comments(postable)
+                    self._context_issues = remaining + unpostable
             elif self.off_diff_comment_mode == "modified_statements_only":
                 # Only post individual comments for issues in modified statements
                 modified_issues = [ci for ci in self._context_issues if ci.in_modified_statement]

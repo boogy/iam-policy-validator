@@ -155,7 +155,9 @@ per policy — start there when a size finding is missing.
 Setting `policy_size.policy_type` (directly under the check id — options nested
 under a `config:` key are never read; `apply_config_to_registry` warns once per config)
 pins every policy in the run to one limit and makes the runtime type irrelevant to this check, so nothing in
-`defaults.py` or the example configs may set it (see CHANGELOG 1.19.0 and 1.28.0).
+`defaults.py` or the example configs may set it (see CHANGELOG 1.19.0 and 1.28.0). A value that is not a
+`size_limits` key, or an `organizations_measurement` other than `as_written`/`compact`, is ignored with a
+warning logged once per check instance and value — never silently.
 
 ---
 
@@ -165,7 +167,10 @@ pins every policy in the run to one limit and makes the runtime type irrelevant 
 type was _not_ declared it compares against the one Organizations type the document is
 indistinguishable from — `IDENTITY_POLICY` → `scp`, `RESOURCE_POLICY` that
 `policy_type_validation.looks_like_rcp` accepts → `rcp` — measured the way that type is
-measured, and emits `policy_size_type_ambiguous` at `warning` when that limit is exceeded.
+measured, and emits `policy_size_type_ambiguous` at `warning` when that limit is exceeded. When the
+policy instead exceeds its own limit but fits the candidate's, the `policy_size_exceeded`
+suggestion leads with how to declare the type. The as-written candidate read is skipped when
+the file's byte size cannot exceed the candidate limit.
 Inline limits are never candidates: they are per-entity aggregates and opt-in via
 `policy_size.policy_type`. The severity is deliberately hardcoded, not
 `get_severity(config)`: the advisory must not inherit the check's `error` severity and

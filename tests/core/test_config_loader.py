@@ -164,3 +164,18 @@ class TestNestedCheckConfigWarning:
 
         assert "config:" not in caplog.text
         assert registry.get_config("policy_size").config.get("policy_type") == "inline_user"
+
+
+class TestScalarHideSeverities:
+    def test_scalar_global_and_per_check_values_are_one_severity(self):
+        from iam_validator.core.check_registry import create_default_registry
+
+        registry = create_default_registry()
+        config = ValidatorConfig(
+            {"settings": {"hide_severities": "low"}, "sid_uniqueness": {"hide_severities": "info"}}
+        )
+
+        ConfigLoader.apply_config_to_registry(config, registry)
+
+        assert registry.get_config("policy_size").hide_severities == frozenset({"low"})
+        assert registry.get_config("sid_uniqueness").hide_severities == frozenset({"info"})

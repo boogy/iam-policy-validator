@@ -69,6 +69,8 @@ _WHITESPACE_COUNTING_LIMITS = frozenset({"scp", "rcp"})
 
 _UTF8_BOM = b"\xef\xbb\xbf"
 
+_ORGANIZATIONS_MEASUREMENTS = ("as_written", "compact")
+
 
 class PolicySizeCheck(PolicyCheck):
     """Validates that IAM policies don't exceed AWS size limits."""
@@ -79,6 +81,16 @@ class PolicySizeCheck(PolicyCheck):
     check_id: ClassVar[str] = "policy_size"
     description: ClassVar[str] = "Validates that IAM policies don't exceed AWS size limits"
     default_severity: ClassVar[str] = "error"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._warned_options: set[tuple[str, str]] = set()
+
+    def _warn_once(self, option: str, value: Any, message: str, *args: Any) -> None:
+        key = (option, repr(value))
+        if key not in self._warned_options:
+            self._warned_options.add(key)
+            logger.warning(message, *args)
 
     async def execute_policy(
         self,
@@ -99,6 +111,7 @@ class PolicySizeCheck(PolicyCheck):
         1. YAML config ``policy_size.policy_type`` (explicit
            override for users who know the deployment target — e.g., a policy
            headed for an inline user attachment rather than a managed policy).
+           A value that is not a ``size_limits`` key is ignored with a warning.
         2. The runtime ``policy_type`` kwarg (from ``--policy-type`` or
            auto-detection) mapped through ``AWS_POLICY_TYPE_TO_SIZE_KEY``.
         3. Fallback to ``managed`` (6,144 bytes).
@@ -122,6 +135,18 @@ class PolicySizeCheck(PolicyCheck):
         # Resolve size-limit key in priority order.
         size_limits = config.config.get("size_limits", self.DEFAULT_LIMITS.copy())
         explicit_key = config.config.get("policy_type")
+        if explicit_key is not None and (not isinstance(explicit_key, str) or explicit_key not in size_limits):
+            suggested_key = AWS_POLICY_TYPE_TO_SIZE_KEY.get(explicit_key) if isinstance(explicit_key, str) else None
+            self._warn_once(
+                "policy_type",
+                explicit_key,
+                "Ignoring `policy_size.policy_type: %s`: not a size-limit key%s. Valid keys: %s. "
+                "The limit follows each policy's type instead.",
+                explicit_key,
+                f" (did you mean `{suggested_key}`?)" if suggested_key else "",
+                ", ".join(sorted(size_limits)),
+            )
+            explicit_key = None
         runtime_policy_type = kwargs.get("policy_type", "IDENTITY_POLICY")
         if explicit_key is not None:
             limit_key = explicit_key
@@ -129,7 +154,7 @@ class PolicySizeCheck(PolicyCheck):
             limit_key = AWS_POLICY_TYPE_TO_SIZE_KEY.get(runtime_policy_type, "managed")
 
         if limit_key not in size_limits:
-            # User supplied an unknown key — fall back rather than crash.
+            # Custom size_limits without the runtime type's key — fall back rather than crash.
             limit_key = "managed"
 
         max_size = size_limits[limit_key]
@@ -157,20 +182,38 @@ class PolicySizeCheck(PolicyCheck):
             if candidate_key not in size_limits:
                 candidate_key = None
 
+        org_measurement = config.config.get("organizations_measurement", "as_written")
+        if org_measurement not in _ORGANIZATIONS_MEASUREMENTS:
+            self._warn_once(
+                "organizations_measurement",
+                org_measurement,
+                "Unknown `policy_size.organizations_measurement: %r`; expected one of %s. "
+                "Measuring SCPs and RCPs as written.",
+                org_measurement,
+                ", ".join(_ORGANIZATIONS_MEASUREMENTS),
+            )
+            org_measurement = "as_written"
+
         as_written_size = None
-        measure_as_written = config.config.get("organizations_measurement", "as_written") != "compact"
-        if measure_as_written and (
-            limit_key in _WHITESPACE_COUNTING_LIMITS or candidate_key in _WHITESPACE_COUNTING_LIMITS
-        ):
-            as_written_size = await self._measure_as_written(policy_file, policy, raw_policy_dict)
+        if org_measurement == "as_written":
+            if limit_key in _WHITESPACE_COUNTING_LIMITS:
+                as_written_size = await self._measure_as_written(policy_file, policy, raw_policy_dict)
+            elif candidate_key in _WHITESPACE_COUNTING_LIMITS:
+                # Only an as-written size over the candidate limit changes the outcome.
+                as_written_size = await self._measure_as_written(
+                    policy_file, policy, raw_policy_dict, skip_if_at_most=size_limits[candidate_key]
+                )
 
         def size_for(key: str) -> int:
             if key in _WHITESPACE_COUNTING_LIMITS and as_written_size is not None:
                 return as_written_size
             return compact_size
 
+        def is_as_written(key: str) -> bool:
+            return key in _WHITESPACE_COUNTING_LIMITS and as_written_size is not None
+
         policy_size = size_for(limit_key)
-        measured_as_written = limit_key in _WHITESPACE_COUNTING_LIMITS and as_written_size is not None
+        measured_as_written = is_as_written(limit_key)
 
         # One greppable line per policy so "why didn't the size check fire?" is
         # answerable from a single --log-level debug run. Every field is an
@@ -191,6 +234,7 @@ class PolicySizeCheck(PolicyCheck):
                 ambiguity_issue = self._type_ambiguity_issue(
                     candidate_key=candidate_key,
                     candidate_size=size_for(candidate_key),
+                    candidate_as_written=is_as_written(candidate_key),
                     candidate_limit=size_limits[candidate_key],
                     limit_key=limit_key,
                     max_size=max_size,
@@ -221,6 +265,17 @@ class PolicySizeCheck(PolicyCheck):
             measurement = f"Policy size ({policy_size:,} bytes)"
             whitespace_note = "Note: IAM does not count whitespace in the size calculation."
 
+        type_hint = ""
+        if candidate_key is not None and size_for(candidate_key) <= size_limits[candidate_key]:
+            candidate_desc = _LIMIT_DESCRIPTIONS.get(candidate_key, candidate_key)
+            written_note = " as written" if is_as_written(candidate_key) else ""
+            type_hint = (
+                f"This policy's type was inferred, not declared. If it is a {candidate_desc}, "
+                f"it fits that limit ({size_for(candidate_key):,} bytes{written_note} of "
+                f"{size_limits[candidate_key]:,}) — declare the deployment target instead of "
+                f"shrinking it:\n{self._declare_type_steps(candidate_key)}\n\n"
+            )
+
         issues.append(
             ValidationIssue(
                 severity=severity,
@@ -229,6 +284,7 @@ class PolicySizeCheck(PolicyCheck):
                 issue_type="policy_size_exceeded",
                 message=(f"{measurement} exceeds AWS limit for {policy_type_desc} ({max_size:,} bytes)"),
                 suggestion=(
+                    f"{type_hint}"
                     f"The policy is {policy_size - max_size:,} bytes over the limit "
                     f"({percentage_over:.1f}% too large). Consider:\n"
                     f"  1. Splitting the policy into multiple smaller policies\n"
@@ -245,20 +301,33 @@ class PolicySizeCheck(PolicyCheck):
 
     @staticmethod
     async def _measure_as_written(
-        policy_file: str, policy: IAMPolicy, raw_policy_dict: dict[str, Any] | None
+        policy_file: str,
+        policy: IAMPolicy,
+        raw_policy_dict: dict[str, Any] | None,
+        *,
+        skip_if_at_most: int | None = None,
     ) -> int | None:
         """Byte length of the ``.json`` document on disk, excluding a UTF-8 BOM.
 
         ``None`` when there is no readable ``.json`` file that parses to the validated document
         (an SDK dict, a YAML source, or an unrelated file of the same name), so the
-        caller falls back to the compact size.
+        caller falls back to the compact size. Also ``None``, without reading, when the
+        file is no larger than ``skip_if_at_most`` bytes.
         """
         path = Path(policy_file)
         if path.suffix.lower() != ".json":
             return None
+
+        def read() -> bytes | None:
+            if skip_if_at_most is not None and path.stat().st_size <= skip_if_at_most:
+                return None
+            return path.read_bytes()
+
         try:
-            data = await asyncio.to_thread(path.read_bytes)
+            data = await asyncio.to_thread(read)
         except OSError:
+            return None
+        if data is None:
             return None
         document = data.removeprefix(_UTF8_BOM)
         try:
@@ -289,10 +358,25 @@ class PolicySizeCheck(PolicyCheck):
         return None
 
     @staticmethod
+    def _declare_type_steps(candidate_key: str) -> str:
+        """Numbered ways to declare an Organizations policy type, per-file glob first."""
+        declared_type = "SERVICE_CONTROL_POLICY" if candidate_key == "scp" else "RESOURCE_CONTROL_POLICY"
+        inferred_type = "IDENTITY_POLICY" if candidate_key == "scp" else "RESOURCE_POLICY"
+        return (
+            f"  1. Map the file in your config (use type {inferred_type} if it is not one):\n"
+            f"     policy_types:\n"
+            f"       - pattern: '**/{candidate_key}/*.json'\n"
+            f"         type: {declared_type}\n"
+            f"  2. Or pass --policy-type {declared_type}, which applies to every policy in the run"
+        )
+
+    @classmethod
     def _type_ambiguity_issue(
+        cls,
         *,
         candidate_key: str,
         candidate_size: int,
+        candidate_as_written: bool,
         candidate_limit: int,
         limit_key: str,
         max_size: int,
@@ -307,9 +391,7 @@ class PolicySizeCheck(PolicyCheck):
 
         applied_desc = _LIMIT_DESCRIPTIONS.get(limit_key, limit_key)
         candidate_desc = _LIMIT_DESCRIPTIONS.get(candidate_key, candidate_key)
-        declared_type = "SERVICE_CONTROL_POLICY" if candidate_key == "scp" else "RESOURCE_CONTROL_POLICY"
-        inferred_type = "IDENTITY_POLICY" if candidate_key == "scp" else "RESOURCE_POLICY"
-        written_note = " as written" if candidate_key in _WHITESPACE_COUNTING_LIMITS else ""
+        written_note = " as written" if candidate_as_written else ""
 
         return ValidationIssue(
             severity="warning",
@@ -324,11 +406,7 @@ class PolicySizeCheck(PolicyCheck):
             suggestion=(
                 f"A {candidate_desc} cannot be told apart from this document's shape, so the "
                 f"{applied_desc} limit was applied. Declare the deployment target:\n"
-                f"  1. Pass --policy-type {declared_type} (or {inferred_type} if it is not one)\n"
-                f"  2. Or map the file in your config:\n"
-                f"     policy_types:\n"
-                f"       - pattern: '**/{candidate_key}/*.json'\n"
-                f"         type: {declared_type}"
+                f"{cls._declare_type_steps(candidate_key)}"
             ),
             line_number=1,
             # Set explicitly so the registry's per-check_id enrichment does not
@@ -339,7 +417,7 @@ class PolicySizeCheck(PolicyCheck):
                 "rejects the policy at attach time even though validation passed."
             ),
             remediation_steps=[
-                "Pass `--policy-type` for the deployment target",
-                "Or map the file in `policy_types:` in your config",
+                "Map the file to its deployment target in `policy_types:` in your config",
+                "Or pass `--policy-type`, which applies to every policy in the run",
             ],
         )

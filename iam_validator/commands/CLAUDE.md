@@ -36,7 +36,9 @@ before any Access Analyzer call: `settings.hide_severities` is applied to the fi
 `--run-all-checks` passes the same `ValidatorConfig` to `validate_policies(config=...)` and
 its PR comment. The Action passes `--config` to `analyze` whenever `config-file` is set.
 Its exit code is 1 for a gating finding, a policy Access Analyzer could not analyze
-(`result.error`), or a failed `--check-*` custom check.
+(`result.error`), or a failed `--check-*` custom check; a failed custom check also sets
+`result.is_valid = False` so the report counts agree. `--comment-tag` falls back to
+`settings.comment_tag`, as in `validate`.
 
 `validate.py` is the largest — it orchestrates streaming mode, PR commenting, label
 management, and per-file policy-type resolution. When in doubt, mirror its patterns.

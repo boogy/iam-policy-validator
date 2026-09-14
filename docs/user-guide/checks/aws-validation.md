@@ -260,13 +260,13 @@ Valid keys: `managed`, `inline_user`, `inline_group`, `inline_role`,
 !!! warning "The key goes directly under the check id"
 
     Options nested one level deeper under a `config:` key are **not read** —
-    the override is silently ignored and the limit follows the policy type as
+    the override is ignored, with a warning, and the limit follows the policy type as
     if you had set nothing. The validator warns when a check's section has that
     shape. Entries under `custom_checks:` that load a module are different: their
     options do belong under `config:`.
 
     ```yaml
-    # wrong — silently ignored
+    # wrong — ignored
     policy_size:
       config:
         policy_type: inline_user
