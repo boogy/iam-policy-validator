@@ -175,6 +175,7 @@ async def validate_policies(
     allow_config_custom_checks: bool = False,
     *,
     max_concurrency: int | None = None,
+    config: ValidatorConfig | None = None,
 ) -> list[PolicyValidationResult]:
     """Validate multiple policies concurrently.
 
@@ -198,12 +199,13 @@ async def validate_policies(
         max_concurrency: Maximum number of policies validated concurrently.
             When ``None`` (default), falls back to the config ``max_concurrency``
             setting (default 10). Values below 1 are clamped to 1 with a warning.
+        config: Already-loaded configuration; ``config_path`` is ignored when given.
 
     Returns:
         List of validation results
     """
-    # Load configuration
-    config = ConfigLoader.load_config(explicit_path=config_path, allow_missing=True)
+    if config is None:
+        config = ConfigLoader.load_config(explicit_path=config_path, allow_missing=True)
 
     # Create registry with or without built-in checks based on configuration
     enable_parallel = config.get_setting("parallel_execution", True)

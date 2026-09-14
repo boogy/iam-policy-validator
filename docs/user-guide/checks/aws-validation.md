@@ -220,9 +220,16 @@ not changed.
 
     If your pipeline minifies the document before submitting it (Terraform's
     `jsonencode`, for example), the compact size is what counts; the finding
-    reports both sizes so you can tell which case you are in. Policies validated
-    from a dict or a YAML source fall back to the compact measurement, since
-    there is no submitted document to measure.
+    reports both sizes so you can tell which case you are in, and
+    `organizations_measurement: compact` makes compact the measurement. Policies
+    validated from a dict or a YAML source fall back to the compact measurement,
+    since there is no submitted document to measure. A UTF-8 byte-order mark is
+    never counted.
+
+    ```yaml
+    policy_size:
+      organizations_measurement: compact # default: as_written
+    ```
 
 Both measurements count UTF-8 **bytes**, matching AWS counting bytes rather than
 Unicode codepoints.
@@ -237,7 +244,7 @@ Unicode codepoints.
 ### Which limit applies
 
 The limit follows the resolved policy type
-(`IDENTITY_POLICY` → managed, `TRUST_POLICY` → trust, `SERVICE_CONTROL_POLICY` → SCP,
+(`IDENTITY_POLICY` and `RESOURCE_POLICY` → managed, `TRUST_POLICY` → trust, `SERVICE_CONTROL_POLICY` → SCP,
 `RESOURCE_CONTROL_POLICY` → RCP). Override it when the deployment target is more
 specific than the runtime type:
 
@@ -253,7 +260,9 @@ Valid keys: `managed`, `inline_user`, `inline_group`, `inline_role`,
 
     Options nested one level deeper under a `config:` key are **not read** —
     the override is silently ignored and the limit follows the policy type as
-    if you had set nothing. The validator now warns when it sees that shape.
+    if you had set nothing. The validator warns when a check's section has that
+    shape. Entries under `custom_checks:` that load a module are different: their
+    options do belong under `config:`.
 
     ```yaml
     # wrong — silently ignored
@@ -268,26 +277,30 @@ unless the whole run really targets one attachment type.
 
 !!! warning "Declare the type for SCPs, RCPs and inline policies"
 
-    An identity policy, an SCP, an RCP and an inline user/group/role policy are
-    **structurally identical** — nothing in the document says which one it is. With
-    no `--policy-type` and no `policy_types:` mapping, the type falls back to
-    `IDENTITY_POLICY` and the **loosest** of those limits (6,144 bytes) is applied.
-    A 5,500-byte SCP then passes validation and fails on `apply`.
+    SCPs and RCPs cannot be auto-detected: an SCP has the identity-policy shape
+    and an RCP the `Principal: "*"` resource-policy shape. With no
+    `--policy-type` and no `policy_types:` mapping, both are measured against
+    the managed limit (6,144 bytes). A 5,500-byte RCP then passes validation
+    and fails on `apply`.
 
-    When the type was inferred rather than declared and the policy exceeds a
-    stricter limit that could apply, the check reports
+    When the type was inferred and the look-alike Organizations limit would be
+    exceeded — an RCP-shaped policy over 5,120 bytes, or an identity-shaped
+    policy over 10,240 bytes as written — the check reports
     `policy_size_type_ambiguous` (severity `warning`, so it does not fail the run
     by default). Silence it by declaring the target:
 
     ```bash
-    iam-validator validate --path scp.json --policy-type SERVICE_CONTROL_POLICY
+    iam-validator validate --path rcp.json --policy-type RESOURCE_CONTROL_POLICY
     ```
 
     ```yaml
     policy_types:
-      - pattern: "**/scp/*.json"
-        type: SERVICE_CONTROL_POLICY
+      - pattern: "**/rcp/*.json"
+        type: RESOURCE_CONTROL_POLICY
     ```
+
+    Inline policies are never guessed at, since their limits apply per entity:
+    declare them with `policy_size.policy_type`.
 
 ---
 

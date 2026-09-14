@@ -152,6 +152,13 @@ config = load_validator_config("iam-validator.yaml")  # Priority: CLI > config >
 `config/`:
 
 - `defaults.py` — defaults (don't hardcode `policy_type` here; see policy-size gotcha in CHANGELOG 1.19.0)
+
+A check's options sit directly under its id (`CheckConfig.config` is that dict).
+`apply_config_to_registry` warns once per `ValidatorConfig` for a registered check with a
+nested `config:` key; `custom_checks:` module entries are the exception and keep `config:`.
+`validate_policies(config=...)` takes a loaded config so callers that already read it
+(`analyze`) don't load it twice.
+
 - `sensitive_actions.py` — 490+ entries by risk category
 - `condition_requirements.py` — action → required conditions
 - `aws_global_conditions.py` — all AWS global condition keys

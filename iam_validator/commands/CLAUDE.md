@@ -30,11 +30,11 @@ Inside `execute()`, return `0` on success, non-zero on failure. Use Rich (`rich.
 | `completion`    | `completion.py`        | bash / zsh completions, `--install` writes them to the XDG data dir |
 | `mcp`           | `mcp.py`               | launch the MCP server                                               |
 
-`analyze` takes `--config` for the same reason `validate` does: `settings.hide_severities`
-is applied to its Access Analyzer findings (via
+`analyze` takes `--config` for the same reason `validate` does. It loads the config once,
+before any Access Analyzer call: `settings.hide_severities` is applied to the findings (via
 `access_analyzer.filter_report_by_severity`, before anything prints or counts them), and
-`--run-all-checks` forwards the path to `validate_policies`. Anything else the config
-controls is still unread on this path.
+`--run-all-checks` passes the same `ValidatorConfig` to `validate_policies(config=...)` and
+its PR comment. The Action passes `--config` to `analyze` whenever `config-file` is set.
 
 `validate.py` is the largest — it orchestrates streaming mode, PR commenting, label
 management, and per-file policy-type resolution. When in doubt, mirror its patterns.

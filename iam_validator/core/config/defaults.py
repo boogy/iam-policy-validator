@@ -180,6 +180,7 @@ DEFAULT_CONFIG = {
     # SCP/RCP are measured as written (whitespace included) when the policy
     # comes from a .json file: Organizations only strips whitespace on a console
     # save, not on a CLI/SDK/Terraform deploy. IAM limits ignore whitespace.
+    # `organizations_measurement: compact` opts out for pipelines that minify.
     "policy_size": {
         "enabled": True,
         "severity": "error",  # IAM validity error

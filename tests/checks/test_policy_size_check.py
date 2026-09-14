@@ -253,14 +253,11 @@ class TestPolicySizeCheck:
 
 
 class TestPolicySizeTypeAmbiguity:
-    """The size limit applied depends on a policy type that is often guessed.
+    """An SCP has the identity-policy shape and an RCP the ``Principal: "*"`` resource-policy shape.
 
-    An RCP, an SCP and an inline policy are all structurally identical to an
-    identity policy, so a bare ``validate`` run measures them against the
-    managed limit (6,144) — looser than the RCP limit (5,120) and the inline
-    user/group limits (2,048 / 5,120). Policies in that window passed CI and
-    then failed on apply. When the type was guessed rather than declared, the
-    check warns.
+    Neither can be auto-detected, so an undeclared one is measured against the
+    managed limit. The check warns only when the look-alike Organizations type's
+    own limit would be exceeded.
     """
 
     @pytest.fixture
@@ -272,178 +269,201 @@ class TestPolicySizeTypeAmbiguity:
         return AWSServiceFetcher()
 
     @staticmethod
-    def _policy_of_size(target_bytes: int) -> IAMPolicy:
-        """Build an identity-shaped policy whose compact JSON exceeds target_bytes."""
-        statements: list[Statement] = []
+    def _raw_of_size(target_bytes: int, *, rcp_shaped: bool = False) -> dict:
+        statements: list[dict] = []
         while True:
-            statements.append(
-                Statement(
-                    Sid=f"Sid{len(statements):04d}",
-                    Effect="Allow",
-                    Action=["s3:GetObject"],
-                    Resource=["arn:aws:s3:::bucket/*"],
-                )
-            )
-            policy = IAMPolicy(Version="2012-10-17", Statement=list(statements))
-            dumped = policy.model_dump(by_alias=True, exclude_none=True)
-            if len(json.dumps(dumped, separators=(",", ":")).encode("utf-8")) > target_bytes:
-                return policy
+            if rcp_shaped:
+                statement = {
+                    "Sid": f"Deny{len(statements):04d}",
+                    "Effect": "Deny",
+                    "Principal": "*",
+                    "Action": ["s3:GetObject"],
+                    "Resource": "*",
+                    "Condition": {"StringNotEqualsIfExists": {"aws:SourceOrgID": "o-abcdefghij"}},
+                }
+            else:
+                statement = {
+                    "Sid": f"Sid{len(statements):04d}",
+                    "Effect": "Allow",
+                    "Action": ["s3:GetObject"],
+                    "Resource": ["arn:aws:s3:::bucket/*"],
+                }
+            statements.append(statement)
+            raw = {"Version": "2012-10-17", "Statement": statements}
+            if len(json.dumps(raw, separators=(",", ":")).encode("utf-8")) > target_bytes:
+                return raw
+
+    async def _run(self, check, fetcher, raw, *, policy_type, source, policy_file="policy.json", config=None):
+        return await check.execute_policy(
+            IAMPolicy.model_validate(raw),
+            policy_file,
+            fetcher,
+            config or CheckConfig(check_id="policy_size"),
+            policy_type=policy_type,
+            policy_type_source=source,
+            raw_policy_dict=raw,
+        )
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("source", ["auto-detect", "default"])
-    async def test_guessed_type_warns_when_stricter_limit_could_apply(self, check, fetcher, source):
-        """5,330 bytes fits the managed limit but not the SCP/RCP or inline limits."""
-        policy = self._policy_of_size(5200)
-        config = CheckConfig(check_id="policy_size")
+    @pytest.mark.parametrize("target", [2100, 5200])
+    async def test_identity_policy_under_scp_limit_does_not_warn(self, check, fetcher, target):
+        """Inline limits are per-entity aggregates and opt-in, so they are not guessed at."""
+        raw = self._raw_of_size(target)
 
-        issues = await check.execute_policy(
-            policy,
-            "policy.json",
-            fetcher,
-            config,
-            policy_type="IDENTITY_POLICY",
-            policy_type_source=source,
-        )
+        issues = await self._run(check, fetcher, raw, policy_type="IDENTITY_POLICY", source="default")
+
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_rcp_shaped_resource_policy_over_rcp_limit_warns(self, check, fetcher):
+        raw = self._raw_of_size(5200, rcp_shaped=True)
+
+        issues = await self._run(check, fetcher, raw, policy_type="RESOURCE_POLICY", source="auto-detect")
 
         assert len(issues) == 1
         issue = issues[0]
         assert issue.issue_type == "policy_size_type_ambiguous"
         assert issue.severity == "warning"
-        # Generic: names the stricter limits rather than singling out one type.
-        assert "2,048" in issue.message
-        assert "--policy-type" in issue.suggestion
+        assert "5,120-byte limit" in issue.message
+        assert "--policy-type RESOURCE_CONTROL_POLICY" in issue.suggestion
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("source", ["cli-flag", "config-glob"])
-    async def test_declared_type_never_warns(self, check, fetcher, source):
-        """A declared type is authoritative — the limit applied is the right one."""
-        policy = self._policy_of_size(5200)
-        config = CheckConfig(check_id="policy_size")
+    async def test_non_rcp_resource_policy_does_not_warn(self, check, fetcher):
+        """A bucket policy scoping its ARNs is not an RCP look-alike."""
+        raw = self._raw_of_size(5200, rcp_shaped=True)
+        for statement in raw["Statement"]:
+            statement["Resource"] = "arn:aws:s3:::bucket/*"
 
-        issues = await check.execute_policy(
-            policy,
-            "policy.json",
+        issues = await self._run(check, fetcher, raw, policy_type="RESOURCE_POLICY", source="auto-detect")
+
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_identity_policy_over_scp_limit_as_written_warns(self, check, fetcher, tmp_path):
+        """Compact fits the managed limit; the indented file exceeds the SCP limit Organizations applies."""
+        raw = self._raw_of_size(5800)
+        path = tmp_path / "policy.json"
+        path.write_text(json.dumps(raw, indent=8))
+        written = len(path.read_bytes())
+        assert written > 10240
+
+        issues = await self._run(
+            check, fetcher, raw, policy_type="IDENTITY_POLICY", source="default", policy_file=str(path)
+        )
+
+        assert [i.issue_type for i in issues] == ["policy_size_type_ambiguous"]
+        assert f"{written:,} bytes as written" in issues[0].message
+        assert "--policy-type SERVICE_CONTROL_POLICY" in issues[0].suggestion
+
+    @pytest.mark.asyncio
+    async def test_compact_measurement_silences_as_written_ambiguity(self, check, fetcher, tmp_path):
+        raw = self._raw_of_size(5800)
+        path = tmp_path / "policy.json"
+        path.write_text(json.dumps(raw, indent=8))
+        config = CheckConfig(check_id="policy_size", config={"organizations_measurement": "compact"})
+
+        issues = await self._run(
+            check,
             fetcher,
-            config,
+            raw,
             policy_type="IDENTITY_POLICY",
-            policy_type_source=source,
+            source="default",
+            policy_file=str(path),
+            config=config,
         )
 
         assert issues == []
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("source", ["cli-flag", "config-glob"])
+    async def test_declared_type_never_warns(self, check, fetcher, source):
+        raw = self._raw_of_size(5200, rcp_shaped=True)
+
+        issues = await self._run(check, fetcher, raw, policy_type="RESOURCE_POLICY", source=source)
+
+        assert issues == []
+
+    @pytest.mark.asyncio
     async def test_yaml_policy_type_override_never_warns(self, check, fetcher):
-        """An explicit `checks.policy_size.config.policy_type` is a declaration too."""
-        policy = self._policy_of_size(5200)
+        raw = self._raw_of_size(5200, rcp_shaped=True)
         config = CheckConfig(check_id="policy_size", config={"policy_type": "managed"})
 
-        issues = await check.execute_policy(
-            policy,
-            "policy.json",
-            fetcher,
-            config,
-            policy_type="IDENTITY_POLICY",
-            policy_type_source="auto-detect",
+        issues = await self._run(
+            check, fetcher, raw, policy_type="RESOURCE_POLICY", source="auto-detect", config=config
+        )
+
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_custom_size_limits_without_candidate_key_do_not_crash(self, check, fetcher):
+        raw = self._raw_of_size(5200, rcp_shaped=True)
+        config = CheckConfig(check_id="policy_size", config={"size_limits": {"managed": 6144}})
+
+        issues = await self._run(
+            check, fetcher, raw, policy_type="RESOURCE_POLICY", source="auto-detect", config=config
         )
 
         assert issues == []
 
     @pytest.mark.asyncio
     async def test_small_guessed_policy_does_not_warn(self, check, fetcher):
-        """Under every applicable limit — nothing to warn about."""
-        policy = IAMPolicy(
-            Version="2012-10-17",
-            Statement=[Statement(Sid="A", Effect="Allow", Action="s3:GetObject", Resource="*")],
-        )
-        config = CheckConfig(check_id="policy_size")
+        raw = self._raw_of_size(100, rcp_shaped=True)
 
-        issues = await check.execute_policy(
-            policy,
-            "policy.json",
-            fetcher,
-            config,
-            policy_type="IDENTITY_POLICY",
-            policy_type_source="default",
-        )
+        issues = await self._run(check, fetcher, raw, policy_type="RESOURCE_POLICY", source="auto-detect")
 
         assert issues == []
 
     @pytest.mark.asyncio
     async def test_over_applied_limit_reports_error_only(self, check, fetcher):
-        """Past the applied limit the error stands alone — no duplicate advisory."""
-        policy = self._policy_of_size(6200)
-        config = CheckConfig(check_id="policy_size")
+        raw = self._raw_of_size(6200, rcp_shaped=True)
 
-        issues = await check.execute_policy(
-            policy,
-            "policy.json",
-            fetcher,
-            config,
-            policy_type="IDENTITY_POLICY",
-            policy_type_source="default",
-        )
+        issues = await self._run(check, fetcher, raw, policy_type="RESOURCE_POLICY", source="auto-detect")
 
-        assert len(issues) == 1
-        assert issues[0].issue_type == "policy_size_exceeded"
-        assert issues[0].severity == "error"
+        assert [(i.issue_type, i.severity) for i in issues] == [("policy_size_exceeded", "error")]
 
     @pytest.mark.asyncio
-    async def test_strictest_applied_limit_does_not_warn(self, check, fetcher):
-        """A trust policy already uses the strictest limit — no stricter one to flag."""
-        policy = self._policy_of_size(1500)
-        config = CheckConfig(check_id="policy_size")
+    async def test_trust_policy_does_not_warn(self, check, fetcher):
+        raw = self._raw_of_size(1500)
 
-        issues = await check.execute_policy(
-            policy,
-            "trust.json",
-            fetcher,
-            config,
-            policy_type="TRUST_POLICY",
-            policy_type_source="auto-detect",
-        )
+        issues = await self._run(check, fetcher, raw, policy_type="TRUST_POLICY", source="auto-detect")
 
         assert issues == []
 
     @pytest.mark.asyncio
-    async def test_undeclared_boundary_policy_warns_end_to_end(self, tmp_path):
-        """Integration: the prod escape. Bare `validate` warns; declaring errors."""
+    async def test_undeclared_rcp_warns_end_to_end(self, tmp_path):
+        """Bare `validate` warns; declaring RCP errors; declaring SCP fits."""
         from iam_validator.core.policy_checks import validate_policies
         from iam_validator.core.policy_loader import PolicyLoader
 
-        statements = []
-        while True:
-            statements.append(
-                {
-                    "Sid": f"Deny{len(statements):04d}",
-                    "Effect": "Deny",
-                    "Action": ["s3:GetObject"],
-                    "Resource": "*",
-                    "Condition": {"StringNotEquals": {"aws:PrincipalOrgID": "o-abcdefghij"}},
-                }
-            )
-            raw = {"Version": "2012-10-17", "Statement": statements}
-            if len(json.dumps(raw, separators=(",", ":")).encode("utf-8")) > 5200:
-                break
-
-        path = tmp_path / "scp.json"
-        path.write_text(json.dumps(raw))
+        path = tmp_path / "rcp.json"
+        path.write_text(json.dumps(self._raw_of_size(5200, rcp_shaped=True), separators=(",", ":")))
         policies = PolicyLoader().load_from_paths([str(path)], recursive=False)
 
-        # No --policy-type: the type is guessed, so the stricter limits are flagged.
         results = await validate_policies(policies)
         size_issues = [i for r in results for i in r.issues if i.check_id == "policy_size"]
         assert [i.issue_type for i in size_issues] == ["policy_size_type_ambiguous"]
 
-        # Declared as an RCP: the real 5,120-byte limit applies and the error fires.
         results = await validate_policies(policies, policy_type="RESOURCE_CONTROL_POLICY")
         size_issues = [i for r in results for i in r.issues if i.check_id == "policy_size"]
         assert [i.issue_type for i in size_issues] == ["policy_size_exceeded"]
         assert "5,120 bytes" in size_issues[0].message
 
-        # Declared as an SCP: 10,240 bytes since 2026-05-15, so it fits.
         results = await validate_policies(policies, policy_type="SERVICE_CONTROL_POLICY")
         size_issues = [i for r in results for i in r.issues if i.check_id == "policy_size"]
         assert size_issues == []
+
+    @pytest.mark.asyncio
+    async def test_undeclared_mid_size_identity_policy_is_silent_end_to_end(self, tmp_path):
+        from iam_validator.core.policy_checks import validate_policies
+        from iam_validator.core.policy_loader import PolicyLoader
+
+        path = tmp_path / "identity.json"
+        path.write_text(json.dumps(self._raw_of_size(3400), indent=2))
+        policies = PolicyLoader().load_from_paths([str(path)], recursive=False)
+
+        results = await validate_policies(policies)
+
+        assert [i for r in results for i in r.issues if i.check_id == "policy_size"] == []
 
 
 class TestOrganizationsWhitespaceCounting:
@@ -602,6 +622,45 @@ class TestOrganizationsWhitespaceCounting:
         )
 
         # The padded YAML file is far over 10,240 bytes; the policy itself is tiny.
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_compact_measurement_opt_out(self, check, fetcher, tmp_path):
+        path, raw, compact, written = self._write_indented(tmp_path, "scp.json", 6500)
+        assert compact < 10240 < written
+        config = CheckConfig(check_id="policy_size", config={"organizations_measurement": "compact"})
+
+        issues = await check.execute_policy(
+            policy=IAMPolicy.model_validate(raw),
+            policy_file=str(path),
+            fetcher=fetcher,
+            config=config,
+            policy_type="SERVICE_CONTROL_POLICY",
+            raw_policy_dict=raw,
+        )
+
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_utf8_bom_is_not_counted(self, check, fetcher, config, tmp_path):
+        raw = {
+            "Version": "2012-10-17",
+            "Statement": [{"Sid": "A", "Effect": "Deny", "Action": ["s3:*"], "Resource": "*"}],
+        }
+        document = json.dumps(raw).encode("utf-8")
+        path = tmp_path / "rcp.json"
+        path.write_bytes(b"\xef\xbb\xbf" + document)
+        config = CheckConfig(check_id="policy_size", config={"size_limits": {"rcp": len(document)}})
+
+        issues = await check.execute_policy(
+            policy=IAMPolicy.model_validate(raw),
+            policy_file=str(path),
+            fetcher=fetcher,
+            config=config,
+            policy_type="RESOURCE_CONTROL_POLICY",
+            raw_policy_dict=raw,
+        )
+
         assert issues == []
 
 

@@ -617,17 +617,23 @@ Detects `NotPrincipal` usage patterns: `NotPrincipal` with `Effect: Allow` is fl
 policy_size:
   enabled: true
   severity: error
-  policy_type: "managed" # managed, inline_user, inline_group, inline_role
-  # Override default size limits
+  # Pins every policy in the run to one limit; omit to follow the policy type
+  # policy_type: inline_user # managed, inline_user, inline_group, inline_role, inline_role_trust, scp, rcp
+  # scp/rcp: count the .json file as written (default) or minified
+  organizations_measurement: as_written # as_written | compact
+  # Override default size limits (replaces the whole map — list every key)
   size_limits:
     managed: 6144
     inline_user: 2048
     inline_group: 5120
     inline_role: 10240
+    inline_role_trust: 2048
+    scp: 10240
+    rcp: 5120
 ```
 
-!!! note "SCP Size Validation"
-When using `--policy-type SERVICE_CONTROL_POLICY`, the SCP-specific size limit of 5,120 characters is enforced separately, which is stricter than the managed policy limit of 6,144 characters.
+!!! note "SCP and RCP size validation"
+With `--policy-type SERVICE_CONTROL_POLICY` the SCP limit (10,240 bytes) applies, and with `RESOURCE_CONTROL_POLICY` the RCP limit (5,120 bytes). Both are measured as written from a `.json` file. See [`policy_size`](checks/aws-validation.md#policy_size).
 
 ## Policy Type Resolution
 
@@ -678,8 +684,9 @@ policy_types:
 
 !!! tip "Declaring the type also fixes the size limit"
 
-    SCPs, RCPs and inline policies share the identity-policy shape, so an
-    undeclared one is measured against the loosest size limit. See
+    An undeclared SCP resolves to `IDENTITY_POLICY` and an undeclared RCP to
+    `RESOURCE_POLICY`, so both are measured against the managed-policy size
+    limit instead of their own. See
     [`policy_size`](checks/aws-validation.md#policy_size).
 
 ### Debugging the resolved type

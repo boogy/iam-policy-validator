@@ -442,6 +442,11 @@ policy_size:
   #   scp: 10240
   #   rcp: 5120
 
+  # Optional: how scp and rcp are measured. "as_written" (default) counts the
+  # .json file's own formatting (a UTF-8 BOM is not counted); "compact" measures
+  # minified JSON, for pipelines that minify before submitting (jsonencode).
+  # organizations_measurement: "as_written"
+
 # ============================================================================
 # 4. ACTION VALIDATION
 # ============================================================================

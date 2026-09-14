@@ -436,28 +436,22 @@ class ValidatorConfig:
         self.policy_types: list[dict[str, str]] = self._parse_policy_types(
             self.config_dict.get("policy_types", []) or []
         )
-        self._warn_on_nested_check_options()
+        self._nested_options_warned: set[str] = set()
 
-    def _warn_on_nested_check_options(self) -> None:
-        """Warn about check options nested one level deeper under ``config:``.
-
-        A check reads its options straight off its own dict (``CheckConfig.config``
-        *is* that dict), so a ``config:`` sub-key is never read. Older docs showed
-        that shape, which meant a pinned ``policy_size.policy_type`` silently did
-        nothing and the limit followed the policy type instead.
-        """
-        for check_id, check_config in self.checks_config.items():
-            if not isinstance(check_config, dict):
-                continue
-            nested = check_config.get("config")
-            if isinstance(nested, dict) and nested:
-                logger.warning(
-                    "Check `%s` has options nested under `config:` (%s); these are ignored. "
-                    "Put them directly under `%s:` instead.",
-                    check_id,
-                    ", ".join(sorted(nested)),
-                    check_id,
-                )
+    def warn_on_nested_check_options(self, check_id: str) -> None:
+        """Warn once per check id when its options are nested under a never-read ``config:`` key."""
+        if check_id in self._nested_options_warned:
+            return
+        nested = self.get_check_config(check_id).get("config")
+        if isinstance(nested, dict) and nested:
+            self._nested_options_warned.add(check_id)
+            logger.warning(
+                "Check `%s` has options nested under `config:` (%s); these are ignored. "
+                "Put them directly under `%s:` instead.",
+                check_id,
+                ", ".join(sorted(nested)),
+                check_id,
+            )
 
     @staticmethod
     def _parse_policy_types(raw_policy_types: Any) -> list[dict[str, str]]:
@@ -665,6 +659,7 @@ class ConfigLoader:
         for check in registry.get_all_checks():
             check_id = check.check_id
             check_config_dict = config.get_check_config(check_id)
+            config.warn_on_nested_check_options(check_id)
 
             # Get existing config to preserve defaults set during registration
             existing_config = registry.get_config(check_id)

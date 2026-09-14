@@ -141,8 +141,9 @@ Whitespace counting differs by service, so `policy_size` measures two ways:
 - **IAM** (managed, inline, trust) ignores whitespace -> compact JSON.
 - **Organizations** (`scp`, `rcp` -> `_WHITESPACE_COUNTING_LIMITS`) strips whitespace
   only on a console save; a CLI/SDK/Terraform deploy stores the document verbatim ->
-  measured **as written** from the `.json` file (~1.7x compact for 2-space indent).
-  No `.json` file (a dict from the SDK, or a YAML source) falls back to compact.
+  measured **as written** from the `.json` file (~1.7x compact for 2-space indent),
+  excluding a UTF-8 BOM. No `.json` file (a dict from the SDK, or a YAML source) or
+  `organizations_measurement: compact` falls back to compact.
 
 SCP is 10,240 bytes since 2026-05-15, RCP still 5,120 — they are no longer equal.
 Inline limits are AWS aggregates per entity; this check only sees one policy.
@@ -151,9 +152,8 @@ Inline limits are AWS aggregates per entity; this check only sees one policy.
 per policy — start there when a size finding is missing.
 
 Setting `policy_size.policy_type` (directly under the check id — options nested
-under a `config:` key are never read; `ValidatorConfig` warns once at parse time) pins
-every policy in the run to one
-limit and makes the runtime type irrelevant to this check, so nothing in
+under a `config:` key are never read; `apply_config_to_registry` warns once per config)
+pins every policy in the run to one limit and makes the runtime type irrelevant to this check, so nothing in
 `defaults.py` or the example configs may set it (see CHANGELOG 1.19.0 and 1.28.0).
 
 ---
@@ -161,12 +161,14 @@ limit and makes the runtime type irrelevant to this check, so nothing in
 `policy_size` additionally reads the `policy_type_source` kwarg
 (`cli-flag` | `config-glob` | `auto-detect` | `default`, forwarded by
 `_validate_policy_with_registry`; default `"cli-flag"` = treat as declared). When the
-type was _not_ declared, the runtime type is `IDENTITY_POLICY` and the policy exceeds a
-stricter limit in `AWS_POLICY_SIZE_LIMITS`, it emits `policy_size_type_ambiguous` at
-`warning` — SCPs, RCPs and inline policies are structurally identical to an identity
-policy, whose `managed` limit (6,144) is the loosest of the set. The severity is
-deliberately hardcoded, not `get_severity(config)`: the advisory must not inherit the
-check's `error` severity and fail the run.
+type was _not_ declared it compares against the one Organizations type the document is
+indistinguishable from — `IDENTITY_POLICY` → `scp`, `RESOURCE_POLICY` that
+`policy_type_validation.looks_like_rcp` accepts → `rcp` — measured the way that type is
+measured, and emits `policy_size_type_ambiguous` at `warning` when that limit is exceeded.
+Inline limits are never candidates: they are per-entity aggregates and opt-in via
+`policy_size.policy_type`. The severity is deliberately hardcoded, not
+`get_severity(config)`: the advisory must not inherit the check's `error` severity and
+fail the run.
 
 ---
 

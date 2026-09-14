@@ -109,9 +109,9 @@ inputs:
     default: "us-east-1"
 
   policy-type:
-    description: "Policy type (IDENTITY_POLICY, RESOURCE_POLICY, TRUST_POLICY, SERVICE_CONTROL_POLICY, RESOURCE_CONTROL_POLICY)"
+    description: "Policy type applied to every policy (IDENTITY_POLICY, RESOURCE_POLICY, TRUST_POLICY, SERVICE_CONTROL_POLICY, RESOURCE_CONTROL_POLICY). Empty resolves each file via config policy_types globs, then content auto-detection"
     required: false
-    default: "IDENTITY_POLICY"
+    default: ""
 
   run-all-checks:
     description: "Run custom checks after Access Analyzer (only if use-access-analyzer: true)"

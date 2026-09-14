@@ -39,7 +39,7 @@ jobs:
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------- | ----------------- |
 | `path`             | Path(s) to IAM policy files or directories. Newline- or space-separated for multiple paths                             | Required          |
 | `config-file`      | Path to custom configuration file (iam-validator.yaml)                                                                 | Auto-detect       |
-| `policy-type`      | Policy type: `IDENTITY_POLICY`, `RESOURCE_POLICY`, `TRUST_POLICY`, `SERVICE_CONTROL_POLICY`, `RESOURCE_CONTROL_POLICY` | `IDENTITY_POLICY` |
+| `policy-type`      | Policy type applied to every policy: `IDENTITY_POLICY`, `RESOURCE_POLICY`, `TRUST_POLICY`, `SERVICE_CONTROL_POLICY`, `RESOURCE_CONTROL_POLICY`. Empty resolves each file via config `policy_types:` globs, then content auto-detection | _auto-detect_ |
 | `recursive`        | Recursively search directories for policy files                                                                        | `true`            |
 | `fail-on-warnings` | Fail validation if warnings are found (default: only fail on errors)                                                   | `false`           |
 

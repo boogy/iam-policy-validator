@@ -27,6 +27,8 @@ policy type:
   file is measured as written — a 2-space indented policy is roughly 1.7x its
   compact size. Without such a file (an SDK caller passing a dict, or a YAML
   source that the deploy tool re-serializes) it falls back to compact JSON.
+  ``organizations_measurement: compact`` opts out when the deploy pipeline
+  minifies the document.
 
 Either way the count is UTF-8 bytes, matching AWS counting bytes rather than
 Unicode codepoints. Whitespace inside string values (SIDs, condition values) is
@@ -39,6 +41,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
+from iam_validator.checks.policy_type_validation import looks_like_rcp
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.constants import AWS_POLICY_SIZE_LIMITS, AWS_POLICY_TYPE_TO_SIZE_KEY
@@ -66,6 +69,8 @@ _LIMIT_DESCRIPTIONS = {
 # so these are measured as written rather than minified. Every IAM limit key is
 # absent here because IAM never counts whitespace.
 _WHITESPACE_COUNTING_LIMITS = frozenset({"scp", "rcp"})
+
+_UTF8_BOM = b"\xef\xbb\xbf"
 
 
 class PolicySizeCheck(PolicyCheck):
@@ -120,10 +125,10 @@ class PolicySizeCheck(PolicyCheck):
         # Resolve size-limit key in priority order.
         size_limits = config.config.get("size_limits", self.DEFAULT_LIMITS.copy())
         explicit_key = config.config.get("policy_type")
+        runtime_policy_type = kwargs.get("policy_type", "IDENTITY_POLICY")
         if explicit_key is not None:
             limit_key = explicit_key
         else:
-            runtime_policy_type = kwargs.get("policy_type", "IDENTITY_POLICY")
             limit_key = AWS_POLICY_TYPE_TO_SIZE_KEY.get(runtime_policy_type, "managed")
 
         if limit_key not in size_limits:
@@ -145,29 +150,39 @@ class PolicySizeCheck(PolicyCheck):
         policy_string = json.dumps(policy_json, separators=(",", ":"), ensure_ascii=False)
         compact_size = len(policy_string.encode("utf-8"))
 
-        # IAM never counts whitespace, but AWS Organizations only strips it for
-        # console saves — a CLI/SDK/Terraform deploy stores the document exactly
-        # as submitted. For an SCP or RCP the file's own formatting therefore
-        # counts, and the compact size understates the real one (a 2-space
-        # indented policy is roughly 1.7x its compact form).
+        candidate_key = None
+        if explicit_key is None:
+            candidate_key = self._ambiguous_limit_key(
+                policy,
+                runtime_policy_type=runtime_policy_type,
+                policy_type_source=kwargs.get("policy_type_source", "cli-flag"),
+            )
+            if candidate_key not in size_limits:
+                candidate_key = None
+
         as_written_size = None
-        if limit_key in _WHITESPACE_COUNTING_LIMITS:
+        measure_as_written = config.config.get("organizations_measurement", "as_written") != "compact"
+        if measure_as_written and (
+            limit_key in _WHITESPACE_COUNTING_LIMITS or candidate_key in _WHITESPACE_COUNTING_LIMITS
+        ):
             as_written_size = await self._measure_as_written(policy_file)
 
-        if as_written_size is not None:
-            policy_size = as_written_size
-        else:
-            policy_size = compact_size
+        def size_for(key: str) -> int:
+            if key in _WHITESPACE_COUNTING_LIMITS and as_written_size is not None:
+                return as_written_size
+            return compact_size
+
+        policy_size = size_for(limit_key)
+        measured_as_written = limit_key in _WHITESPACE_COUNTING_LIMITS and as_written_size is not None
 
         # One greppable line per policy so "why didn't the size check fire?" is
-        # answerable from a single --log-level debug run: it shows the limit that
-        # was applied and where that limit came from. Every field is an integer
-        # or from a closed set, and only the basename is logged.
+        # answerable from a single --log-level debug run. Every field is an
+        # integer or from a closed set, and only the basename is logged.
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 "policy_size=%d measured=%s limit_key=%s limit=%d limit_source=%s file=%s",
                 policy_size,
-                "as-written" if as_written_size is not None else "compact",
+                "as-written" if measured_as_written else "compact",
                 limit_key if limit_key in AWS_POLICY_SIZE_LIMITS else "custom",
                 max_size,
                 "check-config" if explicit_key is not None else "policy-type",
@@ -175,24 +190,23 @@ class PolicySizeCheck(PolicyCheck):
             )
 
         if policy_size <= max_size:
-            ambiguity_issue = self._check_type_ambiguity(
-                policy_size=compact_size,
-                max_size=max_size,
-                size_limits=size_limits,
-                limit_key=limit_key,
-                explicit_key=explicit_key,
-                runtime_policy_type=kwargs.get("policy_type", "IDENTITY_POLICY"),
-                policy_type_source=kwargs.get("policy_type_source", "cli-flag"),
-            )
-            if ambiguity_issue is not None:
-                issues.append(ambiguity_issue)
+            if candidate_key is not None:
+                ambiguity_issue = self._type_ambiguity_issue(
+                    candidate_key=candidate_key,
+                    candidate_size=size_for(candidate_key),
+                    candidate_limit=size_limits[candidate_key],
+                    limit_key=limit_key,
+                    max_size=max_size,
+                )
+                if ambiguity_issue is not None:
+                    issues.append(ambiguity_issue)
             return issues
 
         severity = self.get_severity(config)
         percentage_over = ((policy_size - max_size) / max_size) * 100
         policy_type_desc = _LIMIT_DESCRIPTIONS.get(limit_key, limit_key)
 
-        if as_written_size is not None:
+        if measured_as_written:
             if compact_size <= max_size:
                 minified_note = (
                     "within the limit — if your deployment pipeline minifies the document "
@@ -234,64 +248,58 @@ class PolicySizeCheck(PolicyCheck):
 
     @staticmethod
     async def _measure_as_written(policy_file: str) -> int | None:
-        """Byte length of the JSON document on disk, or ``None`` if not applicable.
+        """Byte length of the ``.json`` document on disk, excluding a UTF-8 BOM.
 
-        Returns ``None`` — so the caller falls back to the compact size — when
-        there is no readable ``.json`` file behind the policy: an SDK caller
-        validating a dict, or a YAML source, which is not the document AWS
-        receives (the deploy tool re-serializes it to JSON).
+        ``None`` when there is no readable ``.json`` file (an SDK dict or a YAML
+        source), so the caller falls back to the compact size.
         """
         path = Path(policy_file)
         if path.suffix.lower() != ".json":
             return None
         try:
-            return await asyncio.to_thread(lambda: len(path.read_bytes()))
+            data = await asyncio.to_thread(path.read_bytes)
         except OSError:
             return None
+        return len(data) - len(_UTF8_BOM) if data.startswith(_UTF8_BOM) else len(data)
 
     @staticmethod
-    def _check_type_ambiguity(
-        *,
-        policy_size: int,
-        max_size: int,
-        size_limits: dict[str, int],
-        limit_key: str,
-        explicit_key: str | None,
-        runtime_policy_type: str,
-        policy_type_source: str,
-    ) -> ValidationIssue | None:
-        """Warn when a policy fits its limit only because the type was inferred.
+    def _ambiguous_limit_key(policy: "IAMPolicy", *, runtime_policy_type: str, policy_type_source: str) -> str | None:
+        """Limit key of the Organizations policy type an inferred document is indistinguishable from.
 
-        An identity policy, an SCP, an RCP and an inline user/group/role policy
-        are structurally identical — nothing in the document says which one it
-        is. ``detect_policy_type()`` therefore falls back to IDENTITY_POLICY,
-        which carries the *loosest* of those limits (managed, 6,144 bytes). A
-        policy between the strictest applicable limit and that fallback passes
-        validation and then fails on apply.
-
-        The warning is advisory (``warning`` is not in the default
-        ``fail_on_severity``) and is emitted only when nobody declared the
-        target, so a declared type never produces noise.
+        An SCP has the identity-policy shape and an RCP the ``Principal: "*"``
+        resource-policy shape, so neither can be auto-detected. Inline limits
+        are per-entity aggregates and opt-in via ``policy_size.policy_type``.
         """
-        # A declared type is authoritative — the applied limit is the right one.
-        if explicit_key is not None or policy_type_source in ("cli-flag", "config-glob"):
+        if policy_type_source not in ("auto-detect", "default"):
+            return None
+        if runtime_policy_type == "IDENTITY_POLICY":
+            return "scp"
+        if runtime_policy_type == "RESOURCE_POLICY" and looks_like_rcp(policy):
+            return "rcp"
+        return None
+
+    @staticmethod
+    def _type_ambiguity_issue(
+        *,
+        candidate_key: str,
+        candidate_size: int,
+        candidate_limit: int,
+        limit_key: str,
+        max_size: int,
+    ) -> ValidationIssue | None:
+        """Warn when an inferred policy fits its applied limit but not the look-alike type's limit.
+
+        Advisory ``warning`` (not ``get_severity``) so it never inherits the
+        check's ``error`` severity and fails the run.
+        """
+        if candidate_size <= candidate_limit:
             return None
 
-        # Only the identity-policy shape is ambiguous. A trust or resource
-        # policy is identified by its own structure (Principal, etc.).
-        if runtime_policy_type != "IDENTITY_POLICY":
-            return None
-
-        stricter = {key: limit for key, limit in size_limits.items() if limit < max_size}
-        exceeded = {key: limit for key, limit in stricter.items() if policy_size > limit}
-        if not exceeded:
-            return None
-
-        strictest = min(exceeded.values())
-        exceeded_desc = ", ".join(
-            f"{_LIMIT_DESCRIPTIONS.get(key, key)} ({limit:,} bytes)"
-            for key, limit in sorted(exceeded.items(), key=lambda kv: kv[1])
-        )
+        applied_desc = _LIMIT_DESCRIPTIONS.get(limit_key, limit_key)
+        candidate_desc = _LIMIT_DESCRIPTIONS.get(candidate_key, candidate_key)
+        declared_type = "SERVICE_CONTROL_POLICY" if candidate_key == "scp" else "RESOURCE_CONTROL_POLICY"
+        inferred_type = "IDENTITY_POLICY" if candidate_key == "scp" else "RESOURCE_POLICY"
+        written_note = " as written" if candidate_key in _WHITESPACE_COUNTING_LIMITS else ""
 
         return ValidationIssue(
             severity="warning",
@@ -299,30 +307,22 @@ class PolicySizeCheck(PolicyCheck):
             statement_index=-1,  # Policy-level issue
             issue_type="policy_size_type_ambiguous",
             message=(
-                f"Policy size ({policy_size:,} bytes) is within the "
-                f"{_LIMIT_DESCRIPTIONS.get(limit_key, limit_key)} limit ({max_size:,} bytes), but the "
-                f"policy type was inferred, not declared — and this policy exceeds stricter AWS "
-                f"limits that apply to other deployment targets (as low as {strictest:,} bytes)"
+                f"Policy fits the {applied_desc} limit ({max_size:,} bytes), but its type was "
+                f"inferred, not declared — deployed as a {candidate_desc} it is "
+                f"{candidate_size:,} bytes{written_note}, over the {candidate_limit:,}-byte limit"
             ),
             suggestion=(
-                f"Identity policies, SCPs, RCPs and inline policies are structurally identical, so "
-                f"the type could not be determined from the document and the "
-                f"{_LIMIT_DESCRIPTIONS.get(limit_key, limit_key)} limit was applied. Declare the "
-                f"deployment target so the real limit is enforced:\n"
-                f"  1. Pass --policy-type (e.g. SERVICE_CONTROL_POLICY)\n"
+                f"A {candidate_desc} cannot be told apart from this document's shape, so the "
+                f"{applied_desc} limit was applied. Declare the deployment target:\n"
+                f"  1. Pass --policy-type {declared_type} (or {inferred_type} if it is not one)\n"
                 f"  2. Or map the file in your config:\n"
                 f"     policy_types:\n"
-                f"       - pattern: '**/scp/*.json'\n"
-                f"         type: SERVICE_CONTROL_POLICY\n"
-                f"  3. Or, for a target with no runtime type, set\n"
-                f"     policy_size.policy_type: inline_user | inline_group | inline_role\n"
-                f"\nLimits this policy already exceeds: {exceeded_desc}."
+                f"       - pattern: '**/{candidate_key}/*.json'\n"
+                f"         type: {declared_type}"
             ),
             line_number=1,
             # Set explicitly so the registry's per-check_id enrichment does not
-            # attach the `policy_size_exceeded` remediation ("split the policy"),
-            # which is the wrong advice for a policy that is not actually over
-            # the limit it was measured against.
+            # attach the `policy_size_exceeded` remediation.
             risk_explanation=(
                 "The size limit applied depends on the policy type, and the type was guessed "
                 "from the document. If the real deployment target has a stricter limit, AWS "
@@ -331,6 +331,5 @@ class PolicySizeCheck(PolicyCheck):
             remediation_steps=[
                 "Pass `--policy-type` for the deployment target",
                 "Or map the file in `policy_types:` in your config",
-                "Or set `policy_size.policy_type` for an inline target",
             ],
         )

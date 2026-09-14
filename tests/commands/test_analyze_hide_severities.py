@@ -114,3 +114,50 @@ class TestAnalyzeHideSeverities:
 
         assert await AnalyzeCommand().execute(_args(None, fail_on_warnings=True)) == 1
         assert await AnalyzeCommand().execute(_args(config_file(["info"]), fail_on_warnings=True)) == 0
+
+
+class TestAnalyzeConfigLoading:
+    async def test_malformed_config_fails_before_access_analyzer(self, monkeypatch, tmp_path):
+        bad = tmp_path / "iam-validator.yaml"
+        bad.write_text("settings: [unclosed\n")
+        calls = []
+        monkeypatch.setattr(
+            "iam_validator.commands.analyze.validate_policies_with_analyzer",
+            lambda **kwargs: calls.append(kwargs),
+        )
+
+        assert await AnalyzeCommand().execute(_args(str(bad))) == 1
+        assert calls == []
+
+    async def test_run_all_checks_reuses_the_loaded_config(self, monkeypatch, tmp_path, config_file):
+        policy = tmp_path / "policy.json"
+        policy.write_text(
+            '{"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]}'
+        )
+        monkeypatch.setattr(
+            "iam_validator.commands.analyze.validate_policies_with_analyzer",
+            lambda **_: _report(),
+        )
+        from iam_validator.core.config.config_loader import ConfigLoader
+
+        real_load = ConfigLoader.load_config
+        loads = []
+
+        def counting_load(*args, **kwargs):
+            loads.append(args)
+            return real_load(*args, **kwargs)
+
+        monkeypatch.setattr(ConfigLoader, "load_config", staticmethod(counting_load))
+        received = {}
+
+        async def fake_validate_policies(policies, **kwargs):
+            received.update(kwargs)
+            return []
+
+        monkeypatch.setattr("iam_validator.commands.analyze.validate_policies", fake_validate_policies)
+
+        args = _args(config_file(["info"]), paths=[str(policy)], run_all_checks=True)
+        assert await AnalyzeCommand().execute(args) == 0
+
+        assert len(loads) == 1
+        assert received["config"].get_setting("hide_severities") == ["info"]
