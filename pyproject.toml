@@ -57,7 +57,7 @@ docs = [
   "mkdocs-literate-nav>=0.6.0",
 ]
 mcp = [
-  "fastmcp>=3.2,<4",
+  "fastmcp>=3.2,<5",
 ]
 
 [project.scripts]
