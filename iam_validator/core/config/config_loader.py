@@ -242,7 +242,7 @@ class PolicyTypeGlobSchema(BaseModel):
     a per-file policy type before auto-detection runs. First match wins.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     pattern: str
     type: str

@@ -408,6 +408,19 @@ class TestMalformedPolicyTypesConfig:
         assert config.policy_types == [{"pattern": "**/scp/*.json", "type": "SERVICE_CONTROL_POLICY"}]
         assert "policy_types" not in caplog.text
 
+    def test_entry_with_extra_keys_is_kept(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            config = ValidatorConfig(
+                {
+                    "policy_types": [
+                        {"pattern": "**/scp/*.json", "type": "SERVICE_CONTROL_POLICY", "description": "org scps"}
+                    ]
+                }
+            )
+
+        assert config.policy_types == [{"pattern": "**/scp/*.json", "type": "SERVICE_CONTROL_POLICY"}]
+        assert "policy_types" not in caplog.text
+
     def test_valid_entries_survive_alongside_an_invalid_one(self, caplog):
         with caplog.at_level(logging.WARNING):
             config = ValidatorConfig(

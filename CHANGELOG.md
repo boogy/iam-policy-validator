@@ -4,6 +4,15 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.1] - 2026-09-14
+
+### Fixed
+
+- An SCP or RCP loaded from a `.json` file is measured as written, as 1.28.0 intended. The on-disk document was matched to the validated policy by model equality, which also compared the statement line numbers the loader records, so no file-loaded policy ever matched and every one fell back to the compact size — an RCP of 7,664 bytes as written passed the 5,120-byte limit from the CLI, the GitHub Action and `validate_file`, and the as-written `policy_size_type_ambiguous` warning never fired. The document is now compared with the raw parsed dict ([#187])
+- A `policy_types:` entry with keys besides `pattern` and `type` (such as `description`) is kept. 1.28.0 rejected extra keys, so a config accepted by 1.27.x lost its glob mappings on upgrade and its SCPs were validated as identity policies, with only a log warning ([#187])
+
+[#187]: https://github.com/boogy/iam-policy-validator/pull/187
+
 ## [1.28.0] - 2026-09-14
 
 Corrects `policy_size` against the current AWS quotas and closes two ways an oversized policy could pass validation and then fail on apply: whitespace was discounted for SCPs and RCPs, where AWS counts it on every deploy that is not a console save, and an undeclared RCP between the RCP and managed-policy limits produced no finding. The SCP limit, stale since AWS raised it in May 2026, also rejected SCPs that AWS accepts.
