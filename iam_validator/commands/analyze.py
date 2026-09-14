@@ -306,7 +306,10 @@ Examples:
             if args.github_comment:
                 async with GitHubIntegration() as github:
                     success = await self._post_to_github(
-                        github, report, formatter, comment_tag=getattr(args, "comment_tag", None)
+                        github,
+                        report,
+                        formatter,
+                        comment_tag=getattr(args, "comment_tag", None) or config.get_setting("comment_tag", None),
                     )
                     if not success:
                         logging.error("Failed to post Access Analyzer results to GitHub PR")

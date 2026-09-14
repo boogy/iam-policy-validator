@@ -217,6 +217,8 @@ def filter_report_by_severity(
     if not hide_severities:
         return report
 
+    if isinstance(hide_severities, str):
+        hide_severities = [hide_severities]
     hidden = {s.lower() for s in hide_severities}
     filtered_results: list[AccessAnalyzerResult] = []
     for result in report.results:
@@ -228,7 +230,9 @@ def filter_report_by_severity(
             replace(
                 result,
                 findings=kept,
-                is_valid=result.error is None and not any(f.finding_type == FindingType.ERROR for f in kept),
+                is_valid=result.error is None
+                and not result.failed_custom_checks
+                and not any(f.finding_type == FindingType.ERROR for f in kept),
             )
         )
 
@@ -610,7 +614,7 @@ class AccessAnalyzerValidator:
 
                 result = AccessAnalyzerResult(
                     policy_file=policy_file,
-                    is_valid=not has_errors,
+                    is_valid=not has_errors and not any(not c.passed for c in custom_check_results),
                     findings=findings,
                     custom_checks=(custom_check_results if custom_check_results else None),
                 )

@@ -70,7 +70,9 @@ validator attached; a field search is bounded by the next statement's line.
 `PRCommenter` then runs diff-aware filtering with 3 tiers (changed line → inline review
 comment, modified statement / unchanged line → off-diff pipeline → context-issue table
 in summary). `protected_fingerprints` keeps off-diff comments alive across the
-`update_or_create_review_comments` cleanup phase.
+`update_or_create_review_comments` cleanup phase. A file absent from a fetched PR diff
+yields `ContextIssue(in_pr_diff=False)`; no mode posts those individually (GitHub rejects
+them). An unavailable diff keeps the unfiltered fallback (`in_pr_diff=True`).
 
 ---
 
@@ -81,7 +83,8 @@ the report is generated, so it is not shown, not counted and not part of the pas
 decision — hiding a severity that `fail_on_severity` lists stops it failing the run.
 The Access Analyzer path applies the same rule through
 `access_analyzer.filter_report_by_severity()` (`error`/`warning`/`info`, mapped from the
-finding type), called in `commands/analyze.py` before the report is rendered.
+finding type), called in `commands/analyze.py` before the report is rendered. Both accept a scalar
+string as one severity.
 
 The single exception is `check_execution_error`: `_handle_check_error` findings bypass
 `_process_issues` entirely, so a crashing check cannot silence the notice that it

@@ -147,3 +147,62 @@ class TestFilterReportBySeverity:
 
         assert filtered.results[0].findings == []
         assert filtered.results[0].failed_custom_checks == 1
+
+    def test_scalar_hide_severity_is_one_severity(self):
+        report = _report(_finding(FindingType.WARNING, "WARN"), _finding(FindingType.SUGGESTION, "SUG"))
+
+        filtered = filter_report_by_severity(report, "info")
+
+        assert [f.issue_code for f in filtered.results[0].findings] == ["WARN"]
+
+    def test_failed_custom_check_keeps_policy_invalid_after_filtering(self):
+        from iam_validator.core.access_analyzer import CheckResultType, CustomCheckResult
+
+        result = AccessAnalyzerResult(
+            policy_file="p.json",
+            is_valid=False,
+            findings=[_finding(FindingType.ERROR)],
+            custom_checks=[
+                CustomCheckResult(check_type="NoNewAccess", result=CheckResultType.FAIL, message="", reasons=[])
+            ],
+        )
+        report = AccessAnalyzerReport(
+            total_policies=1, valid_policies=0, invalid_policies=1, total_findings=1, results=[result]
+        )
+
+        filtered = filter_report_by_severity(report, frozenset({"error"}))
+
+        assert filtered.results[0].is_valid is False
+        assert filtered.invalid_policies == 1
+
+
+class TestCustomCheckFailureMakesPolicyInvalid:
+    def test_validate_policies_marks_failed_custom_check_invalid(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from iam_validator.core.access_analyzer import (
+            AccessAnalyzerValidator,
+            CheckResultType,
+            CustomCheckResult,
+        )
+        from iam_validator.core.access_analyzer_report import AccessAnalyzerReportFormatter
+
+        validator = AccessAnalyzerValidator(session=MagicMock())
+        monkeypatch.setattr(validator, "validate_policy", lambda _doc: [])
+        monkeypatch.setattr(
+            validator,
+            "check_access_not_granted",
+            lambda *_a, **_k: CustomCheckResult(
+                check_type="AccessNotGranted", result=CheckResultType.FAIL, message="granted", reasons=[]
+            ),
+        )
+
+        results = validator.validate_policies(
+            [("p.json", {"Version": "2012-10-17", "Statement": []})],
+            custom_checks={"access_not_granted": {"actions": ["s3:GetObject"]}},
+        )
+        report = validator.generate_report(results)
+
+        assert results[0].is_valid is False
+        assert report.invalid_policies == 1
+        assert "Validation Passed" not in AccessAnalyzerReportFormatter().generate_markdown_report(report)

@@ -670,6 +670,8 @@ class ConfigLoader:
             hide_severities = check_config_dict.get("hide_severities")
             if hide_severities is None:
                 hide_severities = global_hide_severities
+            if isinstance(hide_severities, str):
+                hide_severities = [hide_severities]
             if hide_severities is not None:
                 hide_severities = frozenset(hide_severities)
 

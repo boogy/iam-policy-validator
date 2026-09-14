@@ -1005,6 +1005,32 @@ class TestOffDiffCommentMode:
                 assert len(mock_post.call_args[0][0]) >= 1
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("pr_files", "expect_posted"),
+        [
+            ([{"filename": "other.json", "status": "modified", "patch": "@@ -1 +1 @@\n-{\n+{"}], False),
+            ([], True),
+        ],
+        ids=["file-absent-from-known-diff", "diff-unavailable-fallback"],
+    )
+    async def test_individual_mode_posts_only_files_that_can_be_in_the_diff(
+        self, mock_github, sample_policy_file, report_with_off_diff_issues, pr_files, expect_posted
+    ):
+        mock_github.get_pr_files.return_value = pr_files
+        commenter = PRCommenter(github=mock_github, cleanup_old_comments=False, off_diff_comment_mode="individual")
+
+        with mock.patch.dict(os.environ, {"GITHUB_WORKSPACE": Path(sample_policy_file).parent.as_posix()}):
+            with mock.patch.object(
+                commenter, "_post_off_diff_comments", new_callable=AsyncMock, return_value=(set(), [])
+            ) as mock_post:
+                await commenter._post_review_comments(report_with_off_diff_issues)
+
+        posted = [ci for call in mock_post.call_args_list for ci in call.args[0]]
+        assert bool(posted) is expect_posted
+        if not expect_posted:
+            assert len(commenter._context_issues) == 2
+
+    @pytest.mark.asyncio
     async def test_modified_statements_only_splits_correctly(
         self, mock_github, sample_policy_file, report_with_off_diff_issues, diff_patch
     ):
@@ -1242,10 +1268,6 @@ Statement:
         assert PRCommenter._search_for_field_line(commenter, str(yaml_policy), 0, "s3:PutObject") is None
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
-
-
 class TestPolicyLevelIssueLineResolution:
     """Policy-level findings (``statement_index=-1``) must resolve to a line."""
 
@@ -1325,3 +1347,7 @@ class TestPolicyLevelIssueLineResolution:
         line_mapping = commenter._get_line_mapping(policy_file)
 
         assert commenter._find_issue_line(issue, policy_file, line_mapping) == line_mapping[0]
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

@@ -465,6 +465,155 @@ class TestPolicySizeTypeAmbiguity:
 
         assert [i for r in results for i in r.issues if i.check_id == "policy_size"] == []
 
+    @pytest.mark.asyncio
+    async def test_compact_candidate_size_is_not_labelled_as_written(self, check, fetcher):
+        raw = self._raw_of_size(5200, rcp_shaped=True)
+
+        issues = await self._run(check, fetcher, raw, policy_type="RESOURCE_POLICY", source="auto-detect")
+
+        assert [i.issue_type for i in issues] == ["policy_size_type_ambiguous"]
+        assert "as written" not in issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_suggestion_prefers_per_file_glob_over_run_wide_flag(self, check, fetcher):
+        raw = self._raw_of_size(5200, rcp_shaped=True)
+
+        issues = await self._run(check, fetcher, raw, policy_type="RESOURCE_POLICY", source="auto-detect")
+
+        suggestion = issues[0].suggestion
+        assert suggestion.index("policy_types:") < suggestion.index("--policy-type")
+        assert "every policy in the run" in suggestion
+        assert "policy_types" in issues[0].remediation_steps[0]
+
+    @pytest.mark.asyncio
+    async def test_undeclared_policy_over_managed_limit_hints_scp_when_it_fits(self, check, fetcher):
+        raw = self._raw_of_size(8000)
+
+        issues = await self._run(check, fetcher, raw, policy_type="IDENTITY_POLICY", source="default")
+
+        assert [(i.issue_type, i.severity) for i in issues] == [("policy_size_exceeded", "error")]
+        assert "SERVICE_CONTROL_POLICY" in issues[0].suggestion
+        assert "10,240" in issues[0].suggestion
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("target", "source"), [(11000, "default"), (8000, "cli-flag")])
+    async def test_exceeded_finding_has_no_type_hint_when_declared_or_too_big(self, check, fetcher, target, source):
+        raw = self._raw_of_size(target)
+
+        issues = await self._run(check, fetcher, raw, policy_type="IDENTITY_POLICY", source=source)
+
+        assert [i.issue_type for i in issues] == ["policy_size_exceeded"]
+        assert "SERVICE_CONTROL_POLICY" not in issues[0].suggestion
+
+    @pytest.mark.asyncio
+    async def test_candidate_file_small_enough_to_fit_is_not_read(self, check, fetcher, tmp_path, monkeypatch):
+        raw = self._raw_of_size(3400)
+        path = tmp_path / "identity.json"
+        path.write_text(json.dumps(raw, indent=2))
+        assert len(path.read_bytes()) <= 10240
+        reads = []
+        real_read_bytes = type(path).read_bytes
+
+        def counting_read_bytes(self):
+            reads.append(self)
+            return real_read_bytes(self)
+
+        monkeypatch.setattr(type(path), "read_bytes", counting_read_bytes)
+
+        issues = await self._run(
+            check, fetcher, raw, policy_type="IDENTITY_POLICY", source="default", policy_file=str(path)
+        )
+
+        assert issues == []
+        assert reads == []
+
+
+class TestPolicySizeConfigValidation:
+    @pytest.fixture
+    def check(self):
+        return PolicySizeCheck()
+
+    @pytest.fixture
+    def fetcher(self):
+        return AWSServiceFetcher()
+
+    @pytest.mark.asyncio
+    async def test_unknown_policy_type_key_is_ignored_with_a_warning(self, check, fetcher, caplog):
+        raw = TestPolicySizeTypeAmbiguity._raw_of_size(8000)
+        config = CheckConfig(check_id="policy_size", config={"policy_type": "SERVICE_CONTROL_POLICY"})
+
+        with caplog.at_level(logging.WARNING, logger="iam_validator.checks.policy_size"):
+            for _ in range(2):
+                issues = await check.execute_policy(
+                    IAMPolicy.model_validate(raw),
+                    "policy.json",
+                    fetcher,
+                    config,
+                    policy_type="SERVICE_CONTROL_POLICY",
+                    policy_type_source="cli-flag",
+                    raw_policy_dict=raw,
+                )
+                assert issues == []
+
+        warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert "SERVICE_CONTROL_POLICY" in warnings[0]
+        assert "`scp`" in warnings[0]
+
+    @pytest.mark.asyncio
+    async def test_unknown_policy_type_key_keeps_the_ambiguity_check(self, check, fetcher):
+        raw = TestPolicySizeTypeAmbiguity._raw_of_size(5200, rcp_shaped=True)
+        config = CheckConfig(check_id="policy_size", config={"policy_type": "rcpp"})
+
+        issues = await check.execute_policy(
+            IAMPolicy.model_validate(raw),
+            "policy.json",
+            fetcher,
+            config,
+            policy_type="RESOURCE_POLICY",
+            policy_type_source="auto-detect",
+            raw_policy_dict=raw,
+        )
+
+        assert [i.issue_type for i in issues] == ["policy_size_type_ambiguous"]
+
+    @pytest.mark.asyncio
+    async def test_non_string_policy_type_is_ignored_with_a_warning(self, check, fetcher, caplog):
+        raw = TestPolicySizeTypeAmbiguity._raw_of_size(100)
+        config = CheckConfig(check_id="policy_size", config={"policy_type": ["scp"]})
+
+        with caplog.at_level(logging.WARNING, logger="iam_validator.checks.policy_size"):
+            issues = await check.execute_policy(
+                IAMPolicy.model_validate(raw), "policy.json", fetcher, config, raw_policy_dict=raw
+            )
+
+        assert issues == []
+        assert "['scp']" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_unknown_organizations_measurement_warns_and_counts_whitespace(
+        self, check, fetcher, caplog, tmp_path
+    ):
+        path, raw, compact, written = TestOrganizationsWhitespaceCounting._write_indented(tmp_path, "scp.json", 6500)
+        assert compact < 10240 < written
+        config = CheckConfig(check_id="policy_size", config={"organizations_measurement": "Compact"})
+
+        with caplog.at_level(logging.WARNING, logger="iam_validator.checks.policy_size"):
+            for _ in range(2):
+                issues = await check.execute_policy(
+                    IAMPolicy.model_validate(raw),
+                    str(path),
+                    fetcher,
+                    config,
+                    policy_type="SERVICE_CONTROL_POLICY",
+                    raw_policy_dict=raw,
+                )
+                assert [i.issue_type for i in issues] == ["policy_size_exceeded"]
+
+        warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert "'Compact'" in warnings[0]
+
 
 class TestOrganizationsWhitespaceCounting:
     """AWS Organizations counts whitespace unless the console saved the policy.

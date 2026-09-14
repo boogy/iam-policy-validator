@@ -10,8 +10,18 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 - An SCP or RCP loaded from a `.json` file is measured as written, as 1.28.0 intended. The on-disk document was matched to the validated policy by model equality, which also compared the statement line numbers the loader records, so no file-loaded policy ever matched and every one fell back to the compact size — an RCP of 7,664 bytes as written passed the 5,120-byte limit from the CLI, the GitHub Action and `validate_file`, and the as-written `policy_size_type_ambiguous` warning never fired. The document is now compared with the raw parsed dict ([#187])
 - A `policy_types:` entry with keys besides `pattern` and `type` (such as `description`) is kept. 1.28.0 rejected extra keys, so a config accepted by 1.27.x lost its glob mappings on upgrade and its SCPs were validated as identity policies, with only a log warning ([#187])
+- `policy_size.policy_type` set to a value that is not a size-limit key (such as `SERVICE_CONTROL_POLICY` instead of `scp`) is ignored with a warning that suggests the key, instead of silently falling back to the managed-policy limit for every policy and disabling the `policy_size_type_ambiguous` check ([#188])
+- An `organizations_measurement` other than `as_written` or `compact` warns and measures as written; a typo such as `Compact` silently did the same ([#188])
+- A `policy_size_exceeded` finding on a policy whose type was inferred says when the document fits the SCP or RCP limit it looks like, and how to declare that type, instead of only advising to shrink it ([#188])
+- The `policy_size_type_ambiguous` suggestion lists the per-file `policy_types:` mapping first and notes that `--policy-type` applies to every policy in the run; its message no longer says "as written" when the candidate size was measured compact ([#188])
+- The as-written candidate read for an undeclared identity or resource policy is skipped when the file is too small to exceed the SCP or RCP limit ([#188])
+- `iam-validator analyze` marks a policy invalid when a `--check-*` custom check fails, so the report counts and the "Validation Passed" headline match the exit code, including after `hide_severities` filtering ([#188])
+- `iam-validator analyze --github-comment` posts under `settings.comment_tag` when `--comment-tag` is not given, as `validate` does, so a tagged run no longer overwrites another run's comment ([#188])
+- A scalar `hide_severities: info` hides that severity; it was split into characters and hid nothing, in both `validate` and `analyze` ([#188])
+- `off_diff_comment_mode: individual` keeps findings from files absent from the PR diff in the summary instead of posting comments GitHub rejects ([#188])
 
 [#187]: https://github.com/boogy/iam-policy-validator/pull/187
+[#188]: https://github.com/boogy/iam-policy-validator/pull/188
 
 ## [1.28.0] - 2026-09-14
 
