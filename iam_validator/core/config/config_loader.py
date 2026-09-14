@@ -16,6 +16,7 @@ from typing import Any, get_args
 
 import yaml
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import ValidationError as PydanticValidationError
 
 from iam_validator.core.check_registry import (
     CheckConfig,
@@ -429,13 +430,58 @@ class ValidatorConfig:
         self.settings = self.config_dict.get("settings", {})
         # Per-file policy-type glob mappings (first match wins). Each entry is
         # a dict with ``pattern`` and ``type`` keys — validated via
-        # PolicyTypeGlobSchema at load time.
-        raw_policy_types = self.config_dict.get("policy_types", []) or []
-        self.policy_types: list[dict[str, str]] = [
-            {"pattern": entry["pattern"], "type": entry["type"]}
-            for entry in raw_policy_types
-            if isinstance(entry, dict) and "pattern" in entry and "type" in entry
-        ]
+        # PolicyTypeGlobSchema. A malformed entry is dropped *loudly*: silently
+        # ignoring it leaves the user believing they declared a policy type
+        # (and its size limit) when auto-detection is still in charge.
+        self.policy_types: list[dict[str, str]] = self._parse_policy_types(
+            self.config_dict.get("policy_types", []) or []
+        )
+        self._nested_options_warned: set[str] = set()
+
+    def warn_on_nested_check_options(self, check_id: str) -> None:
+        """Warn once per check id when its options are nested under a never-read ``config:`` key."""
+        if check_id in self._nested_options_warned:
+            return
+        nested = self.get_check_config(check_id).get("config")
+        if isinstance(nested, dict) and nested:
+            self._nested_options_warned.add(check_id)
+            logger.warning(
+                "Check `%s` has options nested under `config:` (%s); these are ignored. "
+                "Put them directly under `%s:` instead.",
+                check_id,
+                ", ".join(sorted(nested)),
+                check_id,
+            )
+
+    @staticmethod
+    def _parse_policy_types(raw_policy_types: Any) -> list[dict[str, str]]:
+        """Validate the ``policy_types:`` glob list, warning on every rejection."""
+        if not isinstance(raw_policy_types, list):
+            logger.warning(
+                "Ignoring `policy_types` config: expected a list of {pattern, type} entries, "
+                "got %s. Use the list form:\n"
+                "  policy_types:\n"
+                "    - pattern: '**/scp/*.json'\n"
+                "      type: SERVICE_CONTROL_POLICY",
+                type(raw_policy_types).__name__,
+            )
+            return []
+
+        parsed: list[dict[str, str]] = []
+        for index, entry in enumerate(raw_policy_types):
+            try:
+                validated = PolicyTypeGlobSchema.model_validate(entry)
+            except PydanticValidationError as e:
+                logger.warning(
+                    "Ignoring `policy_types` entry %d: %s. Each entry needs a `pattern` and a `type` from %s.",
+                    index,
+                    "; ".join(err["msg"] for err in e.errors()),
+                    sorted(VALID_POLICY_TYPES),
+                )
+                continue
+            parsed.append({"pattern": validated.pattern, "type": validated.type})
+
+        return parsed
 
     def get_check_config(self, check_id: str) -> dict[str, Any]:
         """Get configuration for a specific check."""
@@ -613,6 +659,7 @@ class ConfigLoader:
         for check in registry.get_all_checks():
             check_id = check.check_id
             check_config_dict = config.get_check_config(check_id)
+            config.warn_on_nested_check_options(check_id)
 
             # Get existing config to preserve defaults set during registration
             existing_config = registry.get_config(check_id)

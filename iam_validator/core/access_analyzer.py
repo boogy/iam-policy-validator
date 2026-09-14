@@ -6,7 +6,8 @@ to validate IAM policies for syntax errors, security warnings, and best practice
 
 import json
 import logging
-from dataclasses import dataclass
+from collections.abc import Collection
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any
 
@@ -197,6 +198,48 @@ class AccessAnalyzerReport:
     def policies_with_findings(self) -> int:
         """Number of policies that have at least one finding."""
         return sum(1 for r in self.results if r.findings)
+
+
+def filter_report_by_severity(
+    report: AccessAnalyzerReport, hide_severities: Collection[str] | None
+) -> AccessAnalyzerReport:
+    """Remove findings whose severity the user chose to hide.
+
+    ``hide_severities`` takes a severity out of the run completely: not shown, not
+    counted, and not part of the pass/fail decision. Access Analyzer findings map
+    onto the same ``error`` / ``warning`` / ``info`` vocabulary through
+    :attr:`AccessAnalyzerFinding.severity`, so hiding ``info`` drops every
+    SUGGESTION and hiding ``error`` also clears the failure that finding caused.
+
+    A policy that could not be validated at all keeps its ``error``: a hard
+    failure is not a finding and has no severity to hide.
+    """
+    if not hide_severities:
+        return report
+
+    hidden = {s.lower() for s in hide_severities}
+    filtered_results: list[AccessAnalyzerResult] = []
+    for result in report.results:
+        kept = [f for f in result.findings if f.severity not in hidden]
+        if len(kept) == len(result.findings):
+            filtered_results.append(result)
+            continue
+        filtered_results.append(
+            replace(
+                result,
+                findings=kept,
+                is_valid=result.error is None and not any(f.finding_type == FindingType.ERROR for f in kept),
+            )
+        )
+
+    valid_policies = sum(1 for r in filtered_results if r.is_valid and not r.error)
+    return AccessAnalyzerReport(
+        total_policies=len(filtered_results),
+        valid_policies=valid_policies,
+        invalid_policies=len(filtered_results) - valid_policies,
+        total_findings=sum(len(r.findings) for r in filtered_results),
+        results=filtered_results,
+    )
 
 
 class AccessAnalyzerValidator:

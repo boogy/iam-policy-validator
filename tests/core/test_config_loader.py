@@ -107,3 +107,60 @@ def test_no_dead_settings_in_defaults():
     ]
 
     assert set(dead) <= DOCUMENTED_UNIMPLEMENTED, f"dead settings: {sorted(dead)}"
+
+
+class TestNestedCheckConfigWarning:
+    """Options nested under a `config:` key inside a check are never read.
+
+    ``CheckConfig.config`` *is* the check's dict, so a check reads
+    ``config.config.get("policy_type")`` from the check's own level. Documentation
+    (including `defaults.py`) showed the options nested one level deeper under
+    `config:`, which silently does nothing — a user pinning a policy size limit
+    that way never got the limit they asked for.
+    """
+
+    def test_nested_config_key_warns(self, caplog):
+        from iam_validator.core.check_registry import create_default_registry
+
+        registry = create_default_registry()
+
+        with caplog.at_level(logging.WARNING):
+            config = ValidatorConfig({"policy_size": {"config": {"policy_type": "inline_user"}}})
+            ConfigLoader.apply_config_to_registry(config, registry)
+            ConfigLoader.apply_config_to_registry(config, registry)
+
+        assert caplog.text.count("nested under `config:`") == 1
+        assert "policy_size" in caplog.text
+        assert "config:" in caplog.text
+        assert "policy_type" in caplog.text
+        # The nested value must not be silently honoured either.
+        assert registry.get_config("policy_size").config.get("policy_type") is None
+
+    def test_unregistered_section_with_config_key_does_not_warn(self, caplog):
+        from iam_validator.core.check_registry import create_default_registry
+
+        registry = create_default_registry()
+
+        with caplog.at_level(logging.WARNING):
+            config = ValidatorConfig({"my_team_metadata": {"config": {"owner": "platform"}}})
+            ConfigLoader.apply_config_to_registry(config, registry)
+
+        assert "nested under `config:`" not in caplog.text
+
+    def test_parsing_alone_does_not_warn(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            ValidatorConfig({"policy_size": {"config": {"policy_type": "inline_user"}}})
+
+        assert "nested under `config:`" not in caplog.text
+
+    def test_flat_check_options_do_not_warn(self, caplog):
+        from iam_validator.core.check_registry import create_default_registry
+
+        registry = create_default_registry()
+
+        with caplog.at_level(logging.WARNING):
+            config = ValidatorConfig({"policy_size": {"policy_type": "inline_user"}})
+            ConfigLoader.apply_config_to_registry(config, registry)
+
+        assert "config:" not in caplog.text
+        assert registry.get_config("policy_size").config.get("policy_type") == "inline_user"

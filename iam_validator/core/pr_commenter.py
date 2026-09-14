@@ -757,6 +757,10 @@ class PRCommenter:
         if issue.statement_index in line_mapping:
             return line_mapping[issue.statement_index]
 
+        # The caller's policy-level branch relocates this to a changed line.
+        if issue.statement_index == -1:
+            return 1
+
         # Fallback: try to find specific field in file by searching
         search_term = issue.action or issue.resource or issue.condition_key
         if search_term:

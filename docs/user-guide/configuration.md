@@ -66,7 +66,7 @@ fail_on_severity: [error]
 
 ### hide_severities
 
-Hide specific severity levels from all output to reduce noise:
+Remove specific severity levels from the run to cut noise:
 
 ```yaml
 settings:
@@ -74,12 +74,27 @@ settings:
   hide_severities: [low, info]
 ```
 
-Hidden issues won't appear in:
+A hidden severity is dropped **completely**, not just collapsed or muted:
 
-- Console output
-- JSON/SARIF reports
-- GitHub PR comments
-- Any other output format
+- It does not appear in any output — console, JSON/SARIF/CSV/HTML, GitHub PR
+  comments and review comments, PR labels, the job summary.
+- It is not counted in any total (`total_issues`, the per-severity counts).
+- It is not part of the pass/fail decision, so hiding a severity that
+  `fail_on_severity` lists stops it from failing the run.
+
+!!! warning "Hiding a severity also stops it failing the build"
+
+    `hide_severities` and `fail_on_severity` are independent settings, and hiding
+    wins: filtering happens before the report is generated. If you want the
+    finding to stay quiet but still gate the merge, lower its severity with a
+    per-check `severity:` override instead of hiding it.
+
+This applies to `iam-validator analyze` as well: Access Analyzer findings map onto
+the same `error` / `warning` / `info` severities, and the command reads
+`hide_severities` from the config file it is given with `--config`.
+
+The one exception is `check_execution_error` — see
+[on_check_error](#on_check_error) below.
 
 **Per-check override:** You can also set `hide_severities` on individual checks to override the global setting:
 
@@ -602,17 +617,23 @@ Detects `NotPrincipal` usage patterns: `NotPrincipal` with `Effect: Allow` is fl
 policy_size:
   enabled: true
   severity: error
-  policy_type: "managed" # managed, inline_user, inline_group, inline_role
-  # Override default size limits
+  # Pins every policy in the run to one limit; omit to follow the policy type
+  # policy_type: inline_user # managed, inline_user, inline_group, inline_role, inline_role_trust, scp, rcp
+  # scp/rcp: count the .json file as written (default) or minified
+  organizations_measurement: as_written # as_written | compact
+  # Override default size limits (replaces the whole map — list every key)
   size_limits:
     managed: 6144
     inline_user: 2048
     inline_group: 5120
     inline_role: 10240
+    inline_role_trust: 2048
+    scp: 10240
+    rcp: 5120
 ```
 
-!!! note "SCP Size Validation"
-When using `--policy-type SERVICE_CONTROL_POLICY`, the SCP-specific size limit of 5,120 characters is enforced separately, which is stricter than the managed policy limit of 6,144 characters.
+!!! note "SCP and RCP size validation"
+With `--policy-type SERVICE_CONTROL_POLICY` the SCP limit (10,240 bytes) applies, and with `RESOURCE_CONTROL_POLICY` the RCP limit (5,120 bytes). Both are measured as written from a `.json` file. See [`policy_size`](checks/aws-validation.md#policy_size).
 
 ## Policy Type Resolution
 
@@ -657,6 +678,16 @@ policy_types:
   `scp/org.json` at the top of the scan.
 - First match wins; the list is only consulted when `--policy-type` is not
   provided on the CLI.
+- The list form above is required. A mapping (`"**/scp/*.json": SERVICE_CONTROL_POLICY`)
+  or an entry missing `pattern`/`type` is rejected with a warning naming the
+  entry — it does not silently fall back to auto-detection.
+
+!!! tip "Declaring the type also fixes the size limit"
+
+    An undeclared SCP resolves to `IDENTITY_POLICY` and an undeclared RCP to
+    `RESOURCE_POLICY`, so both are measured against the managed-policy size
+    limit instead of their own. See
+    [`policy_size`](checks/aws-validation.md#policy_size).
 
 ### Debugging the resolved type
 

@@ -106,7 +106,8 @@
 #   severity:         error | warning | info | critical | high | medium | low
 #   description:      Free text shown in reports
 #   ignore_patterns:  See the section above
-#   hide_severities:  Drop findings of these severities from THIS check only.
+#   hide_severities:  Drop findings of these severities from THIS check only -
+#                     not shown, not counted, not failing the run.
 #                     Overrides settings.hide_severities for the check.
 #
 # Example — keep the check enabled but stop reporting its low findings:
@@ -191,8 +192,12 @@ settings:
     # - medium  # Uncomment to fail on medium severity
     # - warning  # Uncomment to fail on IAM validity warnings
 
-  # Severity filtering - hide specific severity levels from output
-  # When set, issues with these severities will be filtered out globally
+  # Severity filtering - remove specific severity levels from the run
+  # A hidden severity is dropped completely: not shown in any output, not
+  # counted in any total, and not part of the pass/fail decision - so hiding a
+  # severity listed in fail_on_severity above stops it failing the run. Also
+  # applied to Access Analyzer findings by `analyze --config <this file>`.
+  # check_execution_error is the one exception (see on_check_error).
   # Can be overridden per-check using check-level hide_severities
   # Valid values: "error", "warning", "info", "critical", "high", "medium", "low"
   # Example: ["low", "info"] - hide low and info severity findings
@@ -415,11 +420,18 @@ policy_size:
   # everything else -> managed. An unknown key falls back to managed.
   # Valid keys: managed, inline_user, inline_group, inline_role,
   #             inline_role_trust, scp, rcp
-  policy_type: "managed"
+  #
+  # Left commented on purpose: setting it pins EVERY policy in the run to one
+  # limit and makes --policy-type irrelevant to this check, so an SCP would be
+  # measured against the managed limit. Only set it when you know the deployment
+  # target is more specific than the runtime type (an inline user policy, say).
+  # policy_type: "inline_user"
 
-  # Optional: override the AWS size limits. Sizes are measured as the UTF-8
-  # byte length of the policy serialized as compact JSON (no whitespace),
-  # which is how AWS measures them.
+  # Optional: override the AWS size limits, in UTF-8 bytes. IAM limits are
+  # measured against compact JSON (AWS ignores whitespace); scp and rcp are
+  # measured against the document as written, because Organizations stores a
+  # CLI/SDK/Terraform submission verbatim and only strips whitespace for
+  # console saves.
   # Defaults (from constants.AWS_POLICY_SIZE_LIMITS):
   # size_limits:
   #   managed: 6144
@@ -427,8 +439,13 @@ policy_size:
   #   inline_group: 5120
   #   inline_role: 10240
   #   inline_role_trust: 2048
-  #   scp: 5120
+  #   scp: 10240
   #   rcp: 5120
+
+  # Optional: how scp and rcp are measured. "as_written" (default) counts the
+  # .json file's own formatting (a UTF-8 BOM is not counted); "compact" measures
+  # minified JSON, for pipelines that minify before submitting (jsonencode).
+  # organizations_measurement: "as_written"
 
 # ============================================================================
 # 4. ACTION VALIDATION

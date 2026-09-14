@@ -9,9 +9,11 @@ from iam_validator.core.access_analyzer import (
     AccessAnalyzerReport,
     PolicyType,
     ResourceType,
+    filter_report_by_severity,
     validate_policies_with_analyzer,
 )
 from iam_validator.core.access_analyzer_report import AccessAnalyzerReportFormatter
+from iam_validator.core.config.config_loader import ConfigLoader, ValidatorConfig
 from iam_validator.core.policy_checks import validate_policies
 from iam_validator.core.policy_loader import PolicyLoader
 from iam_validator.core.report import ReportGenerator
@@ -221,6 +223,13 @@ Examples:
         )
 
         parser.add_argument(
+            "--config",
+            "-c",
+            help="Path to configuration file (default: auto-discover iam-validator.yaml). "
+            "Used for settings.hide_severities and, with --run-all-checks, the full check run.",
+        )
+
+        parser.add_argument(
             "--off-diff-comment-mode",
             choices=["summary_only", "individual", "modified_statements_only"],
             default=None,
@@ -254,6 +263,9 @@ Examples:
             # Map string to PolicyType enum
             policy_type = PolicyType[args.policy_type]
 
+            # Loaded before any Access Analyzer call so a bad config fails without spending API calls.
+            config = ConfigLoader.load_config(getattr(args, "config", None))
+
             # Build custom checks configuration
             custom_checks = self._build_custom_checks(args)
 
@@ -266,6 +278,10 @@ Examples:
                 recursive=not args.no_recursive,
                 custom_checks=custom_checks,
             )
+
+            # `hide_severities` drops a severity from the run completely, so apply it
+            # before anything prints, counts or gates on these findings.
+            report = filter_report_by_severity(report, config.get_setting("hide_severities", None))
 
             # Generate report
             formatter = AccessAnalyzerReportFormatter()
@@ -307,7 +323,7 @@ Examples:
 
             # If Access Analyzer passes and --run-all-checks is set, run full validation
             if exit_code == 0 and getattr(args, "run_all_checks", False):
-                exit_code = await self._run_full_validation(args)
+                exit_code = await self._run_full_validation(args, config)
 
             return exit_code
 
@@ -373,7 +389,7 @@ Examples:
 
         return custom_checks if custom_checks else None
 
-    async def _run_full_validation(self, args: argparse.Namespace) -> int:
+    async def _run_full_validation(self, args: argparse.Namespace, config: ValidatorConfig) -> int:
         """Run full validation after Access Analyzer passes."""
         logging.info("Access Analyzer validation passed. Running full validation checks...")
 
@@ -386,7 +402,7 @@ Examples:
             return 1
 
         # Run full validation
-        results = await validate_policies(policies)
+        results = await validate_policies(policies, config=config)
 
         # Generate report
         generator = ReportGenerator()
@@ -407,12 +423,8 @@ Examples:
 
         # Post to GitHub if configured
         if args.github_comment:
-            from iam_validator.core.config.config_loader import ConfigLoader
             from iam_validator.core.pr_commenter import PRCommenter
 
-            # Load config to get fail_on_severity, severity_labels, and ignore settings
-            config_path = getattr(args, "config", None)
-            config = ConfigLoader.load_config(config_path)
             fail_on_severities = config.get_setting("fail_on_severity", list(constants.HIGH_SEVERITY_LEVELS))
             severity_labels = config.get_setting("severity_labels", {})
 

@@ -28,6 +28,7 @@ def _tracking_validate_policy(active: list[int], peak: list[int]):
         fail_on_severities=None,
         policy_type="IDENTITY_POLICY",
         raw_policy_dict=None,
+        policy_type_source="cli-flag",
     ):
         active[0] += 1
         peak[0] = max(peak[0], active[0])
@@ -148,3 +149,21 @@ async def test_max_concurrency_zero_in_config_is_clamped(tmp_path, monkeypatch, 
 
     assert peak[0] == 1
     assert any("config setting max_concurrency" in r.getMessage() for r in caplog.records)
+
+
+async def test_preloaded_config_is_used_instead_of_loading(monkeypatch):
+    active = [0]
+    peak = [0]
+    monkeypatch.setattr(
+        "iam_validator.core.policy_checks._validate_policy_with_registry", _tracking_validate_policy(active, peak)
+    )
+
+    def fail_load(*_args, **_kwargs):
+        raise AssertionError("config must not be reloaded")
+
+    monkeypatch.setattr("iam_validator.core.policy_checks.ConfigLoader.load_config", fail_load)
+    policies = [(f"p{i}.json", _CONCURRENCY_POLICY, None) for i in range(10)]
+
+    await validate_policies(policies, config=ValidatorConfig({"settings": {"max_concurrency": 2}}))
+
+    assert peak[0] == 2

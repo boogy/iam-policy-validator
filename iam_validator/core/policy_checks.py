@@ -175,6 +175,7 @@ async def validate_policies(
     allow_config_custom_checks: bool = False,
     *,
     max_concurrency: int | None = None,
+    config: ValidatorConfig | None = None,
 ) -> list[PolicyValidationResult]:
     """Validate multiple policies concurrently.
 
@@ -198,12 +199,13 @@ async def validate_policies(
         max_concurrency: Maximum number of policies validated concurrently.
             When ``None`` (default), falls back to the config ``max_concurrency``
             setting (default 10). Values below 1 are clamped to 1 with a warning.
+        config: Already-loaded configuration; ``config_path`` is ignored when given.
 
     Returns:
         List of validation results
     """
-    # Load configuration
-    config = ConfigLoader.load_config(explicit_path=config_path, allow_missing=True)
+    if config is None:
+        config = ConfigLoader.load_config(explicit_path=config_path, allow_missing=True)
 
     # Create registry with or without built-in checks based on configuration
     enable_parallel = config.get_setting("parallel_execution", True)
@@ -293,6 +295,7 @@ async def validate_policies(
                     fail_on_severities,
                     resolved_type,
                     raw_dict,
+                    policy_type_source=source,
                 )
             )
 
@@ -315,6 +318,7 @@ async def _validate_policy_with_registry(
     fail_on_severities: list[str] | None = None,
     policy_type: PolicyType = "IDENTITY_POLICY",
     raw_policy_dict: dict | None = None,
+    policy_type_source: str = "cli-flag",
 ) -> PolicyValidationResult:
     """Validate a single policy using the CheckRegistry system.
 
@@ -326,6 +330,12 @@ async def _validate_policy_with_registry(
         fail_on_severities: List of severity levels that should cause validation to fail
         policy_type: Type of policy (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY)
         raw_policy_dict: Raw policy dictionary for structural validation (optional, will be loaded if not provided)
+        policy_type_source: How ``policy_type`` was arrived at — one of
+            ``cli-flag``, ``config-glob``, ``auto-detect``, ``default`` (see
+            ``_resolve_policy_type``). Checks that behave differently for a
+            declared vs. an inferred type read it from kwargs; the default
+            treats the type as declared, so callers that don't plumb it keep
+            their current behaviour.
 
     Returns:
         PolicyValidationResult with all findings
@@ -346,7 +356,7 @@ async def _validate_policy_with_registry(
     if raw_policy_dict is None:
         loader = PolicyLoader()
         loaded_result = loader.load_from_file(policy_file, return_raw_dict=True)
-        if loaded_result and isinstance(loaded_result, tuple):
+        if loaded_result and isinstance(loaded_result, tuple) and loaded_result[0] == policy:
             raw_policy_dict = loaded_result[1]
 
     # Policy-type validation now runs as the registered `policy_type_validation`
@@ -371,7 +381,12 @@ async def _validate_policy_with_registry(
     # Run policy-level checks first (checks that need to see the entire policy)
     # These checks examine relationships between statements, not individual statements
     policy_level_issues = await registry.execute_policy_checks(
-        policy, policy_file, fetcher, policy_type, raw_policy_dict=raw_policy_dict
+        policy,
+        policy_file,
+        fetcher,
+        policy_type,
+        raw_policy_dict=raw_policy_dict,
+        policy_type_source=policy_type_source,
     )
 
     # Drop policy-level findings that reference a suppressed statement — but only

@@ -19,7 +19,7 @@ core/
 ├── diff_parser.py          # git-diff parsing
 ├── finding_fingerprint.py  # FindingFingerprint, compute_finding_hash() (canonical 16-char)
 ├── label_manager.py        # severity → PR label mapping
-├── access_analyzer.py      # AWS Access Analyzer client
+├── access_analyzer.py      # AWS Access Analyzer client + filter_report_by_severity()
 ├── access_analyzer_report.py # markdown formatter for Access Analyzer
 ├── ignore_patterns.py      # CODEOWNERS-driven finding suppression
 ├── ignore_processor.py     # ignore-command parser
@@ -71,6 +71,21 @@ validator attached; a field search is bounded by the next statement's line.
 comment, modified statement / unchanged line → off-diff pipeline → context-issue table
 in summary). `protected_fingerprints` keeps off-diff comments alive across the
 `update_or_create_review_comments` cleanup phase.
+
+---
+
+## `hide_severities` means gone (gotcha)
+
+A hidden severity is removed from the run, not muted: `_process_issues` drops it before
+the report is generated, so it is not shown, not counted and not part of the pass/fail
+decision — hiding a severity that `fail_on_severity` lists stops it failing the run.
+The Access Analyzer path applies the same rule through
+`access_analyzer.filter_report_by_severity()` (`error`/`warning`/`info`, mapped from the
+finding type), called in `commands/analyze.py` before the report is rendered.
+
+The single exception is `check_execution_error`: `_handle_check_error` findings bypass
+`_process_issues` entirely, so a crashing check cannot silence the notice that it
+crashed (`settings.on_check_error: warn` is the opt-out).
 
 ---
 
@@ -137,6 +152,13 @@ config = load_validator_config("iam-validator.yaml")  # Priority: CLI > config >
 `config/`:
 
 - `defaults.py` — defaults (don't hardcode `policy_type` here; see policy-size gotcha in CHANGELOG 1.19.0)
+
+A check's options sit directly under its id (`CheckConfig.config` is that dict).
+`apply_config_to_registry` warns once per `ValidatorConfig` for a registered check with a
+nested `config:` key; `custom_checks:` module entries are the exception and keep `config:`.
+`validate_policies(config=...)` takes a loaded config so callers that already read it
+(`analyze`) don't load it twice.
+
 - `sensitive_actions.py` — 490+ entries by risk category
 - `condition_requirements.py` — action → required conditions
 - `aws_global_conditions.py` — all AWS global condition keys

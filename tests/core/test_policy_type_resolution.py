@@ -371,3 +371,53 @@ async def test_mixed_directory_resolves_type_per_file(tmp_path):
     assert resolved_by_file[str(trust_file)] == "TRUST_POLICY"
     assert resolved_by_file[str(scp_file)] == "SERVICE_CONTROL_POLICY"
     assert resolved_by_file[str(rcp_file)] == "RESOURCE_CONTROL_POLICY"
+
+
+class TestMalformedPolicyTypesConfig:
+    """A ``policy_types:`` block written in the intuitive mapping form was
+    silently discarded, so users who believed they had declared their SCPs got
+    identity-policy size limits with no indication anything was wrong.
+    """
+
+    def test_mapping_form_warns_instead_of_being_silently_dropped(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            config = ValidatorConfig({"policy_types": {"**/scp/*.json": "SERVICE_CONTROL_POLICY"}})
+
+        assert config.policy_types == []
+        assert "policy_types" in caplog.text
+        assert "pattern" in caplog.text
+
+    def test_entry_missing_type_warns(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            config = ValidatorConfig({"policy_types": [{"pattern": "**/scp/*.json"}]})
+
+        assert config.policy_types == []
+        assert "policy_types" in caplog.text
+
+    def test_unknown_policy_type_value_warns(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            config = ValidatorConfig({"policy_types": [{"pattern": "**/scp/*.json", "type": "SCP"}]})
+
+        assert config.policy_types == []
+        assert "policy_types" in caplog.text
+
+    def test_valid_entries_are_kept_and_do_not_warn(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            config = ValidatorConfig({"policy_types": [{"pattern": "**/scp/*.json", "type": "SERVICE_CONTROL_POLICY"}]})
+
+        assert config.policy_types == [{"pattern": "**/scp/*.json", "type": "SERVICE_CONTROL_POLICY"}]
+        assert "policy_types" not in caplog.text
+
+    def test_valid_entries_survive_alongside_an_invalid_one(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            config = ValidatorConfig(
+                {
+                    "policy_types": [
+                        {"pattern": "**/scp/*.json", "type": "SERVICE_CONTROL_POLICY"},
+                        {"type": "TRUST_POLICY"},
+                    ]
+                }
+            )
+
+        assert config.policy_types == [{"pattern": "**/scp/*.json", "type": "SERVICE_CONTROL_POLICY"}]
+        assert "policy_types" in caplog.text

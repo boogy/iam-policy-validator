@@ -47,7 +47,7 @@ def _is_aws_managed_rcp_full_access(statement: Statement) -> bool:
     )
 
 
-def _looks_like_rcp(policy: IAMPolicy) -> bool:
+def looks_like_rcp(policy: IAMPolicy) -> bool:
     """Heuristic: does this policy have the shape of a customer-managed RCP?
 
     Customer RCPs must have Effect=Deny, Principal="*" and service-prefixed
@@ -107,7 +107,7 @@ async def execute_policy(
     # hint whenever an un-declared policy matches the customer-RCP shape —
     # whether it fell through to IDENTITY_POLICY or auto-detected as
     # RESOURCE_POLICY (any Principal ⇒ RESOURCE_POLICY).
-    if policy_type in ("IDENTITY_POLICY", "RESOURCE_POLICY") and _looks_like_rcp(policy):
+    if policy_type in ("IDENTITY_POLICY", "RESOURCE_POLICY") and looks_like_rcp(policy):
         issues.append(
             ValidationIssue(
                 severity="info",
@@ -222,7 +222,7 @@ async def execute_policy(
 
     # Service Control Policies (SCPs) should not have Principal
     elif policy_type == "SERVICE_CONTROL_POLICY":
-        # NOTE: the SCP 5,120-byte size limit is enforced by PolicySizeCheck
+        # NOTE: the SCP 10,240-byte size limit is enforced by PolicySizeCheck
         # (policy_size.py via AWS_POLICY_TYPE_TO_SIZE_KEY) — not duplicated here.
 
         for idx, statement in enumerate(policy.statement):
