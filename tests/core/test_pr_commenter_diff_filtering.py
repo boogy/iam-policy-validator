@@ -1244,3 +1244,77 @@ Statement:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestPolicyLevelIssueLineResolution:
+    """Policy-level findings carry ``statement_index=-1`` and no line number.
+
+    ``_post_review_comments`` has a dedicated branch for those, but it sits
+    *after* the ``if not line_number: continue`` guard — so findings that never
+    resolve a line (policy_size, every policy_structure finding) were dropped
+    before reaching it and never appeared in the inline review.
+    """
+
+    @pytest.fixture
+    def commenter(self, mock_github):
+        return PRCommenter(github=mock_github, cleanup_old_comments=False)
+
+    @pytest.fixture
+    def mock_github(self):
+        github = MagicMock(spec=GitHubIntegration)
+        github.is_configured = MagicMock(return_value=True)
+        return github
+
+    @pytest.fixture
+    def policy_file(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write(
+                '{\n  "Version": "2012-10-17",\n  "Statement": [\n    {\n      "Effect": "Allow",\n      "Action": "s3:*",\n      "Resource": "*"\n    }\n  ]\n}'
+            )
+            path = f.name
+        yield path
+        Path(path).unlink()
+
+    def test_policy_size_finding_resolves_to_line_one(self, commenter, policy_file):
+        issue = ValidationIssue(
+            severity="error",
+            statement_sid=None,
+            statement_index=-1,
+            issue_type="policy_size_exceeded",
+            message="Policy size (7,000 bytes) exceeds AWS limit",
+            suggestion="Split the policy",
+            line_number=None,
+        )
+        line_mapping = commenter._get_line_mapping(policy_file)
+
+        assert commenter._find_issue_line(issue, policy_file, line_mapping) == 1
+
+    def test_explicit_line_number_still_wins(self, commenter, policy_file):
+        """The fallback must not override a line the check already determined."""
+        issue = ValidationIssue(
+            severity="error",
+            statement_sid=None,
+            statement_index=-1,
+            issue_type="privilege_escalation",
+            message="escalation",
+            suggestion="fix",
+            line_number=4,
+        )
+        line_mapping = commenter._get_line_mapping(policy_file)
+
+        assert commenter._find_issue_line(issue, policy_file, line_mapping) == 4
+
+    def test_statement_level_issue_without_line_is_unaffected(self, commenter, policy_file):
+        """Only ``-1`` gets the line-1 fallback; statement findings keep their mapping."""
+        issue = ValidationIssue(
+            severity="error",
+            statement_sid=None,
+            statement_index=0,
+            issue_type="invalid_action",
+            message="bad action",
+            suggestion="fix",
+            line_number=None,
+        )
+        line_mapping = commenter._get_line_mapping(policy_file)
+
+        assert commenter._find_issue_line(issue, policy_file, line_mapping) == line_mapping[0]

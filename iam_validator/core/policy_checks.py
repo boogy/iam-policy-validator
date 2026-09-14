@@ -293,6 +293,7 @@ async def validate_policies(
                     fail_on_severities,
                     resolved_type,
                     raw_dict,
+                    policy_type_source=source,
                 )
             )
 
@@ -315,6 +316,7 @@ async def _validate_policy_with_registry(
     fail_on_severities: list[str] | None = None,
     policy_type: PolicyType = "IDENTITY_POLICY",
     raw_policy_dict: dict | None = None,
+    policy_type_source: str = "cli-flag",
 ) -> PolicyValidationResult:
     """Validate a single policy using the CheckRegistry system.
 
@@ -326,6 +328,12 @@ async def _validate_policy_with_registry(
         fail_on_severities: List of severity levels that should cause validation to fail
         policy_type: Type of policy (IDENTITY_POLICY, RESOURCE_POLICY, SERVICE_CONTROL_POLICY)
         raw_policy_dict: Raw policy dictionary for structural validation (optional, will be loaded if not provided)
+        policy_type_source: How ``policy_type`` was arrived at — one of
+            ``cli-flag``, ``config-glob``, ``auto-detect``, ``default`` (see
+            ``_resolve_policy_type``). Checks that behave differently for a
+            declared vs. an inferred type read it from kwargs; the default
+            treats the type as declared, so callers that don't plumb it keep
+            their current behaviour.
 
     Returns:
         PolicyValidationResult with all findings
@@ -371,7 +379,12 @@ async def _validate_policy_with_registry(
     # Run policy-level checks first (checks that need to see the entire policy)
     # These checks examine relationships between statements, not individual statements
     policy_level_issues = await registry.execute_policy_checks(
-        policy, policy_file, fetcher, policy_type, raw_policy_dict=raw_policy_dict
+        policy,
+        policy_file,
+        fetcher,
+        policy_type,
+        raw_policy_dict=raw_policy_dict,
+        policy_type_source=policy_type_source,
     )
 
     # Drop policy-level findings that reference a suppressed statement — but only

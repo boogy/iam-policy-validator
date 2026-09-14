@@ -290,7 +290,7 @@ CheckDocumentationRegistry.register(
         remediation_steps=[
             "Identity policies: Don't include `Principal` element",
             "Resource policies: Include `Principal` element",
-            "SCPs: No `Principal`/`NotPrincipal`; stay under the 5,120-character limit",
+            "SCPs: No `Principal`/`NotPrincipal`; stay under the 10,240-character limit",
             'RCPs: `Effect: Deny`, `Principal: "*"`, actions from RCP-supported services only',
         ],
         risk_category="configuration",

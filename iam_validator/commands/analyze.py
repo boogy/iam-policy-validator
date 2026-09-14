@@ -9,6 +9,7 @@ from iam_validator.core.access_analyzer import (
     AccessAnalyzerReport,
     PolicyType,
     ResourceType,
+    filter_report_by_severity,
     validate_policies_with_analyzer,
 )
 from iam_validator.core.access_analyzer_report import AccessAnalyzerReportFormatter
@@ -221,6 +222,13 @@ Examples:
         )
 
         parser.add_argument(
+            "--config",
+            "-c",
+            help="Path to configuration file (default: auto-discover iam-validator.yaml). "
+            "Used for settings.hide_severities and, with --run-all-checks, the full check run.",
+        )
+
+        parser.add_argument(
             "--off-diff-comment-mode",
             choices=["summary_only", "individual", "modified_statements_only"],
             default=None,
@@ -266,6 +274,10 @@ Examples:
                 recursive=not args.no_recursive,
                 custom_checks=custom_checks,
             )
+
+            # `hide_severities` drops a severity from the run completely, so apply it
+            # before anything prints, counts or gates on these findings.
+            report = filter_report_by_severity(report, self._hidden_severities(args))
 
             # Generate report
             formatter = AccessAnalyzerReportFormatter()
@@ -317,6 +329,14 @@ Examples:
         except Exception as e:
             logging.error(f"Access Analyzer validation failed: {e}", exc_info=args.verbose)
             return 1
+
+    @staticmethod
+    def _hidden_severities(args: argparse.Namespace) -> list[str] | None:
+        """Severities the config asks to hide, or ``None`` when none are hidden."""
+        from iam_validator.core.config.config_loader import ConfigLoader
+
+        config = ConfigLoader.load_config(getattr(args, "config", None))
+        return config.get_setting("hide_severities", None)
 
     def _build_custom_checks(self, args: argparse.Namespace) -> dict | None:
         """Build custom checks configuration from CLI arguments.
@@ -386,7 +406,7 @@ Examples:
             return 1
 
         # Run full validation
-        results = await validate_policies(policies)
+        results = await validate_policies(policies, config_path=getattr(args, "config", None))
 
         # Generate report
         generator = ReportGenerator()

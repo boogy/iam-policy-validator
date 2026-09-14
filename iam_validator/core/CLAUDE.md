@@ -19,7 +19,7 @@ core/
 ├── diff_parser.py          # git-diff parsing
 ├── finding_fingerprint.py  # FindingFingerprint, compute_finding_hash() (canonical 16-char)
 ├── label_manager.py        # severity → PR label mapping
-├── access_analyzer.py      # AWS Access Analyzer client
+├── access_analyzer.py      # AWS Access Analyzer client + filter_report_by_severity()
 ├── access_analyzer_report.py # markdown formatter for Access Analyzer
 ├── ignore_patterns.py      # CODEOWNERS-driven finding suppression
 ├── ignore_processor.py     # ignore-command parser
@@ -71,6 +71,21 @@ validator attached; a field search is bounded by the next statement's line.
 comment, modified statement / unchanged line → off-diff pipeline → context-issue table
 in summary). `protected_fingerprints` keeps off-diff comments alive across the
 `update_or_create_review_comments` cleanup phase.
+
+---
+
+## `hide_severities` means gone (gotcha)
+
+A hidden severity is removed from the run, not muted: `_process_issues` drops it before
+the report is generated, so it is not shown, not counted and not part of the pass/fail
+decision — hiding a severity that `fail_on_severity` lists stops it failing the run.
+The Access Analyzer path applies the same rule through
+`access_analyzer.filter_report_by_severity()` (`error`/`warning`/`info`, mapped from the
+finding type), called in `commands/analyze.py` before the report is rendered.
+
+The single exception is `check_execution_error`: `_handle_check_error` findings bypass
+`_process_issues` entirely, so a crashing check cannot silence the notice that it
+crashed (`settings.on_check_error: warn` is the opt-out).
 
 ---
 

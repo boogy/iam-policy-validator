@@ -168,12 +168,18 @@ DEFAULT_CONFIG = {
     # actually be attached inline to an IAM user:
     #
     #   policy_size:
-    #     config:
-    #       policy_type: inline_user  # 2048 bytes
+    #     policy_type: inline_user  # 2048 bytes
+    #
+    # The key goes directly under the check id — options nested under a
+    # `config:` key are not read (the loader warns if it sees them).
     #
     # Valid keys: managed (6144), inline_user (2048), inline_group (5120),
-    #             inline_role (10240), inline_role_trust (2048), scp (5120),
+    #             inline_role (10240), inline_role_trust (2048), scp (10240),
     #             rcp (5120).
+    #
+    # SCP/RCP are measured as written (whitespace included) when the policy
+    # comes from a .json file: Organizations only strips whitespace on a console
+    # save, not on a CLI/SDK/Terraform deploy. IAM limits ignore whitespace.
     "policy_size": {
         "enabled": True,
         "severity": "error",  # IAM validity error

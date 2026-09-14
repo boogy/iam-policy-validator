@@ -28,6 +28,7 @@ def _tracking_validate_policy(active: list[int], peak: list[int]):
         fail_on_severities=None,
         policy_type="IDENTITY_POLICY",
         raw_policy_dict=None,
+        policy_type_source="cli-flag",
     ):
         active[0] += 1
         peak[0] = max(peak[0], active[0])

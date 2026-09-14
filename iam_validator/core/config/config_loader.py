@@ -16,6 +16,7 @@ from typing import Any, get_args
 
 import yaml
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import ValidationError as PydanticValidationError
 
 from iam_validator.core.check_registry import (
     CheckConfig,
@@ -429,13 +430,64 @@ class ValidatorConfig:
         self.settings = self.config_dict.get("settings", {})
         # Per-file policy-type glob mappings (first match wins). Each entry is
         # a dict with ``pattern`` and ``type`` keys — validated via
-        # PolicyTypeGlobSchema at load time.
-        raw_policy_types = self.config_dict.get("policy_types", []) or []
-        self.policy_types: list[dict[str, str]] = [
-            {"pattern": entry["pattern"], "type": entry["type"]}
-            for entry in raw_policy_types
-            if isinstance(entry, dict) and "pattern" in entry and "type" in entry
-        ]
+        # PolicyTypeGlobSchema. A malformed entry is dropped *loudly*: silently
+        # ignoring it leaves the user believing they declared a policy type
+        # (and its size limit) when auto-detection is still in charge.
+        self.policy_types: list[dict[str, str]] = self._parse_policy_types(
+            self.config_dict.get("policy_types", []) or []
+        )
+        self._warn_on_nested_check_options()
+
+    def _warn_on_nested_check_options(self) -> None:
+        """Warn about check options nested one level deeper under ``config:``.
+
+        A check reads its options straight off its own dict (``CheckConfig.config``
+        *is* that dict), so a ``config:`` sub-key is never read. Older docs showed
+        that shape, which meant a pinned ``policy_size.policy_type`` silently did
+        nothing and the limit followed the policy type instead.
+        """
+        for check_id, check_config in self.checks_config.items():
+            if not isinstance(check_config, dict):
+                continue
+            nested = check_config.get("config")
+            if isinstance(nested, dict) and nested:
+                logger.warning(
+                    "Check `%s` has options nested under `config:` (%s); these are ignored. "
+                    "Put them directly under `%s:` instead.",
+                    check_id,
+                    ", ".join(sorted(nested)),
+                    check_id,
+                )
+
+    @staticmethod
+    def _parse_policy_types(raw_policy_types: Any) -> list[dict[str, str]]:
+        """Validate the ``policy_types:`` glob list, warning on every rejection."""
+        if not isinstance(raw_policy_types, list):
+            logger.warning(
+                "Ignoring `policy_types` config: expected a list of {pattern, type} entries, "
+                "got %s. Use the list form:\n"
+                "  policy_types:\n"
+                "    - pattern: '**/scp/*.json'\n"
+                "      type: SERVICE_CONTROL_POLICY",
+                type(raw_policy_types).__name__,
+            )
+            return []
+
+        parsed: list[dict[str, str]] = []
+        for index, entry in enumerate(raw_policy_types):
+            try:
+                validated = PolicyTypeGlobSchema.model_validate(entry)
+            except PydanticValidationError as e:
+                logger.warning(
+                    "Ignoring `policy_types` entry %d: %s. Each entry needs a `pattern` and a `type` from %s.",
+                    index,
+                    "; ".join(err["msg"] for err in e.errors()),
+                    sorted(VALID_POLICY_TYPES),
+                )
+                continue
+            parsed.append({"pattern": validated.pattern, "type": validated.type})
+
+        return parsed
 
     def get_check_config(self, check_id: str) -> dict[str, Any]:
         """Get configuration for a specific check."""

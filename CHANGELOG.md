@@ -4,6 +4,33 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.0] - Unreleased
+
+Corrects `policy_size` against the current AWS quotas and closes two ways an oversized policy could pass validation and then fail on apply: the SCP limit had been stale since AWS raised it in May 2026, and whitespace was discounted for SCPs and RCPs, where AWS counts it on every deploy that is not a console save.
+
+`hide_severities` also now means what it says everywhere: a hidden severity is gone from the run — including `analyze`, which never filtered its Access Analyzer findings.
+
+### Changed
+
+- The SCP size limit is 10,240 bytes, up from 5,120. AWS [raised the quota on 2026-05-15](https://aws.amazon.com/about-aws/whats-new/2026/05/aws-organizations-increased-scp-quotas/) automatically for all organizations in the commercial, GovCloud (US) and China regions; the same announcement raised the per-node SCP attachment quota from 5 to 10, which this project does not check. The RCP limit is unchanged at 5,120
+- An SCP or RCP backed by a `.json` file is measured **as written**, not minified. IAM "doesn't count white space when calculating the size of a policy", but Organizations strips it only for console saves — "if you save the policy using an SDK operation or the AWS CLI, then the policy is saved exactly as you provided" — so a Terraform, CLI or SDK deploy counts the file's own formatting, and a 2-space indented policy is roughly 1.7x its compact size. The finding reports both sizes, so a pipeline that minifies before submitting (Terraform's `jsonencode`) can see it has headroom. IAM policies keep the compact measurement, and a policy validated from a dict or a YAML source falls back to it since there is no submitted document to measure
+- `examples/configs/full-reference-config.yaml` no longer sets `policy_size.policy_type: managed`. Copying the reference config pinned every policy in the run to the managed limit and made `--policy-type` irrelevant to the size check
+
+### Added
+
+- `--log-level debug` emits one `policy_size=… measured=compact|as-written limit_key=… limit=… limit_source=check-config|policy-type file=<basename>` line per policy, so "which limit did it measure against, and where did that limit come from?" is answerable from a single run
+
+- `analyze` accepts `--config` / `-c`, like `validate`. The command read `settings.hide_severities` from nowhere and `--run-all-checks` ran the full check suite on built-in defaults, ignoring the repository's config entirely — both now use the file this flag names (or the auto-discovered `iam-validator.yaml`)
+
+- `policy_size` reports `policy_size_type_ambiguous` (severity `warning`, not in the default `fail_on_severity`) when the policy type was inferred rather than declared and the policy exceeds a stricter AWS limit that could apply to it. A 5,500-byte SCP validated without `--policy-type` fits the managed limit (6,144 bytes) but not the SCP limit (5,120), and previously produced no finding at all. The warning names every limit the policy already exceeds and how to declare the target; a declared type (`--policy-type`, a `policy_types:` glob, or `policy_size.policy_type`) never triggers it
+
+### Fixed
+
+- `hide_severities` applies to Access Analyzer findings. `analyze` findings expose the same `error` / `warning` / `info` severities as the checks, but nothing filtered them, so a user who hid `info` to cut noise still got every SUGGESTION — in the console output, the PR comment, the job summary and the `--fail-on-warnings` exit code. Filtering happens before the report is rendered or counted, so a hidden severity is dropped completely, exactly as in the check pipeline: hiding `error` also clears the failure it caused. A policy that could not be validated at all keeps its error — a hard failure is not a finding and has no severity to hide
+- A check's options are read from the check's own level, and a `config:` sub-key is now reported instead of ignored. `policy_size.policy_type` pins which AWS size limit to enforce, but `defaults.py` and the docs showed it nested one level deeper under `config:` — where nothing reads it. Anyone who followed that guidance pinned no limit at all and got the policy-type default silently; `apply_config_to_registry` now warns and names the ignored keys, and every reference to the nested form is corrected
+- A malformed `policy_types:` block is reported instead of discarded. Entries that are not `{pattern, type}` dicts — including the whole block written as a mapping (`"**/scp/*.json": SERVICE_CONTROL_POLICY`) — were dropped with no warning, so a user who believed they had declared their SCPs silently got identity-policy defaults and identity-policy size limits. Each rejected entry now logs what was wrong and which policy types are valid; valid entries alongside an invalid one are kept
+- Policy-level findings reach the inline PR review again. `_find_issue_line` returned no line for a finding carrying `statement_index=-1` and no `line_number`, so `_post_review_comments` dropped it before the policy-level branch that exists to place exactly those findings could run — and it was not recorded as a context issue either. Every `policy_size` and `policy_structure` finding was invisible in the inline review (it remained in the summary comment and in the exit code); `privilege_escalation` was unaffected only because it hardcodes `line_number=1`
+
 ## [1.27.2] - 2026-09-11
 
 Fixes the "everything is fixed but the PR still looks dirty" case — PR labels whose names are not URL-safe could never be removed, and ignore records outlived the findings they silenced — and enforces the ignore store's anti-tampering guarantee, which had no callers and so had never been applied.
@@ -910,6 +937,7 @@ _First release._
 
 [#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
+[1.28.0]: https://github.com/boogy/iam-policy-validator/compare/v1.27.2...v1.28.0
 [1.27.2]: https://github.com/boogy/iam-policy-validator/compare/v1.27.1...v1.27.2
 [1.27.1]: https://github.com/boogy/iam-policy-validator/compare/v1.27.0...v1.27.1
 [1.27.0]: https://github.com/boogy/iam-policy-validator/compare/v1.26.0...v1.27.0

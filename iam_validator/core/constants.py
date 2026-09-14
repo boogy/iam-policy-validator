@@ -122,10 +122,21 @@ MAX_INLINE_ROLE_POLICY_SIZE = 10240
 # Trust policies are the assume-role policies attached to IAM roles.
 MAX_INLINE_ROLE_TRUST_POLICY_SIZE = 2048
 
-# Service Control Policy maximum size (bytes, excluding whitespace)
-MAX_SCP_SIZE = 5120
+# Service Control Policy maximum size (bytes).
+# Raised from 5,120 to 10,240 by AWS on 2026-05-15 (the same announcement raised
+# the per-node SCP attachment quota from 5 to 10), automatically in all commercial,
+# GovCloud (US) and China regions. RCP was not changed and stays at 5,120.
+# https://aws.amazon.com/about-aws/whats-new/2026/05/aws-organizations-increased-scp-quotas/
+#
+# Unlike IAM, AWS Organizations only strips whitespace when the policy is saved
+# through the console: "If you save the policy using an SDK operation or the AWS
+# CLI, then the policy is saved exactly as you provided and no automatic removal
+# of characters occurs." So for an SCP/RCP deployed by Terraform, the CLI or an
+# SDK, formatting whitespace counts against these limits.
+# https://docs.aws.amazon.com/organizations/latest/userguide/orgs_reference_limits.html
+MAX_SCP_SIZE = 10240
 
-# Resource Control Policy maximum size (bytes, excluding whitespace)
+# Resource Control Policy maximum size (bytes). See the whitespace note above.
 MAX_RCP_SIZE = 5120
 
 # Default maximum policy file size accepted by PolicyLoader, in MB.
@@ -154,8 +165,9 @@ AWS_POLICY_SIZE_LIMITS = {
 # Default mapping from runtime policy type (the `--policy-type` argument or
 # auto-detected type) to the size-limit key in AWS_POLICY_SIZE_LIMITS.
 # Users can override the chosen limit on a per-check basis by setting
-# `checks.policy_size.config.policy_type` in their YAML config (e.g. to use
-# `inline_user` instead of `managed` for an IDENTITY_POLICY).
+# `policy_size.policy_type` in their YAML config (e.g. to use `inline_user`
+# instead of `managed` for an IDENTITY_POLICY). The key sits directly under the
+# check id, not under a nested `config:` key.
 AWS_POLICY_TYPE_TO_SIZE_KEY = {
     "IDENTITY_POLICY": "managed",
     "RESOURCE_POLICY": "managed",  # conservative default; service-specific limits vary

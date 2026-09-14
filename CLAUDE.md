@@ -185,6 +185,13 @@ commands → `iam_validator/commands/CLAUDE.md`, formatters / config →
   per policy. `config-glob` lines also include `pattern_present=true pattern_len=<n>`
   (raw glob is not logged for security).
 - SCP / RCP share the identity-policy shape and still need an explicit flag or glob mapping.
+- The resolution `source` is forwarded to policy-level checks as the
+  `policy_type_source` kwarg (default `"cli-flag"`, i.e. treat as declared, so callers
+  that don't plumb it keep their behaviour). `policy_size` uses it to warn when a size
+  limit was chosen from an inferred type — see `checks/CLAUDE.md`.
+- A malformed `policy_types:` entry is dropped with a warning naming the entry; it is
+  never silently ignored (that hid identity-policy size limits from users who thought
+  they had declared SCPs).
 
 ---
 

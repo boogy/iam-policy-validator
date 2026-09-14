@@ -82,9 +82,17 @@ class CheckConfig:
                 action: ".*:(Get|List|Describe).*"
               - sid: "AllowReadOnlyAccess"
 
-    hide_severities: Set of severity levels to hide from output.
-        Issues with these severities will be filtered out and not shown
-        in any output (console, JSON, SARIF, GitHub PR comments, etc.).
+    hide_severities: Set of severity levels to remove from the run.
+        A hidden severity is dropped completely: not shown in any output
+        (console, JSON, SARIF, GitHub PR comments, ...), not counted in any
+        total, and not part of the pass/fail decision — so hiding a severity
+        that `fail_on_severity` would fail on stops it failing the run.
+        Filtering happens before the report is generated, and the same
+        severities are applied to Access Analyzer findings in `analyze`.
+
+        The one exception is `check_execution_error`, which the registry emits
+        when a check raises: a check must not be able to silence the notice
+        that it crashed. Use `settings.on_check_error: warn` for that.
 
         Example:
             hide_severities: frozenset(["low", "info"])

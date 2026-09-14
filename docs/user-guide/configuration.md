@@ -66,7 +66,7 @@ fail_on_severity: [error]
 
 ### hide_severities
 
-Hide specific severity levels from all output to reduce noise:
+Remove specific severity levels from the run to cut noise:
 
 ```yaml
 settings:
@@ -74,12 +74,27 @@ settings:
   hide_severities: [low, info]
 ```
 
-Hidden issues won't appear in:
+A hidden severity is dropped **completely**, not just collapsed or muted:
 
-- Console output
-- JSON/SARIF reports
-- GitHub PR comments
-- Any other output format
+- It does not appear in any output — console, JSON/SARIF/CSV/HTML, GitHub PR
+  comments and review comments, PR labels, the job summary.
+- It is not counted in any total (`total_issues`, the per-severity counts).
+- It is not part of the pass/fail decision, so hiding a severity that
+  `fail_on_severity` lists stops it from failing the run.
+
+!!! warning "Hiding a severity also stops it failing the build"
+
+    `hide_severities` and `fail_on_severity` are independent settings, and hiding
+    wins: filtering happens before the report is generated. If you want the
+    finding to stay quiet but still gate the merge, lower its severity with a
+    per-check `severity:` override instead of hiding it.
+
+This applies to `iam-validator analyze` as well: Access Analyzer findings map onto
+the same `error` / `warning` / `info` severities, and the command reads
+`hide_severities` from the config file it is given with `--config`.
+
+The one exception is `check_execution_error` — see
+[on_check_error](#on_check_error) below.
 
 **Per-check override:** You can also set `hide_severities` on individual checks to override the global setting:
 
@@ -657,6 +672,15 @@ policy_types:
   `scp/org.json` at the top of the scan.
 - First match wins; the list is only consulted when `--policy-type` is not
   provided on the CLI.
+- The list form above is required. A mapping (`"**/scp/*.json": SERVICE_CONTROL_POLICY`)
+  or an entry missing `pattern`/`type` is rejected with a warning naming the
+  entry — it does not silently fall back to auto-detection.
+
+!!! tip "Declaring the type also fixes the size limit"
+
+    SCPs, RCPs and inline policies share the identity-policy shape, so an
+    undeclared one is measured against the loosest size limit. See
+    [`policy_size`](checks/aws-validation.md#policy_size).
 
 ### Debugging the resolved type
 

@@ -104,7 +104,7 @@ when a check raises, never by a check itself).
 | `resource_validation.py`          | `resource_validation`          | error    | ARN format (uses `DEFAULT_ARN_VALIDATION_PATTERN`) |
 | `principal_validation.py`         | `principal_validation`         | high     | resource policies                                  |
 | `policy_structure.py`             | `policy_structure`             | error    | required fields                                    |
-| `policy_size.py`                  | `policy_size`                  | error    | per-type byte limits                               |
+| `policy_size.py`                  | `policy_size`                  | error    | per-type byte limits; warns on inferred type       |
 | `policy_type_validation.py`       | `policy_type_validation`       | error    | type-specific rules + RCP shape hint               |
 | `rcp_best_practices.py`           | `rcp_best_practices`           | medium   | RCP blanket denies + service carve-outs            |
 | `sid_uniqueness.py`               | `sid_uniqueness`               | error    | policy-level                                       |
@@ -123,6 +123,50 @@ when a check raises, never by a check itself).
 | `action_condition_enforcement.py` | `action_condition_enforcement` | high     | sensitive actions need conds                       |
 
 Custom-check examples: `examples/custom_checks/`.
+
+---
+
+## Policy-level findings (gotcha)
+
+A finding with `statement_index=-1` belongs to the document, not a statement.
+`PRCommenter._find_issue_line` anchors those at line 1 so the policy-level branch in
+`_post_review_comments` can relocate the comment to a changed line — before that
+fallback existed they resolved to `None` and were dropped from the inline review
+entirely (they still reached the summary comment and the exit code).
+
+## Policy size measurement (gotcha)
+
+Whitespace counting differs by service, so `policy_size` measures two ways:
+
+- **IAM** (managed, inline, trust) ignores whitespace -> compact JSON.
+- **Organizations** (`scp`, `rcp` -> `_WHITESPACE_COUNTING_LIMITS`) strips whitespace
+  only on a console save; a CLI/SDK/Terraform deploy stores the document verbatim ->
+  measured **as written** from the `.json` file (~1.7x compact for 2-space indent).
+  No `.json` file (a dict from the SDK, or a YAML source) falls back to compact.
+
+SCP is 10,240 bytes since 2026-05-15, RCP still 5,120 — they are no longer equal.
+Inline limits are AWS aggregates per entity; this check only sees one policy.
+
+`--log-level debug` emits `policy_size=… measured=… limit_key=… limit=… limit_source=…`
+per policy — start there when a size finding is missing.
+
+Setting `policy_size.policy_type` (directly under the check id — options nested
+under a `config:` key are never read; `ValidatorConfig` warns once at parse time) pins
+every policy in the run to one
+limit and makes the runtime type irrelevant to this check, so nothing in
+`defaults.py` or the example configs may set it (see CHANGELOG 1.19.0 and 1.28.0).
+
+---
+
+`policy_size` additionally reads the `policy_type_source` kwarg
+(`cli-flag` | `config-glob` | `auto-detect` | `default`, forwarded by
+`_validate_policy_with_registry`; default `"cli-flag"` = treat as declared). When the
+type was _not_ declared, the runtime type is `IDENTITY_POLICY` and the policy exceeds a
+stricter limit in `AWS_POLICY_SIZE_LIMITS`, it emits `policy_size_type_ambiguous` at
+`warning` — SCPs, RCPs and inline policies are structurally identical to an identity
+policy, whose `managed` limit (6,144) is the loosest of the set. The severity is
+deliberately hardcoded, not `get_severity(config)`: the advisory must not inherit the
+check's `error` severity and fail the run.
 
 ---
 
