@@ -4,10 +4,10 @@ This module provides functionality to detect privilege escalation patterns
 that span multiple statements in a policy.
 """
 
-import re
-
+from iam_validator.checks.utils.aws_matching import action_matches, matches_all_of
 from iam_validator.checks.utils.formatting import format_list_with_backticks
 from iam_validator.core.check_registry import CheckConfig
+from iam_validator.core.ignore_patterns import compile_pattern
 from iam_validator.core.models import ValidationIssue
 
 
@@ -105,24 +105,26 @@ def _check_all_of_pattern(
     filtered_actions = check_config.filter_actions(frozenset(all_actions))
     all_actions_filtered = list(filtered_actions)
 
-    matched_actions = []
-
     if check_type == "actions":
-        # Exact matching
-        matched_actions = [a for a in all_actions_filtered if a in required_actions]
+        satisfied = matches_all_of(required_actions, all_actions_filtered)
+        matched_actions = [a for a in all_actions_filtered if any(action_matches(req, a) for req in required_actions)]
     else:
-        # Pattern matching - for each pattern, find actions that match
-        for pattern in required_actions:
-            for action in all_actions_filtered:
-                try:
-                    if re.match(pattern, action):
-                        matched_actions.append(action)
-                        break  # Found at least one match for this pattern
-                except re.error:
-                    continue
+        compiled_patterns = [compile_pattern(p, context="sensitive_action_patterns") for p in required_actions]
+        satisfied = all(
+            compiled is not None and any(compiled.match(a) for a in all_actions_filtered)
+            for compiled in compiled_patterns
+        )
+        matched_actions = [
+            a
+            for a in all_actions_filtered
+            if any(compiled is not None and compiled.match(a) for compiled in compiled_patterns)
+        ]
 
-    # Check if ALL required actions/patterns are present
-    if len(matched_actions) >= len(required_actions):
+    # Deduplicate, preserving first-seen order (only feeds the message).
+    matched_actions = list(dict.fromkeys(matched_actions))
+
+    # Check if ALL required actions/patterns are covered by some action
+    if satisfied:
         # Privilege escalation detected!
         # Use severity from item_config if available, otherwise use default from check
         severity = item_config.get("severity") or get_severity_func(check_config)

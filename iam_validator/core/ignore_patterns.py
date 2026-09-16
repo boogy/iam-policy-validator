@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Global regex pattern cache (shared across all checks for maximum efficiency)
 @lru_cache(maxsize=512)
-def compile_pattern(pattern: str) -> re.Pattern[str] | None:
+def compile_pattern(pattern: str, context: str = "ignore_patterns") -> re.Pattern[str] | None:
     """
     Compile and cache regex patterns.
 
@@ -29,6 +29,8 @@ def compile_pattern(pattern: str) -> re.Pattern[str] | None:
 
     Args:
         pattern: Regex pattern string
+        context: Config source named in the warning when compilation fails
+            (defaults to "ignore_patterns" for existing callers)
 
     Returns:
         Compiled pattern or None if invalid
@@ -40,7 +42,7 @@ def compile_pattern(pattern: str) -> re.Pattern[str] | None:
     try:
         return re.compile(str(pattern), re.IGNORECASE)
     except re.error as e:
-        logger.warning("Invalid regex pattern '%s' in ignore_patterns: %s", pattern, e)
+        logger.warning("Invalid regex pattern '%s' in %s: %s", pattern, context, e)
         return None
 
 

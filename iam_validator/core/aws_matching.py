@@ -5,6 +5,7 @@ matches exactly one.
 """
 
 import re
+from collections.abc import Iterable
 from functools import lru_cache
 
 
@@ -29,3 +30,9 @@ def action_matches(statement_action: str, target_action: str) -> bool:
     if statement_action == "*":
         return True
     return iam_glob_match(statement_action, target_action) or iam_glob_match(target_action, statement_action)
+
+
+def matches_all_of(required: Iterable[str], actions: Iterable[str]) -> bool:
+    """True if every entry in ``required`` is covered by some action in ``actions``."""
+    actions = list(actions)
+    return all(any(action_matches(req, a) for a in actions) for req in required)

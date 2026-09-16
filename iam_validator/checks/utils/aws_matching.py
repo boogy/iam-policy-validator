@@ -5,6 +5,11 @@ import from ``checks``); this module keeps the historical ``checks.utils`` impor
 path working.
 """
 
-from iam_validator.core.aws_matching import action_matches, compile_iam_glob, iam_glob_match
+from iam_validator.core.aws_matching import (
+    action_matches,
+    compile_iam_glob,
+    iam_glob_match,
+    matches_all_of,
+)
 
-__all__ = ["action_matches", "compile_iam_glob", "iam_glob_match"]
+__all__ = ["action_matches", "compile_iam_glob", "iam_glob_match", "matches_all_of"]
