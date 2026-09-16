@@ -53,8 +53,6 @@ class TestActionsAllOfCaseInsensitivity:
         assert issues == []
 
     def test_matched_actions_deduplicated_preserving_order(self, config):
-        # "iam:CreateUser" satisfies both required entries below (glob + exact);
-        # it must appear once in the message, not twice.
         all_actions = ["iam:CreateUser", "iam:AttachUserPolicy"]
         statement_map = {
             "iam:CreateUser": [(0, None)],
@@ -112,9 +110,6 @@ class TestPatternsAllOfCaseInsensitivity:
 
 
 def test_returns_empty_when_actions_string_case_differs_only_by_count_not_coverage(config):
-    """Regression guard for the SEN-3 false positive: two case-variants of the
-    SAME required action must not be treated as covering a DIFFERENT required
-    action just because the matched-count happens to reach len(required)."""
     all_actions = ["s3:GetObject", "s3:getobject"]
     statement_map = {
         "s3:GetObject": [(0, None)],
