@@ -358,9 +358,7 @@ class SensitiveActionCheck(PolicyCheck):
                         statement_map[action] = []
                     statement_map[action].append((idx, statement.sid))
 
-        # `sensitive_actions` and `sensitive_action_patterns` are user-only config
-        # keys (no defaults are set for them); the built-in combos live in
-        # DEFAULT_PRIVILEGE_ESCALATION_COMBOS and are merged in here per strategy.
+        # sensitive_actions / sensitive_action_patterns are user-only; no defaults are merged into config.
         merge_strategy = config.config.get("merge_strategy", "append")
 
         sensitive_actions_config = self._apply_merge_strategy(

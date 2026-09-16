@@ -624,12 +624,7 @@ DEFAULT_CONFIG = {
         "ignore_patterns": [
             {"action": "^iam:PassRole$"},
         ],
-        # `sensitive_actions` (cross-statement all_of combos) and
-        # `sensitive_action_patterns` are user-only keys: no defaults are set here.
-        # The 10 built-in privilege-escalation combos live in
-        # DEFAULT_PRIVILEGE_ESCALATION_COMBOS (core/config/sensitive_actions.py) and
-        # are merged in by SensitiveActionCheck.execute_policy via merge_strategy,
-        # so a user-provided value here can never accidentally suppress them.
+        # sensitive_actions / sensitive_action_patterns: user-only, no defaults here (see sensitive_actions.py).
     },
     # ========================================================================
     # 18. ACTION CONDITION ENFORCEMENT
