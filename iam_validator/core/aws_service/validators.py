@@ -11,6 +11,7 @@ from functools import lru_cache
 from typing import Any
 
 from iam_validator.core.aws_service.parsers import ServiceParser
+from iam_validator.core.condition_validators import ALWAYS_PRESENT_CONDITION_KEYS
 from iam_validator.core.constants import (
     AWS_TAG_KEY_ALLOWED_CHARS,
     AWS_TAG_KEY_MAX_LENGTH,
@@ -350,7 +351,8 @@ class ServiceValidator:
 
             # Handle global keys
             if is_global_key:
-                if any_has_condition_keys:
+                key_lower = condition_key.lower()
+                if any_has_condition_keys and not any(k.lower() == key_lower for k in ALWAYS_PRESENT_CONDITION_KEYS):
                     return ConditionKeyValidationResult(
                         is_valid=True,
                         warning_message=self._global_key_warning(condition_key, action),

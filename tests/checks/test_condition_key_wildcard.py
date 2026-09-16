@@ -282,3 +282,42 @@ class TestValidatorWildcardUnit:
         validator = ServiceValidator()
         result = await validator.validate_condition_key("iam:Zzzzz*", "some:key", service)
         assert result.is_valid is False
+
+
+class TestAlwaysPresentGlobalKeyNoWarning:
+    """A global key in ALWAYS_PRESENT_CONDITION_KEYS never gets the "may be absent"
+    warning — it must agree with `ifexists_condition_usage`'s
+    `ifexists_on_always_present_key`, which says the opposite is true for these keys."""
+
+    @staticmethod
+    def _service_with_action_specific_keys():
+        from unittest.mock import MagicMock
+
+        from iam_validator.core.models import ActionDetail, ServiceDetail
+
+        service = MagicMock(spec=ServiceDetail)
+        service.condition_keys = {}
+        service.resources = {}
+        action_detail = MagicMock(spec=ActionDetail)
+        action_detail.action_condition_keys = ["s3:prefix"]
+        action_detail.resources = []
+        service.actions = {"GetObject": action_detail}
+        return service
+
+    @pytest.mark.asyncio
+    async def test_always_present_key_no_warning(self):
+        service = self._service_with_action_specific_keys()
+        validator = ServiceValidator()
+        result = await validator.validate_condition_key("s3:GetObject", "aws:PrincipalAccount", service)
+        assert result.is_valid is True
+        assert result.warning_message is None
+
+    @pytest.mark.asyncio
+    async def test_non_always_present_global_key_still_warns(self):
+        """Guard against over-suppression: a global key that IS sometimes absent
+        must keep warning."""
+        service = self._service_with_action_specific_keys()
+        validator = ServiceValidator()
+        result = await validator.validate_condition_key("s3:GetObject", "aws:PrincipalOrgID", service)
+        assert result.is_valid is True
+        assert result.warning_message is not None
