@@ -525,11 +525,6 @@ ifexists_condition_usage:
   # Default: true
   warn_always_present_keys: true
 
-  # Also flag *IfExists inside Deny statements and suggest dropping the suffix.
-  # Off by default: IfExists in a Deny is often a deliberate fail-open choice.
-  # Default: false
-  suggest_deny_ifexists: false
-
   # Extra condition keys to treat as security-sensitive, on top of the built-in
   # set. Compared case-insensitively.
   # Default: []
