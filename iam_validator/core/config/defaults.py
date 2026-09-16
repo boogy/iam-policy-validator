@@ -618,12 +618,6 @@ DEFAULT_CONFIG = {
         # Custom message templates (support {action} and {actions} placeholders)
         "message_single": "Sensitive action '{action}' should have conditions to limit when it can be used",
         "message_multiple": "Sensitive actions '{actions}' should have conditions to limit when they can be used",
-        # Ignore patterns to prevent duplicate alerts
-        # Useful when you have specific condition enforcement for certain actions
-        # Example: Ignore iam:PassRole since it's checked by action_condition_enforcement
-        "ignore_patterns": [
-            {"action": "^iam:PassRole$"},
-        ],
         # sensitive_actions / sensitive_action_patterns: user-only, no defaults here (see sensitive_actions.py).
     },
     # ========================================================================
