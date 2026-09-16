@@ -303,6 +303,37 @@ class TestLowercaseIfExistsSuffixStillValidates:
         assert issues == []
 
 
+class TestNullOperatorValueValidation:
+    """`Null` takes a boolean-ish value; only the value is validated, never the key type."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("value", ["true", "false", "True", "FALSE", True, False])
+    async def test_valid_value_produces_no_finding(self, value, check, fetcher, config):
+        statement = _make_statement({"Null": {"aws:SourceIp": value}})
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("value", ["yes", 1])
+    async def test_malformed_value_is_flagged(self, value, check, fetcher, config):
+        statement = _make_statement({"Null": {"aws:SourceIp": value}})
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].severity == "warning"
+        assert issues[0].issue_type == "invalid_value_format"
+        assert issues[0].condition_key == "aws:SourceIp"
+
+    @pytest.mark.asyncio
+    async def test_malformed_value_flagged_regardless_of_check_severity_config(self, check, fetcher):
+        """The Null-value warning is hardcoded, not `get_severity(config)` — the check's
+        own severity (here `error`) must not escalate it."""
+        config = CheckConfig(check_id="condition_type_mismatch", severity="error")
+        statement = _make_statement({"Null": {"aws:SourceIp": "yes"}})
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].severity == "warning"
+
+
 class TestUnknownOperatorDetection:
     @pytest.mark.asyncio
     async def test_misspelled_operator_is_flagged(self, check, fetcher, config):

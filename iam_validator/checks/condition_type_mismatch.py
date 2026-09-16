@@ -59,10 +59,6 @@ class ConditionTypeMismatchCheck(PolicyCheck):
         if not statement.condition:
             return issues
 
-        # Skip Null operator - it's special and doesn't need type validation
-        # (Null just checks if a key exists or doesn't exist)
-        skip_operators = {"Null"}
-
         statement_sid = statement.sid
         line_number = statement.line_number
         actions = statement.get_actions()
@@ -111,7 +107,25 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                     )
                 continue
 
-            if base_operator in skip_operators:
+            # Null's value is a boolean regardless of the key's own type, so only the
+            # value (never the key type) is validated for this operator.
+            if base_operator == "Null":
+                for condition_key, condition_values in conditions.items():
+                    values = condition_values if isinstance(condition_values, list) else [condition_values]
+                    is_valid, error_msg = validate_value_for_type(CONDITION_OPERATORS["Null"], values)
+                    if not is_valid:
+                        issues.append(
+                            ValidationIssue(
+                                severity="warning",
+                                message=(f"Invalid value format for condition key `{condition_key}`: {error_msg}"),
+                                statement_sid=statement_sid,
+                                statement_index=statement_idx,
+                                issue_type="invalid_value_format",
+                                condition_key=condition_key,
+                                line_number=line_number,
+                                field_name="condition",
+                            )
+                        )
                 continue
 
             # Check each condition key
