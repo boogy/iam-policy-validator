@@ -176,6 +176,12 @@ async def execute_policy(
     # Check if any statement has Principal
     has_any_principal = any(stmt.principal is not None or stmt.not_principal is not None for stmt in policy.statement)
 
+    # NotPrincipal is illegal in identity-based policies; emit before any hint path's early return below.
+    if policy_type == "IDENTITY_POLICY":
+        for idx, statement in enumerate(policy.statement):
+            if statement.not_principal is not None:
+                issues.append(_invalid_not_principal_issue(idx, statement))
+
     # RCPs cannot be auto-detected (they share the resource-policy shape), so
     # hint whenever an un-declared policy matches the customer-RCP shape —
     # whether it fell through to IDENTITY_POLICY or auto-detected as

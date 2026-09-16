@@ -769,3 +769,46 @@ class TestTrustPolicyNotPrincipalInvalid:
         assert len(issues) == 1
         assert issues[0].issue_type == "missing_principal"
         assert issues[0].severity == "error"
+
+
+class TestIdentityPolicyNotPrincipalInvalid:
+    """AWS: NotPrincipal is not supported in IAM identity-based policies."""
+
+    @pytest.mark.asyncio
+    async def test_identity_policy_not_principal_yields_error_and_hint(self):
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Deny",
+                    not_principal={"AWS": "arn:aws:iam::123456789012:root"},
+                    action=["s3:GetObject"],
+                    resource=["arn:aws:s3:::bucket/*"],
+                )
+            ],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="IDENTITY_POLICY")
+        issue_types = {i.issue_type for i in issues}
+        assert issue_types == {"invalid_not_principal", "policy_type_hint"}
+        invalid = next(i for i in issues if i.issue_type == "invalid_not_principal")
+        assert invalid.severity == "error"
+        hint = next(i for i in issues if i.issue_type == "policy_type_hint")
+        assert hint.severity == "info"
+
+    @pytest.mark.asyncio
+    async def test_identity_policy_plain_principal_hint_unchanged(self):
+        """Guard: a plain Principal still yields only the hint, not unexpected_principal."""
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Allow",
+                    principal="*",
+                    action=["s3:GetObject"],
+                    resource=["arn:aws:s3:::bucket/*"],
+                )
+            ],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="IDENTITY_POLICY")
+        assert len(issues) == 1
+        assert issues[0].issue_type == "policy_type_hint"
