@@ -664,3 +664,108 @@ class TestRCPFullAWSAccessExemption:
         )
         issues = await execute_policy(policy, "test.json", policy_type="SERVICE_CONTROL_POLICY")
         assert issues == []
+
+
+class TestResourcePolicyNotPrincipalUnchanged:
+    """RESOURCE_POLICY/RESOURCE_CONTROL_POLICY must not gain `invalid_not_principal`; NotPrincipal is legal there."""
+
+    @pytest.mark.asyncio
+    async def test_resource_policy_not_principal_alone_satisfies_principal_requirement(self):
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Deny",
+                    not_principal={"AWS": "arn:aws:iam::123456789012:root"},
+                    action=["s3:GetObject"],
+                    resource=["arn:aws:s3:::bucket/*"],
+                )
+            ],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="RESOURCE_POLICY")
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_resource_policy_missing_principal_message_unchanged(self):
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Allow",
+                    action=["s3:GetObject"],
+                    resource=["arn:aws:s3:::bucket/*"],
+                )
+            ],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="RESOURCE_POLICY")
+        assert len(issues) == 1
+        assert issues[0].issue_type == "missing_principal"
+        assert "Resource policy statement missing required" in issues[0].message
+        assert "S3 bucket policies" in issues[0].message
+
+
+class TestTrustPolicyNotPrincipalInvalid:
+    """AWS: NotPrincipal is not supported in IAM role trust policies."""
+
+    @pytest.mark.asyncio
+    async def test_trust_policy_not_principal_only_is_both_missing_and_invalid(self):
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Deny",
+                    not_principal={"AWS": "arn:aws:iam::123456789012:root"},
+                    action=["sts:AssumeRole"],
+                )
+            ],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="TRUST_POLICY")
+        issue_types = {i.issue_type for i in issues}
+        assert issue_types == {"missing_principal", "invalid_not_principal"}
+        assert all(i.severity == "error" for i in issues)
+
+    @pytest.mark.asyncio
+    async def test_trust_policy_missing_principal_message_is_trust_specific(self):
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Deny",
+                    not_principal={"AWS": "arn:aws:iam::123456789012:root"},
+                    action=["sts:AssumeRole"],
+                )
+            ],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="TRUST_POLICY")
+        missing = next(i for i in issues if i.issue_type == "missing_principal")
+        assert "Resource-based policies" not in missing.message
+        assert "S3 bucket policies" not in missing.message
+        assert "Trust polic" in missing.message
+        assert "S3 bucket policies" not in missing.suggestion
+        assert "sts:AssumeRole" in missing.suggestion
+
+    @pytest.mark.asyncio
+    async def test_trust_policy_with_plain_principal_is_valid(self):
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[
+                Statement(
+                    effect="Allow",
+                    principal={"AWS": "arn:aws:iam::123456789012:root"},
+                    action=["sts:AssumeRole"],
+                )
+            ],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="TRUST_POLICY")
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_trust_policy_missing_principal_entirely(self):
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[Statement(effect="Allow", action=["sts:AssumeRole"])],
+        )
+        issues = await execute_policy(policy, "test.json", policy_type="TRUST_POLICY")
+        assert len(issues) == 1
+        assert issues[0].issue_type == "missing_principal"
+        assert issues[0].severity == "error"
