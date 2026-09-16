@@ -7,6 +7,8 @@ service roles, SageMaker notebooks, SSM run-command, CodeBuild projects,
 and Data Pipeline definitions.
 """
 
+from typing import Any
+
 import pytest
 
 from iam_validator.checks.action_condition_enforcement import (
@@ -23,10 +25,10 @@ def check():
     return SensitiveActionCheck()
 
 
-def _sensitive_action_config(ignore_patterns: list[dict] | None = None) -> CheckConfig:
-    """Build CheckConfig the way config_loader.py does: ignore_patterns and
-    root_config populated from the default dict, not left at their empty
-    defaults."""
+def _sensitive_action_config(
+    ignore_patterns: list[dict[str, Any]] | None = None,
+) -> CheckConfig:
+    """Build CheckConfig the way config_loader.py does, not with empty defaults."""
     default_config = get_default_config()
     sensitive_action_config = default_config["sensitive_action"]
     if ignore_patterns is None:
@@ -112,9 +114,7 @@ class TestPassRoleCombos:
         assert not _combo_issues(issues, "iam:PassRole", "ec2:RunInstances")
 
     async def test_passrole_dedup_survives_default_ignore_patterns_removal(self, mock_fetcher):
-        """The per-statement iam:PassRole dedup against action_condition_enforcement
-        comes from `_get_actions_covered_by_condition_enforcement`, not from
-        ignore_patterns."""
+        """Dedup comes from `_get_actions_covered_by_condition_enforcement`, not ignore_patterns."""
         default_config = get_default_config()
         statement = Statement(Effect="Allow", Action=["iam:PassRole"], Resource="*")
         policy = IAMPolicy(Version="2012-10-17", Statement=[statement])
