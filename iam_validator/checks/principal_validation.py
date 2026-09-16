@@ -406,15 +406,7 @@ class PrincipalValidationCheck(PolicyCheck):
         Returns:
             True if the principal is blocked
         """
-        # Check if service_whitelist contains "aws:*" (allow all AWS service principals)
-        if "aws:*" in service_whitelist and is_aws_service_principal(principal):
-            return False
-
-        # Service principals in explicit whitelist are never blocked
-        if is_aws_service_principal(principal) and principal in service_whitelist:
-            return False
-
-        # Check against blocked list (supports wildcards)
+        # blocked_principals is a denylist and must win over the service allowlist below.
         for blocked_pattern in blocked_list:
             # Special case: "*" in blocked list should only match literal "*" (public access)
             # not use it as a wildcard pattern that matches everything
@@ -423,6 +415,14 @@ class PrincipalValidationCheck(PolicyCheck):
                     return True
             elif fnmatch.fnmatch(principal, blocked_pattern):
                 return True
+
+        # Check if service_whitelist contains "aws:*" (allow all AWS service principals)
+        if "aws:*" in service_whitelist and is_aws_service_principal(principal):
+            return False
+
+        # Service principals in explicit whitelist are never blocked
+        if is_aws_service_principal(principal) and principal in service_whitelist:
+            return False
 
         return False
 

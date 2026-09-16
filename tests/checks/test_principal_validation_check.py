@@ -149,6 +149,66 @@ class TestPrincipalValidationCheck:
         assert issues[0].issue_type == "blocked_principal"
 
 
+class TestBlockedPrincipalsPrecedenceOverServiceAllowlist:
+    """`blocked_principals` must win over the `allowed_service_principals` wildcard."""
+
+    @pytest.mark.asyncio
+    async def test_blocked_service_principal_is_not_bypassed_by_default_allowlist(self, check, fetcher):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": ["lambda.amazonaws.com"],
+                "allowed_service_principals": ["aws:*"],
+            },
+        )
+        statement = Statement(
+            Effect="Allow",
+            Action=["sts:AssumeRole"],
+            Principal={"Service": "lambda.amazonaws.com"},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "blocked_principal"
+
+    @pytest.mark.asyncio
+    async def test_blocked_service_principal_is_not_bypassed_by_explicit_allowlist(self, check, fetcher):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": ["lambda.amazonaws.com"],
+                "allowed_service_principals": ["lambda.amazonaws.com"],
+            },
+        )
+        statement = Statement(
+            Effect="Allow",
+            Action=["sts:AssumeRole"],
+            Principal={"Service": "lambda.amazonaws.com"},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "blocked_principal"
+
+    @pytest.mark.asyncio
+    async def test_unblocked_service_principal_still_allowed(self, check, fetcher):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": ["lambda.amazonaws.com"],
+                "allowed_service_principals": ["aws:*"],
+            },
+        )
+        statement = Statement(
+            Effect="Allow",
+            Action=["sts:AssumeRole"],
+            Principal={"Service": "ec2.amazonaws.com"},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 0
+
+
 class TestPrincipalConditionRequirements:
     """Tests for advanced principal_condition_requirements feature."""
 
