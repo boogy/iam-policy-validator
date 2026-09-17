@@ -285,10 +285,6 @@ class TestValidatorWildcardUnit:
 
 
 class TestAlwaysPresentGlobalKeyNoWarning:
-    """A global key in ALWAYS_PRESENT_CONDITION_KEYS never gets the "may be absent"
-    warning — it must agree with `ifexists_condition_usage`'s
-    `ifexists_on_always_present_key`, which says the opposite is true for these keys."""
-
     @staticmethod
     def _service_with_action_specific_keys():
         from unittest.mock import MagicMock

@@ -137,7 +137,7 @@ class PrincipalValidationCheck(PolicyCheck):
                 continue
 
             # Check if principal is blocked
-            if self._is_blocked_principal(principal, blocked_principals, allowed_service_principals):
+            if self._is_blocked_principal(principal, blocked_principals):
                 blocked_principal_values.add(principal)
                 issues.append(
                     ValidationIssue(
@@ -395,34 +395,24 @@ class PrincipalValidationCheck(PolicyCheck):
 
         return issues
 
-    def _is_blocked_principal(self, principal: str, blocked_list: list[str], service_whitelist: list[str]) -> bool:
+    def _is_blocked_principal(self, principal: str, blocked_list: list[str]) -> bool:
         """Check if a principal is blocked.
 
         Args:
             principal: The principal to check
             blocked_list: List of blocked principal patterns
-            service_whitelist: List of allowed service principals (supports "aws:*" for all AWS services)
 
         Returns:
             True if the principal is blocked
         """
-        # blocked_principals is a denylist and must win over the service allowlist below.
+        # blocked_principals is a denylist: no service allowlist entry exempts a match.
         for blocked_pattern in blocked_list:
-            # Special case: "*" in blocked list should only match literal "*" (public access)
-            # not use it as a wildcard pattern that matches everything
+            # "*" in the blocked list matches only literal "*" (public access), not everything
             if blocked_pattern == "*":
                 if principal == "*":
                     return True
             elif fnmatch.fnmatch(principal, blocked_pattern):
                 return True
-
-        # Check if service_whitelist contains "aws:*" (allow all AWS service principals)
-        if "aws:*" in service_whitelist and is_aws_service_principal(principal):
-            return False
-
-        # Service principals in explicit whitelist are never blocked
-        if is_aws_service_principal(principal) and principal in service_whitelist:
-            return False
 
         return False
 

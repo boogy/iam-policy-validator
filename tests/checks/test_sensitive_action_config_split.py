@@ -1,12 +1,4 @@
-"""`sensitive_action.sensitive_actions` is a user-only key (A-0).
-
-Before this fix, `defaults.py` populated `sensitive_action.sensitive_actions`
-with the 10 built-in privilege-escalation combos, which made the key truthy
-under the default config and defeated the 490-action default list for
-per-statement detection (SEN-6). The combos now live in
-`DEFAULT_PRIVILEGE_ESCALATION_COMBOS` and are merged in via
-`_apply_merge_strategy`, leaving the config key free for user input only.
-"""
+"""`sensitive_action.sensitive_actions` is a user-only config key."""
 
 import pytest
 
