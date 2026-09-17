@@ -4,7 +4,7 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.29.0] - 2026-09-17
 
 ### Fixed
 
@@ -988,6 +988,8 @@ _First release._
 
 [#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
+[1.29.0]: https://github.com/boogy/iam-policy-validator/compare/v1.28.1...v1.29.0
+[1.28.1]: https://github.com/boogy/iam-policy-validator/compare/v1.28.0...v1.28.1
 [1.28.0]: https://github.com/boogy/iam-policy-validator/compare/v1.27.2...v1.28.0
 [1.27.2]: https://github.com/boogy/iam-policy-validator/compare/v1.27.1...v1.27.2
 [1.27.1]: https://github.com/boogy/iam-policy-validator/compare/v1.27.0...v1.27.1
