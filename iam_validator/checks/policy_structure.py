@@ -171,11 +171,14 @@ def detect_policy_type(policy: IAMPolicy) -> PolicyType:
     return "IDENTITY_POLICY"
 
 
-def validate_policy_document(policy_dict: dict[str, Any]) -> list[ValidationIssue]:
+def validate_policy_document(
+    policy_dict: dict[str, Any], policy_type: str = "IDENTITY_POLICY"
+) -> list[ValidationIssue]:
     """Validate the top-level policy document structure.
 
     Args:
         policy_dict: Raw policy dictionary
+        policy_type: Type of policy being validated (affects missing Version severity)
 
     Returns:
         List of validation issues
@@ -198,9 +201,13 @@ def validate_policy_document(policy_dict: dict[str, Any]) -> list[ValidationIssu
 
     # Validate Version field
     if "Version" not in policy_dict:
+        # SCPs and RCPs require Version; the IAM grammar makes it optional elsewhere.
+        missing_version_severity = (
+            "error" if policy_type in ("SERVICE_CONTROL_POLICY", "RESOURCE_CONTROL_POLICY") else "warning"
+        )
         issues.append(
             ValidationIssue(
-                severity="error",
+                severity=missing_version_severity,
                 statement_index=-1,
                 issue_type="missing_version",
                 message="Policy document is missing the `Version` field",
@@ -520,7 +527,7 @@ class PolicyStructureCheck(PolicyCheck):
         # Validate policy document structure if raw dict is available
         raw_policy_dict = kwargs.get("raw_policy_dict")
         if raw_policy_dict:
-            issues.extend(validate_policy_document(raw_policy_dict))
+            issues.extend(validate_policy_document(raw_policy_dict, policy_type))
 
             statements = raw_policy_dict.get("Statement")
             if isinstance(statements, dict):

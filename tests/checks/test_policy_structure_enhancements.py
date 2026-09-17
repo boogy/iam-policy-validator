@@ -46,15 +46,37 @@ class TestOutdatedVersionWarning:
         assert len(invalid_issues) == 1
         assert invalid_issues[0].severity == "error"
 
-    def test_missing_version_still_error(self):
-        """Missing version should still be an error."""
+    @pytest.mark.parametrize("policy_type", ["SERVICE_CONTROL_POLICY", "RESOURCE_CONTROL_POLICY"])
+    def test_missing_version_error_for_scp_and_rcp(self, policy_type):
+        """Missing version is an error for SCPs and RCPs, which require it."""
+        policy_dict = {
+            "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}],
+        }
+        issues = validate_policy_document(policy_dict, policy_type)
+        missing_issues = [i for i in issues if i.issue_type == "missing_version"]
+        assert len(missing_issues) == 1
+        assert missing_issues[0].severity == "error"
+
+    @pytest.mark.parametrize("policy_type", ["IDENTITY_POLICY", "RESOURCE_POLICY", "TRUST_POLICY"])
+    def test_missing_version_warning_for_other_policy_types(self, policy_type):
+        """Missing version is only a warning outside SCP/RCP, where it's optional."""
+        policy_dict = {
+            "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}],
+        }
+        issues = validate_policy_document(policy_dict, policy_type)
+        missing_issues = [i for i in issues if i.issue_type == "missing_version"]
+        assert len(missing_issues) == 1
+        assert missing_issues[0].severity == "warning"
+
+    def test_missing_version_defaults_to_warning(self):
+        """Default policy_type (IDENTITY_POLICY) downgrades missing version to a warning."""
         policy_dict = {
             "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}],
         }
         issues = validate_policy_document(policy_dict)
         missing_issues = [i for i in issues if i.issue_type == "missing_version"]
         assert len(missing_issues) == 1
-        assert missing_issues[0].severity == "error"
+        assert missing_issues[0].severity == "warning"
 
 
 class TestSingleObjectStatementDoesNotMutateCaller:
