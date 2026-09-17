@@ -7,6 +7,7 @@ import pytest
 from iam_validator.checks.action_condition_enforcement import ActionConditionEnforcementCheck
 from iam_validator.checks.sensitive_action import SensitiveActionCheck
 from iam_validator.core.check_registry import CheckConfig
+from iam_validator.core.config.config_loader import ValidatorConfig
 from iam_validator.core.models import Statement
 
 PASS_ROLE_REQUIREMENT = {
@@ -115,6 +116,19 @@ class TestEnforcedActions:
         root = {"action_condition_enforcement_check": {"requirements": [PASS_ROLE_REQUIREMENT]}}
 
         assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
+
+    def test_key_precedence_matches_validator_config(self):
+        """Both spellings present: whichever `ValidatorConfig` picks is the one enforced."""
+        root = {
+            "action_condition_enforcement": {"requirements": [{"actions": ["s3:GetObject"]}]},
+            "action_condition_enforcement_check": {"requirements": [PASS_ROLE_REQUIREMENT]},
+        }
+        loaded = ValidatorConfig(config_dict=dict(root), use_defaults=False).get_check_config(
+            ActionConditionEnforcementCheck.check_id
+        )
+        expected = {action for requirement in loaded["requirements"] for action in requirement["actions"]}
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == expected
 
     def test_a_string_actions_value_is_accepted(self):
         root = {"action_condition_enforcement": {"requirements": [{"actions": "iam:PassRole"}]}}

@@ -125,7 +125,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """Locate this check's own config inside a full config dict.
 
         Mirrors `ValidatorConfig.checks_config`: a `checks:` key wins outright, otherwise
-        the check id is looked up as a top-level key (with or without a `_check` suffix).
+        the check id is looked up as a top-level key, `_check`-suffixed spelling first.
         """
         if "checks" in root_config:
             nested = root_config.get("checks")
@@ -134,7 +134,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 return own if isinstance(own, dict) else {}
             return {}
 
-        for key in (cls.check_id, f"{cls.check_id}_check"):
+        for key in (f"{cls.check_id}_check", cls.check_id):
             own = root_config.get(key)
             if isinstance(own, dict):
                 return own
