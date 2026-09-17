@@ -236,6 +236,78 @@ class TestExtractConditionKeys:
         keys = extract_condition_keys_from_statement(stmt)
         assert keys == set()
 
+    def test_default_includes_negated_operator_keys(self):
+        """Pin: default (restrictive_only=False) is unchanged by the new parameter."""
+        stmt = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={"StringNotEquals": {"aws:ResourceAccount": "123456789012"}},
+        )
+        assert extract_condition_keys_from_statement(stmt) == {"aws:ResourceAccount"}
+
+    def test_default_includes_null_operator_keys(self):
+        """Pin: default (restrictive_only=False) is unchanged by the new parameter."""
+        stmt = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={"Null": {"aws:ResourceAccount": "false"}},
+        )
+        assert extract_condition_keys_from_statement(stmt) == {"aws:ResourceAccount"}
+
+    def test_restrictive_only_excludes_negated_operator_keys(self):
+        stmt = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={"StringNotEquals": {"aws:ResourceAccount": "123456789012"}},
+        )
+        assert extract_condition_keys_from_statement(stmt, restrictive_only=True) == set()
+
+    def test_restrictive_only_excludes_null_operator_keys(self):
+        stmt = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={"Null": {"aws:ResourceAccount": "false"}},
+        )
+        assert extract_condition_keys_from_statement(stmt, restrictive_only=True) == set()
+
+    def test_restrictive_only_keeps_restrictive_operator_keys(self):
+        stmt = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={"StringEquals": {"aws:ResourceAccount": "123456789012"}},
+        )
+        assert extract_condition_keys_from_statement(stmt, restrictive_only=True) == {"aws:ResourceAccount"}
+
+    def test_restrictive_only_mixed_operators_keeps_only_restrictive_keys(self):
+        stmt = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={
+                "StringEquals": {"aws:ResourceAccount": "123456789012"},
+                "StringNotEquals": {"aws:SourceVpc": "vpc-1"},
+                "Null": {"aws:SourceIp": "false"},
+            },
+        )
+        assert extract_condition_keys_from_statement(stmt, restrictive_only=True) == {"aws:ResourceAccount"}
+
+    def test_restrictive_only_same_key_under_negated_and_restrictive_operator_is_kept(self):
+        stmt = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={
+                "StringEquals": {"aws:ResourceAccount": "123456789012"},
+                "StringNotEquals": {"aws:ResourceAccount": "999999999999"},
+            },
+        )
+        assert extract_condition_keys_from_statement(stmt, restrictive_only=True) == {"aws:ResourceAccount"}
+
 
 # ---------------------------------------------------------------------------
 # find_statements_with_action

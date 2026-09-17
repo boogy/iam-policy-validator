@@ -483,7 +483,6 @@ DEFAULT_CONFIG = {
         #   ["iam:GetUser"]    # Matches: iam:GetUser only
         #   ["s3:List*"]       # Matches: s3:List* (literal) OR s3:ListBucket (expanded)
         "allowed_wildcards": list(DEFAULT_ALLOWED_WILDCARDS),
-        "message": "Statement applies to all resources (*)",
         "suggestion": "Replace wildcard with specific resource ARNs",
         "example": (
             "Replace:\n"
