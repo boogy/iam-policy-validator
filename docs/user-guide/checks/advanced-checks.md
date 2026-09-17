@@ -301,8 +301,8 @@ The validator supports different policy types and validates policies match their
 
 - `Effect` must be `Deny`; `Principal` must be exactly `"*"`; `NotAction` /
   `NotPrincipal` are unsupported; `Resource` or `NotResource` is required
-- Actions must come from RCP-supported services (26 service prefixes as of
-  2026-07-20, e.g. `s3`, `sts`, `kms`, `dynamodb`, `codebuild`, `textract`);
+- Actions must come from RCP-supported services (62 service prefixes as of
+  2026-09-17, e.g. `s3`, `sts`, `kms`, `dynamodb`, `cloudfront`, `wafv2`);
   bare `"*"` in `Action` is rejected
 - New AWS launches can be accepted without a validator upgrade:
 

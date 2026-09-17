@@ -88,39 +88,40 @@ Cached: memory LRU + disk TTL (7 days). Tests must mock — never hit the real A
 ## Common `issue_type` values
 
 `invalid_action`, `invalid_resource`, `invalid_condition_key`, `invalid_operator`,
-`overly_permissive`, `missing_condition`, `privilege_escalation`, `public_access`,
-`policy_structure`, `resource_mismatch`, `check_execution_error` (emitted by the registry
-when a check raises, never by a check itself).
+`invalid_value_format`, `overly_permissive`, `missing_condition`, `privilege_escalation`,
+`invalid_not_principal`, `public_access`, `policy_structure`, `resource_mismatch`,
+`check_execution_error` (emitted by the registry when a check raises, never by a check
+itself).
 
 ---
 
 ## Built-in checks
 
-| File                              | Check ID                       | Severity | Notes                                              |
-| --------------------------------- | ------------------------------ | -------- | -------------------------------------------------- |
-| `action_validation.py`            | `action_validation`            | error    | actions exist                                      |
-| `condition_key_validation.py`     | `condition_key_validation`     | error    | per-action condition keys                          |
-| `condition_type_mismatch.py`      | `condition_type_mismatch`      | error    | operator–value type match                          |
-| `resource_validation.py`          | `resource_validation`          | error    | ARN format (uses `DEFAULT_ARN_VALIDATION_PATTERN`) |
-| `principal_validation.py`         | `principal_validation`         | high     | resource policies                                  |
-| `policy_structure.py`             | `policy_structure`             | error    | required fields                                    |
-| `policy_size.py`                  | `policy_size`                  | error    | per-type byte limits; warns on inferred type       |
-| `policy_type_validation.py`       | `policy_type_validation`       | error    | type-specific rules + RCP shape hint               |
-| `rcp_best_practices.py`           | `rcp_best_practices`           | medium   | RCP blanket denies + service carve-outs            |
-| `sid_uniqueness.py`               | `sid_uniqueness`               | error    | policy-level                                       |
-| `set_operator_validation.py`      | `set_operator_validation`      | warning  | ForAllValues/ForAnyValue                           |
-| `ifexists_condition_check.py`     | `ifexists_condition_usage`     | warning  | IfExists patterns                                  |
-| `mfa_condition_check.py`          | `mfa_condition_antipattern`    | warning  | anti-patterns #2 and #4 are `Allow`-only           |
-| `trust_policy_validation.py`      | `trust_policy_validation`      | high     | + confused deputy                                  |
-| `not_principal_validation.py`     | `not_principal_validation`     | warning  | NotPrincipal usage                                 |
-| `action_resource_matching.py`     | `action_resource_matching`     | medium   | actions ↔ resource types                           |
-| `wildcard_action.py`              | `wildcard_action`              | medium   | `Action: "*"`                                      |
-| `wildcard_resource.py`            | `wildcard_resource`            | medium   | `Resource: "*"`                                    |
-| `full_wildcard.py`                | `full_wildcard`                | critical | Action+Resource `*`                                |
-| `service_wildcard.py`             | `service_wildcard`             | high     | `s3:*`                                             |
-| `sensitive_action.py`             | `sensitive_action`             | medium   | 490+ privesc actions                               |
-| `not_action_not_resource.py`      | `not_action_not_resource`      | high     |                                                    |
-| `action_condition_enforcement.py` | `action_condition_enforcement` | high     | sensitive actions need conds                       |
+| File                              | Check ID                       | Severity | Notes                                                         |
+| --------------------------------- | ------------------------------ | -------- | ------------------------------------------------------------- |
+| `action_validation.py`            | `action_validation`            | error    | actions exist                                                 |
+| `condition_key_validation.py`     | `condition_key_validation`     | error    | per-action condition keys                                     |
+| `condition_type_mismatch.py`      | `condition_type_mismatch`      | error    | operator–value type match                                     |
+| `resource_validation.py`          | `resource_validation`          | error    | ARN format (uses `DEFAULT_ARN_VALIDATION_PATTERN`)            |
+| `principal_validation.py`         | `principal_validation`         | high     | resource policies                                             |
+| `policy_structure.py`             | `policy_structure`             | error    | required fields                                               |
+| `policy_size.py`                  | `policy_size`                  | error    | per-type byte limits; warns on inferred type                  |
+| `policy_type_validation.py`       | `policy_type_validation`       | error    | type-specific rules + RCP shape hint + NotPrincipal rejection |
+| `rcp_best_practices.py`           | `rcp_best_practices`           | medium   | RCP blanket denies + service carve-outs                       |
+| `sid_uniqueness.py`               | `sid_uniqueness`               | error    | policy-level                                                  |
+| `set_operator_validation.py`      | `set_operator_validation`      | warning  | ForAllValues/ForAnyValue                                      |
+| `ifexists_condition_check.py`     | `ifexists_condition_usage`     | warning  | IfExists patterns                                             |
+| `mfa_condition_check.py`          | `mfa_condition_antipattern`    | warning  | anti-patterns #2 and #4 are `Allow`-only                      |
+| `trust_policy_validation.py`      | `trust_policy_validation`      | high     | + confused deputy                                             |
+| `not_principal_validation.py`     | `not_principal_validation`     | warning  | NotPrincipal usage                                            |
+| `action_resource_matching.py`     | `action_resource_matching`     | medium   | actions ↔ resource types                                      |
+| `wildcard_action.py`              | `wildcard_action`              | medium   | `Action: "*"`                                                 |
+| `wildcard_resource.py`            | `wildcard_resource`            | medium   | `Resource: "*"`                                               |
+| `full_wildcard.py`                | `full_wildcard`                | critical | Action+Resource `*`                                           |
+| `service_wildcard.py`             | `service_wildcard`             | high     | `s3:*`                                                        |
+| `sensitive_action.py`             | `sensitive_action`             | medium   | 490+ privesc actions                                          |
+| `not_action_not_resource.py`      | `not_action_not_resource`      | high     |                                                               |
+| `action_condition_enforcement.py` | `action_condition_enforcement` | high     | sensitive actions need conds                                  |
 
 Custom-check examples: `examples/custom_checks/`.
 

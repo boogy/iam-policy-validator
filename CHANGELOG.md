@@ -4,6 +4,30 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `sensitive_action` flags a single sensitive action again. The built-in privilege-escalation combos populated the `sensitive_actions` config key, which made the key truthy and permanently suppressed the 490-action per-statement list; the combos now live in `DEFAULT_PRIVILEGE_ESCALATION_COMBOS` and `sensitive_actions` is a user-only key.
+- `sensitive_action`'s `merge_strategy: append`, `user_only` and `defaults_only` behave as documented, instead of being overwritten by config deep-merge.
+- Seven `iam:PassRole` cross-statement privilege-escalation combos (six added in 1.22.0, one pre-existing) never fired: a default `sensitive_action.ignore_patterns` entry for `^iam:PassRole$` filtered the action out of `all_of` matching before it could match. They are now enabled and firing as originally documented in 1.22.0.
+- Cross-statement `all_of` combos match actions case-insensitively, as AWS evaluates them, and no longer count two case variants of one action as satisfying two distinct requirements (a false positive).
+- An invalid regex in `sensitive_action_patterns` is logged naming that setting instead of being silently skipped.
+- `warn_on_global_condition_keys` no longer warns on always-present global keys such as `aws:RequestedRegion`. It previously told users to add `IfExists`, which then tripped `ifexists_on_always_present_key` telling them to remove it — advice no policy could satisfy.
+- `Null` condition values are validated as booleans and flagged as `invalid_value_format` at `warning` when malformed (`"Null": {"aws:TagKeys": "yes"}`). The operator was skipped entirely, so any value passed.
+- `NotPrincipal` no longer satisfies the `Principal` requirement in a trust policy, and is now reported as `invalid_not_principal` (error) in trust and identity policies — IAM rejects `NotPrincipal` in a role trust policy and identity policies have no principal element at all. Resource policies are unchanged.
+- `blocked_principals` now wins over `allowed_service_principals`. A service principal listed in both was allowed, so a blocklist entry could not override the allowlist.
+- The RCP supported-service list covers all 62 services AWS documents (was 26, verified 2026-09-17), so RCPs targeting services such as CloudFront, WAFv2 and OpenSearch are no longer reported as unsupported.
+- A missing `Version` is an error only for SCPs and RCPs, which require `"2012-10-17"`; other policy types get a warning. AWS defaults the version when it is omitted, so an error overstated the problem.
+- `wildcard_resource` no longer skips list-level actions that support resource-level permissions (e.g. `kms:ListGrants`, `sns:ListSubscriptionsByTopic`, `codecommit:ListBranches`) on `Resource: "*"`. The curated `allowed_wildcards` defaults (`s3:List*`, `iam:List*`) still cover most existing configs.
+- Negated operators and lone `Null` conditions no longer lower a `wildcard_resource` finding's severity, since they exclude or test a value rather than scope access to one. New opt-in `restrictive_only=` keyword on the SDK's `extract_condition_keys_from_statement` (default unchanged).
+- `wildcard_resource`'s severity-adjustment reason is appended to a custom `message` instead of being hidden when one is configured; the redundant static default `message` was removed.
+
+### Removed
+
+- The `ifexists_weakens_deny` finding. It had the AWS semantics backwards: with `IfExists`, an absent key evaluates the condition as true, so a `Deny` still applies — removing `IfExists` as the finding suggested is what makes the `Deny` fail-open.
+- The opt-in `suggest_deny_ifexists` option and its `ifexists_deny_suggestion` finding. A negated operator in a `Deny` already evaluates true on an absent key, so the suggested rewrite was a no-op. An existing config setting the option keeps loading — unknown option names are not rejected.
+
 ## [1.28.1] - 2026-09-14
 
 ### Fixed

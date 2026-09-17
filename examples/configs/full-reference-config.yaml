@@ -807,8 +807,9 @@ policy_type_validation:
   # RCP validation includes:
   #  - Must have Effect: Deny (RCPs are deny-only)
   #  - Principal must be "*" (applies to all; restrict via Condition)
-  #  - Actions must come from RCP-supported services (26 service prefixes,
-  #    see constants.RCP_SUPPORTED_SERVICES); bare "*" Action is rejected
+  #  - Actions must come from RCP-supported services (62 service prefixes,
+  #    verified 2026-09-17, see constants.RCP_SUPPORTED_SERVICES); bare "*"
+  #    Action is rejected
   #  - NotAction / NotPrincipal are not supported
   # Extra service prefixes to accept as RCP-supported (for AWS launches newer
   # than this validator release):
@@ -983,7 +984,7 @@ wildcard_resource:
   #   - "s3:List*"          # Wildcard pattern
 
   # Customize validation messages (optional)
-  message: "Statement applies to all resources (*)"
+  # message: "Statement applies to all resources (*)"  # overrides the dynamic per-action message
   suggestion: "Replace wildcard with specific resource ARNs"
   example: |
     Replace:
@@ -1064,6 +1065,8 @@ service_wildcard:
 #   - ResourceExposure (321): Modifies resource policies, sharing settings
 #
 # Scans at BOTH statement-level AND policy-level for security patterns
+# 11 built-in cross-statement privilege-escalation combos ship enabled;
+# 7 pair an action with iam:PassRole
 # See: iam_validator/core/config/sensitive_actions.py
 # Python API: get_sensitive_actions(['credential_exposure', 'data_access'])
 sensitive_action:
@@ -1149,6 +1152,9 @@ sensitive_action:
   #   replace_all         Your patterns replace all defaults when provided
   #   per_action_override Your patterns replace defaults for matching actions
   # merge_strategy: append
+  # Note: merge_strategy governs the cross-statement combo list only. A
+  # sensitive_actions: override for the per-statement check below always
+  # replaces the 490-action default outright, regardless of merge_strategy.
 
   # Optional: Ignore specific actions from being considered sensitive
   # This is useful when you want to use the default 490 actions but exclude some

@@ -455,14 +455,17 @@ keys = extract_condition_keys(policy)
 Extract all condition keys from a single statement.
 
 ```python
-def extract_condition_keys_from_statement(statement: Statement) -> set[str]
+def extract_condition_keys_from_statement(
+    statement: Statement, restrictive_only: bool = False
+) -> set[str]
 ```
 
 **Parameters:**
 
-| Name        | Type        | Description                                  |
-| ----------- | ----------- | -------------------------------------------- |
-| `statement` | `Statement` | The statement to extract condition keys from |
+| Name               | Type        | Description                                                                                                                                       |
+| ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `statement`        | `Statement` | The statement to extract condition keys from                                                                                                        |
+| `restrictive_only` | `bool`      | If `True`, skip keys that only appear under a negated operator (e.g. `StringNotEquals`) or a `Null` check — those exclude or test for a value rather than constrain access to one. Default `False`. |
 
 **Returns:** `set[str]` — Set of condition key names
 
