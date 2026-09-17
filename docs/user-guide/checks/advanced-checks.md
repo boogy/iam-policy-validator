@@ -344,6 +344,12 @@ data-perimeter identity-perimeter RCP).
   `aws:PrincipalOrgPaths`, or `aws:PrincipalAccount`) without an
   `aws:PrincipalIsAWSService` carve-out can deny AWS service-to-service calls
   (e.g. CloudTrail log delivery) and break integrations.
+- **`rcp_carveout_missing_ifexists` (medium):** the service carve-out is written
+  with `Bool` instead of `BoolIfExists`. `aws:PrincipalIsAWSService` is present
+  only on signed requests, and a non-`IfExists` operator cannot match an absent
+  key — so for an anonymous caller the whole `Condition` evaluates false and they
+  fall outside the Deny, while `StringNotEqualsIfExists` on the organization
+  boundary still matches them. Pair `StringNotEqualsIfExists` with `BoolIfExists`.
 
 ### Pass Example (canonical identity perimeter)
 

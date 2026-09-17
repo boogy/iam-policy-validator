@@ -154,7 +154,12 @@ literals. Add a constant there before introducing any of these inline:
   for legacy ids)
 - ARN partitions (`ARN_PARTITION_REGEX` covers commercial, `aws-cn`, `aws-us-gov`,
   `aws-eusc`, all `aws-iso*`) — sourced by `DEFAULT_ARN_VALIDATION_PATTERN` and the
-  trust-policy SAML/OIDC patterns
+  trust-policy SAML/OIDC patterns. `ARN_PARTITIONS` is the underlying tuple, for code
+  that must enumerate partitions rather than match them.
+- Principal identity forms (`ACCOUNT_ID_PATTERN` for a bare 12-digit account id,
+  `ROOT_ARN_PATTERN` for that account's root ARN with the account id in group 2) —
+  AWS treats the two as the same principal, so any allowlist/denylist comparison must
+  accept both spellings; consumed by `checks/principal_validation.py`
 - `SID_PATTERN` — the charset AWS's policy grammar allows in a `Sid` (`A-Z a-z 0-9`
   only), with `SID_INVALID_CHAR_PATTERN` for the complement (ASCII-only, unlike
   `str.isalnum()`); both consumed by `checks/sid_uniqueness.py`

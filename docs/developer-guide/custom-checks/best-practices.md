@@ -127,6 +127,39 @@ checks:
       - CostCenter
 ```
 
+## Deduplicating Against Another Check
+
+If your check would report an action that `action_condition_enforcement` already reports,
+ask that check what it enforces — never read its `requirements` config yourself:
+
+```python
+from iam_validator.checks.action_condition_enforcement import ActionConditionEnforcementCheck
+from iam_validator.checks.utils.aws_matching import action_matches
+
+covered = ActionConditionEnforcementCheck.enforced_actions(config.root_config)
+if any(action_matches(action, pattern) for pattern in covered):
+    return []  # already reported there
+```
+
+`enforced_actions(root_config, policy_file=None)` returns the action patterns that check
+will *actually* enforce, which is not the same as what its `requirements` list contains. It
+returns an empty set when the check is disabled, and it honours `merge_strategy`
+(`user_only`, `defaults_only`, `replace_all`, …), user-supplied
+`action_condition_requirements`, and `ignore_patterns`. A requirement that any of those
+takes out of play is not returned — so you never suppress your own finding on the
+assumption that another check covers it, when it does not.
+
+Two things to get right at the call site:
+
+- **Match with `action_matches`, not `==`.** The returned values are patterns as
+  configured, so `iam:Pass*` must cover `iam:PassRole`, and IAM action names are
+  case-insensitive.
+- **Pass `policy_file` when you have it.** Without it, a requirement scoped by an
+  `ignore_patterns` `filepath` cannot be evaluated and is treated as *not* enforced. That
+  errs toward reporting a possible duplicate rather than dropping a real finding.
+  Statement-level checks receive no `policy_file`; policy-level checks get it as the second
+  argument to `execute_policy`.
+
 ## Testing
 
 ### Write Unit Tests
