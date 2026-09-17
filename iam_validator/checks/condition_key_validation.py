@@ -6,7 +6,12 @@ from typing import ClassVar
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.condition_validators import has_if_exists_suffix
+from iam_validator.core.config.aws_global_conditions import get_global_conditions
 from iam_validator.core.models import Statement, ValidationIssue
+
+# Real AWS keys that is_valid_global_key deliberately rejects because they are scoped per
+# action; with NotAction there is no action to scope them to, so they cannot be judged here.
+_ACTION_SCOPED_TAG_PREFIXES = ("aws:requesttag/", "aws:resourcetag/")
 
 
 class ConditionKeyValidationCheck(PolicyCheck):
@@ -37,6 +42,9 @@ class ConditionKeyValidationCheck(PolicyCheck):
         line_number = statement.line_number
         actions = statement.get_actions()
         resources = statement.get_resources()
+
+        if not actions and statement.get_not_actions():
+            return self._validate_global_keys_only(statement, statement_idx)
 
         # Skip actions that don't exist in AWS — `action_validation` already flags those,
         # and running condition-key validation against a non-existent action produces
@@ -128,6 +136,54 @@ class ConditionKeyValidationCheck(PolicyCheck):
                             field_name="condition",
                         )
                     )
+
+        return self._aggregate_invalid_key_issues(issues)
+
+    def _validate_global_keys_only(
+        self,
+        statement: Statement,
+        statement_idx: int,
+    ) -> list[ValidationIssue]:
+        """Validate a NotAction statement's `aws:` condition keys against the global key set.
+
+        `NotAction` names the actions the statement does *not* cover, so there is no action
+        to resolve per-action condition keys against. A global key is decidable anyway.
+        Service-prefixed keys are skipped: they may well be valid for some covered action.
+        """
+        global_conditions = get_global_conditions()
+        issues: list[ValidationIssue] = []
+
+        for conditions in statement.condition.values() if statement.condition else ():
+            for condition_key in conditions.keys():
+                if not condition_key.lower().startswith("aws:"):
+                    continue
+                if condition_key.lower().startswith(_ACTION_SCOPED_TAG_PREFIXES):
+                    continue
+                if global_conditions.is_valid_global_key(condition_key):
+                    continue
+                issues.append(
+                    ValidationIssue(
+                        # Not get_severity(config): this path has no live AWS data behind it,
+                        # so a key AWS added after the bundled list must not fail the run.
+                        severity="warning",
+                        statement_sid=statement.sid,
+                        statement_index=statement_idx,
+                        issue_type="invalid_condition_key",
+                        message=(
+                            f"`{condition_key}` is not a recognized AWS global condition key. "
+                            "This statement uses `NotAction`, so action-specific condition keys "
+                            "cannot be resolved and are not validated."
+                        ),
+                        condition_key=condition_key,
+                        line_number=statement.line_number,
+                        suggestion=(
+                            "Check the spelling against the AWS global condition key reference, "
+                            "or move the condition to a statement that names its actions with "
+                            "`Action` so per-action keys can be validated."
+                        ),
+                        field_name="condition",
+                    )
+                )
 
         return self._aggregate_invalid_key_issues(issues)
 

@@ -18,11 +18,17 @@ identity_perimeter_rcp.json):
        "StringNotEqualsIfExists": {"aws:PrincipalOrgID": "o-..."},
        "BoolIfExists": {"aws:PrincipalIsAWSService": "false"}
 
+3. Carve-out without IfExists (medium): the same carve-out written with plain
+   ``Bool`` exempts service principals correctly but cannot match an absent
+   key, and ``aws:PrincipalIsAWSService`` is absent from anonymous requests, so
+   those requests escape the Deny entirely.
+
 Only runs when the resolved policy type is RESOURCE_CONTROL_POLICY.
 """
 
 from typing import ClassVar
 
+from iam_validator.checks.utils.condition_matching import strip_set_prefix
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import IAMPolicy, Statement, ValidationIssue
@@ -55,6 +61,28 @@ _CANONICAL_CARVEOUT_EXAMPLE = (
     "  }\n"
     "}"
 )
+
+
+def _service_carveout_operators(statement: Statement) -> set[str]:
+    """``bool``/``boolifexists`` operators carrying a false value for the carve-out key.
+
+    Any other operator or value fails to exempt AWS service principals from the Deny;
+    ``aws:PrincipalIsAWSService: true`` in particular narrows the Deny *to* them.
+    """
+    operators: set[str] = set()
+    for operator, keys_dict in (statement.condition or {}).items():
+        if not isinstance(keys_dict, dict):
+            continue
+        stripped = strip_set_prefix(operator)
+        if stripped not in ("bool", "boolifexists"):
+            continue
+        for key, value in keys_dict.items():
+            if key.lower() != _SERVICE_CARVEOUT_KEY:
+                continue
+            values = value if isinstance(value, list) else [value]
+            if any(str(v).lower() == "false" for v in values):
+                operators.add(stripped)
+    return operators
 
 
 def _condition_keys_by_operator(statement: Statement) -> list[tuple[str, set[str]]]:
@@ -130,14 +158,26 @@ class RCPBestPracticesCheck(PolicyCheck):
             uses_org_boundary = any(
                 "stringnotequals" in operator and keys & _ORG_BOUNDARY_KEYS for operator, keys in condition_pairs
             )
-            if uses_org_boundary and _SERVICE_CARVEOUT_KEY not in all_condition_keys:
+            if not uses_org_boundary:
+                continue
+
+            carveout_operators = _service_carveout_operators(statement)
+            if not carveout_operators:
+                if _SERVICE_CARVEOUT_KEY in all_condition_keys:
+                    carveout_state = (
+                        "uses `aws:PrincipalIsAWSService`, but not as a carve-out: only "
+                        '`BoolIfExists` with the value `"false"` exempts AWS '
+                        "service principals from the Deny"
+                    )
+                else:
+                    carveout_state = "has no `aws:PrincipalIsAWSService` carve-out"
                 issues.append(
                     ValidationIssue(
                         severity=self.get_severity(config),
                         issue_type="rcp_missing_service_carveout",
                         message=(
                             "RCP Deny statement restricts principals to your organization "
-                            "but has no `aws:PrincipalIsAWSService` carve-out. AWS service "
+                            f"but {carveout_state}. AWS service "
                             "principals (e.g. CloudTrail or S3 log delivery writing to your "
                             "buckets) do not carry `aws:PrincipalOrgID`, so this statement "
                             "can deny AWS service-to-service calls and break integrations."
@@ -150,6 +190,33 @@ class RCPBestPracticesCheck(PolicyCheck):
                             'used by AWS\'s identity-perimeter RCP: `"BoolIfExists": '
                             '{"aws:PrincipalIsAWSService": "false"}` (and consider '
                             "`aws:SourceOrgID` conditions for the service-call path)."
+                        ),
+                        example=_CANONICAL_CARVEOUT_EXAMPLE,
+                        field_name="condition",
+                    )
+                )
+            elif "bool" in carveout_operators:
+                issues.append(
+                    ValidationIssue(
+                        severity=self.get_severity(config),
+                        issue_type="rcp_carveout_missing_ifexists",
+                        message=(
+                            "RCP Deny statement carves out AWS service principals with "
+                            "`Bool` instead of `BoolIfExists`. "
+                            "`aws:PrincipalIsAWSService` is present only on signed "
+                            "requests; anonymous requests do not carry it, and a "
+                            "non-`IfExists` operator cannot match an absent key. The "
+                            "whole `Condition` therefore evaluates to false for "
+                            "unauthenticated callers, so they fall outside this Deny "
+                            "while the organization boundary (`StringNotEqualsIfExists`) "
+                            "still matches them."
+                        ),
+                        statement_index=idx,
+                        statement_sid=statement.sid,
+                        line_number=statement.line_number,
+                        suggestion=(
+                            'Change `"Bool"` to `"BoolIfExists"` so the carve-out also '
+                            "matches requests that omit `aws:PrincipalIsAWSService`."
                         ),
                         example=_CANONICAL_CARVEOUT_EXAMPLE,
                         field_name="condition",

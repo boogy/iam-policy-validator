@@ -149,6 +149,66 @@ class TestPrincipalValidationCheck:
         assert issues[0].issue_type == "blocked_principal"
 
 
+class TestBlockedPrincipalsPrecedenceOverServiceAllowlist:
+    """`blocked_principals` must win over the `allowed_service_principals` wildcard."""
+
+    @pytest.mark.asyncio
+    async def test_blocked_service_principal_is_not_bypassed_by_default_allowlist(self, check, fetcher):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": ["lambda.amazonaws.com"],
+                "allowed_service_principals": ["aws:*"],
+            },
+        )
+        statement = Statement(
+            Effect="Allow",
+            Action=["sts:AssumeRole"],
+            Principal={"Service": "lambda.amazonaws.com"},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "blocked_principal"
+
+    @pytest.mark.asyncio
+    async def test_blocked_service_principal_is_not_bypassed_by_explicit_allowlist(self, check, fetcher):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": ["lambda.amazonaws.com"],
+                "allowed_service_principals": ["lambda.amazonaws.com"],
+            },
+        )
+        statement = Statement(
+            Effect="Allow",
+            Action=["sts:AssumeRole"],
+            Principal={"Service": "lambda.amazonaws.com"},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].issue_type == "blocked_principal"
+
+    @pytest.mark.asyncio
+    async def test_unblocked_service_principal_still_allowed(self, check, fetcher):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": ["lambda.amazonaws.com"],
+                "allowed_service_principals": ["aws:*"],
+            },
+        )
+        statement = Statement(
+            Effect="Allow",
+            Action=["sts:AssumeRole"],
+            Principal={"Service": "ec2.amazonaws.com"},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 0
+
+
 class TestPrincipalConditionRequirements:
     """Tests for advanced principal_condition_requirements feature."""
 
@@ -638,7 +698,9 @@ class TestDenyStatementsAreSkipped:
         """NotPrincipal inverts the set, so a wildcard exception is real exposure.
 
         `Deny` + `NotPrincipal: "*"` denies nobody -- everyone is in "*", so nobody is
-        "not *". The guard must not silence that.
+        "not *". The guard must not silence that. Two independent rules see it: the
+        configured denylist (`blocked_principal`) and the logic of the carve-out itself
+        (`ineffective_deny_carve_out`, which fires with no config at all).
         """
         config = CheckConfig(
             check_id="principal_validation",
@@ -652,8 +714,10 @@ class TestDenyStatementsAreSkipped:
             NotPrincipal=not_principal,
         )
         issues = await check.execute(statement, 0, fetcher, config)
-        assert len(issues) == 1
-        assert issues[0].issue_type == "blocked_principal"
+        assert sorted(i.issue_type for i in issues) == [
+            "blocked_principal",
+            "ineffective_deny_carve_out",
+        ]
 
     @pytest.mark.asyncio
     async def test_deny_with_scoped_notprincipal_is_clean(self, check, fetcher):

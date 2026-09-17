@@ -129,11 +129,17 @@ Validates required policy elements are present and valid.
 
 ### What It Checks
 
-- `Version` field is present and valid (2012-10-17 or 2008-10-17)
+- `Version` field is valid when present (2012-10-17 or 2008-10-17), and present at all —
+  a missing `Version` is an `error` for `SERVICE_CONTROL_POLICY` and
+  `RESOURCE_CONTROL_POLICY`, which require it, and a `warning` elsewhere, because the IAM
+  grammar makes it optional and AWS applies a default (`missing_version`)
 - Outdated version `2008-10-17` warning (missing policy variables, advanced operators)
 - `Statement` array is present
 - Required statement fields (Effect, Action/NotAction)
 - Mutual exclusivity (Action vs NotAction, Resource vs NotResource, Principal vs NotPrincipal)
+- A role trust policy naming `Resource` or `NotResource` at all (`unexpected_resource`,
+  error) — the role being assumed *is* the resource, and AWS rejects such a policy with
+  `MalformedPolicyDocument`
 - Unknown/unexpected fields in statements
 
 ### Pass Example
@@ -164,10 +170,11 @@ Validates required policy elements are present and valid.
 }
 ```
 
-**Errors:**
+**Findings:**
 
-- Missing `Version` field
-- Missing `Effect` field
+- Missing `Effect` field (error)
+- Missing `Version` field (warning here — this is an identity policy; an SCP or RCP with
+  no `Version` is an error)
 
 ### Outdated Version Warning
 
@@ -307,12 +314,19 @@ unless the whole run really targets one attachment type.
 
 ## sid_uniqueness
 
-Validates Statement IDs (SIDs) are unique within a policy.
+Validates Statement IDs (SIDs) are unique within a policy, and that their charset is one
+IAM accepts.
 
 **Severity:** `error`
 
-AWS states "In IAM, the Sid value must be unique within a JSON policy", so IAM
-rejects a policy with duplicate Sids.
+### What It Checks
+
+- **`duplicate_sid`:** AWS states "In IAM, the Sid value must be unique within a JSON
+  policy", so IAM rejects a policy with duplicate Sids. Enforced for every policy type.
+- **`invalid_sid_format`:** IAM's policy grammar allows only `A-Z`, `a-z` and `0-9` in a
+  `Sid`. Skipped for `RESOURCE_POLICY`, because that charset is an IAM-engine rule and a
+  resource policy is validated by the owning service instead — AWS's own console-generated
+  SQS and SNS policies ship Sids such as `__owner_statement`.
 
 ### Pass Example
 

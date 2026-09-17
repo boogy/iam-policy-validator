@@ -34,8 +34,8 @@ async def validate_file(
 
 | Name          | Type          | Description                            |
 | ------------- | ------------- | -------------------------------------- |
-| `file_path`   | `str \| Path` | Path to the policy file (JSON or YAML) |
-| `config_path` | `str \| None` | Optional path to configuration file    |
+| `file_path`   | <code>str &#124; Path</code> | Path to the policy file (JSON or YAML) |
+| `config_path` | <code>str &#124; None</code> | Optional path to configuration file    |
 
 **Returns:** `PolicyValidationResult`
 
@@ -70,8 +70,8 @@ async def validate_directory(
 
 | Name          | Type          | Description                               |
 | ------------- | ------------- | ----------------------------------------- |
-| `dir_path`    | `str \| Path` | Path to directory containing policy files |
-| `config_path` | `str \| None` | Optional path to configuration file       |
+| `dir_path`    | <code>str &#124; Path</code> | Path to directory containing policy files |
+| `config_path` | <code>str &#124; None</code> | Optional path to configuration file       |
 | `recursive`   | `bool`        | Search subdirectories (default: `True`)   |
 
 **Returns:** `list[PolicyValidationResult]`
@@ -104,9 +104,9 @@ async def validate_json(
 
 | Name          | Type          | Description                                |
 | ------------- | ------------- | ------------------------------------------ |
-| `policy_json` | `dict \| str` | IAM policy as a Python dict or JSON string |
+| `policy_json` | <code>dict &#124; str</code> | IAM policy as a Python dict or JSON string |
 | `policy_name` | `str`         | Name to identify this policy in results    |
-| `config_path` | `str \| None` | Optional path to configuration file        |
+| `config_path` | <code>str &#124; None</code> | Optional path to configuration file        |
 
 **Returns:** `PolicyValidationResult`
 
@@ -153,8 +153,8 @@ async def quick_validate(
 
 | Name          | Type                  | Description                               |
 | ------------- | --------------------- | ----------------------------------------- |
-| `policy`      | `str \| Path \| dict` | File path, directory path, or policy dict |
-| `config_path` | `str \| None`         | Optional path to configuration file       |
+| `policy`      | <code>str &#124; Path &#124; dict</code> | File path, directory path, or policy dict |
+| `config_path` | <code>str &#124; None</code>         | Optional path to configuration file       |
 
 **Returns:** `bool` — `True` if all policies are valid
 
@@ -195,9 +195,9 @@ async def get_issues(
 
 | Name           | Type                  | Description                                                   |
 | -------------- | --------------------- | ------------------------------------------------------------- |
-| `policy`       | `str \| Path \| dict` | File path, directory path, or policy dict                     |
+| `policy`       | <code>str &#124; Path &#124; dict</code> | File path, directory path, or policy dict                     |
 | `min_severity` | `str`                 | Minimum severity: `critical`, `high`, `medium`, `low`, `info` |
-| `config_path`  | `str \| None`         | Optional path to configuration file                           |
+| `config_path`  | <code>str &#124; None</code>         | Optional path to configuration file                           |
 
 **Returns:** `list[ValidationIssue]`
 
@@ -455,14 +455,17 @@ keys = extract_condition_keys(policy)
 Extract all condition keys from a single statement.
 
 ```python
-def extract_condition_keys_from_statement(statement: Statement) -> set[str]
+def extract_condition_keys_from_statement(
+    statement: Statement, restrictive_only: bool = False
+) -> set[str]
 ```
 
 **Parameters:**
 
-| Name        | Type        | Description                                  |
-| ----------- | ----------- | -------------------------------------------- |
-| `statement` | `Statement` | The statement to extract condition keys from |
+| Name               | Type        | Description                                                                                                                                       |
+| ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `statement`        | `Statement` | The statement to extract condition keys from                                                                                                        |
+| `restrictive_only` | `bool`      | If `True`, skip keys that only appear under a negated operator (e.g. `StringNotEquals`) or a `Null` check — those exclude or test for a value rather than constrain access to one. Default `False`. |
 
 **Returns:** `set[str]` — Set of condition key names
 
@@ -738,9 +741,9 @@ async def query_actions(
 | --------------- | --------------------- | ------------------------------------------------------------------------------ |
 | `fetcher`       | `AWSServiceFetcher`   | AWS service fetcher instance                                                   |
 | `service`       | `str`                 | Service name (e.g., `"s3"`, `"ec2"`)                                           |
-| `access_level`  | `AccessLevel \| None` | Filter: `"read"`, `"write"`, `"list"`, `"tagging"`, `"permissions-management"` |
-| `resource_type` | `str \| None`         | Filter by resource type. Use `"*"` for wildcard-only actions                   |
-| `condition`     | `str \| None`         | Filter by condition key support                                                |
+| `access_level`  | <code>AccessLevel &#124; None</code> | Filter: `"read"`, `"write"`, `"list"`, `"tagging"`, `"permissions-management"` |
+| `resource_type` | <code>str &#124; None</code>         | Filter by resource type. Use `"*"` for wildcard-only actions                   |
+| `condition`     | <code>str &#124; None</code>         | Filter by condition key support                                                |
 
 **Returns:** `list[ActionInfo]` — List of dicts with `action`, `access_level`, and `description` keys.
 
@@ -1129,7 +1132,7 @@ def arn_matches(
 | --------------- | ------------- | ------------------------------------------- |
 | `arn_pattern`   | `str`         | ARN pattern (can have wildcards)            |
 | `arn`           | `str`         | ARN from policy (can have wildcards)        |
-| `resource_type` | `str \| None` | Optional resource type for special handling |
+| `resource_type` | <code>str &#124; None</code> | Optional resource type for special handling |
 
 **Example:**
 

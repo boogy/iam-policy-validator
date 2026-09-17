@@ -1,11 +1,22 @@
 """Tests for WildcardResourceCheck."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
-from iam_validator.checks.wildcard_resource import WildcardResourceCheck
+from iam_validator.checks.wildcard_resource import WildcardResourceCheck, clear_resource_support_cache
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig
-from iam_validator.core.models import Statement
+from iam_validator.core.config.defaults import get_default_config
+from iam_validator.core.models import ActionDetail, ServiceDetail, Statement
+
+
+@pytest.fixture(autouse=True)
+def _clear_wildcard_resource_module_caches():
+    """Module-level action caches persist across tests; isolate each test's view of them."""
+    clear_resource_support_cache()
+    yield
+    clear_resource_support_cache()
 
 
 @pytest.fixture
@@ -320,6 +331,45 @@ class TestConditionAwareSeverity:
         assert "aws:TagKeys" in issues[0].message
 
     @pytest.mark.asyncio
+    async def test_negated_global_condition_does_not_lower_severity(self, check, fetcher, config):
+        """StringNotEquals excludes a value rather than scoping to one — severity unchanged."""
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={"StringNotEquals": {"aws:ResourceAccount": "123456789012"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].severity == "medium"
+
+    @pytest.mark.asyncio
+    async def test_null_only_condition_does_not_lower_severity(self, check, fetcher, config):
+        """A lone Null check tests key existence, not resource scope — severity unchanged."""
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={"Null": {"aws:ResourceAccount": "false"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].severity == "medium"
+
+    @pytest.mark.asyncio
+    async def test_negated_abac_tag_condition_does_not_lower_severity(self, check, fetcher, config):
+        """A negated tag-ABAC condition doesn't restrict resource scope — severity unchanged."""
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={"StringNotEquals": {"aws:ResourceTag/Env": "prod"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert issues[0].severity == "medium"
+
+    @pytest.mark.asyncio
     async def test_principal_tag_does_not_lower_severity(self, check, fetcher, config):
         """aws:PrincipalTag/* scopes WHO, not WHAT — should NOT lower severity."""
         statement = Statement(
@@ -331,3 +381,125 @@ class TestConditionAwareSeverity:
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
         assert issues[0].severity == "medium"
+
+
+def _make_s3_service_detail_with_list_actions() -> ServiceDetail:
+    """s3 service data with both kinds of list-level action: with and without resource types."""
+    return ServiceDetail(
+        Name="Amazon S3",
+        Actions=[
+            ActionDetail(
+                Name="ListBucket",
+                Resources=[{"Name": "accesspoint"}, {"Name": "bucket"}],
+                Annotations={"Properties": {"IsList": True}},
+            ),
+            ActionDetail(
+                Name="ListAllMyBuckets",
+                Resources=[],
+                Annotations={"Properties": {"IsList": True}},
+            ),
+        ],
+    )
+
+
+@pytest.fixture
+def s3_list_fetcher():
+    """Mock fetcher serving canned s3 list-action data — no network access."""
+    fetcher = MagicMock()
+    fetcher.fetch_service_by_name = AsyncMock(return_value=_make_s3_service_detail_with_list_actions())
+    return fetcher
+
+
+class TestListActionResourceSupportGating:
+    """RES-1: list-level actions must be gated on resource-type support, not access level alone."""
+
+    @pytest.fixture
+    def check(self):
+        return WildcardResourceCheck()
+
+    @pytest.fixture
+    def config(self):
+        return CheckConfig(check_id="wildcard_resource", enabled=True, config={})
+
+    @pytest.mark.asyncio
+    async def test_list_action_with_resources_is_flagged(self, check, config, s3_list_fetcher):
+        """s3:ListBucket is list-level but takes a resource ARN — Resource: "*" should be flagged."""
+        statement = Statement(Effect="Allow", Action=["s3:ListBucket"], Resource=["*"])
+        issues = await check.execute(statement, 0, s3_list_fetcher, config)
+        assert len(issues) == 1
+
+    @pytest.mark.asyncio
+    async def test_list_action_without_resources_not_flagged(self, check, config, s3_list_fetcher):
+        """s3:ListAllMyBuckets has no resource types — Resource: "*" is appropriate."""
+        statement = Statement(Effect="Allow", Action=["s3:ListAllMyBuckets"], Resource=["*"])
+        issues = await check.execute(statement, 0, s3_list_fetcher, config)
+        assert len(issues) == 0
+
+    @pytest.mark.asyncio
+    async def test_cached_path_agrees_with_uncached_path_for_list_action_with_resources(
+        self, check, config, s3_list_fetcher
+    ):
+        """A second lookup of the same action must hit the cache and agree with the first."""
+        statement = Statement(Effect="Allow", Action=["s3:ListBucket"], Resource=["*"])
+        first = await check.execute(statement, 0, s3_list_fetcher, config)
+        second = await check.execute(statement, 0, s3_list_fetcher, config)
+        assert len(first) == len(second) == 1
+        assert s3_list_fetcher.fetch_service_by_name.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_cached_path_agrees_with_uncached_path_for_list_action_without_resources(
+        self, check, config, s3_list_fetcher
+    ):
+        """A second lookup of the same action must hit the cache and agree with the first."""
+        statement = Statement(Effect="Allow", Action=["s3:ListAllMyBuckets"], Resource=["*"])
+        first = await check.execute(statement, 0, s3_list_fetcher, config)
+        second = await check.execute(statement, 0, s3_list_fetcher, config)
+        assert len(first) == len(second) == 0
+        assert s3_list_fetcher.fetch_service_by_name.await_count == 1
+
+
+class TestAdjustmentReasonReachesMessage:
+    """Brief RES-3: a custom or default message must not swallow the severity-adjustment reason."""
+
+    @pytest.fixture
+    def check(self):
+        return WildcardResourceCheck()
+
+    @pytest.fixture
+    async def fetcher(self):
+        async with AWSServiceFetcher(prefetch_common=False) as f:
+            yield f
+
+    @pytest.mark.asyncio
+    async def test_default_config_message_includes_adjustment_reason(self, check, fetcher):
+        """Default config's static wildcard_resource.message must not hide the adjustment reason."""
+        default_config = get_default_config()["wildcard_resource"]
+        config = CheckConfig(check_id="wildcard_resource", enabled=True, config=default_config)
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={"StringEquals": {"aws:ResourceAccount": "123456789012"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert "Severity lowered" in issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_user_configured_message_includes_adjustment_reason(self, check, fetcher):
+        """A user-supplied custom message must still get the adjustment reason appended."""
+        config = CheckConfig(
+            check_id="wildcard_resource",
+            enabled=True,
+            config={"message": "Custom wildcard resource warning"},
+        )
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["*"],
+            Condition={"StringEquals": {"aws:ResourceAccount": "123456789012"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        assert "Custom wildcard resource warning" in issues[0].message
+        assert "Severity lowered" in issues[0].message

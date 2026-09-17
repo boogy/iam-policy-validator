@@ -4,6 +4,45 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.0] - 2026-09-17
+
+### Fixed
+
+- `sensitive_action` flags a single sensitive action again. The built-in privilege-escalation combos populated the `sensitive_actions` config key, which made the key truthy and permanently suppressed the 490-action per-statement list; the combos now live in `DEFAULT_PRIVILEGE_ESCALATION_COMBOS` and `sensitive_actions` is a user-only key.
+- `sensitive_action`'s `merge_strategy: append`, `user_only` and `defaults_only` behave as documented, instead of being overwritten by config deep-merge.
+- Seven `iam:PassRole` cross-statement privilege-escalation combos (six added in 1.22.0, one pre-existing) never fired: a default `sensitive_action.ignore_patterns` entry for `^iam:PassRole$` filtered the action out of `all_of` matching before it could match. They are now enabled and firing as originally documented in 1.22.0.
+- Cross-statement `all_of` combos match actions case-insensitively, as AWS evaluates them, and no longer count two case variants of one action as satisfying two distinct requirements (a false positive).
+- An invalid regex in `sensitive_action_patterns` is logged naming that setting instead of being silently skipped.
+- `warn_on_global_condition_keys` no longer warns on always-present global keys such as `aws:RequestedRegion`. It previously told users to add `IfExists`, which then tripped `ifexists_on_always_present_key` telling them to remove it — advice no policy could satisfy.
+- `Null` condition values are validated as booleans and flagged as `invalid_value_format` at `warning` when malformed (`"Null": {"aws:TagKeys": "yes"}`). The operator was skipped entirely, so any value passed.
+- `NotPrincipal` no longer satisfies the `Principal` requirement in a trust policy, and is now reported as `invalid_not_principal` (error) in trust and identity policies — IAM rejects `NotPrincipal` in a role trust policy and identity policies have no principal element at all. Resource policies are unchanged.
+- `blocked_principals` now wins over `allowed_service_principals`. A service principal listed in both was allowed, so a blocklist entry could not override the allowlist.
+- The RCP supported-service list covers all 62 services AWS documents (was 26, verified 2026-09-17), so RCPs targeting services such as CloudFront, WAFv2 and OpenSearch are no longer reported as unsupported.
+- A missing `Version` is an error only for SCPs and RCPs, which require `"2012-10-17"`; other policy types get a warning. AWS defaults the version when it is omitted, so an error overstated the problem.
+- `wildcard_resource` no longer skips list-level actions that support resource-level permissions (e.g. `kms:ListGrants`, `sns:ListSubscriptionsByTopic`, `codecommit:ListBranches`) on `Resource: "*"`. The curated `allowed_wildcards` defaults (`s3:List*`, `iam:List*`) still cover most existing configs.
+- Negated operators and lone `Null` conditions no longer lower a `wildcard_resource` finding's severity, since they exclude or test a value rather than scope access to one. New opt-in `restrictive_only=` keyword on the SDK's `extract_condition_keys_from_statement` (default unchanged).
+- `wildcard_resource`'s severity-adjustment reason is appended to a custom `message` instead of being hidden when one is configured; the redundant static default `message` was removed.
+- `blocked_principals` and `allowed_principals` match a bare account id and that account's root ARN interchangeably. AWS treats `123456789012` and `arn:aws:iam::123456789012:root` as the same principal, so an entry written one way silently failed to match a policy written the other way — a denylist could be bypassed by spelling the account as an ARN. All eight partitions are covered.
+- `principal_validation` reports blocked and unauthorized principals alongside a `{"Service": "*"}` finding instead of returning early on the service wildcard, which hid every other principal problem in the same statement. Condition requirements are still skipped there, since no condition makes `{"Service": "*"}` safe.
+- `Deny` with `NotPrincipal: "*"` is reported as `ineffective_deny_carve_out`. `NotPrincipal` exempts the principals it lists, and `"*"` matches everyone, so nobody is left outside the carve-out and the statement denies nothing. The condition-spelled equivalent (`ArnNotEquals` on `aws:PrincipalArn: "*"`) was already flagged; the principal-spelled form produced no finding at all unless the user had separately configured `blocked_principals`.
+- A role trust policy that contains `Resource` or `NotResource` is reported as `unexpected_resource` (error). The role being assumed is the resource, and AWS rejects such a trust policy with `MalformedPolicyDocument`; only the `Resource` + `NotResource` combination was previously caught.
+- `mfa_condition_antipattern` detects its anti-patterns behind a set-operator prefix (`ForAnyValue:Bool`, `ForAllValues:Null`). The operator lookup required an exact match, so a prefixed operator bypassed all three checks. `IfExists` is still kept distinct: `Bool` and `BoolIfExists` differ semantically.
+- `action_condition_enforcement` requirements naming an operator match a set-prefixed policy operator. A requirement naming a prefix still requires exactly that prefix — a multivalued key needs those set semantics — and `IfExists` never collapses into its base operator, since it stops guarding once the key is absent.
+- `sid_uniqueness` no longer reports the alphanumeric charset for resource-based policies. The charset is an IAM-engine rule; resource policies are validated by the owning service, and AWS's own console-generated SQS and SNS policies ship Sids such as `__owner_statement`. Uniqueness is still enforced for every policy type.
+- A condition value containing a `${...}` policy variable is no longer reported as a malformed ARN. Policy variables are resolved at request time, so the expansion decides ARN validity, not the literal.
+- `action_condition_enforcement` honours `severity` overrides on `any_of` and `none_of` requirements, resolving condition-level, then requirement-level, then the check's severity. Only `all_of` respected them before, so shipped requirements declaring a severity were reported at the check default. A requirement that is itself malformed (naming no `condition_key`) is still reported at `error`: it enforces nothing, and its own declared severity must not downgrade that notice.
+- `sensitive_action` deduplicates against `action_condition_enforcement` using IAM glob matching instead of exact string equality, so a requirement written as `iam:Pass*`, `iam:*` or in different case now suppresses the duplicate finding the way that check actually matches actions.
+- `sensitive_action` deduplicates only against the requirements `action_condition_enforcement` will actually enforce, via the new `ActionConditionEnforcementCheck.enforced_actions()`. It read the raw `requirements` list, so a `merge_strategy` of `user_only`, `defaults_only` or `replace_all`, a matching `ignore_patterns` entry, or a disabled `action_condition_enforcement` all suppressed the privilege-escalation finding for an action that was then never checked by either check — `iam:PassRole` on `Resource: "*"` reported nothing at all. Requirements declared under `action_condition_requirements` now suppress the duplicate too, which they never did.
+- `sensitive_action` no longer runs against SCPs and RCPs. It only inspects `Allow` statements, and in a boundary policy an `Allow` declines to restrict rather than granting access, so every unconditioned sensitive action in an SCP was reported as a `critical` privilege-escalation grant. It now carries the same `applies_to_policy_types` exclusion as the other five grant-shaped checks.
+- `condition_key_validation` validates `aws:` global condition keys on statements that use `NotAction`. Such statements have no action to resolve per-action keys against, so the check returned silently and a plainly bogus key went unreported. Service-prefixed keys are still skipped (they may be valid for a covered action), as are the action-scoped `aws:RequestTag/*` and `aws:ResourceTag/*`; findings are `warning`, not the check's `error`, because no live AWS data backs this path.
+- `rcp_best_practices` reports `rcp_carveout_missing_ifexists` when an organization-boundary `Deny` carves out AWS services with `Bool` rather than `BoolIfExists`. `aws:PrincipalIsAWSService` is absent from the request context on anonymous requests, and a non-`IfExists` operator cannot match an absent key, so the whole `Condition` evaluates false and unauthenticated callers fall outside the `Deny` while `StringNotEqualsIfExists aws:PrincipalOrgID` still matches them.
+- Document the findings and public API this release introduces: `unexpected_resource` and the trust-policy `Resource` rule, `rcp_carveout_missing_ifexists`, the policy-type split in the `missing_version` severity, the `sid_uniqueness` charset rule and why it is skipped for resource policies, and `ActionConditionEnforcementCheck.enforced_actions()` as the supported way for a check to dedup against condition enforcement. The check reference still showed a missing `Version` as an unconditional error.
+
+### Removed
+
+- The `ifexists_weakens_deny` finding. It had the AWS semantics backwards: with `IfExists`, an absent key evaluates the condition as true, so a `Deny` still applies — removing `IfExists` as the finding suggested is what makes the `Deny` fail-open.
+- The opt-in `suggest_deny_ifexists` option and its `ifexists_deny_suggestion` finding. A negated operator in a `Deny` already evaluates true on an absent key, so the suggested rewrite was a no-op. An existing config setting the option keeps loading — unknown option names are not rejected.
+
 ## [1.28.1] - 2026-09-14
 
 ### Fixed
@@ -964,6 +1003,8 @@ _First release._
 
 [#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
+[1.29.0]: https://github.com/boogy/iam-policy-validator/compare/v1.28.1...v1.29.0
+[1.28.1]: https://github.com/boogy/iam-policy-validator/compare/v1.28.0...v1.28.1
 [1.28.0]: https://github.com/boogy/iam-policy-validator/compare/v1.27.2...v1.28.0
 [1.27.2]: https://github.com/boogy/iam-policy-validator/compare/v1.27.1...v1.27.2
 [1.27.1]: https://github.com/boogy/iam-policy-validator/compare/v1.27.0...v1.27.1

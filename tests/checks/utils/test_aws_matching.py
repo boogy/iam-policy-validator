@@ -2,7 +2,12 @@
 
 import pytest
 
-from iam_validator.checks.utils.aws_matching import action_matches, compile_iam_glob, iam_glob_match
+from iam_validator.checks.utils.aws_matching import (
+    action_matches,
+    compile_iam_glob,
+    iam_glob_match,
+    matches_all_of,
+)
 
 
 @pytest.mark.parametrize(
@@ -52,3 +57,13 @@ def test_action_matches_is_bidirectional_and_case_insensitive(statement_action, 
 
 def test_action_matches_rejects_unrelated():
     assert action_matches("s3:GetObject", "iam:AttachRolePolicy") is False
+
+
+def test_matches_all_of_is_case_insensitive():
+    required = ["iam:CreateUser", "iam:AttachUserPolicy"]
+    assert matches_all_of(required, ["iam:createuser", "iam:attachuserpolicy"]) is True
+
+
+def test_matches_all_of_rejects_case_variants_of_one_required_action():
+    required = ["iam:CreateUser", "iam:AttachUserPolicy"]
+    assert matches_all_of(required, ["iam:CreateUser", "iam:createuser"]) is False

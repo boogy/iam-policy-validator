@@ -245,8 +245,9 @@ Privilege escalation often occurs when multiple actions are scattered across dif
 - Role privilege escalation (`iam:CreateRole` + `iam:AttachRolePolicy`)
 - Lambda function backdoor (`lambda:CreateFunction` + `lambda:InvokeFunction`)
 - Lambda code injection (`lambda:UpdateFunctionCode` + `lambda:InvokeFunction`)
-- Policy version manipulation (`iam:CreatePolicyVersion` + `iam:SetDefaultPolicyVersion`)
-- EC2 instance privilege escalation (`ec2:RunInstances` + `iam:PassRole`)
+- Seven `iam:PassRole` combos, e.g. EC2 instance privilege escalation (`ec2:RunInstances` + `iam:PassRole`)
+
+See [`DEFAULT_PRIVILEGE_ESCALATION_COMBOS`](iam_validator/core/config/sensitive_actions.py) for all 11 built-in combos.
 
 Additionally detects **[hundreds of sensitive actions](iam_validator/core/config/sensitive_actions.py)** across 4 categories (credential exposure, data access, privilege escalation, resource exposure) that should have IAM conditions.
 List of actions copied from [primeharbor/sensitive_iam_actions](https://github.com/primeharbor/sensitive_iam_actions).
@@ -359,15 +360,15 @@ Validates against official AWS IAM requirements:
 
 Identifies overly permissive configurations:
 
-| Check                     | What It Catches                                                   |
-| ------------------------- | ----------------------------------------------------------------- |
-| **Wildcard Action**       | `Action: "*"` grants all AWS permissions                          |
-| **Wildcard Resource**     | `Resource: "*"` applies to all resources                          |
-| **Full Wildcard**         | Both `Action: "*"` AND `Resource: "*"` (admin access)             |
-| **Service Wildcards**     | `s3:*`, `iam:*`, `ec2:*` (overly broad)                           |
-| **NotAction/NotResource** | Dangerous `NotAction`/`NotResource` patterns with implicit grants |
-| **Sensitive Actions**     | 490+ privilege escalation patterns and dangerous actions          |
-| **Condition Enforcement** | Organization-specific condition requirements                      |
+| Check                     | What It Catches                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------ |
+| **Wildcard Action**       | `Action: "*"` grants all AWS permissions                                             |
+| **Wildcard Resource**     | `Resource: "*"` applies to all resources                                             |
+| **Full Wildcard**         | Both `Action: "*"` AND `Resource: "*"` (admin access)                                |
+| **Service Wildcards**     | `s3:*`, `iam:*`, `ec2:*` (overly broad)                                              |
+| **NotAction/NotResource** | Dangerous `NotAction`/`NotResource` patterns with implicit grants                    |
+| **Sensitive Actions**     | 490+ sensitive actions, plus 11 built-in cross-statement privilege-escalation combos |
+| **Condition Enforcement** | Organization-specific condition requirements                                         |
 
 **Note on Sensitive Actions:** This check has two modes:
 

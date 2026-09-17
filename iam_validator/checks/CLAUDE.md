@@ -32,7 +32,9 @@ Optional `ClassVar`s:
   `None` (the default) means all, as does an unresolved policy type. `register()` raises
   `ValueError` on a value that is not a `PolicyType`. In an SCP or RCP an
   `Allow` declines to restrict and never grants access, so grant-shaped checks exclude
-  `SERVICE_CONTROL_POLICY` and `RESOURCE_CONTROL_POLICY`. `principal_validation`
+  `SERVICE_CONTROL_POLICY` and `RESOURCE_CONTROL_POLICY` — the six are `full_wildcard`,
+  `service_wildcard`, `wildcard_action`, `wildcard_resource`, `sensitive_action` and
+  `action_condition_enforcement`. `principal_validation`
   excludes only RCP, where `Principal: "*"` is required by AWS syntax.
 - `supersedes: frozenset[str]` — check ids made redundant when this check both
   `matches()` the statement and reports a finding. Only the ids named here are ever
@@ -88,41 +90,101 @@ Cached: memory LRU + disk TTL (7 days). Tests must mock — never hit the real A
 ## Common `issue_type` values
 
 `invalid_action`, `invalid_resource`, `invalid_condition_key`, `invalid_operator`,
-`overly_permissive`, `missing_condition`, `privilege_escalation`, `public_access`,
-`policy_structure`, `resource_mismatch`, `check_execution_error` (emitted by the registry
-when a check raises, never by a check itself).
+`invalid_value_format`, `overly_permissive`, `missing_condition`, `privilege_escalation`,
+`invalid_not_principal`, `public_access`, `policy_structure`, `resource_mismatch`,
+`ineffective_deny_carve_out`, `unexpected_resource`,
+`check_execution_error` (emitted by the registry when a check raises, never by a check
+itself).
 
 ---
 
 ## Built-in checks
 
-| File                              | Check ID                       | Severity | Notes                                              |
-| --------------------------------- | ------------------------------ | -------- | -------------------------------------------------- |
-| `action_validation.py`            | `action_validation`            | error    | actions exist                                      |
-| `condition_key_validation.py`     | `condition_key_validation`     | error    | per-action condition keys                          |
-| `condition_type_mismatch.py`      | `condition_type_mismatch`      | error    | operator–value type match                          |
-| `resource_validation.py`          | `resource_validation`          | error    | ARN format (uses `DEFAULT_ARN_VALIDATION_PATTERN`) |
-| `principal_validation.py`         | `principal_validation`         | high     | resource policies                                  |
-| `policy_structure.py`             | `policy_structure`             | error    | required fields                                    |
-| `policy_size.py`                  | `policy_size`                  | error    | per-type byte limits; warns on inferred type       |
-| `policy_type_validation.py`       | `policy_type_validation`       | error    | type-specific rules + RCP shape hint               |
-| `rcp_best_practices.py`           | `rcp_best_practices`           | medium   | RCP blanket denies + service carve-outs            |
-| `sid_uniqueness.py`               | `sid_uniqueness`               | error    | policy-level                                       |
-| `set_operator_validation.py`      | `set_operator_validation`      | warning  | ForAllValues/ForAnyValue                           |
-| `ifexists_condition_check.py`     | `ifexists_condition_usage`     | warning  | IfExists patterns                                  |
-| `mfa_condition_check.py`          | `mfa_condition_antipattern`    | warning  | anti-patterns #2 and #4 are `Allow`-only           |
-| `trust_policy_validation.py`      | `trust_policy_validation`      | high     | + confused deputy                                  |
-| `not_principal_validation.py`     | `not_principal_validation`     | warning  | NotPrincipal usage                                 |
-| `action_resource_matching.py`     | `action_resource_matching`     | medium   | actions ↔ resource types                           |
-| `wildcard_action.py`              | `wildcard_action`              | medium   | `Action: "*"`                                      |
-| `wildcard_resource.py`            | `wildcard_resource`            | medium   | `Resource: "*"`                                    |
-| `full_wildcard.py`                | `full_wildcard`                | critical | Action+Resource `*`                                |
-| `service_wildcard.py`             | `service_wildcard`             | high     | `s3:*`                                             |
-| `sensitive_action.py`             | `sensitive_action`             | medium   | 490+ privesc actions                               |
-| `not_action_not_resource.py`      | `not_action_not_resource`      | high     |                                                    |
-| `action_condition_enforcement.py` | `action_condition_enforcement` | high     | sensitive actions need conds                       |
+| File                              | Check ID                       | Severity | Notes                                                         |
+| --------------------------------- | ------------------------------ | -------- | ------------------------------------------------------------- |
+| `action_validation.py`            | `action_validation`            | error    | actions exist                                                 |
+| `condition_key_validation.py`     | `condition_key_validation`     | error    | per-action condition keys; global-only on `NotAction`         |
+| `condition_type_mismatch.py`      | `condition_type_mismatch`      | error    | operator–value type match                                     |
+| `resource_validation.py`          | `resource_validation`          | error    | ARN format (uses `DEFAULT_ARN_VALIDATION_PATTERN`)            |
+| `principal_validation.py`         | `principal_validation`         | high     | resource policies; ineffective `Deny` carve-outs              |
+| `policy_structure.py`             | `policy_structure`             | error    | required fields                                               |
+| `policy_size.py`                  | `policy_size`                  | error    | per-type byte limits; warns on inferred type                  |
+| `policy_type_validation.py`       | `policy_type_validation`       | error    | type-specific rules + RCP shape hint + NotPrincipal rejection |
+| `rcp_best_practices.py`           | `rcp_best_practices`           | medium   | RCP blanket denies + service carve-out shape                  |
+| `sid_uniqueness.py`               | `sid_uniqueness`               | error    | policy-level; charset skipped for RESOURCE_POLICY             |
+| `set_operator_validation.py`      | `set_operator_validation`      | warning  | ForAllValues/ForAnyValue                                      |
+| `ifexists_condition_check.py`     | `ifexists_condition_usage`     | warning  | IfExists patterns                                             |
+| `mfa_condition_check.py`          | `mfa_condition_antipattern`    | warning  | anti-patterns #2 and #4 are `Allow`-only                      |
+| `trust_policy_validation.py`      | `trust_policy_validation`      | high     | + confused deputy                                             |
+| `not_principal_validation.py`     | `not_principal_validation`     | warning  | NotPrincipal usage                                            |
+| `action_resource_matching.py`     | `action_resource_matching`     | medium   | actions ↔ resource types                                      |
+| `wildcard_action.py`              | `wildcard_action`              | medium   | `Action: "*"`                                                 |
+| `wildcard_resource.py`            | `wildcard_resource`            | medium   | `Resource: "*"`                                               |
+| `full_wildcard.py`                | `full_wildcard`                | critical | Action+Resource `*`                                           |
+| `service_wildcard.py`             | `service_wildcard`             | high     | `s3:*`                                                        |
+| `sensitive_action.py`             | `sensitive_action`             | medium   | 490+ privesc actions; dedups against ACE's enforced actions   |
+| `not_action_not_resource.py`      | `not_action_not_resource`      | high     |                                                               |
+| `action_condition_enforcement.py` | `action_condition_enforcement` | high     | sensitive actions need conds                                  |
 
 Custom-check examples: `examples/custom_checks/`.
+
+---
+
+## Ineffective denies (gotcha)
+
+`principal_validation` reports `ineffective_deny_carve_out` for both spellings of a
+`Deny` that exempts everyone: `NotPrincipal: "*"`, and `Principal: "*"` with
+`ArnNotEquals` on `aws:PrincipalArn: "*"`. A `Deny` carrying a `NotPrincipal` still falls
+through to the blocked/allowed-principal rules, so both findings can appear on one
+statement; a `Deny` without one is otherwise skipped (a deny grants nothing).
+
+## RCP service carve-outs (gotcha)
+
+`rcp_best_practices` emits `rcp_carveout_missing_ifexists` when a blanket-deny carve-out
+tests `aws:PrincipalIsAWSService` with a bare `Bool`. AWS omits that key from anonymous
+requests, so the bare operator cannot match, the whole `Condition` goes false, and
+anonymous callers escape the deny. The canonical pair is
+`StringNotEqualsIfExists aws:PrincipalOrgID` + `BoolIfExists aws:PrincipalIsAWSService`.
+
+## Set-prefixed operators (gotcha)
+
+`ForAllValues:`/`ForAnyValue:` prefixes hide an operator from a plain `==` comparison.
+Use `strip_set_prefix(op)` — it lowercases and removes a recognized set prefix but
+**keeps** `IfExists`, which `normalize_operator()` and `base_operator()` both strip.
+Anywhere `Bool` and `BoolIfExists` must stay distinct, `strip_set_prefix` is the only
+correct helper. `mfa_condition_check` and `rcp_best_practices` call it directly;
+`action_condition_enforcement` and `principal_validation` reach it through
+`has_condition_key()`, whose `operator=` argument matches a prefix-less requirement
+against any set prefix but a prefixed one only against exactly that prefix.
+
+## Cross-check dedup (gotcha)
+
+A check that suppresses its own finding because another check covers the action must ask
+that check what it will **actually** enforce, not read its config. `sensitive_action`
+calls `ActionConditionEnforcementCheck.enforced_actions(root_config, policy_file=None)`,
+which resolves the check's own config the way `ValidatorConfig.checks_config` does,
+returns an empty set when the check is disabled, and runs the real
+`_get_merged_requirements` — so a `merge_strategy`, an `ignore_patterns` match or a
+user-supplied `action_condition_requirements` entry moves both checks together. Reading
+`requirements` directly suppressed findings for requirements that were never in play.
+Matching is `action_matches`, not `==`: a requirement may be a glob and IAM action names
+are case-insensitive. Statement-level checks never receive `policy_file`, so a
+requirement carrying `ignore_patterns` counts as unenforced there and the finding is
+kept rather than wrongly suppressed.
+
+## Hardcoded severities (gotcha)
+
+A check whose `default_severity` is `error` ("AWS will reject the policy") feeds
+`fail_on_severities` and fails CI, so advisory findings from those checks set severity
+literally instead of calling `get_severity(config)`:
+
+- `policy_size_type_ambiguous` — `warning` (see above).
+- `condition_key_validation` on a `NotAction` statement — `warning`. There is no action
+  to resolve per-action keys against, so only global keys are decidable and an unknown
+  key is a hint, not a rejection.
+- `action_condition_enforcement` keeps `error` for a **malformed** `any_of`/`none_of`
+  requirement, where the config itself is at fault. For a satisfied-requirement finding
+  the requirement's own `severity` takes precedence over the check default.
 
 ---
 

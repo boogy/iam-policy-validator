@@ -297,6 +297,17 @@ Detects 490+ privilege escalation actions that should have conditions.
 
 **Severity:** `medium`
 
+**Scope:** `Allow` statements in identity, resource and trust policies. Service control
+and resource control policies are skipped — there an `Allow` declines to restrict rather
+than granting access, so a sensitive action listed in one is not a grant.
+
+A finding is suppressed when
+[`action_condition_enforcement`](advanced-checks.md#action_condition_enforcement) will actually enforce a
+condition on that action, so the same statement is not reported twice. "Actually" is the
+operative word: a requirement removed by `merge_strategy`, excluded by `ignore_patterns`,
+or belonging to a disabled check does not suppress anything. Matching follows IAM
+semantics, so a requirement written as `iam:Pass*` covers `iam:PassRole`.
+
 ### Sensitive Action Categories
 
 - **IAM Management:** `iam:CreateUser`, `iam:AttachRolePolicy`, `iam:PassRole`

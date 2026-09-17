@@ -13,7 +13,7 @@ from collections.abc import Iterable
 from functools import lru_cache
 from typing import NamedTuple
 
-from iam_validator.checks.utils.aws_matching import action_matches
+from iam_validator.checks.utils.aws_matching import action_matches, matches_all_of
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.config.sensitive_actions import get_sensitive_actions
 from iam_validator.core.ignore_patterns import compile_pattern
@@ -192,7 +192,7 @@ def check_actions_config(actions: list[str], config, default_actions: frozenset[
             required = list(config["all_of"])
             index = _index_for(required)
             matched = [a for a in actions if _matches_any_indexed(a, index)]
-            satisfied = all(any(action_matches(req, a) for a in actions) for req in required)
+            satisfied = matches_all_of(required, actions)
             return satisfied, matched
 
     return False, []

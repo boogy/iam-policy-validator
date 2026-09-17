@@ -26,6 +26,79 @@ from iam_validator.core.constants import RCP_SUPPORTED_SERVICES
 from iam_validator.core.models import IAMPolicy, Statement, ValidationIssue
 
 
+def _missing_principal_issue(policy_type: str, idx: int, statement: Statement) -> ValidationIssue:
+    """Build the `missing_principal` finding, worded for the policy type it applies to."""
+    if policy_type == "TRUST_POLICY":
+        message = (
+            "Trust policy statement missing required `Principal` element. "
+            "IAM role trust policies must include a `Principal` element to specify "
+            "who can assume the role."
+        )
+        suggestion = (
+            "Add a `Principal` element to specify who can assume this role.\n"
+            "Example:\n"
+            "```json\n"
+            "{\n"
+            '  "Effect": "Allow",\n'
+            '  "Principal": {\n'
+            '    "AWS": "arn:aws:iam::123456789012:root"\n'
+            "  },\n"
+            '  "Action": "sts:AssumeRole"\n'
+            "}\n"
+            "```"
+        )
+    else:
+        message = (
+            "Resource policy statement missing required `Principal` element. "
+            "Resource-based policies (S3 bucket policies, SNS topic policies, etc.) "
+            "must include a `Principal` element to specify who can access the resource."
+        )
+        suggestion = (
+            "Add a `Principal` element to specify who can access this resource.\n"
+            "Example:\n"
+            "```json\n"
+            "{\n"
+            '  "Effect": "Allow",\n'
+            '  "Principal": {\n'
+            '    "AWS": "arn:aws:iam::123456789012:root"\n'
+            "  },\n"
+            '  "Action": "s3:GetObject",\n'
+            '  "Resource": "arn:aws:s3:::bucket/*"\n'
+            "}\n"
+            "```"
+        )
+    return ValidationIssue(
+        severity="error",
+        issue_type="missing_principal",
+        message=message,
+        statement_index=idx,
+        statement_sid=statement.sid,
+        line_number=statement.line_number,
+        suggestion=suggestion,
+        field_name="principal",
+    )
+
+
+def _invalid_not_principal_issue(idx: int, statement: Statement) -> ValidationIssue:
+    """Build the `invalid_not_principal` finding for policy types where it is illegal."""
+    return ValidationIssue(
+        severity="error",
+        issue_type="invalid_not_principal",
+        message=(
+            "`NotPrincipal` is not supported here. AWS does not allow `NotPrincipal` "
+            "in an IAM identity-based policy or an IAM role trust policy."
+        ),
+        statement_index=idx,
+        statement_sid=statement.sid,
+        line_number=statement.line_number,
+        suggestion=(
+            "Remove `NotPrincipal` and use `Principal` with a `Condition` element "
+            "(e.g. `StringNotEquals` or `ArnNotEquals`) to exclude specific principals."
+        ),
+        field_name="principal",
+    )
+
+
 def _statement_principal_is_wildcard(statement: Statement) -> bool:
     """Return True when the statement's Principal is exactly "*"."""
     return statement.principal == "*" or str(statement.principal) == "*"
@@ -103,6 +176,12 @@ async def execute_policy(
     # Check if any statement has Principal
     has_any_principal = any(stmt.principal is not None or stmt.not_principal is not None for stmt in policy.statement)
 
+    # NotPrincipal is illegal in identity-based policies; emit before any hint path's early return below.
+    if policy_type == "IDENTITY_POLICY":
+        for idx, statement in enumerate(policy.statement):
+            if statement.not_principal is not None:
+                issues.append(_invalid_not_principal_issue(idx, statement))
+
     # RCPs cannot be auto-detected (they share the resource-policy shape), so
     # hint whenever an un-declared policy matches the customer-RCP shape —
     # whether it fell through to IDENTITY_POLICY or auto-detected as
@@ -158,37 +237,20 @@ async def execute_policy(
         # Don't run further checks if we're just hinting
         return issues
 
-    # Resource policies and Trust policies MUST have Principal
-    if policy_type in ("RESOURCE_POLICY", "TRUST_POLICY"):
+    # Resource policies MUST have Principal; NotPrincipal alone satisfies that (legal here).
+    if policy_type == "RESOURCE_POLICY":
         for idx, statement in enumerate(policy.statement):
             has_principal = statement.principal is not None or statement.not_principal is not None
-
             if not has_principal:
-                issues.append(
-                    ValidationIssue(
-                        severity="error",
-                        issue_type="missing_principal",
-                        message="Resource policy statement missing required `Principal` element. "
-                        "Resource-based policies (S3 bucket policies, SNS topic policies, etc.) "
-                        "must include a `Principal` element to specify who can access the resource.",
-                        statement_index=idx,
-                        statement_sid=statement.sid,
-                        line_number=statement.line_number,
-                        suggestion="Add a `Principal` element to specify who can access this resource.\n"
-                        "Example:\n"
-                        "```json\n"
-                        "{\n"
-                        '  "Effect": "Allow",\n'
-                        '  "Principal": {\n'
-                        '    "AWS": "arn:aws:iam::123456789012:root"\n'
-                        "  },\n"
-                        '  "Action": "s3:GetObject",\n'
-                        '  "Resource": "arn:aws:s3:::bucket/*"\n'
-                        "}\n"
-                        "```",
-                        field_name="principal",
-                    )
-                )
+                issues.append(_missing_principal_issue(policy_type, idx, statement))
+
+    # Trust policies MUST have Principal; NotPrincipal does NOT satisfy that (and is illegal here).
+    elif policy_type == "TRUST_POLICY":
+        for idx, statement in enumerate(policy.statement):
+            if statement.principal is None:
+                issues.append(_missing_principal_issue(policy_type, idx, statement))
+            if statement.not_principal is not None:
+                issues.append(_invalid_not_principal_issue(idx, statement))
 
     # Identity policies should NOT have Principal (warning, not error)
     elif policy_type == "IDENTITY_POLICY":

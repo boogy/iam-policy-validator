@@ -1,10 +1,13 @@
 """Tests for ServiceWildcardCheck."""
 
+import itertools
+
 import pytest
 
 from iam_validator.checks.service_wildcard import ServiceWildcardCheck
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig
+from iam_validator.core.condition_validators import CONDITION_OPERATORS, SET_OPERATOR_PREFIXES
 from iam_validator.core.models import Statement
 
 
@@ -319,3 +322,33 @@ class TestServiceWildcardCheck:
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
         assert issues[0].severity == "low"
+
+
+def _legacy_is_abac_operator(operator: str) -> bool:
+    """Pre-refactor `_is_abac_operator` body, kept only to pin equivalence with the new one."""
+    cleaned = operator
+    if ":" in cleaned:
+        prefix, rest = cleaned.split(":", 1)
+        if prefix.lower() in ("forallvalues", "foranyvalue"):
+            cleaned = rest
+    if cleaned.lower().endswith("ifexists"):
+        cleaned = cleaned[: -len("IfExists")]
+    return cleaned.lower() in {"stringequals", "stringlike", "stringequalsignorecase"}
+
+
+def _all_operator_variants() -> list[str]:
+    variants = []
+    for base, prefix, suffix in itertools.product(
+        CONDITION_OPERATORS, [None, *SET_OPERATOR_PREFIXES], ["", "IfExists"]
+    ):
+        op = f"{prefix}:{base}{suffix}" if prefix else f"{base}{suffix}"
+        variants.append(op)
+    return variants
+
+
+class TestIsAbacOperatorEquivalence:
+    """RES-3: the base_operator/is_negated_operator refactor must agree with the old hand-rolled logic."""
+
+    @pytest.mark.parametrize("operator", _all_operator_variants())
+    def test_matches_legacy_implementation(self, operator):
+        assert ServiceWildcardCheck._is_abac_operator(operator) == _legacy_is_abac_operator(operator)

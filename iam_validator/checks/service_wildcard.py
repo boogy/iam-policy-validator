@@ -6,6 +6,7 @@ from typing import ClassVar
 from iam_validator.checks.utils.action_parser import parse_action
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
+from iam_validator.core.condition_validators import base_operator, is_negated_operator
 from iam_validator.core.models import Statement, ValidationIssue
 
 # Matches ${aws:PrincipalTag/...} references used in ABAC conditions
@@ -108,23 +109,8 @@ class ServiceWildcardCheck(PolicyCheck):
 
     @staticmethod
     def _is_abac_operator(operator: str) -> bool:
-        """Check if a condition operator is a non-negated string comparison usable for ABAC.
-
-        Strips ForAllValues:/ForAnyValue: prefixes and IfExists suffix before
-        matching against base operators like StringEquals, StringLike, etc.
-        Negated operators (StringNotEquals, StringNotLike) are excluded because
-        they do not restrict access to matching resources.
-        """
-        cleaned = operator
-        # Strip set-operator prefix (ForAllValues:/ForAnyValue:)
-        if ":" in cleaned:
-            prefix, rest = cleaned.split(":", 1)
-            if prefix.lower() in ("forallvalues", "foranyvalue"):
-                cleaned = rest
-        # Strip IfExists suffix
-        if cleaned.lower().endswith("ifexists"):
-            cleaned = cleaned[: -len("IfExists")]
-        return cleaned.lower() in _ABAC_BASE_OPERATORS
+        """True if operator is a non-negated string comparison usable for ABAC."""
+        return base_operator(operator) in _ABAC_BASE_OPERATORS and not is_negated_operator(operator)
 
     def _has_abac_resource_tag_condition(self, statement: Statement) -> bool:
         """Return True if the statement uses ABAC conditions restricting by resource tags.

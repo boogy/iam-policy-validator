@@ -145,10 +145,7 @@ class TestIfExistsDenyPatterns:
 
     @pytest.fixture
     def config(self):
-        return CheckConfig(
-            check_id="ifexists_condition_usage",
-            config={"suggest_deny_ifexists": True},
-        )
+        return CheckConfig(check_id="ifexists_condition_usage")
 
     @pytest.mark.asyncio
     async def test_negated_ifexists_deny_no_warning(self, check, config):
@@ -160,11 +157,12 @@ class TestIfExistsDenyPatterns:
             Condition={"StringNotEqualsIfExists": {"aws:PrincipalOrgID": "o-123456"}},
         )
         issues = await check.execute(statement, 0, None, config)
-        assert not any(i.issue_type == "ifexists_weakens_deny" for i in issues)
+        assert issues == []
 
     @pytest.mark.asyncio
-    async def test_non_negated_ifexists_deny_warns(self, check, config):
-        """Non-negated IfExists in Deny weakens the Deny, should warn."""
+    async def test_non_negated_ifexists_deny_no_warning(self, check, config):
+        """Non-negated IfExists in Deny is fail-closed (AWS: absent key evaluates
+        true), so it must not be flagged as weakening the Deny."""
         statement = Statement(
             Effect="Deny",
             Action=["s3:DeleteBucket"],
@@ -172,11 +170,12 @@ class TestIfExistsDenyPatterns:
             Condition={"StringEqualsIfExists": {"aws:SourceVpc": "vpc-123456"}},
         )
         issues = await check.execute(statement, 0, None, config)
-        assert any(i.issue_type == "ifexists_weakens_deny" for i in issues)
+        assert issues == []
 
     @pytest.mark.asyncio
-    async def test_suggest_ifexists_for_negated_deny_without_it(self, check, config):
-        """Should suggest adding IfExists for negated operator in Deny."""
+    async def test_negated_deny_without_ifexists_no_suggestion(self, check, config):
+        """A negated operator in Deny already evaluates true on an absent key, so
+        adding IfExists would be a no-op and must not be suggested."""
         statement = Statement(
             Effect="Deny",
             Action=["*"],
@@ -184,35 +183,20 @@ class TestIfExistsDenyPatterns:
             Condition={"StringNotEquals": {"aws:SourceVpc": "vpc-123456"}},
         )
         issues = await check.execute(statement, 0, None, config)
-        assert any(i.issue_type == "ifexists_deny_suggestion" for i in issues)
+        assert issues == []
 
     @pytest.mark.asyncio
-    async def test_no_suggestion_for_always_present_key(self, check, config):
-        """Should not suggest IfExists for always-present keys."""
+    async def test_non_negated_ifexists_still_warns_on_allow(self, check, config):
+        """The retained Allow branch must still fire for the same operator/key
+        shape that no longer triggers a finding on Deny."""
         statement = Statement(
-            Effect="Deny",
-            Action=["*"],
+            Effect="Allow",
+            Action=["s3:DeleteBucket"],
             Resource=["*"],
-            Condition={"StringNotEquals": {"aws:PrincipalAccount": "123456789012"}},
+            Condition={"StringEqualsIfExists": {"aws:SourceVpc": "vpc-123456"}},
         )
         issues = await check.execute(statement, 0, None, config)
-        assert not any(i.issue_type == "ifexists_deny_suggestion" for i in issues)
-
-    @pytest.mark.asyncio
-    async def test_suggestion_disabled_by_config(self, check):
-        """Deny suggestions disabled when config is off."""
-        config = CheckConfig(
-            check_id="ifexists_condition_usage",
-            config={"suggest_deny_ifexists": False},
-        )
-        statement = Statement(
-            Effect="Deny",
-            Action=["*"],
-            Resource=["*"],
-            Condition={"StringNotEquals": {"aws:SourceVpc": "vpc-123456"}},
-        )
-        issues = await check.execute(statement, 0, None, config)
-        assert not any(i.issue_type == "ifexists_deny_suggestion" for i in issues)
+        assert any(i.issue_type == "ifexists_weakens_security_condition" for i in issues)
 
 
 class TestIfExistsAlwaysPresentKeys:
@@ -363,22 +347,3 @@ class TestOperatorRendering:
         redundant = [i for i in issues if i.issue_type == "ifexists_on_always_present_key"]
         assert len(redundant) == 1
         assert "same effect as `ForAllValues:StringBogus`" in redundant[0].message
-
-    @pytest.mark.asyncio
-    async def test_deny_suggestion_keeps_set_prefix(self, check):
-        config = CheckConfig(
-            check_id="ifexists_condition_usage",
-            config={"suggest_deny_ifexists": True},
-        )
-        statement = Statement(
-            Effect="Deny",
-            Action=["*"],
-            Resource=["*"],
-            Condition={"ForAnyValue:StringNotEquals": {"aws:SourceVpc": "vpc-123456"}},
-        )
-        issues = await check.execute(statement, 0, None, config)
-        suggestions = [i for i in issues if i.issue_type == "ifexists_deny_suggestion"]
-        assert len(suggestions) == 1
-        message = suggestions[0].message
-        assert "`ForAnyValue:StringNotEqualsIfExists`" in message
-        assert "instead of `ForAnyValue:StringNotEquals`" in message

@@ -7,6 +7,12 @@ This check validates that Statement IDs (Sids):
 AWS states "In IAM, the Sid value must be unique within a JSON policy", so IAM
 rejects a policy with duplicate Sids rather than merely discouraging them.
 
+The alphanumeric charset is an IAM rule, not a universal one: resource-based policies
+are validated by the owning service, and AWS's own console-generated SQS and SNS
+policies ship Sids like ``__owner_statement`` and ``__default_statement_ID``. The
+format check is therefore skipped for RESOURCE_POLICY, where no per-service charset is
+documented; uniqueness is still enforced everywhere.
+
 This is implemented as a policy-level check that runs once when processing the first
 statement, examining all statements in the policy to find duplicates and format issues.
 """
@@ -20,12 +26,15 @@ from iam_validator.core.constants import SID_INVALID_CHAR_PATTERN, SID_PATTERN
 from iam_validator.core.models import IAMPolicy, ValidationIssue
 
 
-def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[ValidationIssue]:
+def _check_sid_uniqueness_impl(
+    policy: IAMPolicy, severity: str, policy_type: str | None = None
+) -> list[ValidationIssue]:
     """Implementation of SID uniqueness and format checking.
 
     Args:
         policy: IAM policy to validate
         severity: Severity level for issues found
+        policy_type: Resolved policy type; ``RESOURCE_POLICY`` skips the charset check
 
     Returns:
         List of ValidationIssue objects for duplicate or invalid SIDs
@@ -41,12 +50,14 @@ def _check_sid_uniqueness_impl(policy: IAMPolicy, severity: str) -> list[Validat
     if not policy.statement:
         return []
 
+    check_format = policy_type != "RESOURCE_POLICY"
+
     sids_with_indices: list[tuple[str, int]] = []
     for idx, statement in enumerate(policy.statement):
         if not statement.sid:
             continue
 
-        if not SID_PATTERN.match(statement.sid):
+        if check_format and not SID_PATTERN.match(statement.sid):
             if " " in statement.sid:
                 issue_msg = f"Statement ID `{statement.sid}` contains spaces, which are not allowed by AWS"
                 suggestion = f"Remove spaces from the SID. Example: `{statement.sid.replace(' ', '')}`"
@@ -110,7 +121,7 @@ class SidUniquenessCheck(PolicyCheck):
 
     check_id: ClassVar[str] = "sid_uniqueness"
     description: ClassVar[str] = (
-        "Validates that Statement IDs (Sids) are unique and follow AWS naming requirements (alphanumeric only)"
+        "Validates that Statement IDs (Sids) are unique, and alphanumeric outside resource-based policies"
     )
     default_severity: ClassVar[str] = "error"
 
@@ -137,4 +148,4 @@ class SidUniquenessCheck(PolicyCheck):
         """
         del policy_file, fetcher  # Unused
         severity = self.get_severity(config)
-        return _check_sid_uniqueness_impl(policy, severity)
+        return _check_sid_uniqueness_impl(policy, severity, kwargs.get("policy_type"))

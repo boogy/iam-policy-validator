@@ -8,6 +8,7 @@ IAM policy documents programmatically.
 import json
 from typing import Any
 
+from iam_validator.core.condition_validators import base_operator, is_negated_operator
 from iam_validator.core.models import IAMPolicy, Statement
 
 
@@ -172,12 +173,15 @@ def extract_resources(policy: IAMPolicy) -> list[str]:
     return sorted(resources)
 
 
-def extract_condition_keys_from_statement(statement: Statement) -> set[str]:
+def extract_condition_keys_from_statement(statement: Statement, restrictive_only: bool = False) -> set[str]:
     """
     Extract all condition keys from a single statement.
 
     Args:
         statement: Statement to extract condition keys from
+        restrictive_only: If True, skip keys that only appear under a negated
+            operator (e.g. StringNotEquals) or a Null check — those exclude or
+            test for a value rather than constrain access to one.
 
     Returns:
         Set of condition key names (e.g., {"aws:ResourceAccount", "aws:SourceIp"})
@@ -196,7 +200,9 @@ def extract_condition_keys_from_statement(statement: Statement) -> set[str]:
         return set()
 
     keys: set[str] = set()
-    for operator_block in statement.condition.values():
+    for operator, operator_block in statement.condition.items():
+        if restrictive_only and (is_negated_operator(operator) or base_operator(operator) == "null"):
+            continue
         if isinstance(operator_block, dict):
             keys.update(operator_block.keys())
     return keys

@@ -5,7 +5,7 @@ Detects dangerous MFA-related condition patterns that may not enforce MFA as int
 
 from typing import Any, ClassVar
 
-from iam_validator.checks.utils.condition_matching import is_deny
+from iam_validator.checks.utils.condition_matching import is_deny, strip_set_prefix
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.models import Statement, ValidationIssue
 
@@ -53,19 +53,20 @@ class MFAConditionCheck(PolicyCheck):
         deny = is_deny(statement)
         condition = statement.condition
 
-        def operator_block(name: str) -> dict[str, Any]:
+        def operator_entries(name: str) -> list[tuple[str, Any]]:
+            # Set prefix stripped, IfExists kept: Bool and BoolIfExists differ semantically.
             wanted = name.lower()
+            entries: list[tuple[str, Any]] = []
             for op, block in condition.items():
-                if op.strip().lower() == wanted and isinstance(block, dict):
-                    return block
-            return {}
+                if strip_set_prefix(op) == wanted and isinstance(block, dict):
+                    entries.extend(block.items())
+            return entries
 
         statement_sid = statement.sid
         line_number = statement.line_number
 
         # Check for anti-pattern #1: Bool with aws:MultiFactorAuthPresent = false
-        bool_conditions = operator_block("Bool")
-        for key, value in bool_conditions.items():
+        for key, value in operator_entries("Bool"):
             if key.lower() == "aws:multifactorauthpresent":
                 values = value if isinstance(value, list) else [value]
                 values_lower = [str(v).lower() for v in values]
@@ -92,8 +93,7 @@ class MFAConditionCheck(PolicyCheck):
         # Check for anti-pattern #2: BoolIfExists with aws:MultiFactorAuthPresent = false
         # AWS's canonical Deny-based MFA guard uses this exact condition.
         if not deny:
-            bool_if_exists_conditions = operator_block("BoolIfExists")
-            for key, value in bool_if_exists_conditions.items():
+            for key, value in operator_entries("BoolIfExists"):
                 if key.lower() == "aws:multifactorauthpresent":
                     values = value if isinstance(value, list) else [value]
                     values_lower = [str(v).lower() for v in values]
@@ -120,8 +120,7 @@ class MFAConditionCheck(PolicyCheck):
                         )
 
         # Check for anti-pattern #3: Null with aws:MultiFactorAuthPresent = false
-        null_conditions = operator_block("Null")
-        for key, value in null_conditions.items():
+        for key, value in operator_entries("Null"):
             if key.lower() == "aws:multifactorauthpresent":
                 values = value if isinstance(value, list) else [value]
                 values_lower = [str(v).lower() for v in values]

@@ -4,9 +4,7 @@ Validates proper usage of the IfExists suffix on IAM condition operators.
 
 Detects:
 - IfExists on security-sensitive keys in Allow statements (may bypass controls)
-- Non-negated IfExists in Deny statements (weakens the Deny)
 - IfExists on always-present keys (redundant)
-- Suggests IfExists for negated operators in Deny without it
 """
 
 from typing import ClassVar
@@ -17,7 +15,6 @@ from iam_validator.core.condition_validators import (
     ALWAYS_PRESENT_CONDITION_KEYS,
     SECURITY_SENSITIVE_CONDITION_KEYS,
     has_if_exists_suffix,
-    is_negated_operator,
     normalize_operator,
 )
 from iam_validator.core.models import Statement, ValidationIssue
@@ -65,7 +62,6 @@ class IfExistsConditionCheck(PolicyCheck):
 
         # Config options
         warn_security_sensitive_allow = config.config.get("warn_security_sensitive_allow", True)
-        suggest_deny_ifexists = config.config.get("suggest_deny_ifexists", False)
         warn_always_present_keys = config.config.get("warn_always_present_keys", True)
         additional_security_keys = config.config.get("additional_security_sensitive_keys", [])
 
@@ -85,7 +81,6 @@ class IfExistsConditionCheck(PolicyCheck):
 
         for operator, conditions in statement.condition.items():
             has_ifexists = has_if_exists_suffix(operator)
-            is_negated = is_negated_operator(operator)
 
             for condition_key in conditions:
                 # Normalize condition key for case-insensitive comparison
@@ -152,60 +147,5 @@ class IfExistsConditionCheck(PolicyCheck):
                                         field_name="condition",
                                     )
                                 )
-
-                    elif effect == "Deny":
-                        # Non-negated IfExists in Deny weakens the restriction
-                        if not is_negated and is_security_key:
-                            if key_lower not in null_checked_keys:
-                                issues.append(
-                                    ValidationIssue(
-                                        severity=self.get_severity(config),
-                                        message=(
-                                            f"Weakened `Deny`: `{operator}` with "
-                                            f"`{condition_key}` in a `Deny` statement "
-                                            f"means the `Deny` does not apply when "
-                                            f"`{condition_key}` is missing from the "
-                                            f"request context. Consider removing "
-                                            f"`IfExists` or adding a `Null` condition "
-                                            f"check."
-                                        ),
-                                        statement_sid=statement_sid,
-                                        statement_index=statement_idx,
-                                        issue_type="ifexists_weakens_deny",
-                                        condition_key=condition_key,
-                                        line_number=line_number,
-                                        field_name="condition",
-                                    )
-                                )
-
-                elif not has_ifexists and effect == "Deny" and suggest_deny_ifexists:
-                    # Suggest IfExists for negated operator in Deny without it
-                    if is_negated:
-                        # Only suggest for keys that may be absent
-                        is_always_present = any(k.lower() == key_lower for k in ALWAYS_PRESENT_CONDITION_KEYS)
-                        is_security_key = any(k.lower() == key_lower for k in security_keys)
-                        if not is_always_present and is_security_key:
-                            plain_operator = _render_operator(operator, if_exists=False)
-                            ifexists_operator = _render_operator(operator, if_exists=True)
-                            issues.append(
-                                ValidationIssue(
-                                    severity="info",
-                                    message=(
-                                        f"Consider using `{ifexists_operator}` instead "
-                                        f"of `{plain_operator}` in this Deny statement. "
-                                        f"Without `IfExists`, the `Deny` does not apply "
-                                        f"when `{condition_key}` is missing from the "
-                                        f"request context. With `{ifexists_operator}`, "
-                                        f"the `Deny` still applies even when the key is "
-                                        f"absent."
-                                    ),
-                                    statement_sid=statement_sid,
-                                    statement_index=statement_idx,
-                                    issue_type="ifexists_deny_suggestion",
-                                    condition_key=condition_key,
-                                    line_number=line_number,
-                                    field_name="condition",
-                                )
-                            )
 
         return issues

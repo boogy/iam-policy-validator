@@ -817,12 +817,26 @@ class TestCreateDefaultRegistry:
 
 
 def test_checks_apply_to_all_policy_types_by_default():
-    from iam_validator.checks.sensitive_action import SensitiveActionCheck
+    """A check that declares no policy types runs everywhere.
 
-    check = SensitiveActionCheck()
+    Asserted against `MockCheck` rather than a built-in: the guarantee is the base-class
+    default, and a real check may legitimately gain a restriction later.
+    """
+    check = MockCheck()
     assert check.applies_to_policy_types is None
     assert check.applies_to("SERVICE_CONTROL_POLICY") is True
     assert check.applies_to(None) is True
+
+
+def test_sensitive_action_is_not_applied_to_boundary_policies():
+    """An SCP/RCP `Allow` declines to restrict, so it is not a grant worth flagging."""
+    from iam_validator.checks.sensitive_action import SensitiveActionCheck
+
+    check = SensitiveActionCheck()
+    assert check.applies_to("SERVICE_CONTROL_POLICY") is False
+    assert check.applies_to("RESOURCE_CONTROL_POLICY") is False
+    assert check.applies_to("IDENTITY_POLICY") is True
+    assert check.applies_to("TRUST_POLICY") is True
 
 
 def test_principal_validation_is_not_applied_to_rcps():

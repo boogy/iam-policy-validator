@@ -259,7 +259,8 @@ principal_validation:
   # This is a dangerous pattern that allows ANY AWS service
   block_service_principal_wildcard: true
 
-  # Explicit block list (evaluated after service principal wildcard check)
+  # Explicit block list — evaluated before the service-principal allowlist
+  # below, so a blocked principal is never let through by allowed_service_principals.
   blocked_principals:
     - "arn:aws:iam::*:root"
 

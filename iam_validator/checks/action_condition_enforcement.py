@@ -120,10 +120,61 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         return issues
 
+    @classmethod
+    def _resolve_own_config(cls, root_config: dict[str, Any]) -> dict[str, Any]:
+        """Locate this check's own config inside a full config dict.
+
+        Mirrors `ValidatorConfig.checks_config`: a `checks:` key wins outright, otherwise
+        the check id is looked up as a top-level key, `_check`-suffixed spelling first.
+        """
+        if "checks" in root_config:
+            nested = root_config.get("checks")
+            if isinstance(nested, dict):
+                own = nested.get(cls.check_id)
+                return own if isinstance(own, dict) else {}
+            return {}
+
+        for key in (f"{cls.check_id}_check", cls.check_id):
+            own = root_config.get(key)
+            if isinstance(own, dict):
+                return own
+        return {}
+
+    @classmethod
+    def enforced_actions(cls, root_config: dict[str, Any], policy_file: str | None = None) -> set[str]:
+        """The actions this check will actually enforce under ``root_config``.
+
+        Other checks dedup against this rather than reading ``requirements`` directly, so a
+        ``merge_strategy``, a disabled check, or an ``ignore_patterns`` match that stops
+        enforcement also stops the dedup that assumed it.
+        """
+        own_config = cls._resolve_own_config(root_config)
+        if not own_config.get("enabled", True):
+            return set()
+
+        requirements = cls()._get_merged_requirements(
+            CheckConfig(
+                check_id=cls.check_id,
+                enabled=True,
+                config=own_config,
+                root_config=root_config,
+            ),
+            policy_file,
+        )
+
+        actions: set[str] = set()
+        for requirement in requirements:
+            configured = requirement.get("actions", [])
+            if isinstance(configured, str):
+                actions.add(configured)
+            elif isinstance(configured, list):
+                actions.update(a for a in configured if isinstance(a, str))
+        return actions
+
     def _get_merged_requirements(
         self,
         config: CheckConfig,
-        policy_file: str,
+        policy_file: str | None,
     ) -> list[dict[str, Any]]:
         """
         Get merged requirements based on configured merge strategy.
@@ -195,7 +246,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     def _filter_requirements_by_filepath(
         self,
         requirements: list[dict[str, Any]],
-        policy_file: str,
+        policy_file: str | None,
     ) -> list[dict[str, Any]]:
         """
         Filter out requirements that should be ignored for this file.
@@ -224,6 +275,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             if not ignore_patterns:
                 # No ignore patterns - include this requirement
                 active_reqs.append(req)
+                continue
+
+            # Without a file the pattern cannot be tested; treat the requirement as
+            # possibly ignored so `enforced_actions` never over-reports enforcement.
+            if policy_file is None:
                 continue
 
             # Check if any ignore pattern matches this file
@@ -1006,7 +1062,16 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         # Handle simple list format (backward compatibility)
         if isinstance(required_conditions_config, list):
+            malformed = self._malformed_condition_requirements(required_conditions_config)
+            for entry in malformed:
+                issues.append(
+                    self._create_malformed_requirement_issue(
+                        statement, statement_idx, entry, matching_actions, "required_conditions"
+                    )
+                )
             for condition_requirement in required_conditions_config:
+                if condition_requirement in malformed:
+                    continue
                 if not self._has_condition_requirement(statement, condition_requirement):
                     issues.append(
                         self._create_issue(
@@ -1028,7 +1093,16 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
             # Validate all_of: ALL conditions must be present
             if all_of:
+                malformed = self._malformed_condition_requirements(all_of)
+                for entry in malformed:
+                    issues.append(
+                        self._create_malformed_requirement_issue(
+                            statement, statement_idx, entry, matching_actions, "all_of"
+                        )
+                    )
                 for condition_requirement in all_of:
+                    if condition_requirement in malformed:
+                        continue
                     if not self._has_condition_requirement(statement, condition_requirement):
                         issues.append(
                             self._create_issue(
@@ -1044,6 +1118,12 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
             # Validate any_of: At least ONE condition must be present
             if any_of:
+                for entry in self._malformed_condition_requirements(any_of):
+                    issues.append(
+                        self._create_malformed_requirement_issue(
+                            statement, statement_idx, entry, matching_actions, "any_of"
+                        )
+                    )
                 any_present = any(self._has_condition_requirement(statement, cond_req) for cond_req in any_of)
 
                 if not any_present:
@@ -1081,7 +1161,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
                     issues.append(
                         ValidationIssue(
-                            severity=self.get_severity(config),
+                            severity=self._resolve_severity(config, requirement),
                             statement_sid=statement.sid,
                             statement_index=statement_idx,
                             issue_type="missing_required_condition_any_of",
@@ -1096,7 +1176,16 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
             # Validate none_of: NONE of these conditions should be present
             if none_of:
+                malformed = self._malformed_condition_requirements(none_of)
+                for entry in malformed:
+                    issues.append(
+                        self._create_malformed_requirement_issue(
+                            statement, statement_idx, entry, matching_actions, "none_of"
+                        )
+                    )
                 for condition_requirement in none_of:
+                    if condition_requirement in malformed:
+                        continue
                     if self._has_condition_requirement(statement, condition_requirement):
                         issues.append(
                             self._create_none_of_issue(
@@ -1105,6 +1194,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                                 condition_requirement,
                                 matching_actions,
                                 config,
+                                requirement=requirement,
                             )
                         )
 
@@ -1112,14 +1202,69 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
     def _has_condition_requirement(self, statement: Statement, condition_requirement: dict[str, Any]) -> bool:
         """Check if statement has the required condition."""
+        nested_all_of = condition_requirement.get("all_of")
+        if nested_all_of:
+            return all(self._has_condition_requirement(statement, nested) for nested in nested_all_of)
+
         condition_key = condition_requirement.get("condition_key")
         if not condition_key:
-            return True  # No condition key specified, skip
+            # Unsatisfiable is the safe direction: an enforcement rule that names no key must
+            # never read as satisfied. _malformed_condition_requirements reports it separately.
+            return False
 
         operator = condition_requirement.get("operator")
         expected_value = condition_requirement.get("expected_value")
 
         return has_condition_key(statement, condition_key, operator, expected_value)
+
+    @staticmethod
+    def _malformed_condition_requirements(entries: Any) -> list[Any]:
+        """Requirement entries that name no condition key, so they can never be evaluated."""
+        if not isinstance(entries, list):
+            return []
+        return [e for e in entries if not (isinstance(e, dict) and (e.get("condition_key") or e.get("all_of")))]
+
+    def _create_malformed_requirement_issue(
+        self,
+        statement: Statement,
+        statement_idx: int,
+        entry: Any,
+        matching_actions: list[str],
+        requirement_type: str,
+    ) -> ValidationIssue:
+        matching_actions_str = format_list_with_backticks(matching_actions)
+        # Deliberately not _resolve_severity: a broken requirement's own `severity` must not
+        # downgrade the notice that it enforces nothing.
+        return ValidationIssue(
+            severity="error",
+            statement_sid=statement.sid,
+            statement_index=statement_idx,
+            issue_type="invalid_condition_requirement",
+            message=(
+                f"`action_condition_requirements` entry under `{requirement_type}` names no "
+                f"`condition_key`, so it cannot be enforced for action(s) {matching_actions_str}: `{entry!r}`"
+            ),
+            action=", ".join(matching_actions),
+            suggestion=(
+                "Add a `condition_key` to this entry (or nest the entry under `all_of`). "
+                "Until then the requirement enforces nothing."
+            ),
+            line_number=statement.line_number,
+            field_name="condition",
+        )
+
+    def _resolve_severity(
+        self,
+        config: CheckConfig,
+        requirement: dict[str, Any] | None = None,
+        condition_requirement: dict[str, Any] | None = None,
+    ) -> str:
+        """Severity for a finding: condition-level override, then requirement-level, then global."""
+        return (
+            (condition_requirement.get("severity") if condition_requirement else None)
+            or (requirement.get("severity") if requirement else None)
+            or self.get_severity(config)
+        )
 
     def _create_issue(
         self,
@@ -1146,12 +1291,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         message_prefix = "ALL required:" if requirement_type == "all_of" else "Required:"
 
-        # Determine severity with precedence: condition > requirement > global
-        severity = (
-            condition_requirement.get("severity")  # Condition-level override
-            or (requirement.get("severity") if requirement else None)  # Requirement-level override
-            or self.get_severity(config)  # Global check severity
-        )
+        severity = self._resolve_severity(config, requirement, condition_requirement)
 
         suggestion_text, example_code = self._build_suggestion(
             condition_key, description, example, expected_value, operator
@@ -1298,6 +1438,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         condition_requirement: dict[str, Any],
         matching_actions: list[str],
         config: CheckConfig,
+        requirement: dict[str, Any] | None = None,
     ) -> ValidationIssue:
         """Create a validation issue for a forbidden condition that is present."""
         condition_key = condition_requirement.get("condition_key", "unknown")
@@ -1314,7 +1455,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             suggestion += f". {description}"
 
         return ValidationIssue(
-            severity=self.get_severity(config),
+            severity=self._resolve_severity(config, requirement, condition_requirement),
             statement_sid=statement.sid,
             statement_index=statement_idx,
             issue_type="forbidden_condition_present",

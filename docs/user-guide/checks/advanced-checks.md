@@ -301,8 +301,8 @@ The validator supports different policy types and validates policies match their
 
 - `Effect` must be `Deny`; `Principal` must be exactly `"*"`; `NotAction` /
   `NotPrincipal` are unsupported; `Resource` or `NotResource` is required
-- Actions must come from RCP-supported services (26 service prefixes as of
-  2026-07-20, e.g. `s3`, `sts`, `kms`, `dynamodb`, `codebuild`, `textract`);
+- Actions must come from RCP-supported services (62 service prefixes as of
+  2026-09-17, e.g. `s3`, `sts`, `kms`, `dynamodb`, `cloudfront`, `wafv2`);
   bare `"*"` in `Action` is rejected
 - New AWS launches can be accepted without a validator upgrade:
 
@@ -344,6 +344,12 @@ data-perimeter identity-perimeter RCP).
   `aws:PrincipalOrgPaths`, or `aws:PrincipalAccount`) without an
   `aws:PrincipalIsAWSService` carve-out can deny AWS service-to-service calls
   (e.g. CloudTrail log delivery) and break integrations.
+- **`rcp_carveout_missing_ifexists` (medium):** the service carve-out is written
+  with `Bool` instead of `BoolIfExists`. `aws:PrincipalIsAWSService` is present
+  only on signed requests, and a non-`IfExists` operator cannot match an absent
+  key — so for an anonymous caller the whole `Condition` evaluates false and they
+  fall outside the Deny, while `StringNotEqualsIfExists` on the organization
+  boundary still matches them. Pair `StringNotEqualsIfExists` with `BoolIfExists`.
 
 ### Pass Example (canonical identity perimeter)
 
