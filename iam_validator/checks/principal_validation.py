@@ -49,7 +49,26 @@ from iam_validator.checks.utils.condition_matching import (
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.config.service_principals import is_aws_service_principal
+from iam_validator.core.constants import ACCOUNT_ID_PATTERN, ARN_PARTITIONS, ROOT_ARN_PATTERN
 from iam_validator.core.models import Statement, ValidationIssue
+
+
+def principal_spellings(principal: str) -> list[str]:
+    """Every way AWS lets you name ``principal``, itself first.
+
+    A bare account id and that account's root ARN are the same principal to AWS, so a
+    denylist or allowlist entry written one way must match the other.
+    """
+    candidate = principal.strip()
+
+    root_arn = ROOT_ARN_PATTERN.match(candidate)
+    if root_arn:
+        return [principal, root_arn.group(2)]
+
+    if ACCOUNT_ID_PATTERN.match(candidate):
+        return [principal, *(f"arn:{p}:iam::{candidate}:root" for p in ARN_PARTITIONS)]
+
+    return [principal]
 
 
 class PrincipalValidationCheck(PolicyCheck):
@@ -89,11 +108,13 @@ class PrincipalValidationCheck(PolicyCheck):
 
         # A Deny over Principal grants nothing, so the rules below do not apply -- except
         # that an inverted Deny carves principals *out* of the deny, and a carve-out of
-        # "*" denies nobody. NotPrincipal spells that inversion with a principal (so it
-        # falls through to the normal rules); ArnNotEquals & friends spell it with a
-        # condition, which only this check catches.
-        if is_deny(statement) and statement.not_principal is None:
-            return self._check_deny_carve_out(statement, statement_idx, config)
+        # "*" denies nobody. NotPrincipal spells that inversion with a principal, and
+        # ArnNotEquals & friends spell it with a condition; both forms are checked here.
+        if is_deny(statement):
+            if statement.not_principal is None:
+                return self._check_deny_carve_out(statement, statement_idx, config)
+            # NotPrincipal still falls through to the blocked/allowed rules below.
+            issues.extend(self._check_not_principal_carve_out(statement, statement_idx, config))
 
         # Get configuration (defaults match defaults.py)
         blocked_principals = list(config.config.get("blocked_principals", []))
@@ -113,12 +134,10 @@ class PrincipalValidationCheck(PolicyCheck):
             blocked_principals.append("*")
 
         # Check for service principal wildcards FIRST (highest priority security issue)
-        # If detected, return early - no conditions can make {"Service": "*"} safe
+        service_wildcard_issues: list[ValidationIssue] = []
         if block_service_principal_wildcard:
             service_wildcard_issues = self._check_service_principal_wildcards(statement, statement_idx, config)
-            if service_wildcard_issues:
-                # Return early - this is unfixable, don't suggest conditions
-                return service_wildcard_issues
+            issues.extend(service_wildcard_issues)
 
         # Extract principals from statement
         principals = self._extract_principals(statement)
@@ -176,8 +195,9 @@ class PrincipalValidationCheck(PolicyCheck):
                 continue
 
         # Check principal_condition_requirements (supports any_of/all_of/none_of)
-        # Skip condition checks for principals that are already blocked
-        if principal_condition_requirements:
+        # Skip condition checks for principals that are already blocked, and entirely when
+        # a service-principal wildcard is present: no condition can make {"Service": "*"} safe.
+        if principal_condition_requirements and not service_wildcard_issues:
             # Filter out blocked principals - they need to be removed, not conditioned
             principals_to_check = [p for p in principals if p not in blocked_principal_values]
             if principals_to_check:
@@ -211,6 +231,42 @@ class PrincipalValidationCheck(PolicyCheck):
     def _is_principal_condition_key(cls, key: str) -> bool:
         normalized = key.strip().lower()
         return normalized in cls._PRINCIPAL_CONDITION_KEYS or normalized.startswith("aws:principaltag/")
+
+    def _check_not_principal_carve_out(
+        self,
+        statement: Statement,
+        statement_idx: int,
+        config: CheckConfig,
+    ) -> list[ValidationIssue]:
+        """Flag a ``Deny`` whose ``NotPrincipal`` carve-out is ``"*"``.
+
+        ``NotPrincipal`` exempts the principals it lists from the deny, and ``"*"`` is the
+        one wildcard AWS resolves in a principal -- it matches everyone, so no principal is
+        left outside the carve-out and the statement denies nothing. This is the
+        principal-spelled form of ``ineffective_deny_carve_out``.
+        """
+        if not any(str(p).strip() == "*" for p in self._extract_not_principals(statement)):
+            return []
+
+        return [
+            ValidationIssue(
+                severity=self.get_severity(config),
+                statement_sid=statement.sid,
+                statement_index=statement_idx,
+                issue_type="ineffective_deny_carve_out",
+                message=(
+                    "`NotPrincipal` is `*`, which exempts every principal from this `Deny`. "
+                    "The statement denies nothing."
+                ),
+                suggestion=(
+                    "List the specific principals that must be exempt, or drop the statement if "
+                    'nothing should be denied. AWS recommends `Principal: "*"` with an '
+                    "`ArnNotEquals` condition on `aws:PrincipalArn` instead of `NotPrincipal`."
+                ),
+                line_number=statement.line_number,
+                field_name="principal",
+            )
+        ]
 
     def _check_deny_carve_out(
         self,
@@ -267,32 +323,28 @@ class PrincipalValidationCheck(PolicyCheck):
         Returns:
             List of principal strings
         """
-        principals = []
+        return self._flatten_principal_field(statement.principal) + self._extract_not_principals(statement)
 
-        # Handle Principal field
-        if statement.principal:
-            if isinstance(statement.principal, str):
-                # Simple string principal like "*"
-                principals.append(statement.principal)
-            elif isinstance(statement.principal, dict):
-                # Dict with AWS, Service, Federated, etc.
-                for _, value in statement.principal.items():
-                    if isinstance(value, str):
-                        principals.append(value)
-                    elif isinstance(value, list):
-                        principals.extend(value)
+    def _extract_not_principals(self, statement: Statement) -> list[str]:
+        """Extract the principals a statement's `NotPrincipal` carves out."""
+        return self._flatten_principal_field(statement.not_principal)
 
-        # Handle NotPrincipal field (similar logic)
-        if statement.not_principal:
-            if isinstance(statement.not_principal, str):
-                principals.append(statement.not_principal)
-            elif isinstance(statement.not_principal, dict):
-                for _, value in statement.not_principal.items():
-                    if isinstance(value, str):
-                        principals.append(value)
-                    elif isinstance(value, list):
-                        principals.extend(value)
+    @staticmethod
+    def _flatten_principal_field(field: object) -> list[str]:
+        """Flatten a `Principal`/`NotPrincipal` value (string, or dict of string/list) to a flat list."""
+        if not field:
+            return []
+        if isinstance(field, str):
+            return [field]
+        if not isinstance(field, dict):
+            return []
 
+        principals: list[str] = []
+        for value in field.values():
+            if isinstance(value, str):
+                principals.append(value)
+            elif isinstance(value, list):
+                principals.extend(value)
         return principals
 
     def _has_service_principal_wildcard(self, statement: Statement) -> bool:
@@ -406,12 +458,13 @@ class PrincipalValidationCheck(PolicyCheck):
             True if the principal is blocked
         """
         # blocked_principals is a denylist: no service allowlist entry exempts a match.
+        spellings = principal_spellings(principal)
         for blocked_pattern in blocked_list:
             # "*" in the blocked list matches only literal "*" (public access), not everything
             if blocked_pattern == "*":
                 if principal == "*":
                     return True
-            elif fnmatch.fnmatch(principal, blocked_pattern):
+            elif any(fnmatch.fnmatch(spelling, blocked_pattern) for spelling in spellings):
                 return True
 
         return False
@@ -436,13 +489,14 @@ class PrincipalValidationCheck(PolicyCheck):
             return True
 
         # Check against allowed list (supports wildcards)
+        spellings = principal_spellings(principal)
         for allowed_pattern in allowed_list:
             # Special case: "*" in allowed list should only match literal "*" (public access)
             # not use it as a wildcard pattern that matches everything
             if allowed_pattern == "*":
                 if principal == "*":
                     return True
-            elif fnmatch.fnmatch(principal, allowed_pattern):
+            elif any(fnmatch.fnmatch(spelling, allowed_pattern) for spelling in spellings):
                 return True
 
         return False

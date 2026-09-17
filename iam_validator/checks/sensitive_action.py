@@ -2,6 +2,8 @@
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from iam_validator.checks.action_condition_enforcement import ActionConditionEnforcementCheck
+from iam_validator.checks.utils.aws_matching import action_matches
 from iam_validator.checks.utils.policy_level_checks import check_policy_level_actions
 from iam_validator.checks.utils.sensitive_action_matcher import (
     DEFAULT_SENSITIVE_ACTIONS,
@@ -89,6 +91,11 @@ class SensitiveActionCheck(PolicyCheck):
     check_id: ClassVar[str] = "sensitive_action"
     description: ClassVar[str] = "Checks for sensitive actions without conditions"
     default_severity: ClassVar[str] = "medium"
+    # In a boundary policy (SCP/RCP) an Allow declines to restrict; it never grants access,
+    # so an unconditioned sensitive action there is not a grant worth flagging.
+    applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset(
+        {"IDENTITY_POLICY", "RESOURCE_POLICY", "TRUST_POLICY"}
+    )
 
     def _get_severity_for_action(self, action: str, config: CheckConfig) -> str:
         """
@@ -116,10 +123,12 @@ class SensitiveActionCheck(PolicyCheck):
 
     def _get_actions_covered_by_condition_enforcement(self, config: CheckConfig) -> set[str]:
         """
-        Get set of actions that are covered by action_condition_enforcement requirements.
+        Get the actions `action_condition_enforcement` will actually enforce.
 
         This prevents duplicate warnings when an action is already validated by
-        formal condition requirements.
+        formal condition requirements. It delegates so that dedup stays in lockstep
+        with enforcement: reading `requirements` directly also suppressed findings for
+        requirements a `merge_strategy` or `ignore_patterns` had taken out of play.
 
         Args:
             config: Check configuration with root_config access
@@ -127,19 +136,7 @@ class SensitiveActionCheck(PolicyCheck):
         Returns:
             Set of action strings that are covered by condition requirements
         """
-        covered_actions: set[str] = set()
-
-        # Access action_condition_enforcement config from root_config
-        ace_config = config.root_config.get("action_condition_enforcement", {})
-        requirements = ace_config.get("requirements", [])
-
-        for requirement in requirements:
-            # Get actions from requirement
-            actions_config = requirement.get("actions", [])
-            if isinstance(actions_config, list):
-                covered_actions.update(actions_config)
-
-        return covered_actions
+        return ActionConditionEnforcementCheck.enforced_actions(config.root_config)
 
     def _get_category_specific_suggestion(self, action: str, config: CheckConfig) -> tuple[str, str]:
         """
@@ -212,7 +209,13 @@ class SensitiveActionCheck(PolicyCheck):
             # Filter out actions already covered by action_condition_enforcement
             # This prevents duplicate warnings with different messages
             covered_actions = self._get_actions_covered_by_condition_enforcement(config)
-            matched_actions = [action for action in matched_actions if action not in covered_actions]
+            # action_matches, not equality: a requirement's action may be a glob, and IAM
+            # action names are case-insensitive — both must dedup the way the other check matches.
+            matched_actions = [
+                action
+                for action in matched_actions
+                if not any(action_matches(action, covered) for covered in covered_actions)
+            ]
 
             # If all matched actions are covered elsewhere, skip this check
             if not matched_actions:

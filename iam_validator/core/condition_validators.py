@@ -575,7 +575,9 @@ def _validate_single_value(value_type: str, value_str: str) -> tuple[bool, str |
     if value_type == "ARN":
         # ARN format: arn:partition:service:region:account-id:resource
         # Wildcards are allowed in ARN values
-        if value_str != "*":
+        # A ${...} variable is resolved at request time, so its expansion, not the
+        # literal, decides ARN validity.
+        if value_str != "*" and "${" not in value_str:
             arn_pattern = r"^arn:[^:]*:[^:]*:[^:]*:[^:]*:.+$"
             if not re.match(arn_pattern, value_str):
                 return (
@@ -694,6 +696,15 @@ def is_condition_key_match(documented_key: str, policy_key: str) -> bool:
 def base_operator(operator: str) -> str:
     """Lowercase operator without set prefix (ForAnyValue:/ForAllValues:) or IfExists suffix."""
     return operator.strip().lower().rsplit(":", 1)[-1].removesuffix("ifexists")
+
+
+def strip_set_prefix(operator: str) -> str:
+    """Lowercase operator without a recognized set prefix, keeping any IfExists suffix."""
+    cleaned = operator.strip().lower()
+    prefix, sep, rest = cleaned.partition(":")
+    if sep and prefix in _SET_OPERATOR_PREFIXES_LOWER:
+        return rest
+    return cleaned
 
 
 def is_negated_operator(operator: str) -> bool:

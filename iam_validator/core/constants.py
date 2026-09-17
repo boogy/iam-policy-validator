@@ -22,7 +22,17 @@ from typing import Final
 # ARN_PARTITION_REGEX so the supported partitions stay in lockstep. Adding a
 # new partition (e.g., a future AWS region split) is then a one-line change.
 # Covers commercial, China, GovCloud, Europe sovereign, and all ISO partitions.
-ARN_PARTITION_REGEX = r"(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f)"
+ARN_PARTITIONS = (
+    "aws",
+    "aws-cn",
+    "aws-us-gov",
+    "aws-eusc",
+    "aws-iso",
+    "aws-iso-b",
+    "aws-iso-e",
+    "aws-iso-f",
+)
+ARN_PARTITION_REGEX = rf"({'|'.join(ARN_PARTITIONS)})"
 
 # Lenient ARN format used by `resource_validation` — wildcards allowed in the
 # region and account fields, unlike CompiledPatterns' structural parser.
@@ -37,6 +47,12 @@ DEFAULT_ARN_VALIDATION_PATTERN = (
 # Maximum allowed ARN length to prevent ReDoS attacks
 # AWS maximum ARN length is approximately 2048 characters
 MAX_ARN_LENGTH = 2048
+
+#: A bare AWS account id.
+ACCOUNT_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"^\d{12}$")
+
+#: An account root ARN; group 2 is the account id.
+ROOT_ARN_PATTERN: Final[re.Pattern[str]] = re.compile(rf"^arn:{ARN_PARTITION_REGEX}:iam::(\d{{12}}):root$")
 
 # ============================================================================
 # IAM Policy Grammar

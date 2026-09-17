@@ -698,7 +698,9 @@ class TestDenyStatementsAreSkipped:
         """NotPrincipal inverts the set, so a wildcard exception is real exposure.
 
         `Deny` + `NotPrincipal: "*"` denies nobody -- everyone is in "*", so nobody is
-        "not *". The guard must not silence that.
+        "not *". The guard must not silence that. Two independent rules see it: the
+        configured denylist (`blocked_principal`) and the logic of the carve-out itself
+        (`ineffective_deny_carve_out`, which fires with no config at all).
         """
         config = CheckConfig(
             check_id="principal_validation",
@@ -712,8 +714,10 @@ class TestDenyStatementsAreSkipped:
             NotPrincipal=not_principal,
         )
         issues = await check.execute(statement, 0, fetcher, config)
-        assert len(issues) == 1
-        assert issues[0].issue_type == "blocked_principal"
+        assert sorted(i.issue_type for i in issues) == [
+            "blocked_principal",
+            "ineffective_deny_carve_out",
+        ]
 
     @pytest.mark.asyncio
     async def test_deny_with_scoped_notprincipal_is_clean(self, check, fetcher):

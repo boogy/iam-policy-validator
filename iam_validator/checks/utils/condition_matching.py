@@ -6,6 +6,7 @@ from iam_validator.core.condition_validators import (
     NEGATED_OPERATORS,
     base_operator,
     is_negated_operator,
+    strip_set_prefix,
 )
 from iam_validator.core.models import Statement
 
@@ -15,12 +16,30 @@ __all__ = [
     "has_condition_key",
     "is_deny",
     "is_negated_operator",
+    "strip_set_prefix",
 ]
 
 
 def is_deny(statement: Statement) -> bool:
     """True only for an unambiguous Deny, so a malformed Effect is still checked."""
     return isinstance(statement.effect, str) and statement.effect.strip().lower() == "deny"
+
+
+def _operator_matches(policy_operator: str, required_operator: str) -> bool:
+    """True when ``policy_operator`` satisfies a requirement naming ``required_operator``.
+
+    A requirement without a set prefix accepts any, but one that names a prefix requires
+    exactly it: a multivalued key needs those set semantics. ``IfExists`` never collapses
+    into its base operator — it stops being a guard once the key is absent.
+    """
+    policy_op = policy_operator.strip().lower()
+    required = required_operator.strip().lower()
+
+    if policy_op == required:
+        return True
+    if strip_set_prefix(required) != required:
+        return False
+    return strip_set_prefix(policy_op) == required
 
 
 def _value_matches(actual_value: Any, expected_value: Any) -> bool:
@@ -59,8 +78,7 @@ def has_condition_key(
         accept_negated = is_deny(statement)
 
     if operator:
-        wanted = operator.strip().lower()
-        operators_to_check = [op for op in statement.condition if op.strip().lower() == wanted]
+        operators_to_check = [op for op in statement.condition if _operator_matches(op, operator)]
     else:
         operators_to_check = [
             op

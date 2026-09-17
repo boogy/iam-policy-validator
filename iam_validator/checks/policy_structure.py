@@ -438,7 +438,21 @@ def validate_statement_structure(
     has_resource = "Resource" in statement_dict
     has_not_resource = "NotResource" in statement_dict
 
-    if has_resource and has_not_resource:
+    if policy_type == "TRUST_POLICY" and (has_resource or has_not_resource):
+        present = " and ".join(f"`{field}`" for field in ("Resource", "NotResource") if field in statement_dict)
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                statement_sid=sid,
+                statement_index=statement_idx,
+                issue_type="unexpected_resource",
+                message=f"Role trust policy `Statement` contains {present}",
+                suggestion="Remove it — the role being assumed is the resource, and AWS rejects a trust "
+                "policy that names one with `MalformedPolicyDocument`.",
+                field_name="resource",
+            )
+        )
+    elif has_resource and has_not_resource:
         issues.append(
             ValidationIssue(
                 severity="error",

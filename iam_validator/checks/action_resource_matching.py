@@ -123,23 +123,22 @@ class ActionResourceMatchingCheck(PolicyCheck):
             # Get required resource types for this action
             required_resources = action_detail.resources or []
 
-            # If action requires no specific resources, it needs Resource: "*"
+            # An action with no resource types needs Resource: "*", which the
+            # `"*" in resources` early return above has already excluded.
             if not required_resources:
-                # Check if all resources are "*"
-                if not all(r == "*" for r in resources):
-                    issues.append(
-                        self._create_mismatch_issue(
-                            action=action,
-                            required_format="*",
-                            required_type="*",
-                            provided_resources=resources,
-                            statement_idx=statement_idx,
-                            statement_sid=statement_sid,
-                            line_number=line_number,
-                            config=config,
-                            reason=f'Action `{action}` can only use `Resource: "*"`',
-                        )
+                issues.append(
+                    self._create_mismatch_issue(
+                        action=action,
+                        required_format="*",
+                        required_type="*",
+                        provided_resources=resources,
+                        statement_idx=statement_idx,
+                        statement_sid=statement_sid,
+                        line_number=line_number,
+                        config=config,
+                        reason=f'Action `{action}` can only use `Resource: "*"`',
                     )
+                )
                 continue
 
             # Check if ANY policy resource matches ANY required resource type
