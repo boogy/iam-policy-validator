@@ -436,7 +436,7 @@ SECONDS_PER_HOUR = 3600
 
 # AWS services that support Resource Control Policies (RCP).
 # Sourced from the official AWS Organizations documentation (verified
-# 2026-07-20). Expanded well beyond the 2024 launch set (s3, sts, kms, sqs,
+# 2026-09-17). Expanded well beyond the 2024 launch set (s3, sts, kms, sqs,
 # secretsmanager); the current IAM service prefixes are:
 #
 #   - Amazon S3 (s3)
@@ -448,24 +448,57 @@ SECONDS_PER_HOUR = 3600
 #   - Amazon Cognito: User Pools (cognito-idp) and Identity Pools (cognito-identity)
 #   - Amazon DynamoDB (dynamodb)
 #   - DynamoDB Accelerator (dax)
-#   - Amazon Elastic Container Registry (ecr)
-#   - Amazon OpenSearch Serverless (aoss) — note: this is the serverless
-#     product, not Amazon OpenSearch Service (`es`), which is NOT covered
+#   - Amazon Elastic Container Registry (ecr) and ECR Public (ecr-public)
+#   - Amazon OpenSearch Serverless (aoss) and Amazon OpenSearch Service
+#     (opensearch) — two distinct products, both covered
 #   - Amazon CloudWatch Logs (logs)
 #   - AWS AppConfig (appconfig)
 #   - Amazon AppStream (appstream)
-#   - Amazon EC2 Auto Scaling (autoscaling)
+#   - Amazon EC2 Auto Scaling (autoscaling) and AWS Auto Scaling Plans (autoscaling-plans)
+#   - AWS Budgets (budgets)
+#   - Amazon Cloud Directory (clouddirectory)
+#   - Amazon CloudFront (cloudfront)
+#   - Amazon CloudSearch (cloudsearch)
+#   - AWS CloudTrail Data (cloudtrail-data)
+#   - AWS CodeArtifact (codeartifact)
 #   - AWS CodeBuild (codebuild)
 #   - AWS CodeCommit (codecommit)
+#   - AWS CodePipeline (codepipeline)
 #   - Amazon Comprehend (comprehend)
 #   - Amazon Comprehend Medical (comprehendmedical)
+#   - AWS Compute Optimizer (compute-optimizer)
+#   - Cost Optimization Hub (cost-optimization-hub)
+#   - Amazon Aurora DSQL (dsql)
+#   - Amazon EventBridge (events)
+#   - Amazon Data Firehose (firehose)
+#   - AWS Fault Injection Service (fis)
+#   - AWS Firewall Manager (fms)
+#   - Amazon GameLift (gamelift)
 #   - AWS Health (health)
+#   - Amazon Inspector Scan (inspector-scan)
+#   - Amazon Kendra (kendra)
 #   - Amazon Kinesis Video Streams (kinesisvideo)
+#   - Amazon MemoryDB (memorydb)
+#   - Amazon CloudWatch Network Monitor (networkmonitor)
+#   - AWS User Notifications (notifications)
+#   - AWS Private CA Connector for AD (pca-connector-ad)
+#   - Amazon Personalize (personalize)
+#   - Amazon Polly (polly)
+#   - AWS Pricing (pricing)
+#   - AWS Resource Groups (resource-groups)
+#   - AWS IAM Roles Anywhere (rolesanywhere)
 #   - AWS Sign-In (signin)
+#   - AWS Cloud Map (servicediscovery)
+#   - Amazon Simple Workflow Service (swf)
 #   - AWS Support (support)
 #   - Amazon Textract (textract)
+#   - Amazon Timestream for InfluxDB (timestream-influxdb)
+#   - AWS Transfer Family (transfer)
 #   - Amazon Transcribe (transcribe)
 #   - Amazon Translate (translate)
+#   - AWS WAF V2 (wafv2)
+#   - Amazon WorkSpaces (workspaces)
+#   - AWS X-Ray (xray)
 #
 # New AWS launches can be accepted without a validator release via the
 # `additional_rcp_services` config option of the `policy_type_validation` check.
@@ -476,28 +509,64 @@ RCP_SUPPORTED_SERVICES = frozenset(
         "appconfig",
         "appstream",
         "autoscaling",
+        "autoscaling-plans",
+        "budgets",
+        "clouddirectory",
+        "cloudfront",
+        "cloudsearch",
+        "cloudtrail-data",
+        "codeartifact",
         "codebuild",
         "codecommit",
+        "codepipeline",
         "cognito-identity",
         "cognito-idp",
         "comprehend",
         "comprehendmedical",
+        "compute-optimizer",
+        "cost-optimization-hub",
         "dax",
+        "dsql",
         "dynamodb",
         "ecr",
+        "ecr-public",
+        "events",
+        "firehose",
+        "fis",
+        "fms",
+        "gamelift",
         "health",
+        "inspector-scan",
+        "kendra",
         "kinesisvideo",
         "kms",
         "logs",
+        "memorydb",
+        "networkmonitor",
+        "notifications",
+        "opensearch",
+        "pca-connector-ad",
+        "personalize",
+        "polly",
+        "pricing",
+        "resource-groups",
+        "rolesanywhere",
         "s3",
         "secretsmanager",
+        "servicediscovery",
         "signin",
         "sqs",
         "sts",
         "support",
+        "swf",
         "textract",
+        "timestream-influxdb",
         "transcribe",
+        "transfer",
         "translate",
+        "wafv2",
+        "workspaces",
+        "xray",
     }
 )
 

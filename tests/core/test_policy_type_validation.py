@@ -497,7 +497,7 @@ class TestSCPAllowStatementValidity:
 
 
 class TestRCPSupportedServices:
-    """RCP supported-service list (expanded to 26 prefixes, verified 2026-07-20)."""
+    """RCP supported-service list (expanded to 62 prefixes, verified 2026-09-17)."""
 
     @staticmethod
     def _rcp_policy(action: str) -> IAMPolicy:
@@ -536,6 +536,21 @@ class TestRCPSupportedServices:
     async def test_unsupported_services_still_error(self, action):
         issues = await execute_policy(self._rcp_policy(action), "test.json", policy_type="RESOURCE_CONTROL_POLICY")
         assert [i for i in issues if i.issue_type == "unsupported_rcp_service"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("action", ["cloudfront:GetDistribution", "wafv2:GetWebACL"])
+    async def test_2026_09_17_expansion_services_accepted(self, action):
+        """Services added to RCP_SUPPORTED_SERVICES in the 26->62 expansion."""
+        issues = await execute_policy(self._rcp_policy(action), "test.json", policy_type="RESOURCE_CONTROL_POLICY")
+        assert not [i for i in issues if i.issue_type == "unsupported_rcp_service"]
+
+    @pytest.mark.asyncio
+    async def test_opensearch_service_accepted_distinct_from_aoss(self):
+        """opensearch (OpenSearch Service) is supported alongside aoss (OpenSearch Serverless)."""
+        issues = await execute_policy(
+            self._rcp_policy("opensearch:ESHttpGet"), "test.json", policy_type="RESOURCE_CONTROL_POLICY"
+        )
+        assert not [i for i in issues if i.issue_type == "unsupported_rcp_service"]
 
     @pytest.mark.asyncio
     async def test_additional_rcp_services_config_extends_list(self):
