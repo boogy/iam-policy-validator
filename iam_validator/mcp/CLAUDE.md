@@ -28,6 +28,8 @@ End-user install + Claude Desktop config: see `docs/integrations/mcp-server.md`.
 mcp/
 ├── __init__.py            # CLI argparse, entry-point, profile dispatch
 ├── server.py              # FastMCP server: 24 @mcp.tool, 7 @mcp.resource
+├── settings.py            # ServerSettings — resolves mode/transport/auth/limits from
+│                          # IAM_VALIDATOR_MCP_* env vars + defaults; ServerSettings.from_env()
 ├── models.py              # Pydantic request/response models
 ├── session_config.py      # ValidatorConfig + CLI-paths storage (custom_checks_dir, aws_services_dir)
 └── tools/
