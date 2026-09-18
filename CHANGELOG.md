@@ -8,6 +8,8 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Added
 
+- `iam_validator.core.policy_checks.build_registry()`, extracted from `validate_policies()`'s registry-construction body (built-in check registration, config application, custom-check loading and directory auto-discovery) so callers can build a registry once and reuse it. Exported from the SDK as `iam_validator.sdk.build_registry`.
+- `validate_policies(..., registry=)`: when supplied, skips registry construction, config application and both custom-check loading paths entirely and validates with the given registry. `registry=None` (default) reproduces prior behaviour unchanged — the CLI and GitHub Action are unaffected.
 - `iam_validator.mcp.settings.ServerSettings`: a Pydantic model resolving MCP server configuration (mode, transport, auth, resource limits, etc.) from `IAM_VALIDATOR_MCP_*` environment variables and defaults, via `ServerSettings.from_env()`. Not yet wired into the server; a future change will make it the single source server config is read from.
 
 ### Removed

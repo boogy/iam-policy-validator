@@ -119,6 +119,14 @@ load, so it must layer the check's top-level config section over the registry's 
 replace it — a `custom_checks:` module entry's `severity`, `description` and `config:` exist
 only in that registered config.
 
+`policy_checks.build_registry(config, *, custom_checks_dir=None, allow_config_custom_checks=False)`
+is the registry-construction path above (built-ins, both `apply_config_to_registry` calls,
+both custom-check loading methods), extracted so it can be built once and reused. `validate_policies`
+calls it when no `registry=` is passed; passing `registry=` skips construction, config
+application and both custom-check loading paths entirely — the registry is used as given. A
+long-lived caller (e.g. an MCP server) builds one with `build_registry` and reuses it across
+requests instead of re-importing custom-check modules on every call. Re-exported from the SDK.
+
 ---
 
 ## AWS Service Fetcher

@@ -72,7 +72,7 @@ from iam_validator.core.models import (
     Statement,
     ValidationIssue,
 )
-from iam_validator.core.policy_checks import validate_policies
+from iam_validator.core.policy_checks import build_registry, validate_policies
 from iam_validator.core.policy_loader import PolicyLoader
 from iam_validator.core.report import ReportGenerator
 from iam_validator.sdk.arn_matching import (
@@ -207,6 +207,7 @@ __all__ = [
     "expand_actions",
     # === Core validation (advanced) ===
     "validate_policies",
+    "build_registry",
     "PolicyLoader",
     # === Reporting ===
     "ReportGenerator",

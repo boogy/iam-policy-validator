@@ -166,48 +166,36 @@ def _resolve_max_concurrency(max_concurrency: int | None, config: ValidatorConfi
     return max(1, resolved)
 
 
-async def validate_policies(
-    policies: list[tuple[str, IAMPolicy]] | list[tuple[str, IAMPolicy, dict]],
-    config_path: str | None = None,
-    custom_checks_dir: str | None = None,
-    policy_type: PolicyType | None = None,
-    aws_services_dir: str | None = None,
-    allow_config_custom_checks: bool = False,
+def build_registry(
+    config: ValidatorConfig,
     *,
-    max_concurrency: int | None = None,
-    config: ValidatorConfig | None = None,
-) -> list[PolicyValidationResult]:
-    """Validate multiple policies concurrently.
+    custom_checks_dir: str | Path | None = None,
+    allow_config_custom_checks: bool = False,
+) -> CheckRegistry:
+    """Build and configure a CheckRegistry from a loaded config.
+
+    This is the single construction path `validate_policies` uses when it is not
+    given a `registry=` directly: built-in check registration, config application
+    (twice — once for built-ins, again after custom checks so config can target
+    them too), explicit-module custom checks, and directory auto-discovery.
 
     Args:
-        policies: List of (file_path, policy) or (file_path, policy, raw_dict) tuples
-        config_path: Optional path to configuration file
-        custom_checks_dir: Optional path to directory containing custom checks for auto-discovery
-        policy_type: Explicit policy type to apply to *every* policy in the run.
-            When ``None`` (default), each policy's type is resolved per-file via
-            the config ``policy_types:`` glob list, then content auto-detection,
-            then a final fallback to ``IDENTITY_POLICY``.
-        aws_services_dir: Optional path to directory containing pre-downloaded AWS service definitions
-                         (enables offline mode, overrides config setting)
-        allow_config_custom_checks: Allow auto-discovery from a ``custom_checks_dir``
-            that comes from the YAML config file. Auto-discovery executes
-            arbitrary Python from that directory, and the config file often
-            ships in the same repository as the (potentially untrusted)
-            policies being validated — so mere config presence is not treated
-            as consent. Passing ``custom_checks_dir`` explicitly (CLI flag /
-            SDK argument) is always honoured.
-        max_concurrency: Maximum number of policies validated concurrently.
-            When ``None`` (default), falls back to the config ``max_concurrency``
-            setting (default 10). Values below 1 are clamped to 1 with a warning.
-        config: Already-loaded configuration; ``config_path`` is ignored when given.
+        config: Loaded validator configuration.
+        custom_checks_dir: Optional path to a directory of custom checks to
+            auto-discover. An explicitly passed directory is caller consent
+            (see `allow_config_custom_checks`); `None` falls back to
+            `config.custom_checks_dir`.
+        allow_config_custom_checks: Allow auto-discovery from a
+            `custom_checks_dir` that comes from the YAML config file rather
+            than being passed explicitly. Auto-discovery executes arbitrary
+            Python from that directory, and the config file often ships in
+            the same repository as the (potentially untrusted) policies
+            being validated — so mere config presence is not treated as
+            consent.
 
     Returns:
-        List of validation results
+        A configured CheckRegistry, ready to validate policies.
     """
-    if config is None:
-        config = ConfigLoader.load_config(explicit_path=config_path, allow_missing=True)
-
-    # Create registry with or without built-in checks based on configuration
     enable_parallel = config.get_setting("parallel_execution", True)
     enable_builtin_checks = config.get_setting("enable_builtin_checks", True)
 
@@ -257,6 +245,63 @@ async def validate_policies(
     # Apply configuration again to include custom checks
     # This allows configuring auto-discovered checks via the config file
     ConfigLoader.apply_config_to_registry(config, registry)
+
+    return registry
+
+
+async def validate_policies(
+    policies: list[tuple[str, IAMPolicy]] | list[tuple[str, IAMPolicy, dict]],
+    config_path: str | None = None,
+    custom_checks_dir: str | None = None,
+    policy_type: PolicyType | None = None,
+    aws_services_dir: str | None = None,
+    allow_config_custom_checks: bool = False,
+    *,
+    max_concurrency: int | None = None,
+    config: ValidatorConfig | None = None,
+    registry: CheckRegistry | None = None,
+) -> list[PolicyValidationResult]:
+    """Validate multiple policies concurrently.
+
+    Args:
+        policies: List of (file_path, policy) or (file_path, policy, raw_dict) tuples
+        config_path: Optional path to configuration file
+        custom_checks_dir: Optional path to directory containing custom checks for auto-discovery
+        policy_type: Explicit policy type to apply to *every* policy in the run.
+            When ``None`` (default), each policy's type is resolved per-file via
+            the config ``policy_types:`` glob list, then content auto-detection,
+            then a final fallback to ``IDENTITY_POLICY``.
+        aws_services_dir: Optional path to directory containing pre-downloaded AWS service definitions
+                         (enables offline mode, overrides config setting)
+        allow_config_custom_checks: Allow auto-discovery from a ``custom_checks_dir``
+            that comes from the YAML config file. Auto-discovery executes
+            arbitrary Python from that directory, and the config file often
+            ships in the same repository as the (potentially untrusted)
+            policies being validated — so mere config presence is not treated
+            as consent. Passing ``custom_checks_dir`` explicitly (CLI flag /
+            SDK argument) is always honoured.
+        max_concurrency: Maximum number of policies validated concurrently.
+            When ``None`` (default), falls back to the config ``max_concurrency``
+            setting (default 10). Values below 1 are clamped to 1 with a warning.
+        config: Already-loaded configuration; ``config_path`` is ignored when given.
+        registry: Already-built registry. When given, registry construction, config
+            application and both custom-check loading paths are skipped entirely —
+            the registry is used exactly as provided. A long-lived caller (e.g. an
+            MCP server) builds this once with `build_registry` and reuses it across
+            requests instead of re-importing custom-check modules every call.
+
+    Returns:
+        List of validation results
+    """
+    if config is None:
+        config = ConfigLoader.load_config(explicit_path=config_path, allow_missing=True)
+
+    if registry is None:
+        registry = build_registry(
+            config,
+            custom_checks_dir=custom_checks_dir,
+            allow_config_custom_checks=allow_config_custom_checks,
+        )
 
     # Get fail_on_severity setting from config
     fail_on_severities = config.get_setting("fail_on_severity", list(constants.HIGH_SEVERITY_LEVELS))

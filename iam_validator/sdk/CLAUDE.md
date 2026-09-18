@@ -46,7 +46,12 @@ in the run; when omitted, per-file resolution applies.
 | `exceptions.py`   | `IAMValidatorError` and subclasses                                                                                                                |
 
 Re-exported from `core/`: `PolicyCheck`, `CheckRegistry`, `AWSServiceFetcher`,
-`PolicyLoader`, `ReportGenerator`, `validate_policies`, models, formatters.
+`PolicyLoader`, `ReportGenerator`, `validate_policies`, `build_registry`, models, formatters.
+
+`build_registry(config, *, custom_checks_dir=None, allow_config_custom_checks=False)` builds
+a configured `CheckRegistry` without validating anything. Pass the result to
+`validate_policies(..., registry=...)` to reuse one registry across many calls instead of
+rebuilding it (and re-loading custom checks) every time.
 
 ---
 
