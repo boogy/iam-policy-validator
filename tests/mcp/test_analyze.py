@@ -9,7 +9,21 @@ from unittest.mock import MagicMock
 import pytest
 from fastmcp.exceptions import ToolError
 
+from iam_validator.mcp.context import ServerContext
 from iam_validator.mcp.tools.analyze import analyze_policy
+
+
+def _fake_server_context() -> ServerContext:
+    """A minimal ServerContext for tests that only exercise aws_sessions."""
+    return ServerContext(
+        config=MagicMock(),
+        registry=MagicMock(),
+        formatters=MagicMock(),
+        fetcher=MagicMock(),
+        aws_sessions={},
+        settings=MagicMock(),
+        mutable=None,
+    )
 
 
 @pytest.fixture
@@ -69,8 +83,7 @@ def test_get_aws_session_caches_per_region_profile(monkeypatch):
 
     monkeypatch.setattr("boto3.Session", FakeSession)
 
-    cache: dict = {}
-    ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context={"aws_sessions": cache}))
+    ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context=_fake_server_context()))
 
     a1 = get_aws_session(ctx, "us-east-1", None)
     a2 = get_aws_session(ctx, "us-east-1", None)
@@ -106,7 +119,6 @@ def test_get_aws_session_includes_profile_when_set(monkeypatch):
 
     monkeypatch.setattr("boto3.Session", FakeSession)
 
-    cache: dict = {}
-    ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context={"aws_sessions": cache}))
+    ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context=_fake_server_context()))
     s = get_aws_session(ctx, "us-east-1", "my-profile")
     assert s.kw == {"region_name": "us-east-1", "profile_name": "my-profile"}

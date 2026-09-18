@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import os
 
 from iam_validator.commands.base import Command
 
@@ -137,22 +138,22 @@ Features:
         else:
             logging.basicConfig(level=logging.INFO)
 
-        # Load config if provided
+        # Load config if provided: validated and logged here for a fast CLI error,
+        # then bridged via env var so the real server (ServerSettings.from_env(),
+        # inside server_lifespan()) loads it once at startup.
         if args.config:
             try:
                 from pathlib import Path
 
-                from iam_validator.mcp.session_config import SessionConfigManager
+                from iam_validator.core.config.config_loader import ConfigLoader
 
                 config_path = Path(args.config)
                 if not config_path.exists():
                     logging.error(f"Config file not found: {args.config}")
                     return 1
 
-                config, warnings = SessionConfigManager.load_from_file(str(config_path))
-
-                for warning in warnings:
-                    logging.warning(f"Config warning: {warning}")
+                config = ConfigLoader.load_config(explicit_path=str(config_path), allow_missing=True)
+                os.environ["IAM_VALIDATOR_MCP_CONFIG"] = str(config_path)
 
                 logging.info(f"Loaded config from: {args.config}")
 

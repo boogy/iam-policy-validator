@@ -12,46 +12,22 @@ Optimizations:
 - MCP Resources for static data (checks)
 """
 
-import functools
 import logging
-from contextlib import asynccontextmanager
 from typing import Any, cast
 
 from fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
 
 from iam_validator.core.aws_service import AWSServiceFetcher
-from iam_validator.core.check_registry import CheckRegistry, create_default_registry
+from iam_validator.core.check_registry import create_default_registry
 from iam_validator.core.constants import IAM_POLICY_VERSION_CURRENT
+from iam_validator.mcp.context import get_server_context, server_lifespan
 
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# Lifespan Management - Shared Resources
+# Shared resource lookups (delegate to the ServerContext built by the lifespan)
 # =============================================================================
-
-
-@asynccontextmanager
-async def server_lifespan(_server: FastMCP):
-    """Manage server lifecycle with shared resources.
-
-    This context manager initializes expensive resources once at startup
-    and shares them across all tool invocations via the Context object.
-    """
-    # Initialize shared AWSServiceFetcher
-    fetcher = AWSServiceFetcher(
-        prefetch_common=True,  # Pre-fetch common services at startup
-        memory_cache_size=512,  # Larger cache for server use
-    )
-    await fetcher.__aenter__()
-
-    # Cache boto3 sessions per (region, profile) — Session() costs ~50ms each.
-    aws_sessions: dict[tuple[str, str | None], Any] = {}
-
-    try:
-        yield {"fetcher": fetcher, "aws_sessions": aws_sessions}
-    finally:
-        await fetcher.__aexit__(None, None, None)
 
 
 def get_aws_session(ctx: Any, region: str, profile: str | None) -> Any:
@@ -63,8 +39,8 @@ def get_aws_session(ctx: Any, region: str, profile: str | None) -> Any:
     """
     import boto3
 
-    lifespan = getattr(getattr(ctx, "request_context", None), "lifespan_context", None)
-    cache = lifespan.get("aws_sessions") if isinstance(lifespan, dict) else None
+    context = get_server_context(ctx)
+    cache = context.aws_sessions if context is not None else None
 
     if cache is None:
         kwargs: dict[str, Any] = {"region_name": region}
@@ -95,10 +71,9 @@ def get_shared_fetcher(ctx: Any) -> AWSServiceFetcher | None:
         Logged at DEBUG level — happens routinely in tests and direct callers
         outside of an MCP request context.
     """
-    if ctx and hasattr(ctx, "request_context") and ctx.request_context:
-        lifespan_ctx = ctx.request_context.lifespan_context
-        if lifespan_ctx and "fetcher" in lifespan_ctx:
-            return lifespan_ctx["fetcher"]
+    context = get_server_context(ctx)
+    if context is not None:
+        return context.fetcher
 
     logger.debug("Shared fetcher unavailable from context; tool will create a new one.")
     return None
@@ -109,21 +84,10 @@ def get_shared_fetcher(ctx: Any) -> AWSServiceFetcher | None:
 # =============================================================================
 
 
-@functools.lru_cache(maxsize=1)
-def _get_registry() -> CheckRegistry:
-    """Registry backing the catalog resources; built on first use, not at import.
-
-    create_default_registry() imports and instantiates third-party entry-point
-    plugins, which must not run as a side effect of importing this module.
-    """
-    return create_default_registry()
-
-
-def _effective_check_settings(check_id: str, default_severity: str) -> tuple[bool, str]:
+def _effective_check_settings(check_id: str, default_severity: str, ctx: Any) -> tuple[bool, str]:
     """``(enabled, severity)`` after the session config that validate_policy applies."""
-    from iam_validator.mcp.session_config import SessionConfigManager
-
-    config = SessionConfigManager.get_config()
+    context = get_server_context(ctx)
+    config = context.mutable.get_config() if context is not None and context.mutable is not None else None
     if config is None:
         return True, default_severity
     return (
@@ -132,14 +96,17 @@ def _effective_check_settings(check_id: str, default_severity: str) -> tuple[boo
     )
 
 
-def _get_check_catalog() -> tuple[dict[str, Any], ...]:
+def _get_check_catalog(ctx: Any = None) -> tuple[dict[str, Any], ...]:
     """Every registered check, with session-config enablement and severity resolved.
 
     Not cached: the session config can change between calls.
     """
+    context = get_server_context(ctx)
+    registry = context.registry if context is not None else create_default_registry()
+
     catalog: list[dict[str, Any]] = []
-    for check_instance in _get_registry().get_all_checks():
-        enabled, severity = _effective_check_settings(check_instance.check_id, check_instance.default_severity)
+    for check_instance in registry.get_all_checks():
+        enabled, severity = _effective_check_settings(check_instance.check_id, check_instance.default_severity, ctx)
         catalog.append(
             {
                 "check_id": check_instance.check_id,
@@ -183,15 +150,8 @@ Default policy Version is "__VERSION__".
 BASE_INSTRUCTIONS = _BASE_INSTRUCTIONS_TEMPLATE.replace("__VERSION__", IAM_POLICY_VERSION_CURRENT)
 
 
-def get_instructions() -> str:
-    """Build full instructions including any custom instructions.
-
-    Returns:
-        Combined base instructions + custom instructions (if set)
-    """
-    from iam_validator.mcp.session_config import CustomInstructionsManager
-
-    custom = CustomInstructionsManager.get_instructions()
+def get_instructions(custom: str | None = None) -> str:
+    """Build full instructions, appending ``custom`` (session/settings) if given."""
     if custom:
         return f"{BASE_INSTRUCTIONS}\n\n## ORGANIZATION-SPECIFIC INSTRUCTIONS\n\n{custom}"
     return BASE_INSTRUCTIONS
@@ -201,7 +161,7 @@ def get_instructions() -> str:
 mcp = FastMCP(
     name="IAM Policy Validator",
     lifespan=server_lifespan,
-    instructions=BASE_INSTRUCTIONS,  # Will be updated dynamically in run_server()
+    instructions=BASE_INSTRUCTIONS,  # Replaced with resolved instructions once the lifespan starts.
 )
 
 
@@ -278,6 +238,7 @@ def set_active_profile(profile: str) -> None:
 )
 async def validate_policy(
     policy: dict[str, Any],
+    ctx: Context,
     policy_type: str | None = None,
     verbose: bool = True,
     use_org_config: bool = True,
@@ -298,7 +259,7 @@ async def validate_policy(
     from iam_validator.mcp.tools.validation import issue_to_dict
     from iam_validator.mcp.tools.validation import validate_policy as _validate
 
-    result = await _validate(policy=policy, policy_type=policy_type, use_org_config=use_org_config)
+    result = await _validate(policy=policy, policy_type=policy_type, use_org_config=use_org_config, ctx=ctx)
     return {
         "is_valid": result.is_valid,
         "issues": [issue_to_dict(i, verbose=verbose) for i in result.issues],
@@ -310,7 +271,7 @@ async def validate_policy(
     tags={"validate"},
     annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
 )
-async def quick_validate(policy: dict[str, Any]) -> dict[str, Any]:
+async def quick_validate(policy: dict[str, Any], ctx: Context) -> dict[str, Any]:
     """Quick pass/fail validation returning only essential info.
 
     Args:
@@ -321,7 +282,7 @@ async def quick_validate(policy: dict[str, Any]) -> dict[str, Any]:
     """
     from iam_validator.mcp.tools.validation import quick_validate as _quick_validate
 
-    return await _quick_validate(policy=policy)
+    return await _quick_validate(policy=policy, ctx=ctx)
 
 
 @mcp.tool(
@@ -606,7 +567,7 @@ async def get_condition_requirements_for_action(action: str) -> dict[str, Any] |
     tags={"fix"},
     annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
 )
-async def get_issue_guidance(check_id: str) -> dict[str, Any]:
+async def get_issue_guidance(check_id: str, ctx: Context) -> dict[str, Any]:
     """Get fix guidance for a validation issue (registry-driven).
 
     Args:
@@ -616,7 +577,9 @@ async def get_issue_guidance(check_id: str) -> dict[str, Any]:
         {check_id, description, default_severity, fix_steps,
          example_before, example_after, related}
     """
-    check = _get_registry().get_check(check_id)
+    context = get_server_context(ctx)
+    registry = context.registry if context is not None else create_default_registry()
+    check = registry.get_check(check_id)
 
     if check is None:
         return {
@@ -651,7 +614,7 @@ async def get_issue_guidance(check_id: str) -> dict[str, Any]:
 # =============================================================================
 
 
-async def get_check_details(check_id: str) -> dict[str, Any]:
+async def get_check_details(check_id: str, ctx: Any = None) -> dict[str, Any]:
     """Get full documentation for a validation check (registry-driven).
 
     Exposed as the parameterised MCP resource ``iam://checks/{check_id}``.
@@ -663,7 +626,9 @@ async def get_check_details(check_id: str) -> dict[str, Any]:
         {check_id, description, default_severity, category, example_violation,
          example_fix, configuration, related}
     """
-    check = _get_registry().get_check(check_id)
+    context = get_server_context(ctx)
+    registry = context.registry if context is not None else create_default_registry()
+    check = registry.get_check(check_id)
 
     if check is None:
         return {
@@ -677,7 +642,7 @@ async def get_check_details(check_id: str) -> dict[str, Any]:
             "related": [],
         }
 
-    enabled, severity = _effective_check_settings(check_id, check.default_severity)
+    enabled, severity = _effective_check_settings(check_id, check.default_severity, ctx)
 
     return {
         "check_id": check_id,
@@ -731,7 +696,7 @@ async def validate_policies_batch(
 
     async def validate_one(idx: int, policy: dict[str, Any]) -> dict[str, Any]:
         async with sem:
-            result = await _validate(policy=policy, policy_type=policy_type)
+            result = await _validate(policy=policy, policy_type=policy_type, ctx=ctx)
         return {
             "policy_index": idx,
             "is_valid": result.is_valid,
@@ -909,6 +874,7 @@ async def check_actions_batch(
 )
 async def set_organization_config(
     config: dict[str, Any],
+    ctx: Context,
 ) -> dict[str, Any]:
     """Set validator configuration for this MCP session.
 
@@ -921,14 +887,16 @@ async def set_organization_config(
     """
     from iam_validator.mcp.tools.org_config_tools import set_organization_config_impl
 
-    return await set_organization_config_impl(config)
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    return await set_organization_config_impl(config, session)
 
 
 @mcp.tool(
     tags={"orgconfig"},
     annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
 )
-async def get_organization_config() -> dict[str, Any]:
+async def get_organization_config(ctx: Context) -> dict[str, Any]:
     """Get the current session organization configuration.
 
     Returns:
@@ -936,7 +904,9 @@ async def get_organization_config() -> dict[str, Any]:
     """
     from iam_validator.mcp.tools.org_config_tools import get_organization_config_impl
 
-    return await get_organization_config_impl()
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    return await get_organization_config_impl(session)
 
 
 @mcp.tool(
@@ -948,7 +918,7 @@ async def get_organization_config() -> dict[str, Any]:
         openWorldHint=False,
     ),
 )
-async def clear_organization_config() -> dict[str, str]:
+async def clear_organization_config(ctx: Context) -> dict[str, str]:
     """Clear session organization config, reverting to defaults.
 
     Returns:
@@ -956,7 +926,9 @@ async def clear_organization_config() -> dict[str, str]:
     """
     from iam_validator.mcp.tools.org_config_tools import clear_organization_config_impl
 
-    return await clear_organization_config_impl()
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    return await clear_organization_config_impl(session)
 
 
 @mcp.tool(
@@ -970,6 +942,7 @@ async def clear_organization_config() -> dict[str, str]:
 )
 async def load_organization_config_from_yaml(
     yaml_content: str,
+    ctx: Context,
 ) -> dict[str, Any]:
     """Load validator configuration from YAML content and set as session config.
 
@@ -983,7 +956,9 @@ async def load_organization_config_from_yaml(
         load_organization_config_from_yaml_impl,
     )
 
-    return await load_organization_config_from_yaml_impl(yaml_content)
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    return await load_organization_config_from_yaml_impl(yaml_content, session)
 
 
 @mcp.tool(
@@ -992,6 +967,7 @@ async def load_organization_config_from_yaml(
 )
 async def check_org_compliance(
     policy: dict[str, Any],
+    ctx: Context,
     verbose: bool = False,
 ) -> dict[str, Any]:
     """Validate a policy using session org config (or defaults if none set).
@@ -1005,7 +981,9 @@ async def check_org_compliance(
     """
     from iam_validator.mcp.tools.org_config_tools import check_org_compliance_impl
 
-    result = await check_org_compliance_impl(policy)
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    result = await check_org_compliance_impl(policy, session, ctx=ctx)
 
     if not verbose:
         # Lean response: counts instead of full lists
@@ -1025,6 +1003,7 @@ async def check_org_compliance(
 async def validate_with_config(
     policy: dict[str, Any],
     config: dict[str, Any],
+    ctx: Context,
     policy_type: str | None = None,
 ) -> dict[str, Any]:
     """Validate a policy with inline configuration (one-off, doesn't modify session).
@@ -1039,7 +1018,7 @@ async def validate_with_config(
     """
     from iam_validator.mcp.tools.org_config_tools import validate_with_config_impl
 
-    return await validate_with_config_impl(policy, config, policy_type)
+    return await validate_with_config_impl(policy, config, policy_type, ctx=ctx)
 
 
 # =============================================================================
@@ -1058,6 +1037,7 @@ async def validate_with_config(
 )
 async def set_custom_instructions(
     instructions: str,
+    ctx: Context,
 ) -> dict[str, Any]:
     """Set custom validation guidelines for this session.
 
@@ -1069,14 +1049,23 @@ async def set_custom_instructions(
     Returns:
         {success, instructions_preview, previous_source}
     """
-    from iam_validator.mcp.session_config import CustomInstructionsManager
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
 
-    previous_source = CustomInstructionsManager.get_source()
+    if session is None:
+        return {
+            "success": False,
+            "instructions_preview": None,
+            "previous_source": "none",
+            "error": "Session-scoped configuration is not available in hosted mode",
+        }
 
-    CustomInstructionsManager.set_instructions(instructions, source="api")
+    previous_source = session.get_instructions_source()
+
+    session.set_instructions(instructions, source="api")
 
     # Update the server instructions
-    mcp.instructions = get_instructions()
+    mcp.instructions = get_instructions(session.get_instructions())
 
     preview = instructions[:200] + "..." if len(instructions) > 200 else instructions
 
@@ -1091,20 +1080,20 @@ async def set_custom_instructions(
     tags={"orgconfig"},
     annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
 )
-async def get_custom_instructions() -> dict[str, Any]:
+async def get_custom_instructions(ctx: Context) -> dict[str, Any]:
     """Get current custom instructions.
 
     Returns:
         {has_instructions, instructions, source}
     """
-    from iam_validator.mcp.session_config import CustomInstructionsManager
-
-    instructions = CustomInstructionsManager.get_instructions()
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    instructions = session.get_instructions() if session is not None else None
 
     return {
         "has_instructions": instructions is not None,
         "instructions": instructions,
-        "source": CustomInstructionsManager.get_source(),
+        "source": session.get_instructions_source() if session is not None else "none",
     }
 
 
@@ -1117,15 +1106,15 @@ async def get_custom_instructions() -> dict[str, Any]:
         openWorldHint=False,
     ),
 )
-async def clear_custom_instructions() -> dict[str, str]:
+async def clear_custom_instructions(ctx: Context) -> dict[str, str]:
     """Clear custom instructions, reverting to defaults.
 
     Returns:
         {status: "cleared" or "no_instructions_set"}
     """
-    from iam_validator.mcp.session_config import CustomInstructionsManager
-
-    had_instructions = CustomInstructionsManager.clear_instructions()
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    had_instructions = session.clear_instructions() if session is not None else False
 
     # Reset to base instructions
     mcp.instructions = BASE_INSTRUCTIONS
@@ -1141,7 +1130,7 @@ async def clear_custom_instructions() -> dict[str, str]:
 
 
 @mcp.resource("iam://checks")
-async def checks_resource() -> str:
+async def checks_resource(ctx: Context | None = None) -> str:
     """List of all available validation checks.
 
     Each entry carries the check's id, description and class ``default_severity``
@@ -1150,7 +1139,7 @@ async def checks_resource() -> str:
     """
     import json
 
-    return json.dumps(_get_check_catalog(), indent=2)
+    return json.dumps(_get_check_catalog(ctx), indent=2)
 
 
 @mcp.resource("iam://sensitive-categories")
@@ -1194,14 +1183,14 @@ async def sensitive_actions_resource(category: str) -> str:
 
 
 @mcp.resource("iam://checks/{check_id}")
-async def check_details_resource(check_id: str) -> str:
+async def check_details_resource(check_id: str, ctx: Context | None = None) -> str:
     """Per-check documentation (parameterized resource).
 
     Replaces the former ``get_check_details`` tool.
     """
     import json
 
-    return json.dumps(await get_check_details(check_id), indent=2)
+    return json.dumps(await get_check_details(check_id, ctx), indent=2)
 
 
 @mcp.resource("iam://config-schema")
@@ -1681,22 +1670,10 @@ def run_server() -> None:
     This is the entry point for the iam-validator-mcp command.
     Uses stdio transport by default for Claude Desktop integration.
 
-    Custom instructions are loaded from:
-    1. Environment variable: IAM_VALIDATOR_MCP_INSTRUCTIONS
-    2. Config file: custom_instructions key in YAML config
-    3. CLI: --instructions or --instructions-file arguments
-
-    These are appended to the default instructions.
+    Custom instructions are resolved from ``ServerSettings`` (env vars, in turn
+    fed by CLI flags — see ``iam_validator.mcp.__init__``) once the lifespan
+    starts, and appended to the default instructions there.
     """
-    from iam_validator.mcp.session_config import CustomInstructionsManager
-
-    # Try to load custom instructions from environment if not already set
-    if not CustomInstructionsManager.has_instructions():
-        CustomInstructionsManager.load_from_env()
-
-    # Apply custom instructions if any
-    mcp.instructions = get_instructions()
-
     mcp.run()
 
 

@@ -31,22 +31,33 @@ mcp/
 ├── settings.py            # ServerSettings — resolves mode/transport/auth/limits from
 │                          # IAM_VALIDATOR_MCP_* env vars + defaults; ServerSettings.from_env()
 ├── models.py              # Pydantic request/response models
-├── session_config.py      # ValidatorConfig + CLI-paths storage (custom_checks_dir, aws_services_dir)
+├── context.py             # ServerContext (built once, held in the FastMCP lifespan) +
+│                          # SessionState (session-scoped org config / custom instructions)
 └── tools/
-    ├── validation.py      # validate_policy, quick_validate (forwards SessionConfigManager paths)
+    ├── validation.py      # validate_policy, quick_validate (forward ServerContext.settings paths
+    │                      # and ServerContext.mutable's session config)
     ├── query.py           # query_service_actions, query_action_details, expand_wildcard_action, …
     ├── analyze.py         # analyze_policy — wraps boto3 Access Analyzer in asyncio.to_thread
     └── org_config_tools.py # set/get/clear organization_config, check_org_compliance, validate_with_config
 ```
 
-`server.py` lifespan owns one shared `AWSServiceFetcher` AND a per-`(region,
-profile)` boto3 session cache so all tool calls reuse them.
+`server.py` lifespan (`context.py:server_lifespan()`) builds one `ServerContext` at
+startup — registry, `ReportGenerator`, shared `AWSServiceFetcher`, and a per-`(region,
+profile)` boto3 session cache — and every tool call reaches it via
+`ctx.request_context.lifespan_context` (see `context.py:get_server_context()`). No MCP
+tool reads a module-level global.
 
-`server.py:_get_registry()` builds the metadata registry lazily (not at import — it
-loads third-party entry-point plugins). `_get_check_catalog()` and `get_check_details`
-resolve each check's `enabled` / `severity` through `SessionConfigManager` on every
-call, so the catalog agrees with what `validate_policy` runs; nothing memoizes the
-resolved values.
+`ServerContext.registry` is built once at startup via `build_registry()` (not lazily —
+it loads third-party entry-point plugins once). `validate_policy` (and everything
+routed through it: `check_org_compliance`, `validate_with_config`, `validate_policy_json`,
+`quick_validate`) reuses `ServerContext.registry`/`.config` directly and does not rebuild
+per call, _except_ when an explicit `config_path` is given or a session-config override
+(`set_organization_config`) is active — that path still resolves its own registry each
+call, since baking session config into the shared registry is TASK-07's job. In that
+override case, `_get_check_catalog()`/`get_check_details` resolve each check's `enabled`/
+`severity` through `ServerContext.mutable` (a `SessionState`, `None` in hosted mode) on
+every call, so the catalog agrees with what `validate_policy` runs; nothing memoizes
+the resolved values.
 
 ---
 
@@ -132,7 +143,8 @@ async def my_thing(name: str) -> str:
 
 `get_issue_guidance` and `get_check_details` are registry-driven only — they
 return the check's `description` and `default_severity` from
-`_get_registry()`, with no curated per-check example data.
+`ServerContext.registry` (falling back to `create_default_registry()` outside an
+MCP request), with no curated per-check example data.
 
 ---
 

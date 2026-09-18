@@ -6,15 +6,22 @@ that manage session-wide validator configurations.
 The session config is used to control which checks are enabled, their
 severity levels, and other validator settings. All validation is done
 by the IAM validator's built-in checks - not by separate guardrail logic.
+
+Each ``*_impl`` function takes the caller's ``SessionState`` (``ServerContext.mutable``,
+``None`` in hosted mode) rather than reaching for a module-level singleton.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from iam_validator.mcp.session_config import SessionConfigManager
+if TYPE_CHECKING:
+    from iam_validator.mcp.context import SessionState
+
+_NO_SESSION_ERROR = "Session-scoped configuration is not available in hosted mode"
 
 
 async def set_organization_config_impl(
     config: dict[str, Any],
+    session: "SessionState | None",
 ) -> dict[str, Any]:
     """Set session-wide validator configuration.
 
@@ -25,6 +32,7 @@ async def set_organization_config_impl(
         config: Validator configuration dictionary. Supports:
             - settings: Global settings (fail_on_severity, parallel, etc.)
             - Check IDs as keys with enabled/severity/options
+        session: The caller's session state, or ``None`` in hosted mode.
 
     Returns:
         Dictionary with success status, applied config, and any warnings
@@ -34,12 +42,20 @@ async def set_organization_config_impl(
         ...     "settings": {"fail_on_severity": ["error", "critical"]},
         ...     "wildcard_action": {"enabled": True, "severity": "critical"},
         ...     "sensitive_action": {"enabled": False}
-        ... })
+        ... }, session)
     """
+    if session is None:
+        return {
+            "success": False,
+            "applied_config": None,
+            "warnings": [],
+            "error": _NO_SESSION_ERROR,
+        }
+
     warnings: list[str] = []
 
     try:
-        validator_config = SessionConfigManager.set_config(config, source="session")
+        validator_config = session.set_config(config, source="session")
 
         # Return the applied settings for confirmation
         applied_config = {
@@ -61,13 +77,16 @@ async def set_organization_config_impl(
         }
 
 
-async def get_organization_config_impl() -> dict[str, Any]:
+async def get_organization_config_impl(session: "SessionState | None") -> dict[str, Any]:
     """Get the current session validator configuration.
+
+    Args:
+        session: The caller's session state, or ``None`` in hosted mode.
 
     Returns:
         Dictionary with has_config, config, and source
     """
-    config = SessionConfigManager.get_config()
+    config = session.get_config() if session is not None else None
 
     if config is None:
         return {
@@ -82,17 +101,20 @@ async def get_organization_config_impl() -> dict[str, Any]:
             "settings": config.settings,
             "checks": config.checks_config,
         },
-        "source": SessionConfigManager.get_config_source(),
+        "source": session.get_config_source() if session is not None else "none",
     }
 
 
-async def clear_organization_config_impl() -> dict[str, str]:
+async def clear_organization_config_impl(session: "SessionState | None") -> dict[str, str]:
     """Clear the session validator configuration.
+
+    Args:
+        session: The caller's session state, or ``None`` in hosted mode.
 
     Returns:
         Dictionary with status
     """
-    had_config = SessionConfigManager.clear_config()
+    had_config = session.clear_config() if session is not None else False
 
     return {
         "status": "cleared" if had_config else "no_config_set",
@@ -101,17 +123,27 @@ async def clear_organization_config_impl() -> dict[str, str]:
 
 async def load_organization_config_from_yaml_impl(
     yaml_content: str,
+    session: "SessionState | None",
 ) -> dict[str, Any]:
     """Load validator configuration from YAML content.
 
     Args:
         yaml_content: YAML configuration string (same format as CLI config files)
+        session: The caller's session state, or ``None`` in hosted mode.
 
     Returns:
         Dictionary with success status, applied config, warnings, and errors
     """
+    if session is None:
+        return {
+            "success": False,
+            "applied_config": None,
+            "warnings": [],
+            "error": _NO_SESSION_ERROR,
+        }
+
     try:
-        config, warnings = SessionConfigManager.load_from_yaml(yaml_content)
+        config, warnings = session.load_config_from_yaml(yaml_content)
 
         return {
             "success": True,
@@ -132,6 +164,8 @@ async def load_organization_config_from_yaml_impl(
 
 async def check_org_compliance_impl(
     policy: dict[str, Any],
+    session: "SessionState | None",
+    ctx: Any = None,
 ) -> dict[str, Any]:
     """Check if a policy passes validation with the session configuration.
 
@@ -141,17 +175,19 @@ async def check_org_compliance_impl(
 
     Args:
         policy: IAM policy as a dictionary
+        session: The caller's session state, or ``None`` in hosted mode.
+        ctx: The MCP request context, forwarded to ``validate_policy``.
 
     Returns:
         Dictionary with compliance status and validation issues
     """
     from iam_validator.mcp.tools.validation import validate_policy
 
-    config = SessionConfigManager.get_config()
+    config = session.get_config() if session is not None else None
 
     if config is None:
         # No session config - validate with defaults
-        result = await validate_policy(policy=policy, use_org_config=False)
+        result = await validate_policy(policy=policy, use_org_config=False, ctx=ctx)
         return {
             "compliant": result.is_valid,
             "has_org_config": False,
@@ -164,7 +200,7 @@ async def check_org_compliance_impl(
         }
 
     # Validate with the session config
-    result = await validate_policy(policy=policy, use_org_config=True)
+    result = await validate_policy(policy=policy, use_org_config=True, ctx=ctx)
 
     violations = [
         {"type": issue.issue_type, "message": issue.message, "severity": issue.severity} for issue in result.issues
@@ -185,6 +221,7 @@ async def validate_with_config_impl(
     policy: dict[str, Any],
     config: dict[str, Any],
     policy_type: str | None = None,
+    ctx: Any = None,
 ) -> dict[str, Any]:
     """Validate a policy with explicit inline configuration.
 
@@ -195,6 +232,7 @@ async def validate_with_config_impl(
         policy: IAM policy to validate
         config: Inline configuration (same format as CLI config files)
         policy_type: Type of policy. If None, auto-detects from policy structure.
+        ctx: The MCP request context, forwarded to ``validate_policy``.
 
     Returns:
         Dictionary with validation results
@@ -219,6 +257,7 @@ async def validate_with_config_impl(
             policy_type=policy_type,
             config_path=temp_config_path,
             use_org_config=False,
+            ctx=ctx,
         )
     except Exception as e:
         return {

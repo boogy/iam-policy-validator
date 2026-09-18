@@ -15,6 +15,7 @@ from typing import Any
 
 import yaml
 
+from iam_validator.core.check_registry import create_default_registry
 from iam_validator.core.models import IAMPolicy, ValidationIssue
 from iam_validator.core.policy_checks import validate_policies
 from iam_validator.mcp.models import ValidationResult
@@ -76,7 +77,7 @@ def _temp_config_file(
     cleanup even if exceptions occur or process is killed.
 
     Args:
-        session_config: ValidatorConfig instance from SessionConfigManager
+        session_config: ValidatorConfig instance from the caller's SessionState
 
     Yields:
         Path to temporary config file, or None if no config provided
@@ -149,6 +150,7 @@ async def validate_policy(
     policy_type: str | None = None,
     config_path: str | None = None,
     use_org_config: bool = True,
+    ctx: Any = None,
 ) -> ValidationResult:
     """Validate an IAM policy dictionary.
 
@@ -228,29 +230,47 @@ async def validate_policy(
     except (TypeError, ValueError) as e:
         raise ToolError(f"Malformed IAM policy: {e}") from e
 
+    from iam_validator.mcp.context import get_server_context
+
+    context = get_server_context(ctx)
+
     # Determine config path and session_config to use
     session_config = None
-    if not config_path and use_org_config:
-        # Try to use session config
-        from iam_validator.mcp.session_config import SessionConfigManager
-
-        session_config = SessionConfigManager.get_config()
+    if not config_path and use_org_config and context is not None and context.mutable is not None:
+        session_config = context.mutable.get_config()
 
     # Pull CLI-supplied paths (--custom-checks-dir / --aws-services-dir) so the
     # MCP tool reaches feature parity with the CLI's `iam-validator validate`.
-    from iam_validator.mcp.session_config import SessionConfigManager
+    custom_dir = str(context.settings.custom_checks_dir) if context and context.settings.custom_checks_dir else None
+    services_dir = str(context.settings.aws_services_dir) if context and context.settings.aws_services_dir else None
 
-    custom_dir, services_dir = SessionConfigManager.get_paths()
+    if config_path or session_config is not None:
+        # An explicit config_path or an active session-config override (see
+        # set_organization_config) asks for check settings that differ from the
+        # startup registry, so this path still resolves its own registry/config.
+        # Unifying session config into the shared registry is TASK-07's job.
+        with _temp_config_file(session_config) as temp_path:
+            effective_config_path = config_path or temp_path
 
-    # Use context manager for temp file to ensure cleanup
-    with _temp_config_file(session_config) as temp_path:
-        effective_config_path = config_path or temp_path
-
-        # Use validate_policies to perform validation with policy_type support
-        # This handles all the validation logic including check execution
+            # Use validate_policies to perform validation with policy_type support
+            # This handles all the validation logic including check execution
+            results = await validate_policies(
+                policies=[("inline-policy", iam_policy)],
+                config_path=effective_config_path,
+                policy_type=normalized_type,  # type: ignore
+                custom_checks_dir=custom_dir,
+                aws_services_dir=services_dir,
+            )
+    else:
+        # Common path: reuse the registry (and config) ServerContext built once
+        # at startup, instead of rebuilding it -- and reimporting custom checks
+        # / entry-point plugins -- on every call. Mirrors the accessor pattern
+        # in server.py's _get_check_catalog().
+        registry = context.registry if context is not None else create_default_registry()
         results = await validate_policies(
             policies=[("inline-policy", iam_policy)],
-            config_path=effective_config_path,
+            config=context.config if context is not None else None,
+            registry=registry,
             policy_type=normalized_type,  # type: ignore
             custom_checks_dir=custom_dir,
             aws_services_dir=services_dir,
@@ -277,7 +297,7 @@ async def validate_policy(
     )
 
 
-async def validate_policy_json(policy_json: str, policy_type: str | None = None) -> ValidationResult:
+async def validate_policy_json(policy_json: str, policy_type: str | None = None, ctx: Any = None) -> ValidationResult:
     """Validate an IAM policy from a JSON string.
 
     This tool parses a JSON string into a policy object and validates it.
@@ -336,10 +356,10 @@ async def validate_policy_json(policy_json: str, policy_type: str | None = None)
         )
 
     # Validate the parsed policy dict
-    return await validate_policy(policy=policy_dict, policy_type=policy_type)
+    return await validate_policy(policy=policy_dict, policy_type=policy_type, ctx=ctx)
 
 
-async def quick_validate(policy: dict[str, Any]) -> dict[str, Any]:
+async def quick_validate(policy: dict[str, Any], ctx: Any = None) -> dict[str, Any]:
     """Quick pass/fail validation check for a policy.
 
     This is a lightweight validation that returns just the essential information:
@@ -368,7 +388,7 @@ async def quick_validate(policy: dict[str, Any]) -> dict[str, Any]:
         ...         print(f"  - {msg}")
     """
     # Use validate_policy to get full results
-    validation_result = await validate_policy(policy=policy)
+    validation_result = await validate_policy(policy=policy, ctx=ctx)
 
     # Filter critical and high severity issues
     critical_issues = []

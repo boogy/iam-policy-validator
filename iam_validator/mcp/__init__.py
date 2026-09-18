@@ -10,8 +10,9 @@ The server uses FastMCP and provides a security-first approach to policy validat
 
 Configuration:
     The MCP server uses the same configuration format as the CLI validator.
-    You can load configuration from a YAML file using --config or set it
-    programmatically using SessionConfigManager.
+    You can load configuration from a YAML file using --config, or set the
+    equivalent IAM_VALIDATOR_MCP_* environment variables directly; both are
+    resolved once, at server startup, via ServerSettings.from_env().
 """
 
 from typing import TYPE_CHECKING
@@ -20,10 +21,6 @@ from iam_validator.mcp.models import (
     ActionDetails,
     PolicySummary,
     ValidationResult,
-)
-from iam_validator.mcp.session_config import (
-    CustomInstructionsManager,
-    SessionConfigManager,
 )
 
 if TYPE_CHECKING:
@@ -67,6 +64,7 @@ def run_server() -> None:
         ImportError: If fastmcp is not installed
     """
     import argparse
+    import os
     import sys
     from pathlib import Path
 
@@ -80,10 +78,8 @@ def run_server() -> None:
         metavar="FILE",
         help="Path to configuration YAML file to load at startup",
     )
-    # --instructions and --instructions-file are mutually exclusive: both set
-    # CustomInstructionsManager and only one wins, so the previous "silently
-    # ignore --instructions if --instructions-file is set" behaviour was a
-    # footgun.
+    # --instructions and --instructions-file are mutually exclusive: ServerSettings
+    # itself rejects setting both (see settings.py), so fail fast here too.
     instructions_group = parser.add_mutually_exclusive_group()
     instructions_group.add_argument(
         "--instructions",
@@ -148,26 +144,17 @@ def run_server() -> None:
             print(f"{name:>20s}  {desc}")
         sys.exit(0)
 
-    # Load config if provided (may include custom_instructions)
+    # CLI flags bridge to ServerSettings via IAM_VALIDATOR_MCP_* env vars,
+    # which the real server resolves once at startup (ServerSettings.from_env(),
+    # inside server_lifespan()). Validate paths here for a fast, clear CLI error.
     if args.config:
         config_path = Path(args.config)
         if not config_path.exists():
             print(f"Error: Config file not found: {args.config}", file=sys.stderr)
             sys.exit(1)
+        os.environ["IAM_VALIDATOR_MCP_CONFIG"] = str(config_path)
+        print(f"Config: {args.config}", file=sys.stderr)
 
-        try:
-            config, warnings = SessionConfigManager.load_from_file(str(config_path))
-
-            for warning in warnings:
-                print(f"Warning: {warning}", file=sys.stderr)
-
-            print(f"Loaded config from: {args.config}", file=sys.stderr)
-
-        except Exception as e:
-            print(f"Error loading config: {e}", file=sys.stderr)
-            sys.exit(1)
-
-    # Load custom instructions from CLI arguments (overrides config/env)
     if args.instructions_file:
         instructions_path = Path(args.instructions_file)
         if not instructions_path.exists():
@@ -176,29 +163,20 @@ def run_server() -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
-
-        try:
-            CustomInstructionsManager.load_from_file(str(instructions_path))
-            print(f"Loaded instructions from: {args.instructions_file}", file=sys.stderr)
-        except Exception as e:
-            print(f"Error loading instructions: {e}", file=sys.stderr)
-            sys.exit(1)
+        os.environ["IAM_VALIDATOR_MCP_INSTRUCTIONS_FILE"] = str(instructions_path)
+        print(f"Instructions file: {args.instructions_file}", file=sys.stderr)
 
     elif args.instructions:
-        CustomInstructionsManager.set_instructions(args.instructions, source="cli")
+        os.environ["IAM_VALIDATOR_MCP_INSTRUCTIONS"] = args.instructions
         print("Custom instructions set from CLI argument", file=sys.stderr)
 
-    # Plumb CLI parity paths into the session manager so validate_policy and
-    # related tools forward them to validate_policies()
-    if args.custom_checks_dir or args.aws_services_dir:
-        SessionConfigManager.set_paths(
-            custom_checks_dir=args.custom_checks_dir,
-            aws_services_dir=args.aws_services_dir,
-        )
-        if args.custom_checks_dir:
-            print(f"Custom checks dir: {args.custom_checks_dir}", file=sys.stderr)
-        if args.aws_services_dir:
-            print(f"AWS services dir: {args.aws_services_dir}", file=sys.stderr)
+    if args.custom_checks_dir:
+        os.environ["IAM_VALIDATOR_MCP_CUSTOM_CHECKS_DIR"] = args.custom_checks_dir
+        print(f"Custom checks dir: {args.custom_checks_dir}", file=sys.stderr)
+
+    if args.aws_services_dir:
+        os.environ["IAM_VALIDATOR_MCP_AWS_SERVICES_DIR"] = args.aws_services_dir
+        print(f"AWS services dir: {args.aws_services_dir}", file=sys.stderr)
 
     # Apply tool visibility profile before starting the server.
     if args.profile != "full":
@@ -222,6 +200,4 @@ __all__ = [
     "ValidationResult",
     "PolicySummary",
     "ActionDetails",
-    "SessionConfigManager",
-    "CustomInstructionsManager",
 ]
