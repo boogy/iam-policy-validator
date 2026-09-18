@@ -4,6 +4,12 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- The MCP policy-generation surface: `explain_policy`, `compare_policies`, `fix_policy_issues`, `list_templates`, `generate_policy_from_template`, `build_minimal_policy`, `suggest_actions`, `build_arn`, `check_sensitive_actions` and `get_required_conditions` tools, the `iam://templates` resource, the `templates/` package (15 built-in templates), `check_metadata.py`'s curated per-check examples, and the `generation` tag and `no-generation` profile. This package checks policies; it does not author, diff, or explain them. `get_issue_guidance` and `get_check_details` now return registry-driven descriptions and default severities only, with no curated example fixes. The MCP server now exposes 24 tools and 7 resources (previously 33 and 8).
+
 ## [1.29.0] - 2026-09-17
 
 ### Fixed

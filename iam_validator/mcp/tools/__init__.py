@@ -1,20 +1,11 @@
-"""MCP tools for IAM policy validation, generation, and querying.
+"""MCP tools for IAM policy validation and querying.
 
 This package contains the MCP tool implementations organized by category:
 - validation: Policy validation tools
-- generation: Policy generation tools (templates and NL)
 - query: AWS service and action query tools
 - org_config_tools: Organization configuration tools
 """
 
-from iam_validator.mcp.tools.generation import (
-    build_minimal_policy,
-    check_sensitive_actions,
-    generate_policy_from_template,
-    get_required_conditions,
-    list_templates,
-    suggest_actions,
-)
 from iam_validator.mcp.tools.org_config_tools import (
     check_org_compliance_impl,
     clear_organization_config_impl,
@@ -45,13 +36,6 @@ __all__ = [
     "validate_policy",
     "validate_policy_json",
     "quick_validate",
-    # Generation tools
-    "generate_policy_from_template",
-    "build_minimal_policy",
-    "list_templates",
-    "suggest_actions",
-    "get_required_conditions",
-    "check_sensitive_actions",
     # Query tools
     "query_service_actions",
     "query_action_details",

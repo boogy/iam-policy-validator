@@ -3,11 +3,10 @@
 This module provides an MCP (Model Context Protocol) server for AI assistants
 to interact with the IAM Policy Validator. It exposes tools for:
 - Validating IAM policies
-- Generating policies from templates or descriptions
 - Querying AWS service definitions
 - Managing session-wide policy configurations
 
-The server uses FastMCP and provides a security-first approach to policy generation.
+The server uses FastMCP and provides a security-first approach to policy validation.
 
 Configuration:
     The MCP server uses the same configuration format as the CLI validator.
@@ -19,14 +18,12 @@ from typing import TYPE_CHECKING
 
 from iam_validator.mcp.models import (
     ActionDetails,
-    GenerationResult,
     PolicySummary,
     ValidationResult,
 )
 from iam_validator.mcp.session_config import (
     CustomInstructionsManager,
     SessionConfigManager,
-    merge_conditions,
 )
 
 if TYPE_CHECKING:
@@ -125,7 +122,6 @@ def run_server() -> None:
             "full",
             "validate-only",
             "validate-and-query",
-            "no-generation",
             "read-only",
         ],
         default="full",
@@ -134,8 +130,7 @@ def run_server() -> None:
             "'full' = all tools (default). "
             "'validate-only' = validation tools only (smallest token footprint). "
             "'validate-and-query' = validation + AWS service-reference query tools "
-            "(does NOT include the live AWS Access Analyzer; use 'full' or 'no-generation' for that). "
-            "'no-generation' = everything except policy generation. "
+            "(does NOT include the live AWS Access Analyzer; use 'full' for that). "
             "'read-only' = excludes any tool tagged 'mutating' (set_*, clear_*, load_*) — useful for CI / sandbox."
         ),
     )
@@ -225,10 +220,8 @@ __all__ = [
     "create_server",
     "run_server",
     "ValidationResult",
-    "GenerationResult",
     "PolicySummary",
     "ActionDetails",
     "SessionConfigManager",
     "CustomInstructionsManager",
-    "merge_conditions",
 ]

@@ -8,10 +8,7 @@ built-in checks - these tests verify config loading and session management.
 import pytest
 
 from iam_validator.core.config.config_loader import ValidatorConfig
-from iam_validator.mcp.session_config import (
-    SessionConfigManager,
-    merge_conditions,
-)
+from iam_validator.mcp.session_config import SessionConfigManager
 
 
 class TestValidatorConfigBasics:
@@ -131,58 +128,6 @@ organization:
 
         with pytest.raises(ValueError, match="Invalid YAML"):
             SessionConfigManager.load_from_yaml(yaml_content)
-
-
-class TestMergeConditions:
-    """Tests for the merge_conditions utility function."""
-
-    def test_merge_with_none_base(self):
-        """Test merging when base conditions are None."""
-        required = {"Bool": {"aws:SecureTransport": "true"}}
-
-        result = merge_conditions(None, required)
-
-        assert result == required
-
-    def test_merge_with_empty_required(self):
-        """Test merging when required conditions are empty."""
-        base = {"StringEquals": {"s3:prefix": "data/"}}
-
-        result = merge_conditions(base, {})
-
-        assert result == base
-
-    def test_merge_different_operators(self):
-        """Test merging conditions with different operators."""
-        base = {"StringEquals": {"s3:prefix": "data/"}}
-        required = {"Bool": {"aws:SecureTransport": "true"}}
-
-        result = merge_conditions(base, required)
-
-        assert "StringEquals" in result
-        assert "Bool" in result
-        assert result["StringEquals"]["s3:prefix"] == "data/"
-        assert result["Bool"]["aws:SecureTransport"] == "true"
-
-    def test_merge_same_operator(self):
-        """Test merging conditions with the same operator."""
-        base = {"Bool": {"aws:MultiFactorAuthPresent": "true"}}
-        required = {"Bool": {"aws:SecureTransport": "true"}}
-
-        result = merge_conditions(base, required)
-
-        assert "Bool" in result
-        assert result["Bool"]["aws:MultiFactorAuthPresent"] == "true"
-        assert result["Bool"]["aws:SecureTransport"] == "true"
-
-    def test_required_overwrites_base_for_same_key(self):
-        """Test that required conditions overwrite base for the same key."""
-        base = {"Bool": {"aws:SecureTransport": "false"}}
-        required = {"Bool": {"aws:SecureTransport": "true"}}
-
-        result = merge_conditions(base, required)
-
-        assert result["Bool"]["aws:SecureTransport"] == "true"
 
 
 class TestOrgConfigToolImplementations:

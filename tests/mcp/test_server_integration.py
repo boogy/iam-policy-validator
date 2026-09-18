@@ -112,19 +112,6 @@ class TestServerTools:
         assert "validate_policies_batch" in tool_names
 
     @pytest.mark.asyncio
-    async def test_generation_tools_registered(self):
-        """Generation tools should be registered.
-
-        Note: list_templates was demoted to the iam://templates resource in
-        v1.20.0 — it must NOT appear as a tool.
-        """
-        tool_names = [t.name for t in await mcp.list_tools()]
-        assert "generate_policy_from_template" in tool_names
-        assert "build_minimal_policy" in tool_names
-        assert "suggest_actions" in tool_names
-        assert "list_templates" not in tool_names
-
-    @pytest.mark.asyncio
     async def test_query_tools_registered(self):
         """Query tools should be registered.
 
@@ -148,19 +135,6 @@ class TestServerTools:
 
 class TestServerResources:
     """Test MCP resources."""
-
-    @pytest.mark.asyncio
-    async def test_templates_resource(self):
-        """Templates resource should return JSON list."""
-        templates_resource = next(
-            (r for r in await mcp.list_resources() if "templates" in str(r.uri)),
-            None,
-        )
-        assert templates_resource is not None
-        content = await templates_resource.fn()
-        data = json.loads(content)
-        assert isinstance(data, list)
-        assert len(data) > 0
 
     @pytest.mark.asyncio
     async def test_checks_resource(self):

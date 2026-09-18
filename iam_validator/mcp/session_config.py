@@ -207,49 +207,11 @@ class SessionConfigManager:
         return config, warnings
 
 
-def merge_conditions(
-    base_conditions: dict[str, Any] | None,
-    required_conditions: dict[str, Any],
-) -> dict[str, Any]:
-    """Merge required conditions into base conditions.
-
-    This performs a deep merge of condition blocks, combining operators
-    and their nested conditions appropriately.
-
-    Args:
-        base_conditions: Existing conditions (may be None)
-        required_conditions: Required conditions to merge in
-
-    Returns:
-        Merged conditions dictionary
-    """
-    if not required_conditions:
-        return base_conditions or {}
-
-    if not base_conditions:
-        return required_conditions.copy()
-
-    result = base_conditions.copy()
-
-    for operator, conditions in required_conditions.items():
-        if operator in result:
-            # Merge conditions under the same operator
-            if isinstance(result[operator], dict) and isinstance(conditions, dict):
-                result[operator] = {**result[operator], **conditions}
-            else:
-                # Can't merge non-dict values, required takes precedence
-                result[operator] = conditions
-        else:
-            result[operator] = conditions
-
-    return result
-
-
 class CustomInstructionsManager:
     """Manages custom LLM instructions for the MCP server.
 
     Custom instructions are appended to the default MCP server instructions,
-    allowing organizations to add their own policy generation guidelines.
+    allowing organizations to add their own validation guidelines.
 
     Instructions can be set via:
     - YAML config file (custom_instructions key)
@@ -364,5 +326,4 @@ class CustomInstructionsManager:
 __all__ = [
     "SessionConfigManager",
     "CustomInstructionsManager",
-    "merge_conditions",
 ]

@@ -112,7 +112,7 @@ iam_validator/
 │   └── formatters/           # console / enhanced / json / markdown / sarif / csv / html
 ├── checks/                   # 23 built-in checks — see checks/CLAUDE.md
 ├── commands/                 # 8 CLI commands — see commands/CLAUDE.md
-├── mcp/                      # MCP server (35+ tools, 15 templates) — see mcp/CLAUDE.md
+├── mcp/                      # MCP server (24 tools) — see mcp/CLAUDE.md
 ├── sdk/                      # public Python API — see sdk/CLAUDE.md
 └── integrations/             # GitHub PR + MS Teams — see integrations/CLAUDE.md
 

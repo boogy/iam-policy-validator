@@ -1,7 +1,7 @@
 """FastMCP server implementation for IAM Policy Validator.
 
-This module creates and configures the MCP server with all validation,
-generation, and query tools registered. It serves as the main entry point
+This module creates and configures the MCP server with all validation
+and query tools registered. It serves as the main entry point
 for the MCP server functionality.
 
 Optimizations:
@@ -9,7 +9,7 @@ Optimizations:
 - Cached check registry for repeated list_checks calls
 - Pagination support for large result sets
 - Batch operation tools for reduced round-trips
-- MCP Resources for static data (templates, checks)
+- MCP Resources for static data (checks)
 """
 
 import functools
@@ -22,10 +22,7 @@ from mcp.types import ToolAnnotations
 
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckRegistry, create_default_registry
-from iam_validator.core.constants import (
-    IAM_POLICY_VERSION_CURRENT,
-    IAM_POLICY_VERSIONS_VALID,
-)
+from iam_validator.core.constants import IAM_POLICY_VERSION_CURRENT
 
 logger = logging.getLogger(__name__)
 
@@ -160,19 +157,16 @@ def _get_check_catalog() -> tuple[dict[str, Any], ...]:
 # =============================================================================
 
 _BASE_INSTRUCTIONS_TEMPLATE = """
-You are an AWS IAM security expert generating secure, least-privilege policies.
+You are an AWS IAM security expert reviewing policies for least-privilege violations.
 
 ## CORE PRINCIPLES
-- LEAST PRIVILEGE: Only permissions needed for the task
+- LEAST PRIVILEGE: Flag permissions broader than the task needs
 - RESOURCE SCOPING: Specific ARNs, never wildcards for write operations
-- CONDITION GUARDS: Add conditions for sensitive actions (MFA, IP, time)
+- CONDITION GUARDS: Sensitive actions (MFA, IP, time) should carry conditions
 
 ## ABSOLUTE RULES (GUARDRAIL: DO NOT REMOVE)
-- NEVER generate `"Action": "*"` or `"Resource": "*"` with write actions
-- NEVER allow `iam:*`, `sts:AssumeRole`, `kms:*` without conditions
 - NEVER guess ARN formats — use query_arn_formats
 - ALWAYS validate actions exist — typos create security gaps
-- ALWAYS present security_notes from generation tools
 
 ## VALIDATION LOOP PREVENTION (GUARDRAIL: DO NOT REMOVE)
 HARD LIMIT: maximum 2 validate_policy calls per request.
@@ -181,7 +175,7 @@ remaining `high`/`medium`/`low`/`warning` items as informational only.
 When in doubt, PRESENT THE POLICY.
 
 ## RESOURCES
-iam://templates, iam://checks, iam://sensitive-actions/{category},
+iam://checks, iam://sensitive-actions/{category},
 iam://checks/{check_id}, iam://workflow-examples.
 Default policy Version is "__VERSION__".
 """
@@ -228,9 +222,8 @@ PROFILE_DESCRIPTIONS: dict[str, str] = {
     "validate-only": "Validation tools only — smallest token footprint.",
     "validate-and-query": (
         "Validation + AWS service-reference query tools. Does NOT include the live "
-        "AWS Access Analyzer (use 'full' or 'no-generation' for that)."
+        "AWS Access Analyzer (use 'full' for that)."
     ),
-    "no-generation": "Everything except policy generation tools.",
     "read-only": (
         "Excludes any tool tagged 'mutating' (set_/clear_/load_*). Tag-based, not "
         "annotation-based — destructiveHint=False is intentional for session-only "
@@ -246,8 +239,7 @@ def apply_profile(profile: str) -> None:
     state before applying the new profile so successive calls don't compound.
 
     Args:
-        profile: One of full, validate-only, validate-and-query, no-generation,
-            read-only.
+        profile: One of full, validate-only, validate-and-query, read-only.
 
     Raises:
         ValueError: Unknown profile name.
@@ -262,9 +254,6 @@ def apply_profile(profile: str) -> None:
         return
     if profile == "validate-and-query":
         mcp.enable(tags={"validate", "query"}, only=True)
-        return
-    if profile == "no-generation":
-        mcp.disable(tags={"generation"})
         return
     if profile == "read-only":
         mcp.disable(tags={"mutating"})
@@ -424,170 +413,6 @@ async def aws_access_analyzer_validate(
 
 
 # =============================================================================
-# Generation Tools
-# =============================================================================
-
-
-@mcp.tool(
-    tags={"generation"},
-    annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-)
-async def generate_policy_from_template(
-    template_name: str,
-    variables: dict[str, str],
-    verbose: bool = False,
-) -> dict[str, Any]:
-    """Generate an IAM policy from a built-in template.
-
-    Call list_templates first to see available templates and required variables.
-
-    Args:
-        template_name: Template name (e.g., "s3-read-only", "lambda-basic-execution")
-        variables: Template variables (e.g., {"bucket_name": "my-bucket", "account_id": "123456789012"})
-        verbose: Return all fields (True) or essential only (False)
-
-    Returns:
-        {policy, validation, security_notes, template_used}
-    """
-    from iam_validator.mcp.tools.generation import (
-        generate_policy_from_template as _generate,
-    )
-    from iam_validator.mcp.tools.validation import issue_to_dict
-
-    result = await _generate(template_name=template_name, variables=variables)
-
-    return {
-        "policy": result.policy,
-        "validation": {
-            "is_valid": result.validation.is_valid,
-            "issues": [issue_to_dict(i, verbose=verbose) for i in result.validation.issues],
-        },
-        "security_notes": result.security_notes,
-        "template_used": result.template_used,
-    }
-
-
-@mcp.tool(
-    tags={"generation"},
-    annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-)
-async def build_minimal_policy(
-    actions: list[str],
-    resources: list[str],
-    conditions: dict[str, Any] | None = None,
-    verbose: bool = False,
-) -> dict[str, Any]:
-    """Build a minimal IAM policy from explicit actions and resources.
-
-    Args:
-        actions: AWS actions (e.g., ["s3:GetObject", "s3:ListBucket"])
-        resources: Resource ARNs (e.g., ["arn:aws:s3:::my-bucket/*"])
-        conditions: Optional conditions to add
-        verbose: Return all fields (True) or essential only (False)
-
-    Returns:
-        {policy, validation, security_notes}
-    """
-    from iam_validator.mcp.tools.generation import build_minimal_policy as _build
-    from iam_validator.mcp.tools.validation import issue_to_dict
-
-    result = await _build(actions=actions, resources=resources, conditions=conditions)
-
-    return {
-        "policy": result.policy,
-        "validation": {
-            "is_valid": result.validation.is_valid,
-            "issues": [issue_to_dict(i, verbose=verbose) for i in result.validation.issues],
-        },
-        "security_notes": result.security_notes,
-    }
-
-
-@mcp.tool(
-    tags={"generation"},
-    annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-)
-async def suggest_actions(
-    description: str,
-    service: str | None = None,
-) -> list[str]:
-    """Suggest AWS actions based on natural language description.
-
-    Args:
-        description: What you need (e.g., "read files from S3")
-        service: Optional service filter (e.g., "s3", "lambda")
-
-    Returns:
-        List of suggested action names
-    """
-    from iam_validator.mcp.tools.generation import suggest_actions as _suggest
-
-    return await _suggest(description=description, service=service)
-
-
-@mcp.tool(
-    tags={"generation"},
-    annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-)
-async def get_required_conditions(actions: list[str]) -> dict[str, Any]:
-    """Get recommended IAM conditions for actions based on security best practices.
-
-    NOTE: Also check query_condition_keys(service) for resource-level conditions.
-
-    Args:
-        actions: AWS actions to analyze (e.g., ["iam:PassRole"])
-
-    Returns:
-        Condition requirements grouped by type
-    """
-    from iam_validator.mcp.tools.generation import (
-        get_required_conditions as _get_conditions,
-    )
-
-    return await _get_conditions(actions=actions)
-
-
-@mcp.tool(
-    tags={"generation"},
-    annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-)
-async def check_sensitive_actions(
-    actions: list[str],
-    verbose: bool = False,
-) -> dict[str, Any]:
-    """Check if actions are sensitive and get remediation guidance.
-
-    Analyzes actions against 490+ sensitive actions catalog. Also verify
-    resource-level conditions with query_condition_keys(service).
-
-    Args:
-        actions: Actions to check (e.g., ["iam:PassRole", "s3:GetObject"])
-        verbose: Return all fields (True) or essential only (False)
-
-    Returns:
-        {sensitive_actions, total_checked, sensitive_count, categories_found, has_critical, summary}
-    """
-    from iam_validator.mcp.tools.generation import (
-        check_sensitive_actions as _check_sensitive,
-    )
-
-    result = await _check_sensitive(actions=actions)
-
-    if not verbose and "sensitive_actions" in result:
-        # Lean response: only essential fields per action
-        result["sensitive_actions"] = [
-            {
-                "action": sa.get("action"),
-                "category": sa.get("category"),
-                "severity": sa.get("severity"),
-            }
-            for sa in result.get("sensitive_actions", [])
-        ]
-
-    return result
-
-
-# =============================================================================
 # Query Tools
 # =============================================================================
 
@@ -694,7 +519,7 @@ async def expand_wildcard_action(pattern: str, ctx: Context) -> list[str]:
 async def query_condition_keys(service: str, ctx: Context) -> list[str]:
     """Get resource-level condition keys for a service.
 
-    Use with get_required_conditions for complete condition coverage (action + resource).
+    Use with get_condition_requirements_for_action for complete condition coverage (action + resource).
 
     Args:
         service: Service prefix (e.g., "s3", "iam")
@@ -781,142 +606,6 @@ async def get_condition_requirements_for_action(action: str) -> dict[str, Any] |
     tags={"fix"},
     annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
 )
-async def fix_policy_issues(
-    policy: dict[str, Any],
-    issues_to_fix: list[str] | None = None,
-    policy_type: str | None = None,
-    verbose: bool = False,
-) -> dict[str, Any]:
-    """Auto-fix structural policy issues (Version, duplicate SIDs, action case).
-
-    Does NOT fix wildcards or missing conditions - those need user input.
-
-    Args:
-        policy: IAM policy to fix
-        issues_to_fix: Check IDs to fix (None = all structural fixes)
-        policy_type: "identity", "resource", or "trust" (auto-detected if None)
-        verbose: Return all fields (True) or essential only (False)
-
-    Returns:
-        {fixed_policy, fixes_applied, unfixed_issues, validation}
-    """
-    import copy
-
-    from iam_validator.mcp.tools.validation import _detect_policy_type
-    from iam_validator.mcp.tools.validation import validate_policy as _validate
-
-    fixed_policy = copy.deepcopy(policy)
-    fixes_applied: list[str] = []
-    unfixed_issues: list[dict[str, Any]] = []
-
-    # Auto-detect policy type if not provided
-    effective_policy_type = policy_type if policy_type else _detect_policy_type(policy)
-
-    # First, validate to get current issues
-    initial_result = await _validate(policy=policy, policy_type=effective_policy_type)
-    issue_check_ids = {issue.check_id for issue in initial_result.issues if issue.check_id}
-
-    # Apply fixes based on check_ids
-    def should_fix(check_id: str) -> bool:
-        return issues_to_fix is None or check_id in issues_to_fix
-
-    # Fix 1: Missing or invalid Version (structural fix)
-    if should_fix("policy_structure"):
-        if "Version" not in fixed_policy or fixed_policy.get("Version") not in IAM_POLICY_VERSIONS_VALID:
-            fixed_policy["Version"] = IAM_POLICY_VERSION_CURRENT
-            fixes_applied.append(f"Added Version: {IAM_POLICY_VERSION_CURRENT}")
-
-    # Fix 2: Duplicate SIDs (structural fix)
-    if should_fix("sid_uniqueness") and "sid_uniqueness" in issue_check_ids:
-        statements = fixed_policy.get("Statement", [])
-        if isinstance(statements, dict):
-            statements = [statements]
-        seen_sids: dict[str, int] = {}
-        for i, stmt in enumerate(statements):
-            sid = stmt.get("Sid")
-            if sid:
-                if sid in seen_sids:
-                    new_sid = f"{sid}_{i}"
-                    stmt["Sid"] = new_sid
-                    fixes_applied.append(f"Renamed duplicate SID '{sid}' to '{new_sid}'")
-                else:
-                    seen_sids[sid] = i
-
-    # Fix 3: Normalize action case (service prefix should be lowercase) on
-    # both Action AND NotAction. Service prefixes in IAM are always lowercase;
-    # `S3:GetObject` is invalid AWS syntax regardless of which key holds it.
-    if should_fix("action_validation"):
-        statements = fixed_policy.get("Statement", [])
-        if isinstance(statements, dict):
-            statements = [statements]
-
-        for stmt in statements:
-            for action_key in ("Action", "NotAction"):
-                if action_key not in stmt:
-                    continue
-                actions = stmt[action_key]
-                was_string = isinstance(actions, str)
-                if was_string:
-                    actions = [actions]
-
-                normalized = []
-                for action in actions:
-                    if ":" in action:
-                        service, name = action.split(":", 1)
-                        if service != service.lower():
-                            new_action = f"{service.lower()}:{name}"
-                            normalized.append(new_action)
-                            fixes_applied.append(f"Normalized {action_key} case: {action} → {new_action}")
-                        else:
-                            normalized.append(action)
-                    else:
-                        normalized.append(action)
-
-                if normalized:
-                    stmt[action_key] = normalized[0] if (was_string and len(normalized) == 1) else normalized
-
-    # Collect issues that require manual intervention
-    # Include the example and suggestion from the validator for guidance
-    for issue in initial_result.issues:
-        check_id = issue.check_id or "unknown"
-
-        # Skip structural issues we can fix
-        if check_id in {"policy_structure", "sid_uniqueness", "action_validation"}:
-            continue
-
-        # All other issues need manual fix - include validator's guidance
-        unfixed_issues.append(
-            {
-                "check_id": check_id,
-                "message": issue.message,
-                "suggestion": issue.suggestion,
-                "example": issue.example,
-                "severity": issue.severity,
-            }
-        )
-
-    from iam_validator.mcp.tools.validation import issue_to_dict
-
-    # Re-validate the fixed policy
-    final_result = await _validate(policy=fixed_policy, policy_type=effective_policy_type)
-
-    return {
-        "fixed_policy": fixed_policy,
-        "fixes_applied": fixes_applied,
-        "unfixed_issues": unfixed_issues,
-        "unfixed_count": len(unfixed_issues),
-        "validation": {
-            "is_valid": final_result.is_valid,
-            "issue_count": len(final_result.issues),
-            "issues": [issue_to_dict(i, verbose=verbose) for i in final_result.issues],
-        },
-    }
-
-
-@mcp.tool(
-    tags={"fix"},
-    annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-)
 async def get_issue_guidance(check_id: str) -> dict[str, Any]:
     """Get fix guidance for a validation issue (registry-driven).
 
@@ -927,12 +616,9 @@ async def get_issue_guidance(check_id: str) -> dict[str, Any]:
         {check_id, description, default_severity, fix_steps,
          example_before, example_after, related}
     """
-    from iam_validator.mcp.check_metadata import get_check_metadata
-
     check = _get_registry().get_check(check_id)
-    metadata = get_check_metadata(check_id)
 
-    if check is None and not metadata:
+    if check is None:
         return {
             "check_id": check_id,
             "description": f"Unknown check: {check_id}",
@@ -947,19 +633,16 @@ async def get_issue_guidance(check_id: str) -> dict[str, Any]:
 
     return {
         "check_id": check_id,
-        "description": check.description if check else metadata.get("description", ""),
-        "default_severity": check.default_severity if check else None,
-        "fix_steps": metadata.get(
-            "fix_steps",
-            [
-                "Read the issue's `message` and `suggestion` fields from validate_policy",
-                "Apply the example fix from the issue, if provided",
-                "Re-validate with validate_policy",
-            ],
-        ),
-        "example_before": metadata.get("example_violation"),
-        "example_after": metadata.get("example_fix"),
-        "related": metadata.get("related", ["validate_policy", "fix_policy_issues"]),
+        "description": check.description,
+        "default_severity": check.default_severity,
+        "fix_steps": [
+            "Read the issue's `message` and `suggestion` fields from validate_policy",
+            "Apply the example fix from the issue, if provided",
+            "Re-validate with validate_policy",
+        ],
+        "example_before": None,
+        "example_after": None,
+        "related": ["validate_policy"],
     }
 
 
@@ -980,21 +663,18 @@ async def get_check_details(check_id: str) -> dict[str, Any]:
         {check_id, description, default_severity, category, example_violation,
          example_fix, configuration, related}
     """
-    from iam_validator.mcp.check_metadata import get_check_metadata
-
     check = _get_registry().get_check(check_id)
-    metadata = get_check_metadata(check_id)
 
     if check is None:
         return {
             "check_id": check_id,
             "description": "Check not found",
             "default_severity": None,
-            "category": metadata.get("category", "unknown"),
-            "example_violation": metadata.get("example_violation"),
-            "example_fix": metadata.get("example_fix"),
+            "category": "unknown",
+            "example_violation": None,
+            "example_fix": None,
             "configuration": {},
-            "related": metadata.get("related", []),
+            "related": [],
         }
 
     enabled, severity = _effective_check_settings(check_id, check.default_severity)
@@ -1003,537 +683,11 @@ async def get_check_details(check_id: str) -> dict[str, Any]:
         "check_id": check_id,
         "description": check.description,
         "default_severity": check.default_severity,
-        "category": metadata.get("category", "general"),
-        "example_violation": metadata.get("example_violation"),
-        "example_fix": metadata.get("example_fix"),
+        "category": "general",
+        "example_violation": None,
+        "example_fix": None,
         "configuration": {"enabled": enabled, "severity": severity},
-        "related": metadata.get("related", []),
-    }
-
-
-@mcp.tool(
-    tags={"fix"},
-    annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-)
-async def explain_policy(
-    policy: dict[str, Any],
-    ctx: Context,
-    verbose: bool = False,
-) -> dict[str, Any]:
-    """Generate a human-readable explanation of policy permissions.
-
-    Access-level classification is sourced from the live AWS service reference
-    (Read / Write / List / Tagging / Permissions management) — not a name-prefix
-    heuristic. NotAction / NotResource / Principal / NotPrincipal are surfaced
-    explicitly because they invert the meaning of a statement.
-
-    Args:
-        policy: IAM policy dictionary
-        verbose: Return all fields (True) or essential only (False)
-
-    Returns:
-        {summary, statements, services_accessed, security_concerns,
-         recommendations, has_wildcards, has_conditions}
-    """
-    from iam_validator.checks.utils.action_parser import parse_action
-    from iam_validator.mcp.tools.query import get_policy_summary as _get_summary
-    from iam_validator.sdk.query_utils import _get_access_level
-
-    summary = await _get_summary(policy)
-
-    statements = policy.get("Statement", [])
-    if isinstance(statements, dict):
-        statements = [statements]
-
-    fetcher = get_shared_fetcher(ctx)
-
-    # Cache fetched service definitions across statements (one fetch per service).
-    service_cache: dict[str, Any] = {}
-
-    async def _classify(action: str) -> str:
-        """Authoritative access-level for one action via the live service ref.
-
-        Returns one of: "full" (`*` or `service:*`), "wildcard-pattern"
-        (e.g. `s3:Get*`), "Read"/"Write"/"List"/"Tagging"/"permissions-management"
-        for resolved actions, or "unknown" when the lookup fails.
-        """
-        if action == "*":
-            return "full"
-        parsed = parse_action(action)
-        if parsed is None:
-            return "unknown"
-        if parsed.action_name == "*":
-            return "full"
-        if "*" in parsed.action_name:
-            return "wildcard-pattern"
-        if fetcher is None:
-            return "unknown"
-        try:
-            if parsed.service not in service_cache:
-                service_cache[parsed.service] = await fetcher.fetch_service_by_name(parsed.service)
-            service_detail = service_cache[parsed.service]
-            actions_dict = getattr(service_detail, "actions", {}) or {}
-            # Case-insensitive lookup; AWS canonical casing varies.
-            detail = actions_dict.get(parsed.action_name)
-            if detail is None:
-                for k, v in actions_dict.items():
-                    if k.lower() == parsed.action_name.lower():
-                        detail = v
-                        break
-            if detail is None:
-                return "unknown"
-            return _get_access_level(detail)
-        except Exception:
-            return "unknown"
-
-    def _as_list(v: Any) -> list[Any]:
-        if v is None:
-            return []
-        return v if isinstance(v, list) else [v]
-
-    statement_explanations: list[dict[str, Any]] = []
-    security_concerns: list[str] = []
-    recommendations: list[str] = []
-    services_with_access: dict[str, set[str]] = {}
-
-    total_allow = 0
-    total_deny = 0
-
-    for idx, stmt in enumerate(statements):
-        effect_raw = (stmt.get("Effect") or "Allow").strip()
-        effect_lower = effect_raw.lower()
-        if effect_lower == "allow":
-            total_allow += 1
-        elif effect_lower == "deny":
-            total_deny += 1
-
-        actions = _as_list(stmt.get("Action"))
-        not_actions = _as_list(stmt.get("NotAction"))
-        resources = _as_list(stmt.get("Resource"))
-        not_resources = _as_list(stmt.get("NotResource"))
-        principal = stmt.get("Principal")
-        not_principal = stmt.get("NotPrincipal")
-        conditions = stmt.get("Condition") or {}
-
-        action_list = actions or not_actions
-        action_negated = bool(not_actions and not actions)
-
-        # Per-service access classification using the authoritative service ref.
-        for action in action_list:
-            if action == "*":
-                services_with_access.setdefault("*", set()).add("full")
-                continue
-            level = await _classify(str(action))
-            parsed = parse_action(str(action))
-            service = parsed.service if parsed else "*"
-            services_with_access.setdefault(service, set()).add(level)
-
-        # Security concerns. Allow + wildcards is the classic anti-pattern; the
-        # `Not*` keywords flip the meaning so they get their own concern lines.
-        if effect_lower == "allow":
-            if any(a == "*" for a in actions):
-                if any(r == "*" for r in resources):
-                    security_concerns.append(
-                        f"Statement {idx}: Allow Action:*, Resource:* — full administrative access."
-                    )
-                    recommendations.append(
-                        f'Statement {idx}: replace `Action: "*"` and `Resource: "*"` with explicit values.'
-                    )
-                else:
-                    security_concerns.append(
-                        f"Statement {idx}: Allow Action:* — grants every action on the listed resources."
-                    )
-                    recommendations.append(f'Statement {idx}: replace `Action: "*"` with the explicit action list.')
-            elif any(r == "*" for r in resources):
-                security_concerns.append(f"Statement {idx}: Allow with Resource:* — scope resources to specific ARNs.")
-                recommendations.append(f'Statement {idx}: replace `Resource: "*"` with explicit ARN(s).')
-
-            if not_actions:
-                security_concerns.append(
-                    f"Statement {idx}: Effect:Allow with NotAction is an anti-pattern — "
-                    "the Allow surface is everything *except* the listed actions."
-                )
-                recommendations.append(
-                    f"Statement {idx}: prefer an explicit `Action` allow-list. "
-                    "If you mean to deny, use `Effect:Deny` with `Action`."
-                )
-            if not_resources:
-                security_concerns.append(
-                    f"Statement {idx}: NotResource is rarely correct — implicit allow on every "
-                    "ARN except the listed ones."
-                )
-
-        # Trust-policy / resource-policy concerns.
-        if isinstance(principal, dict) and principal.get("AWS") == "*":
-            security_concerns.append(f"Statement {idx}: Principal AWS:* — allows access from any AWS account.")
-        elif principal == "*":
-            security_concerns.append(f"Statement {idx}: Principal:* — anonymous public access.")
-        if not_principal:
-            security_concerns.append(
-                f"Statement {idx}: NotPrincipal is fragile — confirm intent (negation in resource policies)."
-            )
-
-        # Per-statement explanation.
-        action_desc_field = "NotAction" if action_negated else "Action"
-        action_desc = ", ".join(map(str, action_list[:3])) + ("..." if len(action_list) > 3 else "")
-        resource_desc_field = "NotResource" if (not_resources and not resources) else "Resource"
-        resource_target = not_resources if (not_resources and not resources) else resources
-        resource_desc = ", ".join(map(str, resource_target[:2])) + ("..." if len(resource_target) > 2 else "")
-        condition_desc = f" with {len(conditions)} condition(s)" if conditions else ""
-
-        explanation = (
-            f"{effect_raw}s {action_desc_field} {action_desc or '<empty>'} "
-            f"on {resource_desc_field} {resource_desc or '<empty>'}{condition_desc}"
-        )
-        statement_explanations.append(
-            {
-                "index": idx,
-                "sid": stmt.get("Sid", f"Statement{idx}"),
-                "effect": effect_raw,
-                "uses_not_action": action_negated,
-                "uses_not_resource": bool(not_resources and not resources),
-                "explanation": explanation,
-                "action_count": len(action_list),
-                "has_conditions": bool(conditions),
-                "condition_keys": sorted(
-                    {k for op_block in conditions.values() if isinstance(op_block, dict) for k in op_block.keys()}
-                )
-                if isinstance(conditions, dict)
-                else [],
-            }
-        )
-
-    services_summary = [
-        {"service": service, "access_types": sorted(levels)} for service, levels in sorted(services_with_access.items())
-    ]
-
-    brief_summary = (
-        f"Policy with {len(statements)} statement(s): "
-        f"{total_allow} Allow, {total_deny} Deny across {len(services_with_access)} service(s)"
-    )
-
-    if verbose:
-        return {
-            "summary": brief_summary,
-            "statements": statement_explanations,
-            "services_accessed": services_summary,
-            "security_concerns": security_concerns,
-            "recommendations": recommendations,
-            "has_wildcards": summary.has_wildcards,
-            "has_conditions": summary.has_conditions,
-        }
-    return {
-        "summary": brief_summary,
-        "security_concerns": security_concerns,
-        "recommendations": recommendations,
-        "has_wildcards": summary.has_wildcards,
-        "statement_count": len(statement_explanations),
-        "services_count": len(services_summary),
-    }
-
-
-@mcp.tool(
-    tags={"fix"},
-    annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-)
-async def build_arn(
-    service: str,
-    resource_type: str,
-    ctx: Context,
-    placeholders: dict[str, str] | None = None,
-    resource_name: str | None = None,
-    region: str = "",
-    account_id: str = "",
-    partition: str = "aws",
-) -> dict[str, Any]:
-    """Build an AWS ARN from the live AWS service reference.
-
-    Call query_arn_formats(service) first to discover placeholder names for the
-    target resource_type. Returns valid=False with unfilled_placeholders when
-    input is incomplete.
-
-    Args:
-        service: AWS service prefix (e.g., "s3", "lambda")
-        resource_type: Resource type (e.g., "bucket", "function") — must match
-            the live service reference exactly (case-insensitive).
-        placeholders: Map of {placeholder_name: value} for resource-specific
-            placeholders (e.g., {"BucketName": "my-bucket"}). Use either the
-            bare name or `${Name}` form.
-        resource_name: DEPRECATED. Pass `placeholders={...}` instead. Removal
-            target: v1.21.0. When set on a single-placeholder template (and
-            placeholders is empty), the value is substituted automatically.
-        region: AWS region. Required for templates that contain `${Region}`.
-        account_id: 12-digit AWS account ID. Required for templates that
-            contain `${Account}`.
-        partition: AWS partition. Supported: aws, aws-cn, aws-us-gov, aws-eusc,
-            aws-iso, aws-iso-b, aws-iso-e, aws-iso-f.
-
-    Returns:
-        {arn, valid, notes, format_template, unfilled_placeholders}
-
-    Raises:
-        ToolError: input-validation errors (bad partition, unknown resource_type).
-    """
-    import logging as _logging
-    import re as _re
-
-    from fastmcp.exceptions import ToolError
-
-    from iam_validator.core.constants import ARN_PARTITION_REGEX
-    from iam_validator.mcp.tools.query import query_arn_formats
-
-    if not _re.fullmatch(ARN_PARTITION_REGEX, partition):
-        raise ToolError(
-            f"Unsupported partition '{partition}'. "
-            "Allowed: aws, aws-cn, aws-us-gov, aws-eusc, aws-iso, aws-iso-b, aws-iso-e, aws-iso-f."
-        )
-
-    fetcher = get_shared_fetcher(ctx)
-    arn_types = await query_arn_formats(service, fetcher=fetcher)
-
-    matched = next(
-        (t for t in arn_types if t.get("resource_type", "").lower() == resource_type.lower()),
-        None,
-    )
-    if matched is None:
-        raise ToolError(
-            f"Unknown resource_type '{resource_type}' for service '{service}'. "
-            f"Use query_arn_formats('{service}') to see available types."
-        )
-
-    formats = matched.get("arn_formats") or []
-    template = formats[0] if formats else None
-    if template is None:
-        raise ToolError(f"No ARN format published for {service}/{resource_type}.")
-
-    arn = template.replace("${Partition}", partition).replace("${Region}", region).replace("${Account}", account_id)
-
-    user_map = placeholders or {}
-    for key, value in user_map.items():
-        token = key if key.startswith("${") and key.endswith("}") else f"${{{key}}}"
-        arn = arn.replace(token, value)
-
-    remaining = _re.findall(r"\$\{[^}]+\}", arn)
-
-    if resource_name is not None:
-        _logging.getLogger(__name__).warning(
-            "build_arn(resource_name=...) is deprecated; "
-            "pass placeholders={'<Name>': value} instead. Removal target: v1.21.0."
-        )
-        if len(remaining) == 1 and not user_map:
-            arn = arn.replace(remaining[0], resource_name)
-            remaining = []
-
-    notes: list[str] = []
-    if not region and "${Region}" in template:
-        notes.append("Region is required for this ARN format.")
-    if not account_id and "${Account}" in template:
-        notes.append("Account ID is required for this ARN format.")
-    if remaining:
-        notes.append(f"Unfilled placeholders remain: {remaining}. Pass them via the `placeholders` dict.")
-
-    return {
-        "arn": arn,
-        "valid": not remaining and "${Region}" not in arn and "${Account}" not in arn,
-        "notes": notes,
-        "format_template": template,
-        "unfilled_placeholders": remaining,
-    }
-
-
-@mcp.tool(
-    tags={"fix"},
-    annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-)
-async def compare_policies(
-    policy_a: dict[str, Any],
-    policy_b: dict[str, Any],
-    verbose: bool = False,
-) -> dict[str, Any]:
-    """Compare two IAM policies and highlight differences.
-
-    Compares actions, NotActions, resources, NotResources, principals,
-    NotPrincipals, and conditions independently. Statement-level matching uses
-    a canonical signature (effect + sorted actions + sorted resources +
-    canonical conditions) — NOT statement index — so a Sid-less rearrangement
-    doesn't produce phantom diffs.
-
-    Args:
-        policy_a: First policy (baseline)
-        policy_b: Second policy (comparison)
-        verbose: Return all fields (True) or essential only (False)
-
-    Returns:
-        ``{summary, added_actions, removed_actions, added_resources,
-        removed_resources, added_not_actions, removed_not_actions,
-        added_not_resources, removed_not_resources, added_principals,
-        removed_principals, condition_changes, statement_diff}``
-    """
-    import json as _json
-
-    def _norm_list(v: Any) -> list[str]:
-        if v is None:
-            return []
-        if isinstance(v, str):
-            return [v]
-        return [str(x) for x in v]
-
-    def _norm_principal(p: Any) -> list[str]:
-        """Flatten Principal/NotPrincipal into a sorted set of "Type:Value" pairs."""
-        if p is None:
-            return []
-        if p == "*":
-            return ["*:*"]
-        if isinstance(p, dict):
-            out: list[str] = []
-            for ptype, vals in p.items():
-                vals = _norm_list(vals)
-                out.extend(f"{ptype}:{v}" for v in vals)
-            return sorted(out)
-        return [str(p)]
-
-    def _canon_condition(cond: Any) -> str:
-        """Canonical JSON for deep condition equality (sorted keys)."""
-        if not cond:
-            return ""
-        try:
-            return _json.dumps(cond, sort_keys=True, separators=(",", ":"))
-        except (TypeError, ValueError):
-            return repr(cond)
-
-    def extract(policy: dict[str, Any]) -> dict[str, Any]:
-        statements = policy.get("Statement", [])
-        if isinstance(statements, dict):
-            statements = [statements]
-
-        actions: set[str] = set()
-        not_actions: set[str] = set()
-        resources: set[str] = set()
-        not_resources: set[str] = set()
-        principals: set[str] = set()
-        not_principals: set[str] = set()
-        condition_keys: set[str] = set()
-        # Canonical statement signatures, used for stable per-statement diff.
-        signatures: set[tuple[str, ...]] = set()
-
-        for stmt in statements:
-            effect = (stmt.get("Effect") or "Allow").strip().lower()
-            stmt_actions = sorted(_norm_list(stmt.get("Action")))
-            stmt_not_actions = sorted(_norm_list(stmt.get("NotAction")))
-            stmt_resources = sorted(_norm_list(stmt.get("Resource")))
-            stmt_not_resources = sorted(_norm_list(stmt.get("NotResource")))
-            stmt_principals = _norm_principal(stmt.get("Principal"))
-            stmt_not_principals = _norm_principal(stmt.get("NotPrincipal"))
-            stmt_cond = _canon_condition(stmt.get("Condition"))
-
-            actions.update(stmt_actions)
-            not_actions.update(stmt_not_actions)
-            resources.update(stmt_resources)
-            not_resources.update(stmt_not_resources)
-            principals.update(stmt_principals)
-            not_principals.update(stmt_not_principals)
-
-            cond_dict = stmt.get("Condition") or {}
-            if isinstance(cond_dict, dict):
-                for op_block in cond_dict.values():
-                    if isinstance(op_block, dict):
-                        condition_keys.update(op_block.keys())
-
-            signatures.add(
-                (
-                    effect,
-                    "/".join(stmt_actions),
-                    "/".join(stmt_not_actions),
-                    "/".join(stmt_resources),
-                    "/".join(stmt_not_resources),
-                    "/".join(stmt_principals),
-                    "/".join(stmt_not_principals),
-                    stmt_cond,
-                )
-            )
-
-        return {
-            "actions": actions,
-            "not_actions": not_actions,
-            "resources": resources,
-            "not_resources": not_resources,
-            "principals": principals,
-            "not_principals": not_principals,
-            "condition_keys": condition_keys,
-            "signatures": signatures,
-        }
-
-    a = extract(policy_a)
-    b = extract(policy_b)
-
-    added_actions = sorted(b["actions"] - a["actions"])
-    removed_actions = sorted(a["actions"] - b["actions"])
-    added_not_actions = sorted(b["not_actions"] - a["not_actions"])
-    removed_not_actions = sorted(a["not_actions"] - b["not_actions"])
-    added_resources = sorted(b["resources"] - a["resources"])
-    removed_resources = sorted(a["resources"] - b["resources"])
-    added_not_resources = sorted(b["not_resources"] - a["not_resources"])
-    removed_not_resources = sorted(a["not_resources"] - b["not_resources"])
-    added_principals = sorted(b["principals"] - a["principals"])
-    removed_principals = sorted(a["principals"] - b["principals"])
-    added_not_principals = sorted(b["not_principals"] - a["not_principals"])
-    removed_not_principals = sorted(a["not_principals"] - b["not_principals"])
-    added_condition_keys = sorted(b["condition_keys"] - a["condition_keys"])
-    removed_condition_keys = sorted(a["condition_keys"] - b["condition_keys"])
-
-    statements_added = len(b["signatures"] - a["signatures"])
-    statements_removed = len(a["signatures"] - b["signatures"])
-
-    parts: list[str] = []
-    if added_actions or removed_actions:
-        parts.append(f"{len(added_actions)} action(s) added, {len(removed_actions)} removed")
-    if added_not_actions or removed_not_actions:
-        parts.append(f"NotAction: +{len(added_not_actions)}/-{len(removed_not_actions)}")
-    if added_resources or removed_resources:
-        parts.append(f"{len(added_resources)} resource(s) added, {len(removed_resources)} removed")
-    if added_not_resources or removed_not_resources:
-        parts.append(f"NotResource: +{len(added_not_resources)}/-{len(removed_not_resources)}")
-    if added_principals or removed_principals:
-        parts.append(f"Principal: +{len(added_principals)}/-{len(removed_principals)}")
-    if added_condition_keys or removed_condition_keys:
-        parts.append(f"condition keys: +{len(added_condition_keys)}/-{len(removed_condition_keys)}")
-    if statements_added or statements_removed:
-        parts.append(f"statements: +{statements_added}/-{statements_removed}")
-
-    summary = "; ".join(parts) if parts else "No significant differences found"
-
-    full = {
-        "summary": summary,
-        "added_actions": added_actions,
-        "removed_actions": removed_actions,
-        "added_not_actions": added_not_actions,
-        "removed_not_actions": removed_not_actions,
-        "added_resources": added_resources,
-        "removed_resources": removed_resources,
-        "added_not_resources": added_not_resources,
-        "removed_not_resources": removed_not_resources,
-        "added_principals": added_principals,
-        "removed_principals": removed_principals,
-        "added_not_principals": added_not_principals,
-        "removed_not_principals": removed_not_principals,
-        "added_condition_keys": added_condition_keys,
-        "removed_condition_keys": removed_condition_keys,
-        "statements_added": statements_added,
-        "statements_removed": statements_removed,
-    }
-    if verbose:
-        return full
-    # Lean: counts only, but always include `summary` and the headline added/removed lists.
-    return {
-        "summary": summary,
-        "added_actions_count": len(added_actions),
-        "removed_actions_count": len(removed_actions),
-        "added_resources_count": len(added_resources),
-        "removed_resources_count": len(removed_resources),
-        "added_principals_count": len(added_principals),
-        "removed_principals_count": len(removed_principals),
-        "statements_added": statements_added,
-        "statements_removed": statements_removed,
+        "related": [],
     }
 
 
@@ -1905,7 +1059,7 @@ async def validate_with_config(
 async def set_custom_instructions(
     instructions: str,
 ) -> dict[str, Any]:
-    """Set custom policy generation guidelines for this session.
+    """Set custom validation guidelines for this session.
 
     Instructions are appended to default server instructions.
 
@@ -1984,21 +1138,6 @@ async def clear_custom_instructions() -> dict[str, str]:
 # =============================================================================
 # MCP Resources (Static Data - Client Cacheable)
 # =============================================================================
-
-
-@mcp.resource("iam://templates")
-async def templates_resource() -> str:
-    """List of all available policy templates.
-
-    This resource provides metadata about built-in policy templates
-    that can be used with generate_policy_from_template.
-    """
-    import json
-
-    from iam_validator.mcp.tools.generation import list_templates as _list_templates
-
-    templates = await _list_templates()
-    return json.dumps(templates, indent=2)
 
 
 @mcp.resource("iam://checks")

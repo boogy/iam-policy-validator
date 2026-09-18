@@ -8,14 +8,13 @@ def test_base_instructions_uses_current_version():
     assert constants.IAM_POLICY_VERSION_CURRENT in server.BASE_INSTRUCTIONS
 
 
-def test_fix_policy_uses_centralized_versions():
+def test_server_uses_centralized_version():
     """Server source must use the constants, not raw "2012-10-17" literals."""
     src_path = server.__file__.replace(".pyc", ".py")
     with open(src_path) as f:
         text = f.read()
 
     assert "IAM_POLICY_VERSION_CURRENT" in text
-    assert "IAM_POLICY_VERSIONS_VALID" in text
     assert '"2012-10-17"' not in text, "Raw policy version literal must come from constants.IAM_POLICY_VERSION_CURRENT"
 
 

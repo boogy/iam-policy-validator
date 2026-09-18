@@ -46,7 +46,6 @@ async def test_resources_listed():
     async with Client(mcp) as client:
         resources = await client.list_resources()
         uris = {str(r.uri) for r in resources}
-        assert "iam://templates" in uris
         assert "iam://checks" in uris
         assert "iam://config-schema" in uris
 
@@ -73,7 +72,6 @@ async def test_check_details_resource_round_trip():
         assert payload["check_id"] == "wildcard_action"
         assert payload["description"]
         assert payload["default_severity"] is not None
-        assert payload["example_violation"] is not None
 
 
 async def test_sensitive_actions_resource_round_trip():
@@ -116,35 +114,13 @@ async def test_validate_only_profile_exposes_minimal_set():
         tools = await client.list_tools()
         names = {t.name for t in tools}
         assert "validate_policy" in names
-        assert "generate_policy_from_template" not in names
-
-
-async def test_build_arn_raises_tool_error_for_bad_partition():
-    """Input-validation errors surface as protocol errors, not structured valid=False.
-
-    FastMCP's Client.call_tool defaults to raise_on_error=True; we opt out so we
-    can inspect the structured result.
-    """
-    async with Client(mcp) as client:
-        result = await client.call_tool(
-            "build_arn",
-            {
-                "service": "s3",
-                "resource_type": "bucket",
-                "partition": "bogus",
-            },
-            raise_on_error=False,
-        )
-        assert result.is_error is True
-        text = (result.content[0].text if result.content else "").lower()
-        assert "partition" in text
+        assert "query_action_details" not in names
 
 
 async def test_demoted_resources_no_longer_registered_as_tools():
-    """list_templates/list_checks/list_sensitive_actions/get_check_details = resources, not tools."""
+    """list_checks/list_sensitive_actions/get_check_details = resources, not tools."""
     async with Client(mcp) as client:
         names = {t.name for t in await client.list_tools()}
-        assert "list_templates" not in names
         assert "list_checks" not in names
         assert "list_sensitive_actions" not in names
         assert "get_check_details" not in names

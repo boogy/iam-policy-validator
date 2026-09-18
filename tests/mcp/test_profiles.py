@@ -20,13 +20,13 @@ def _reset_profile():
     set_active_profile("full")
 
 
-async def test_validate_only_profile_hides_generation_tools():
+async def test_validate_only_profile_hides_other_tools():
     apply_profile("validate-only")
     enabled = await mcp.list_tools()
     names = {t.name for t in enabled}
     assert "validate_policy" in names
-    assert "generate_policy_from_template" not in names
-    assert "build_minimal_policy" not in names
+    assert "query_action_details" not in names
+    assert "get_issue_guidance" not in names
 
 
 async def test_validate_and_query_profile_includes_query_tools():
@@ -35,18 +35,9 @@ async def test_validate_and_query_profile_includes_query_tools():
     names = {t.name for t in enabled}
     assert "validate_policy" in names
     assert "query_action_details" in names
-    assert "generate_policy_from_template" not in names
+    assert "get_issue_guidance" not in names
     # analyze tag is separate
     assert "aws_access_analyzer_validate" not in names
-
-
-async def test_no_generation_profile():
-    apply_profile("no-generation")
-    enabled = await mcp.list_tools()
-    names = {t.name for t in enabled}
-    assert "validate_policy" in names
-    assert "generate_policy_from_template" not in names
-    assert "fix_policy_issues" in names  # `fix` tag preserved
 
 
 async def test_read_only_profile_hides_destructive_tools():
@@ -68,8 +59,8 @@ async def test_full_profile_restores_everything_after_validate_only():
     apply_profile("full")
     enabled = await mcp.list_tools()
     names = {t.name for t in enabled}
-    assert "generate_policy_from_template" in names
-    assert "build_minimal_policy" in names
+    assert "query_action_details" in names
+    assert "get_issue_guidance" in names
     assert "set_organization_config" in names
 
 
@@ -99,6 +90,5 @@ async def test_list_checks_demoted_to_resource_not_tool():
     enabled = await mcp.list_tools()
     names = {t.name for t in enabled}
     assert "list_checks" not in names
-    assert "list_templates" not in names
     assert "list_sensitive_actions" not in names
     assert "get_check_details" not in names
