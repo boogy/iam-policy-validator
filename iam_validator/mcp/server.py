@@ -20,8 +20,8 @@ from mcp.types import ToolAnnotations
 
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import create_default_registry
-from iam_validator.core.constants import IAM_POLICY_VERSION_CURRENT
 from iam_validator.mcp.context import get_server_context, server_lifespan
+from iam_validator.mcp.instructions import BASE_INSTRUCTIONS, get_instructions
 
 logger = logging.getLogger(__name__)
 
@@ -119,44 +119,6 @@ def _get_check_catalog(ctx: Any = None) -> tuple[dict[str, Any], ...]:
     return tuple(sorted(catalog, key=lambda x: x["check_id"]))
 
 
-# =============================================================================
-# Base Instructions (constant)
-# =============================================================================
-
-_BASE_INSTRUCTIONS_TEMPLATE = """
-You are an AWS IAM security expert reviewing policies for least-privilege violations.
-
-## CORE PRINCIPLES
-- LEAST PRIVILEGE: Flag permissions broader than the task needs
-- RESOURCE SCOPING: Specific ARNs, never wildcards for write operations
-- CONDITION GUARDS: Sensitive actions (MFA, IP, time) should carry conditions
-
-## ABSOLUTE RULES (GUARDRAIL: DO NOT REMOVE)
-- NEVER guess ARN formats — use query_arn_formats
-- ALWAYS validate actions exist — typos create security gaps
-
-## VALIDATION LOOP PREVENTION (GUARDRAIL: DO NOT REMOVE)
-HARD LIMIT: maximum 2 validate_policy calls per request.
-Fix `error`/`critical` using the issue's `example` field; present the policy with
-remaining `high`/`medium`/`low`/`warning` items as informational only.
-When in doubt, PRESENT THE POLICY.
-
-## RESOURCES
-iam://checks, iam://sensitive-actions/{category},
-iam://checks/{check_id}, iam://workflow-examples.
-Default policy Version is "__VERSION__".
-"""
-
-BASE_INSTRUCTIONS = _BASE_INSTRUCTIONS_TEMPLATE.replace("__VERSION__", IAM_POLICY_VERSION_CURRENT)
-
-
-def get_instructions(custom: str | None = None) -> str:
-    """Build full instructions, appending ``custom`` (session/settings) if given."""
-    if custom:
-        return f"{BASE_INSTRUCTIONS}\n\n## ORGANIZATION-SPECIFIC INSTRUCTIONS\n\n{custom}"
-    return BASE_INSTRUCTIONS
-
-
 # Create the MCP server instance with lifespan
 mcp = FastMCP(
     name="IAM Policy Validator",
@@ -166,14 +128,9 @@ mcp = FastMCP(
 
 
 # =============================================================================
-# Profile-based tool gating (FastMCP tag-based enable/disable)
+# Profile-based tool gating
 # =============================================================================
-#
-# We snapshot _transforms after server construction (zero baseline transforms
-# at this point) so apply_profile() can reset to a clean slate when the active
-# profile changes. _transforms is a private FastMCP attribute; if FastMCP
-# renames it the test in tests/mcp/test_profiles.py will catch the regression.
-_BASELINE_TRANSFORMS_LEN: int = len(mcp._transforms)
+# Bookkeeping for get_active_profile() only; build_server() does the gating.
 _ACTIVE_PROFILE: str = "full"
 
 
@@ -190,35 +147,6 @@ PROFILE_DESCRIPTIONS: dict[str, str] = {
         "mutators per MCP spec, but they're still hidden here via the mutating tag."
     ),
 }
-
-
-def apply_profile(profile: str) -> None:
-    """Apply tool visibility profile by tag-based enable/disable.
-
-    Idempotent: safe to call multiple times. Resets to the baseline transform
-    state before applying the new profile so successive calls don't compound.
-
-    Args:
-        profile: One of full, validate-only, validate-and-query, read-only.
-
-    Raises:
-        ValueError: Unknown profile name.
-    """
-    # Drop any profile-applied transforms from previous calls.
-    del mcp._transforms[_BASELINE_TRANSFORMS_LEN:]
-
-    if profile == "full":
-        return
-    if profile == "validate-only":
-        mcp.enable(tags={"validate"}, only=True)
-        return
-    if profile == "validate-and-query":
-        mcp.enable(tags={"validate", "query"}, only=True)
-        return
-    if profile == "read-only":
-        mcp.disable(tags={"mutating"})
-        return
-    raise ValueError(f"Unknown profile: {profile}. Allowed: {sorted(PROFILE_DESCRIPTIONS.keys())}")
 
 
 def set_active_profile(profile: str) -> None:

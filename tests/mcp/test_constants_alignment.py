@@ -1,16 +1,16 @@
 """Guard rails: MCP must source shared literals from core/constants."""
 
 from iam_validator.core import constants
-from iam_validator.mcp import server
+from iam_validator.mcp import instructions, server
 
 
 def test_base_instructions_uses_current_version():
     assert constants.IAM_POLICY_VERSION_CURRENT in server.BASE_INSTRUCTIONS
 
 
-def test_server_uses_centralized_version():
-    """Server source must use the constants, not raw "2012-10-17" literals."""
-    src_path = server.__file__.replace(".pyc", ".py")
+def test_instructions_uses_centralized_version():
+    """instructions.py source must use the constant, not a raw "2012-10-17" literal."""
+    src_path = instructions.__file__.replace(".pyc", ".py")
     with open(src_path) as f:
         text = f.read()
 

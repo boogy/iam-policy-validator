@@ -7,17 +7,9 @@ Round-trips the MCP protocol against the actual server instance to catch:
 - resource catalog drift
 """
 
-import pytest
 from fastmcp.client import Client
 
-from iam_validator.mcp.server import apply_profile, mcp
-
-
-@pytest.fixture(autouse=True)
-def _full_profile():
-    apply_profile("full")
-    yield
-    apply_profile("full")
+from iam_validator.mcp.server import mcp
 
 
 async def test_validate_policy_round_trip():
@@ -106,15 +98,6 @@ async def test_tool_annotations_round_trip():
         assert by_name["validate_policy"].annotations.readOnlyHint is True
         assert by_name["set_organization_config"].annotations.destructiveHint is False
         assert by_name["aws_access_analyzer_validate"].annotations.openWorldHint is True
-
-
-async def test_validate_only_profile_exposes_minimal_set():
-    apply_profile("validate-only")
-    async with Client(mcp) as client:
-        tools = await client.list_tools()
-        names = {t.name for t in tools}
-        assert "validate_policy" in names
-        assert "query_action_details" not in names
 
 
 async def test_demoted_resources_no_longer_registered_as_tools():

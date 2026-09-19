@@ -178,11 +178,10 @@ def run_server() -> None:
         os.environ["IAM_VALIDATOR_MCP_AWS_SERVICES_DIR"] = args.aws_services_dir
         print(f"AWS services dir: {args.aws_services_dir}", file=sys.stderr)
 
-    # Apply tool visibility profile before starting the server.
+    # Only records the profile for get_active_profile(); doesn't gate tool visibility yet.
     if args.profile != "full":
-        from iam_validator.mcp.server import apply_profile, set_active_profile
+        from iam_validator.mcp.server import set_active_profile
 
-        apply_profile(args.profile)
         set_active_profile(args.profile)
         print(f"MCP profile: {args.profile}", file=sys.stderr)
 

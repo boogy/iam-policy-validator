@@ -27,19 +27,28 @@ End-user install + Claude Desktop config: see `docs/integrations/mcp-server.md`.
 ```
 mcp/
 ├── __init__.py            # CLI argparse, entry-point, profile dispatch
-├── server.py              # FastMCP server: 24 @mcp.tool, 7 @mcp.resource
+├── server.py              # FastMCP server: 24 @mcp.tool, 7 @mcp.resource (dissolved by TASK-05)
 ├── settings.py            # ServerSettings — resolves mode/transport/auth/limits from
 │                          # IAM_VALIDATOR_MCP_* env vars + defaults; ServerSettings.from_env()
+├── component_spec.py      # ComponentSpec/ToolSpec/ResourceSpec/PromptSpec — shared gating fields
+├── build.py               # spec_survives() + build_server(settings) -> fresh FastMCP instance
+├── instructions.py        # BASE_INSTRUCTIONS + get_instructions() (server.py re-exports both)
+├── resources.py           # RESOURCES: list[ResourceSpec] (empty until TASK-05 ports server.py's 7)
+├── prompts.py             # PROMPTS: list[PromptSpec] (empty until TASK-05 ports server.py's 3)
 ├── models.py              # Pydantic request/response models
 ├── context.py             # ServerContext (built once, held in the FastMCP lifespan) +
 │                          # SessionState (session-scoped org config / custom instructions)
 └── tools/
-    ├── validation.py      # validate_policy, quick_validate (forward ServerContext.settings paths
-    │                      # and ServerContext.mutable's session config)
-    ├── query.py           # query_service_actions, query_action_details, expand_wildcard_action, …
-    ├── analyze.py         # analyze_policy — wraps boto3 Access Analyzer in asyncio.to_thread
+    ├── validation.py       # validate_policy, quick_validate (forward ServerContext.settings paths
+    │                       # and ServerContext.mutable's session config) — still server.py's tools
+    ├── query.py            # query_service_actions, … — still server.py's tools, no TOOLS list yet
+    ├── analyze.py          # analyze_policy — wraps boto3 Access Analyzer in asyncio.to_thread,
+    │                       # still server.py's tool, no TOOLS list yet
     └── org_config_tools.py # set/get/clear organization_config, check_org_compliance, validate_with_config
 ```
+
+No `tools/*.py` module defines `TOOLS` yet, so `build_server()` currently registers
+zero tools. `validate.py`/`checks.py`/`config.py` are created by TASK-05/TASK-08–11.
 
 `server.py` lifespan (`context.py:server_lifespan()`) builds one `ServerContext` at
 startup — registry, `ReportGenerator`, shared `AWSServiceFetcher`, and a per-`(region,
@@ -83,10 +92,34 @@ The `--profile` flag uses these tags to enable/disable groups:
 | `validate-and-query` | `validate` + `query` (no live AWS API; analyze is excluded) |
 | `read-only`          | Excludes anything tagged `mutating` — useful for CI/sandbox |
 
-`apply_profile` snapshots `mcp._transforms` (FastMCP private attr) at module
-load so successive profile changes can reset cleanly. The
-`tests/mcp/test_profiles.py::test_apply_profile_is_not_an_mcp_tool` regression
-test guards against accidentally exposing the helper as a tool.
+This table describes `server.py`'s current 24-tool surface, still built with
+tag-based `mcp.enable`/`mcp.disable` calls. Real profile enforcement is moving
+to `component_spec.py`/`build.py` (below); the CLI's `--profile` flag doesn't
+call either mechanism yet (TASK-05/TASK-15 wire it up), so it's currently only
+recorded for `get_active_profile()` introspection.
+
+### ComponentSpec and build_server (target mechanism)
+
+`component_spec.py` declares `ComponentSpec` (shared `tag`/`modes`/
+`transports`/`scopes`/`mutating` gating fields) and its `ToolSpec`/
+`ResourceSpec`/`PromptSpec` subclasses. Each `tools/*.py` module will expose a
+`TOOLS: list[ToolSpec]`; `resources.py`/`prompts.py` expose `RESOURCES`/
+`PROMPTS` the same way — every resource carries the tag of whatever tool
+returns equivalent data (e.g. `iam://checks` mirrors `describe_checks`), so
+gating a tool can't be bypassed by reading its resource twin.
+
+`build.py::build_server(settings)` filters every spec through
+`spec_survives()` — by `mode`, `transport`, and `profile` (`read-only`
+filters on `mutating` instead of `tag`) — and registers survivors on a fresh
+`FastMCP` instance, iterating each module's `TOOLS` list (via
+`getattr(module, "TOOLS", ())`) in a fixed order so two calls with identical
+settings produce an identical tool-name sequence (MCP 2026-07-28 requires
+this for client-side list caching).
+
+As of TASK-04 no `tools/*.py` module defines `TOOLS` yet, so `build_server()`
+registers zero tools and isn't wired into the run path; TASK-05 ports
+`server.py`'s 24 tools/7 resources/3 prompts unchanged, and TASK-08–11
+consolidate them into the target 6-tool surface.
 
 ### Token cost
 
@@ -157,10 +190,14 @@ uv run pytest tests/mcp/
 Test files of note:
 
 - `test_constants_alignment.py` — guard rails: MCP must source shared literals from `core/constants`
-- `test_profiles.py` — tag-based gating + idempotency
+- `test_build.py` — `spec_survives()` mutating/transport gating with fixture specs, and a
+  `build_server()` determinism test that derives the expected tool-name order from a
+  monkeypatched `_TOOL_MODULES` and fails under a hash-based sort
+- `test_profiles.py` — `spec_survives()` profile-tag semantics with fixture specs, plus
+  `server.py`'s live `mcp` singleton (`iam://checks` demotion, `get_active_profile()`)
 - `test_transport.py` — in-process FastMCP `Client` round-trip (annotations, resources, errors)
 - `test_analyze.py` — Access Analyzer wrapper + cached boto3 session
 
 Mock fetcher / network — no real API or AWS calls. Debug interactively via
-`mise run mcp:inspector`. Requires `fastmcp>=3.2,<4` (installed via
+`mise run mcp:inspector`. Requires `fastmcp>=3.2,<5` (installed via
 `uv sync --extra mcp`).
