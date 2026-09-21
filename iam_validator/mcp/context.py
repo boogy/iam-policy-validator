@@ -12,18 +12,24 @@ and reached from tool/resource bodies via ``ctx.request_context.lifespan_context
 
 from __future__ import annotations
 
+import hashlib
+import importlib
+import importlib.util
+import json
 import logging
+import sys
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
 
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckRegistry, create_default_registry
-from iam_validator.core.config.config_loader import ConfigLoader, ValidatorConfig
+from iam_validator.core.config.config_loader import ConfigLoader, ValidatorConfig, validate_config
 from iam_validator.core.policy_checks import build_registry
 from iam_validator.core.report import ReportGenerator
 from iam_validator.mcp.settings import ServerSettings
@@ -146,15 +152,139 @@ class ServerContext:
     aws_sessions: dict[tuple[str, str | None], Any]
     settings: ServerSettings
     mutable: SessionState | None
-    # Unimplemented seam for TASK-07 (hosted/local config resolution + digest).
+    # Stable hash of the resolved config + registry provenance; see _compute_config_digest.
     config_digest: str | None = None
     # Set True once the fetcher prewarm completes; TASK-19's /ready endpoint reads this.
     ready: bool = False
 
 
+class HostedStartupError(RuntimeError):
+    """Raised when hosted-mode startup cannot produce a valid, complete baseline config."""
+
+
+def _load_hosted_config(explicit_path: str | None) -> ValidatorConfig:
+    """Resolve the hosted baseline config, failing loudly on any problem.
+
+    Hosted mode never falls back to defaults: a missing, unreadable, or
+    schema-invalid config file is a startup failure, not a warning.
+
+    Raises:
+        HostedStartupError: No explicit path given, or the path is missing,
+            unreadable, or schema-invalid. Hosted mode never falls back to
+            ``ConfigLoader.find_config_file``'s cwd/parent/$HOME discovery --
+            that would let a server silently adopt an unrelated ambient
+            config file left on the deploy host.
+    """
+    if not explicit_path:
+        raise HostedStartupError(
+            "Hosted mode requires an explicit config file (--config or "
+            "IAM_VALIDATOR_MCP_CONFIG); ambient config discovery is disabled in hosted mode."
+        )
+
+    try:
+        config_file = ConfigLoader.find_config_file(explicit_path)
+    except FileNotFoundError as e:
+        raise HostedStartupError(f"Hosted MCP config not found: {e}") from e
+
+    if config_file is None:
+        raise HostedStartupError(f"Hosted MCP config not found: {explicit_path}")
+
+    try:
+        config_dict = ConfigLoader.load_yaml(config_file)
+    except ValueError as e:
+        raise HostedStartupError(f"Hosted MCP config at {config_file} is unreadable or malformed: {e}") from e
+
+    is_valid, errors = validate_config(config_dict)
+    if not is_valid:
+        raise HostedStartupError(
+            f"Hosted MCP config at {config_file} failed schema validation:\n" + "\n".join(f"  - {e}" for e in errors)
+        )
+
+    return ValidatorConfig(config_dict)
+
+
 def _load_config(settings: ServerSettings) -> ValidatorConfig:
     explicit_path = str(settings.config_source) if settings.config_source else None
+    if settings.mode == "hosted":
+        return _load_hosted_config(explicit_path)
     return ConfigLoader.load_config(explicit_path=explicit_path, allow_missing=True)
+
+
+def _verify_hosted_custom_checks(config: ValidatorConfig, custom_checks_dir: str | None) -> None:
+    """Re-attempt every declared custom check's import; hosted mode fails loudly on any miss.
+
+    ``ConfigLoader.load_custom_checks``/``discover_checks_in_directory`` warn and
+    continue on a per-check import failure (unchanged, local-mode contract). This
+    hosted-only policy instead names each failing module/file and raises, so a
+    company config with a broken custom check cannot silently ship a weaker
+    baseline than declared.
+
+    Raises:
+        HostedStartupError: Any declared custom check failed to import/instantiate.
+    """
+    failures: list[str] = []
+
+    for entry in config.custom_checks:
+        if not entry.get("enabled", True):
+            continue
+        module_path = entry.get("module")
+        if not module_path:
+            failures.append("custom_checks entry missing 'module' key")
+            continue
+        try:
+            module_name, class_name = module_path.rsplit(".", 1)
+            module = importlib.import_module(module_name)
+            check_class = getattr(module, class_name)
+            check_class()
+        except Exception as e:
+            failures.append(f"{module_path}: {e}")
+
+    checks_dir = custom_checks_dir or config.custom_checks_dir
+    if checks_dir:
+        directory = Path(checks_dir).resolve()
+        if directory.is_dir():
+            for py_file in sorted(directory.iterdir()):
+                if not (py_file.is_file() and py_file.suffix == ".py" and not py_file.name.startswith(("_", "."))):
+                    continue
+                module_name = f"_hosted_verify_{py_file.stem}"
+                try:
+                    spec = importlib.util.spec_from_file_location(module_name, py_file)
+                    if spec is None or spec.loader is None:
+                        raise ImportError(f"could not load spec from {py_file}")
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[module_name] = module  # supports relative/self-referential imports
+                    spec.loader.exec_module(module)
+                except Exception as e:
+                    failures.append(f"{py_file.name}: {e}")
+                finally:
+                    sys.modules.pop(module_name, None)
+
+    if failures:
+        raise HostedStartupError(
+            "Hosted MCP startup failed: the following custom checks could not be loaded:\n"
+            + "\n".join(f"  - {f}" for f in failures)
+        )
+
+
+def _compute_config_digest(config: ValidatorConfig, registry: CheckRegistry) -> str:
+    """Stable SHA-256 over the resolved config plus the built registry's provenance.
+
+    The registry is included (not just the config dict) because
+    ``create_default_registry``'s entry-point loading can silently add a check
+    via an installed distribution without it appearing anywhere in the config.
+    """
+    registry_rows = sorted(
+        (
+            check.check_id,
+            registry.get_source(check.check_id) or "builtin",
+            registry.is_enabled(check.check_id),
+            getattr(registry.get_config(check.check_id), "severity", None),
+        )
+        for check in registry.get_all_checks()
+    )
+    payload = {"config": config.config_dict, "registry": registry_rows}
+    canonical = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def build_context(settings: ServerSettings) -> ServerContext:
@@ -169,13 +299,20 @@ def build_context(settings: ServerSettings) -> ServerContext:
 
     config = _load_config(settings)
 
+    custom_checks_dir = str(settings.custom_checks_dir) if settings.custom_checks_dir else None
+
+    if settings.mode == "hosted":
+        _verify_hosted_custom_checks(config, custom_checks_dir)
+
     # Local mode: an explicit custom_checks_dir is caller consent; a YAML-only
     # one is not. Hosted mode inverts this for the server's own operator config.
     registry = build_registry(
         config,
-        custom_checks_dir=str(settings.custom_checks_dir) if settings.custom_checks_dir else None,
+        custom_checks_dir=custom_checks_dir,
         allow_config_custom_checks=(settings.mode == "hosted"),
     )
+
+    config_digest = _compute_config_digest(config, registry)
 
     fetcher = AWSServiceFetcher(
         prefetch_common=True,
@@ -194,6 +331,7 @@ def build_context(settings: ServerSettings) -> ServerContext:
         aws_sessions={},
         settings=settings,
         mutable=mutable,
+        config_digest=config_digest,
     )
 
 
@@ -203,12 +341,15 @@ async def prewarm(context: ServerContext) -> None:
     context.ready = True
 
 
-def _resolve_startup_instructions(settings: ServerSettings) -> str | None:
-    """Custom instructions from settings: inline text takes precedence over a file."""
+def _resolve_startup_instructions(settings: ServerSettings, config: ValidatorConfig) -> str | None:
+    """Custom instructions: inline setting > file setting > config's ``custom_instructions`` key."""
     if settings.instructions:
         return settings.instructions
     if settings.instructions_file:
         return settings.instructions_file.read_text()
+    config_instructions = config.config_dict.get("custom_instructions")
+    if isinstance(config_instructions, str) and config_instructions.strip():
+        return config_instructions
     return None
 
 
@@ -225,7 +366,7 @@ async def server_lifespan(_server: FastMCP, settings: ServerSettings | None = No
         settings = ServerSettings.from_env()
     context = build_context(settings)
 
-    custom_instructions = _resolve_startup_instructions(settings)
+    custom_instructions = _resolve_startup_instructions(settings, context.config)
     if context.mutable is not None and custom_instructions:
         context.mutable.set_instructions(custom_instructions, source="settings")
 
@@ -370,6 +511,7 @@ def get_check_details(check_id: str, ctx: Any = None) -> dict[str, Any]:
 __all__ = [
     "ServerContext",
     "SessionState",
+    "HostedStartupError",
     "build_context",
     "prewarm",
     "server_lifespan",

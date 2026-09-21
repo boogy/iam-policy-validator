@@ -251,25 +251,14 @@ async def validate_with_config_impl(
     Returns:
         Dictionary with validation results
     """
-    import tempfile
-    from pathlib import Path
-
-    import yaml
-
     from iam_validator.mcp.tools.validate import validate_policy
 
-    # Create a temporary config file for the validator
-    temp_config_path: str | None = None
     try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            yaml.dump(config, f)
-            temp_config_path = f.name
-
-        # Run validation with the temp config (bypasses session config)
+        # Inline config, applied directly -- bypasses the filesystem and session config.
         validation_result = await validate_policy(
             policy=policy,
             policy_type=policy_type,
-            config_path=temp_config_path,
+            config=config,
             use_org_config=False,
             ctx=ctx,
         )
@@ -280,12 +269,6 @@ async def validate_with_config_impl(
             "error": str(e),
             "config_applied": None,
         }
-    finally:
-        if temp_config_path:
-            try:
-                Path(temp_config_path).unlink()
-            except OSError:
-                pass
 
     # Build issues list
     issues = [
@@ -328,12 +311,29 @@ async def set_organization_config(config: dict[str, Any], ctx: Context) -> dict[
 async def get_organization_config(ctx: Context) -> dict[str, Any]:
     """Get the current session organization configuration.
 
+    In hosted mode there is no session override (``context.mutable`` is
+    ``None``); this reports the immutable baseline config resolved at startup.
+
     Returns:
-        {has_config, config, source}
+        {has_config, config, source, config_digest}
     """
     context = get_server_context(ctx)
+    if context is not None and context.mutable is None:
+        source = str(context.settings.config_source) if context.settings.config_source else "hosted"
+        return {
+            "has_config": True,
+            "config": {
+                "settings": context.config.settings,
+                "checks": context.config.checks_config,
+            },
+            "source": source,
+            "config_digest": context.config_digest,
+        }
+
     session = context.mutable if context is not None else None
-    return await get_organization_config_impl(session)
+    result = await get_organization_config_impl(session)
+    result.setdefault("config_digest", context.config_digest if context is not None else None)
+    return result
 
 
 async def clear_organization_config(ctx: Context) -> dict[str, str]:
@@ -490,6 +490,7 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         tag="orgconfig",
         mutating=True,
+        modes=frozenset({"local"}),
         name="set_organization_config",
         fn=set_organization_config,
         annotations=_MUTATING_ANNOTATIONS,
@@ -505,6 +506,7 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         tag="orgconfig",
         mutating=True,
+        modes=frozenset({"local"}),
         name="clear_organization_config",
         fn=clear_organization_config,
         annotations=_MUTATING_ANNOTATIONS,
@@ -513,6 +515,7 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         tag="orgconfig",
         mutating=True,
+        modes=frozenset({"local"}),
         name="load_organization_config_from_yaml",
         fn=load_organization_config_from_yaml,
         annotations=_MUTATING_ANNOTATIONS,
@@ -535,6 +538,7 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         tag="orgconfig",
         mutating=True,
+        modes=frozenset({"local"}),
         name="set_custom_instructions",
         fn=set_custom_instructions,
         annotations=_MUTATING_ANNOTATIONS,
@@ -550,6 +554,7 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         tag="orgconfig",
         mutating=True,
+        modes=frozenset({"local"}),
         name="clear_custom_instructions",
         fn=clear_custom_instructions,
         annotations=_MUTATING_ANNOTATIONS,

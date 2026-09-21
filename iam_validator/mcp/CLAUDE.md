@@ -69,13 +69,39 @@ tool reads a module-level global.
 it loads third-party entry-point plugins once). `validate_policy` (and everything
 routed through it: `check_org_compliance`, `validate_with_config`, `validate_policy_json`,
 `quick_validate`) reuses `ServerContext.registry`/`.config` directly and does not rebuild
-per call, _except_ when an explicit `config_path` is given or a session-config override
-(`set_organization_config`) is active — that path still resolves its own registry each
-call, since baking session config into the shared registry is TASK-07's job. In that
+per call. An inline `config=` dict, an explicit `config_path`, or an active session-config
+override (`set_organization_config`) instead go through
+`iam_validator.core.policy_checks.overlay_registry_config(base_registry, config)`, which
+reuses the startup registry's already-imported check instances (and their `source`
+provenance) under the override's settings — no re-import, no temp file. In that
 override case, `get_check_catalog()`/`get_check_details()` (in `context.py`) resolve each
 check's `enabled`/`severity` through `ServerContext.mutable` (a `SessionState`, `None` in
 hosted mode) on every call, so the catalog agrees with what `validate_policy` runs;
 nothing memoizes the resolved values.
+
+### Hosted config resolution + config_digest
+
+In hosted mode (`--config`/`IAM_VALIDATOR_MCP_CONFIG`), `context.py:build_context()`
+resolves the config once at startup into `ServerContext.config` and never rereads or
+reloads it (redeploy only) — `set_config` and the other 4 session-mutating `orgconfig`
+tools are structurally excluded from hosted `build_server()` via
+`ToolSpec(modes=frozenset({"local"}))`, so hosted config is immutable for the process
+lifetime. A missing/unreadable/schema-invalid config file, or a declared custom check
+that fails to import, raises `HostedStartupError` naming the problem and exits non-zero
+(`_load_hosted_config`/`_verify_hosted_custom_checks`) — local mode keeps
+`ConfigLoader`'s warn-and-continue contract unchanged. `custom_instructions` is also read
+from the config's top-level key (or `IAM_VALIDATOR_MCP_INSTRUCTIONS`) at startup via
+`_resolve_startup_instructions(settings, config)`.
+
+`ServerContext.config_digest` is a stable SHA-256 (`_compute_config_digest`) over the
+resolved config dict plus the sorted `(check_id, source, enabled, severity)` tuples of
+the built registry — the registry is included, not just the config dict, because
+`create_default_registry`'s `load_entry_point_checks` can add a check via an installed
+distribution's entry point without it appearing anywhere in the YAML.
+`CheckRegistry.register(check, *, source=...)` records provenance
+(`builtin`/`entry_point`/`config_module`/`discovered`); `get_source(check_id)` reads it
+back. The digest is returned by `get_config`/`get_organization_config` and attached to
+every `validate_policy`/`validate_policies_batch` response.
 
 Several `tools/*.py` modules define an underscore-prefixed `_..._tool` wrapper (e.g.
 `validate.py:_validate_policy_tool`) alongside an impl function of the desired MCP
@@ -244,6 +270,14 @@ Test files of note:
 - `test_analyze.py` — Access Analyzer wrapper + cached boto3 session
 - `test_accuracy_fixes.py` — quick_validate wildcard detection, Access Analyzer
   partition/timeout defaults, malformed-input error shape
+- `test_immutable_config.py` — hosted-mode mutating-tool exclusion + config/digest
+  unchanged after every hosted-surviving tool call
+- `test_hosted_startup_custom_checks.py` — a declared custom check that fails to
+  import exits hosted startup non-zero naming it; local mode boots with a warning
+- `test_config_digest.py` — `config_digest` stability across processes, and change on
+  severity edit / disable / entry-point check addition
+- `test_no_tempfile.py` — `validate_policy`/`validate_with_config` never call
+  `tempfile.NamedTemporaryFile` for an inline config override
 
 Mock fetcher / network — no real API or AWS calls. Debug interactively via
 `mise run mcp:inspector`. Requires `fastmcp>=3.2,<5` (installed via

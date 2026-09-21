@@ -249,6 +249,33 @@ def build_registry(
     return registry
 
 
+def overlay_registry_config(base_registry: CheckRegistry, config: ValidatorConfig) -> CheckRegistry:
+    """Build a new registry that reuses `base_registry`'s check instances under `config`.
+
+    Applies `config`'s enable/severity/options over the reused checks without
+    re-importing custom checks or re-running entry-point/directory discovery —
+    for a caller (e.g. an MCP server) that already built a registry once and
+    needs a cheap per-request override, not a full rebuild.
+
+    Args:
+        base_registry: Already-built registry whose check instances (and their
+            provenance) are reused as-is.
+        config: Override configuration to apply on top of the reused checks.
+
+    Returns:
+        A new CheckRegistry instance; `base_registry` is left untouched.
+    """
+    overlay = CheckRegistry(
+        enable_parallel=base_registry.enable_parallel,
+        suppress_superseded=base_registry.suppress_superseded,
+        on_check_error=base_registry.on_check_error,
+    )
+    for check in base_registry.get_all_checks():
+        overlay.register(check, source=base_registry.get_source(check.check_id) or "builtin")
+    ConfigLoader.apply_config_to_registry(config, overlay)
+    return overlay
+
+
 async def validate_policies(
     policies: list[tuple[str, IAMPolicy]] | list[tuple[str, IAMPolicy, dict]],
     config_path: str | None = None,

@@ -733,7 +733,7 @@ class ConfigLoader:
 
                 # Instantiate and register the check
                 check_instance = check_class()
-                registry.register(check_instance)
+                registry.register(check_instance, source="config_module")
 
                 # Configure the check
                 check_config = CheckConfig(
@@ -832,7 +832,7 @@ class ConfigLoader:
                                 logger.warning(f"Check class {name} in {py_file} missing check_id property")
                                 continue
 
-                            registry.register(check_instance)
+                            registry.register(check_instance, source="discovered")
 
                             # Create default config (disabled by default - must be explicitly enabled in config)
                             check_config = CheckConfig(

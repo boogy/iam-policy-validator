@@ -386,6 +386,7 @@ class CheckRegistry:
         """
         self._checks: dict[str, PolicyCheck] = {}
         self._configs: dict[str, CheckConfig] = {}
+        self._sources: dict[str, str] = {}
         self.enable_parallel = enable_parallel
         self.suppress_superseded = suppress_superseded
         self.on_check_error = on_check_error
@@ -443,12 +444,14 @@ class CheckRegistry:
             )
         ]
 
-    def register(self, check: PolicyCheck) -> None:
+    def register(self, check: PolicyCheck, *, source: str = "builtin") -> None:
         """
         Register a new check.
 
         Args:
             check: PolicyCheck instance to register
+            source: Provenance tag for ``config_digest`` (one of "builtin",
+                "entry_point", "config_module", "discovered").
 
         Raises:
             NotImplementedError: If the check does not define a non-empty
@@ -470,6 +473,7 @@ class CheckRegistry:
                 )
 
         self._checks[check.check_id] = check
+        self._sources[check.check_id] = source
 
         # Create default config if not exists
         if check.check_id not in self._configs:
@@ -478,6 +482,10 @@ class CheckRegistry:
                 enabled=True,
                 description=check.description,
             )
+
+    def get_source(self, check_id: str) -> str | None:
+        """Return the provenance tag ``register()`` recorded for ``check_id``."""
+        return self._sources.get(check_id)
 
     def unregister(self, check_id: str) -> None:
         """
@@ -490,6 +498,8 @@ class CheckRegistry:
             del self._checks[check_id]
         if check_id in self._configs:
             del self._configs[check_id]
+        if check_id in self._sources:
+            del self._sources[check_id]
 
     def configure_check(self, check_id: str, config: CheckConfig) -> None:
         """
@@ -861,7 +871,7 @@ def load_entry_point_checks(registry: "CheckRegistry") -> list[str]:
                     instance.check_id,
                 )
                 continue
-            registry.register(instance)
+            registry.register(instance, source="entry_point")
             loaded.append(instance.check_id)
         except Exception as e:
             logger.warning("Failed to load plugin check '%s': %s", ep.name, e)

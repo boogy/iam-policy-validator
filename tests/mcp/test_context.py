@@ -17,8 +17,17 @@ pytest.importorskip("fastmcp", reason="MCP tests require 'pip install iam-policy
 class TestBuildContext:
     """build_context() is the sole place a ServerContext gets constructed."""
 
-    def test_hosted_mode_has_no_mutable_session(self):
-        context = build_context(ServerSettings(mode="hosted", auth="token", auth_explicitly_set=True))
+    def test_hosted_mode_has_no_mutable_session(self, tmp_path):
+        config_file = tmp_path / "iam-validator.yaml"
+        config_file.write_text("settings:\n  fail_on_severity: [error, critical]\n")
+        context = build_context(
+            ServerSettings(
+                mode="hosted",
+                auth="token",
+                auth_explicitly_set=True,
+                config_source=config_file,
+            )
+        )
         assert context.mutable is None
 
     def test_local_mode_has_a_session_state(self):

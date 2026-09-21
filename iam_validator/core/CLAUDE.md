@@ -127,6 +127,17 @@ application and both custom-check loading paths entirely — the registry is use
 long-lived caller (e.g. an MCP server) builds one with `build_registry` and reuses it across
 requests instead of re-importing custom-check modules on every call. Re-exported from the SDK.
 
+`CheckRegistry.register(check, *, source="builtin")` records where a check came from
+(`builtin`/`entry_point`/`config_module`/`discovered`); `get_source(check_id)` reads it
+back. `load_entry_point_checks` registers with `source="entry_point"`,
+`ConfigLoader.load_custom_checks`/`discover_checks_in_directory` with
+`"config_module"`/`"discovered"`. `policy_checks.overlay_registry_config(base_registry,
+config)` builds a new registry that reuses `base_registry`'s check instances (and their
+provenance) under a different `ValidatorConfig`, for a caller that wants to apply a
+one-off or session config override without re-importing custom checks/entry points —
+the MCP server's `set_organization_config`/`validate_with_config` paths use this instead
+of rebuilding via `build_registry`.
+
 ---
 
 ## AWS Service Fetcher

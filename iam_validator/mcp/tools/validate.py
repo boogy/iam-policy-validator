@@ -5,27 +5,19 @@ SDK validation functionality. All functions wrap the core validation logic
 from iam_validator.sdk without reimplementing it.
 """
 
-import atexit
 import json
-import tempfile
-from collections.abc import Generator
-from contextlib import contextmanager
-from pathlib import Path
 from typing import Any
 
-import yaml
 from fastmcp import Context
 from mcp.types import ToolAnnotations
 
 from iam_validator.core.check_registry import create_default_registry
+from iam_validator.core.config.config_loader import ValidatorConfig
 from iam_validator.core.models import IAMPolicy, ValidationIssue
-from iam_validator.core.policy_checks import validate_policies
+from iam_validator.core.policy_checks import overlay_registry_config, validate_policies
 from iam_validator.mcp.component_spec import ToolSpec, infer_output_schema
 from iam_validator.mcp.context import get_server_context
 from iam_validator.mcp.models import ValidationResult
-
-# Track temp files for cleanup on exit (safety net for abnormal termination)
-_temp_files_to_cleanup: set[Path] = set()
 
 
 def issue_to_dict(issue: ValidationIssue, *, verbose: bool = False) -> dict[str, Any]:
@@ -55,62 +47,6 @@ def issue_to_dict(issue: ValidationIssue, *, verbose: bool = False) -> dict[str,
         "documentation_url": issue.documentation_url,
         "remediation_steps": issue.remediation_steps,
     }
-
-
-def _cleanup_temp_files() -> None:
-    """Clean up any remaining temp files on process exit."""
-    for temp_path in list(_temp_files_to_cleanup):
-        try:
-            if temp_path.exists():
-                temp_path.unlink()
-        except OSError:
-            pass
-    _temp_files_to_cleanup.clear()
-
-
-atexit.register(_cleanup_temp_files)
-
-
-@contextmanager
-def _temp_config_file(
-    session_config: Any,
-) -> Generator[str | None, None, None]:
-    """Context manager for temporary config file with guaranteed cleanup.
-
-    Creates a temporary YAML config file from ValidatorConfig and ensures
-    cleanup even if exceptions occur or process is killed.
-
-    Args:
-        session_config: ValidatorConfig instance from the caller's SessionState
-
-    Yields:
-        Path to temporary config file, or None if no config provided
-    """
-    if session_config is None:
-        yield None
-        return
-
-    # ValidatorConfig already has the right structure - just dump its config_dict
-    config_dict = session_config.config_dict
-
-    # Create temp file and register for cleanup
-    temp_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            yaml.dump(config_dict, f)
-            temp_path = Path(f.name)
-            _temp_files_to_cleanup.add(temp_path)
-
-        yield str(temp_path)
-    finally:
-        # Clean up temp file
-        if temp_path:
-            try:
-                if temp_path.exists():
-                    temp_path.unlink()
-            except OSError:
-                pass
-            _temp_files_to_cleanup.discard(temp_path)
 
 
 # Map canonical PolicyType literals to the short strings this MCP tool
@@ -153,6 +89,7 @@ async def validate_policy(
     policy: dict[str, Any],
     policy_type: str | None = None,
     config_path: str | None = None,
+    config: dict[str, Any] | None = None,
     use_org_config: bool = True,
     ctx: Any = None,
 ) -> ValidationResult:
@@ -168,9 +105,10 @@ async def validate_policy(
     - "identity" otherwise (identity-based policy attached to users/roles/groups)
 
     Configuration priority:
-    1. config_path (if provided) - explicit YAML config file path
-    2. Session org config (if use_org_config=True and config set)
-    3. Default validator configuration
+    1. config (if provided) - inline configuration dict
+    2. config_path (if provided) - explicit YAML config file path
+    3. Session org config (if use_org_config=True and config set)
+    4. Default validator configuration
 
     Args:
         policy: IAM policy as a Python dictionary (must contain Version and Statement)
@@ -180,6 +118,8 @@ async def validate_policy(
             - "resource": Resource-based policy (attached to resources like S3 buckets)
             - "trust": Trust policy (role assumption policy)
         config_path: Optional path to YAML configuration file
+        config: Optional inline configuration dict, applied directly without
+            touching the filesystem
         use_org_config: Whether to use session organization config (default: True)
 
     Returns:
@@ -240,7 +180,7 @@ async def validate_policy(
 
     # Determine config path and session_config to use
     session_config = None
-    if not config_path and use_org_config and context is not None and context.mutable is not None:
+    if not config and not config_path and use_org_config and context is not None and context.mutable is not None:
         session_config = context.mutable.get_config()
 
     # Pull CLI-supplied paths (--custom-checks-dir / --aws-services-dir) so the
@@ -248,23 +188,45 @@ async def validate_policy(
     custom_dir = str(context.settings.custom_checks_dir) if context and context.settings.custom_checks_dir else None
     services_dir = str(context.settings.aws_services_dir) if context and context.settings.aws_services_dir else None
 
-    if config_path or session_config is not None:
-        # An explicit config_path or an active session-config override (see
-        # set_organization_config) asks for check settings that differ from the
-        # startup registry, so this path still resolves its own registry/config.
-        # Unifying session config into the shared registry is TASK-07's job.
-        with _temp_config_file(session_config) as temp_path:
-            effective_config_path = config_path or temp_path
-
-            # Use validate_policies to perform validation with policy_type support
-            # This handles all the validation logic including check execution
-            results = await validate_policies(
-                policies=[("inline-policy", iam_policy)],
-                config_path=effective_config_path,
-                policy_type=normalized_type,  # type: ignore
-                custom_checks_dir=custom_dir,
-                aws_services_dir=services_dir,
-            )
+    if config is not None:
+        # An inline config dict (see validate_with_config) is applied directly
+        # -- no filesystem round-trip -- overlaid onto the startup registry's
+        # already-imported check instances instead of rebuilding it.
+        inline_config = ValidatorConfig(config, use_defaults=True)
+        base_registry = context.registry if context is not None else create_default_registry()
+        registry = overlay_registry_config(base_registry, inline_config)
+        results = await validate_policies(
+            policies=[("inline-policy", iam_policy)],
+            config=inline_config,
+            registry=registry,
+            policy_type=normalized_type,  # type: ignore
+            custom_checks_dir=custom_dir,
+            aws_services_dir=services_dir,
+        )
+    elif config_path:
+        # An explicit config_path asks for check settings the startup registry
+        # doesn't have baked in, so this path still resolves its own config.
+        results = await validate_policies(
+            policies=[("inline-policy", iam_policy)],
+            config_path=config_path,
+            policy_type=normalized_type,  # type: ignore
+            custom_checks_dir=custom_dir,
+            aws_services_dir=services_dir,
+        )
+    elif session_config is not None:
+        # An active session-config override (see set_organization_config)
+        # overlays onto the startup registry's already-imported check
+        # instances instead of rebuilding it from scratch.
+        base_registry = context.registry if context is not None else create_default_registry()
+        registry = overlay_registry_config(base_registry, session_config)
+        results = await validate_policies(
+            policies=[("inline-policy", iam_policy)],
+            config=session_config,
+            registry=registry,
+            policy_type=normalized_type,  # type: ignore
+            custom_checks_dir=custom_dir,
+            aws_services_dir=services_dir,
+        )
     else:
         # Reuse the startup registry: rebuilding reimports custom checks and entry-point plugins.
         registry = context.registry if context is not None else create_default_registry()
@@ -449,13 +411,15 @@ async def _validate_policy_tool(
         use_org_config: Apply session org config (default: True)
 
     Returns:
-        {is_valid, issues, policy_file}
+        {is_valid, issues, policy_file, config_digest}
     """
     result = await validate_policy(policy=policy, policy_type=policy_type, use_org_config=use_org_config, ctx=ctx)
+    context = get_server_context(ctx)
     return {
         "is_valid": result.is_valid,
         "issues": [issue_to_dict(i, verbose=verbose) for i in result.issues],
         "policy_file": result.policy_file,
+        "config_digest": context.config_digest if context is not None else None,
     }
 
 
@@ -503,7 +467,7 @@ async def validate_policies_batch(
             thundering herd against AWS-side rate limits when N is large.
 
     Returns:
-        List of {policy_index, is_valid, issues}
+        List of {policy_index, is_valid, issues, config_digest}
     """
     import asyncio
 
@@ -511,6 +475,9 @@ async def validate_policies_batch(
 
     # Ensure shared fetcher is available (validates actions exist)
     _ = get_shared_fetcher(ctx)
+
+    context = get_server_context(ctx)
+    config_digest = context.config_digest if context is not None else None
 
     sem = asyncio.Semaphore(max(1, max_concurrency))
 
@@ -521,6 +488,7 @@ async def validate_policies_batch(
             "policy_index": idx,
             "is_valid": result.is_valid,
             "issues": [issue_to_dict(i, verbose=verbose) for i in result.issues],
+            "config_digest": config_digest,
         }
 
     # Run all validations in parallel (capped by max_concurrency)

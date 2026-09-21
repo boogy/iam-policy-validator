@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from iam_validator.core.config.config_loader import ValidatorConfig
 from iam_validator.mcp.context import SessionState, _resolve_startup_instructions
 from iam_validator.mcp.settings import ServerSettings
 
@@ -88,7 +89,8 @@ class TestResolveStartupInstructions:
 
     def test_inline_instructions_take_precedence(self):
         settings = ServerSettings(instructions="Inline text", instructions_file=None)
-        assert _resolve_startup_instructions(settings) == "Inline text"
+        config = ValidatorConfig({"custom_instructions": "Config text"})
+        assert _resolve_startup_instructions(settings, config) == "Inline text"
 
     def test_loads_from_file(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
@@ -97,7 +99,8 @@ class TestResolveStartupInstructions:
 
         try:
             settings = ServerSettings(instructions_file=temp_path)
-            result = _resolve_startup_instructions(settings)
+            config = ValidatorConfig({})
+            result = _resolve_startup_instructions(settings, config)
             assert result is not None
             assert "Custom Rules" in result
         finally:
@@ -105,7 +108,13 @@ class TestResolveStartupInstructions:
 
     def test_returns_none_when_neither_set(self):
         settings = ServerSettings()
-        assert _resolve_startup_instructions(settings) is None
+        config = ValidatorConfig({})
+        assert _resolve_startup_instructions(settings, config) is None
+
+    def test_falls_back_to_config_custom_instructions(self):
+        settings = ServerSettings()
+        config = ValidatorConfig({"custom_instructions": "From config"})
+        assert _resolve_startup_instructions(settings, config) == "From config"
 
 
 @pytest.mark.skipif(not HAS_FASTMCP, reason="MCP tests require 'pip install iam-policy-validator[mcp]'")
