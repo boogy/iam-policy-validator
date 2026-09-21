@@ -110,7 +110,7 @@ class TestRegistryBuiltOnceAcrossValidateCalls:
         return calls
 
     async def test_validate_policy_does_not_rebuild_registry(self, simple_policy_dict, monkeypatch):
-        from iam_validator.mcp.tools.validation import validate_policy
+        from iam_validator.mcp.tools.validate import validate_policy
 
         context = build_context(ServerSettings(mode="local"))
         ctx = _fake_ctx(context)
@@ -122,7 +122,7 @@ class TestRegistryBuiltOnceAcrossValidateCalls:
         assert calls == [], f"build_registry ran {len(calls)} time(s) after startup"
 
     async def test_check_org_compliance_does_not_rebuild_registry(self, simple_policy_dict, monkeypatch):
-        from iam_validator.mcp.tools.org_config_tools import check_org_compliance_impl
+        from iam_validator.mcp.tools.config import check_org_compliance_impl
 
         context = build_context(ServerSettings(mode="local"))
         ctx = _fake_ctx(context)

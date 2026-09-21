@@ -19,8 +19,11 @@ import pytest
 fastmcp = pytest.importorskip("fastmcp", reason="MCP tests require 'pip install iam-policy-validator[mcp]'")
 
 from iam_validator.core.check_registry import create_default_registry  # noqa: E402
-from iam_validator.mcp.context import ServerContext, SessionState  # noqa: E402
-from iam_validator.mcp.server import _get_check_catalog, mcp  # noqa: E402
+from iam_validator.mcp.build import build_server  # noqa: E402
+from iam_validator.mcp.context import ServerContext, SessionState, get_check_catalog  # noqa: E402
+from iam_validator.mcp.settings import ServerSettings  # noqa: E402
+
+mcp = build_server(ServerSettings())
 
 
 def _fake_ctx(session: SessionState) -> SimpleNamespace:
@@ -41,19 +44,19 @@ class TestCheckCatalog:
     """Test the check catalog backing the iam://checks resources."""
 
     def test_catalog_returns_all_checks(self):
-        checks = _get_check_catalog()
+        checks = get_check_catalog()
         assert len(checks) >= 15  # At least 15 checks exist
         assert all("check_id" in c for c in checks)
         assert all("description" in c for c in checks)
         assert all("default_severity" in c for c in checks)
 
     def test_catalog_sorted_by_id(self):
-        checks = _get_check_catalog()
+        checks = get_check_catalog()
         check_ids = [c["check_id"] for c in checks]
         assert check_ids == sorted(check_ids)
 
     def test_catalog_defaults_to_enabled_at_default_severity(self):
-        entry = next(c for c in _get_check_catalog() if c["check_id"] == "wildcard_action")
+        entry = next(c for c in get_check_catalog() if c["check_id"] == "wildcard_action")
         assert entry["enabled"] is True
         assert entry["severity"] == entry["default_severity"]
 
@@ -68,7 +71,7 @@ class TestCheckCatalog:
             }
         )
         ctx = _fake_ctx(session)
-        by_id = {c["check_id"]: c for c in _get_check_catalog(ctx)}
+        by_id = {c["check_id"]: c for c in get_check_catalog(ctx)}
 
         assert by_id["wildcard_action"]["enabled"] is False
         assert by_id["wildcard_resource"]["severity"] == "critical"
@@ -87,7 +90,7 @@ class TestCheckCatalog:
             "    calls.append(1)\n"
             "    return orig(*a, **kw)\n"
             "cr.create_default_registry = wrapper\n"
-            "import iam_validator.mcp.server\n"
+            "import iam_validator.mcp.build\n"
             "print(len(calls))\n"
         )
         result = subprocess.run(
@@ -102,9 +105,9 @@ class TestCheckCatalog:
         session = SessionState()
         ctx = _fake_ctx(session)
 
-        before = next(c for c in _get_check_catalog(ctx) if c["check_id"] == "wildcard_action")
+        before = next(c for c in get_check_catalog(ctx) if c["check_id"] == "wildcard_action")
         session.set_config({"checks": {"wildcard_action": {"enabled": False}}})
-        after = next(c for c in _get_check_catalog(ctx) if c["check_id"] == "wildcard_action")
+        after = next(c for c in get_check_catalog(ctx) if c["check_id"] == "wildcard_action")
 
         assert before["enabled"] is True
         assert after["enabled"] is False

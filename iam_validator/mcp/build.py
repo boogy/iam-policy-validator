@@ -8,6 +8,10 @@ client-side list caching).
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
+
 from fastmcp import FastMCP
 
 from iam_validator.mcp.component_spec import ComponentSpec
@@ -15,15 +19,32 @@ from iam_validator.mcp.instructions import BASE_INSTRUCTIONS
 from iam_validator.mcp.prompts import PROMPTS
 from iam_validator.mcp.resources import RESOURCES
 from iam_validator.mcp.settings import ServerSettings
-from iam_validator.mcp.tools import analyze, org_config_tools, query, validation
+from iam_validator.mcp.tools import analyze, config, query, validate
 
-_TOOL_MODULES = (validation, query, org_config_tools, analyze)
+if TYPE_CHECKING:
+    from iam_validator.mcp.context import ServerContext
+
+_TOOL_MODULES = (validate, query, config, analyze)
 
 # Every profile except "read-only" filters by ComponentSpec.tag; "read-only"
 # filters by ComponentSpec.mutating instead (checked directly in spec_survives).
 _PROFILE_TAGS: dict[str, frozenset[str]] = {
     "validate-only": frozenset({"validate"}),
     "validate-and-query": frozenset({"validate", "query"}),
+}
+
+PROFILE_DESCRIPTIONS: dict[str, str] = {
+    "full": "All tools (default).",
+    "validate-only": "Validation tools only — smallest token footprint.",
+    "validate-and-query": (
+        "Validation + AWS service-reference query tools. Does NOT include the live "
+        "AWS Access Analyzer (use 'full' for that)."
+    ),
+    "read-only": (
+        "Excludes any tool tagged 'mutating' (set_/clear_/load_*). Tag-based, not "
+        "annotation-based — destructiveHint=False is intentional for session-only "
+        "mutators per MCP spec, but they're still hidden here via the mutating tag."
+    ),
 }
 
 
@@ -48,7 +69,12 @@ def build_server(settings: ServerSettings) -> FastMCP:
     """
     from iam_validator.mcp.context import server_lifespan
 
-    mcp = FastMCP(name="IAM Policy Validator", lifespan=server_lifespan, instructions=BASE_INSTRUCTIONS)
+    @asynccontextmanager
+    async def _lifespan(server: FastMCP) -> AsyncIterator[ServerContext]:
+        async with server_lifespan(server, settings) as context:
+            yield context
+
+    mcp = FastMCP(name="IAM Policy Validator", lifespan=_lifespan, instructions=BASE_INSTRUCTIONS)
 
     for module in _TOOL_MODULES:
         for tool_spec in getattr(module, "TOOLS", ()):
@@ -75,4 +101,4 @@ def build_server(settings: ServerSettings) -> FastMCP:
     return mcp
 
 
-__all__ = ["spec_survives", "build_server"]
+__all__ = ["spec_survives", "build_server", "PROFILE_DESCRIPTIONS"]

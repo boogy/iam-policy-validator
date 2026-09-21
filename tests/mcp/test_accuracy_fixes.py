@@ -15,7 +15,7 @@ import pytest
 from fastmcp.exceptions import ToolError
 
 from iam_validator.core.constants import PARTITION_DEFAULT_REGION
-from iam_validator.mcp import server
+from iam_validator.mcp.tools import analyze
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ async def test_quick_validate_detects_full_wildcard(monkeypatch):
     """A policy emitting a full_wildcard issue must report wildcards_detected=True."""
     from iam_validator.core.models import ValidationIssue
     from iam_validator.mcp.models import ValidationResult
-    from iam_validator.mcp.tools import validation as validation_mod
+    from iam_validator.mcp.tools import validate as validation_mod
 
     fake_result = ValidationResult(
         is_valid=False,
@@ -85,10 +85,10 @@ async def test_aws_access_analyzer_validate_rejects_bad_partition(monkeypatch):
         called["hit"] = True
         return MagicMock()
 
-    monkeypatch.setattr(server, "get_aws_session", fake_get_aws_session)
+    monkeypatch.setattr(analyze, "get_aws_session", fake_get_aws_session)
 
     with pytest.raises(ToolError, match="Unsupported partition"):
-        await server.aws_access_analyzer_validate(
+        await analyze.aws_access_analyzer_validate(
             policy={"Version": "2012-10-17", "Statement": []},
             ctx=SimpleNamespace(request_context=None),
             partition="aws-bogus",
@@ -108,10 +108,10 @@ async def test_aws_access_analyzer_validate_uses_partition_default_region(monkey
         captured_region["analyze_region"] = kwargs.get("region")
         return {"findings": [], "finding_count": 0}
 
-    monkeypatch.setattr(server, "get_aws_session", fake_get_aws_session)
+    monkeypatch.setattr(analyze, "get_aws_session", fake_get_aws_session)
     monkeypatch.setattr("iam_validator.mcp.tools.analyze.analyze_policy", fake_analyze)
 
-    await server.aws_access_analyzer_validate(
+    await analyze.aws_access_analyzer_validate(
         policy={"Version": "2012-10-17", "Statement": []},
         ctx=SimpleNamespace(request_context=None),
         partition="aws-cn",
@@ -131,11 +131,11 @@ async def test_aws_access_analyzer_validate_timeout(monkeypatch):
         await asyncio.sleep(5)
         return {"findings": [], "finding_count": 0}
 
-    monkeypatch.setattr(server, "get_aws_session", fake_get_aws_session)
+    monkeypatch.setattr(analyze, "get_aws_session", fake_get_aws_session)
     monkeypatch.setattr("iam_validator.mcp.tools.analyze.analyze_policy", slow_analyze)
 
     with pytest.raises(ToolError, match="timed out"):
-        await server.aws_access_analyzer_validate(
+        await analyze.aws_access_analyzer_validate(
             policy={"Version": "2012-10-17", "Statement": []},
             ctx=SimpleNamespace(request_context=None),
             timeout_seconds=0.1,
@@ -149,7 +149,7 @@ async def test_aws_access_analyzer_validate_timeout(monkeypatch):
 
 async def test_validate_policy_malformed_raises_tool_error():
     """Schema-violating policy dict raises ToolError, not a Pydantic stacktrace."""
-    from iam_validator.mcp.tools import validation as validation_mod
+    from iam_validator.mcp.tools import validate as validation_mod
 
     # Statement set to a non-list/dict value triggers a Pydantic ValidationError
     # because the IAMPolicy model rejects scalars there.
@@ -164,7 +164,7 @@ async def test_validate_policy_malformed_raises_tool_error():
 
 def test_issue_to_dict_lean_shape():
     from iam_validator.core.models import ValidationIssue
-    from iam_validator.mcp.tools.validation import issue_to_dict
+    from iam_validator.mcp.tools.validate import issue_to_dict
 
     issue = ValidationIssue(
         severity="medium",
@@ -180,7 +180,7 @@ def test_issue_to_dict_lean_shape():
 
 def test_issue_to_dict_verbose_includes_all_fields():
     from iam_validator.core.models import ValidationIssue
-    from iam_validator.mcp.tools.validation import issue_to_dict
+    from iam_validator.mcp.tools.validate import issue_to_dict
 
     issue = ValidationIssue(
         severity="medium",

@@ -9,7 +9,10 @@ Round-trips the MCP protocol against the actual server instance to catch:
 
 from fastmcp.client import Client
 
-from iam_validator.mcp.server import mcp
+from iam_validator.mcp.build import build_server
+from iam_validator.mcp.settings import ServerSettings
+
+mcp = build_server(ServerSettings())
 
 
 async def test_validate_policy_round_trip():

@@ -131,7 +131,7 @@ docs/                         # MkDocs site — see docs/CLAUDE.md
 | Constants      | `iam_validator/core/constants.py`            |
 | SDK public API | `iam_validator/sdk/__init__.py`              |
 | Config loader  | `iam_validator/core/config/config_loader.py` |
-| MCP server     | `iam_validator/mcp/server.py`                |
+| MCP server     | `iam_validator/mcp/build.py`                 |
 | GitHub Action  | `action.yaml`                                |
 
 ---

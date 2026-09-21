@@ -1,12 +1,12 @@
-"""Profile-gating tests: server.py's live tool catalog + spec_survives() semantics."""
+"""Profile-gating tests: build_server()'s live tool catalog + spec_survives() semantics."""
 
 import pytest
+from fastmcp.client import Client
 from mcp.types import ToolAnnotations
 from pydantic import ValidationError
 
-from iam_validator.mcp.build import spec_survives
+from iam_validator.mcp.build import build_server, spec_survives
 from iam_validator.mcp.component_spec import ToolSpec
-from iam_validator.mcp.server import get_active_profile, mcp, set_active_profile
 from iam_validator.mcp.settings import ServerSettings
 
 
@@ -23,6 +23,7 @@ def _tool_spec(tag: str, mutating: bool = False) -> ToolSpec:
 
 async def test_list_checks_demoted_to_resource_not_tool():
     """list_checks must not appear as a tool — only as iam://checks resource."""
+    mcp = build_server(ServerSettings())
     enabled = await mcp.list_tools()
     names = {t.name for t in enabled}
     assert "list_checks" not in names
@@ -31,11 +32,11 @@ async def test_list_checks_demoted_to_resource_not_tool():
 
 
 async def test_get_active_profile_reflects_state():
-    set_active_profile("validate-only")
-    result = await get_active_profile()
-    assert result["profile"] == "validate-only"
-    assert "validate_policy" in result["tool_names"]
-    set_active_profile("full")
+    mcp = build_server(ServerSettings(profile="validate-only"))
+    async with Client(mcp) as client:
+        result = await client.call_tool("get_active_profile", {})
+    assert result.data["profile"] == "validate-only"
+    assert "validate_policy" in result.data["tool_names"]
 
 
 def test_unknown_profile_rejected_by_settings():

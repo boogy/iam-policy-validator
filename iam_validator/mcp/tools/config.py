@@ -13,10 +13,24 @@ Each ``*_impl`` function takes the caller's ``SessionState`` (``ServerContext.mu
 
 from typing import TYPE_CHECKING, Any
 
+from fastmcp import Context
+from mcp.types import ToolAnnotations
+
+from iam_validator.mcp.component_spec import ToolSpec, infer_output_schema
+from iam_validator.mcp.context import get_server_context
+
 if TYPE_CHECKING:
     from iam_validator.mcp.context import SessionState
 
 _NO_SESSION_ERROR = "Session-scoped configuration is not available in hosted mode"
+
+_MUTATING_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=False,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
+_READ_ONLY_ANNOTATIONS = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
 
 
 async def set_organization_config_impl(
@@ -181,7 +195,7 @@ async def check_org_compliance_impl(
     Returns:
         Dictionary with compliance status and validation issues
     """
-    from iam_validator.mcp.tools.validation import validate_policy
+    from iam_validator.mcp.tools.validate import validate_policy
 
     config = session.get_config() if session is not None else None
 
@@ -242,7 +256,7 @@ async def validate_with_config_impl(
 
     import yaml
 
-    from iam_validator.mcp.tools.validation import validate_policy
+    from iam_validator.mcp.tools.validate import validate_policy
 
     # Create a temporary config file for the validator
     temp_config_path: str | None = None
@@ -291,6 +305,259 @@ async def validate_with_config_impl(
     }
 
 
+# =============================================================================
+# MCP tool wrappers (registered via TOOLS below)
+# =============================================================================
+
+
+async def set_organization_config(config: dict[str, Any], ctx: Context) -> dict[str, Any]:
+    """Set validator configuration for this MCP session.
+
+    Args:
+        config: Config with "settings" (fail_on_severity, parallel_execution) and
+            check IDs as keys (enabled, severity, ignore_patterns)
+
+    Returns:
+        {success, applied_config, warnings}
+    """
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    return await set_organization_config_impl(config, session)
+
+
+async def get_organization_config(ctx: Context) -> dict[str, Any]:
+    """Get the current session organization configuration.
+
+    Returns:
+        {has_config, config, source}
+    """
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    return await get_organization_config_impl(session)
+
+
+async def clear_organization_config(ctx: Context) -> dict[str, str]:
+    """Clear session organization config, reverting to defaults.
+
+    Returns:
+        {status: "cleared" or "no_config_set"}
+    """
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    return await clear_organization_config_impl(session)
+
+
+async def load_organization_config_from_yaml(yaml_content: str, ctx: Context) -> dict[str, Any]:
+    """Load validator configuration from YAML content and set as session config.
+
+    Args:
+        yaml_content: YAML string with settings and check configurations
+
+    Returns:
+        {success, applied_config, warnings, error}
+    """
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    return await load_organization_config_from_yaml_impl(yaml_content, session)
+
+
+async def check_org_compliance(
+    policy: dict[str, Any],
+    ctx: Context,
+    verbose: bool = False,
+) -> dict[str, Any]:
+    """Validate a policy using session org config (or defaults if none set).
+
+    Args:
+        policy: IAM policy dictionary
+        verbose: Return all fields (True) or essential only (False)
+
+    Returns:
+        {compliant, has_org_config, violations, warnings, suggestions}
+    """
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    result = await check_org_compliance_impl(policy, session, ctx=ctx)
+
+    if not verbose:
+        # Lean response: counts instead of full lists
+        result["violation_count"] = len(result.get("violations", []))
+        result["warning_count"] = len(result.get("warnings", []))
+        if "suggestions" in result and isinstance(result["suggestions"], list):
+            result["suggestion_count"] = len(result["suggestions"])
+            del result["suggestions"]
+
+    return result
+
+
+async def validate_with_config(
+    policy: dict[str, Any],
+    config: dict[str, Any],
+    ctx: Context,
+    policy_type: str | None = None,
+) -> dict[str, Any]:
+    """Validate a policy with inline configuration (one-off, doesn't modify session).
+
+    Args:
+        policy: IAM policy to validate
+        config: Same format as set_organization_config
+        policy_type: "identity", "resource", or "trust" (auto-detected if None)
+
+    Returns:
+        {is_valid, issues, config_applied}
+    """
+    return await validate_with_config_impl(policy, config, policy_type, ctx=ctx)
+
+
+async def set_custom_instructions(instructions: str, ctx: Context) -> dict[str, Any]:
+    """Set custom validation guidelines for this session.
+
+    Instructions are appended to default server instructions.
+
+    Args:
+        instructions: Custom instructions text (markdown supported)
+
+    Returns:
+        {success, instructions_preview, previous_source}
+    """
+    from iam_validator.mcp.instructions import get_instructions
+
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+
+    if session is None:
+        return {
+            "success": False,
+            "instructions_preview": None,
+            "previous_source": "none",
+            "error": _NO_SESSION_ERROR,
+        }
+
+    previous_source = session.get_instructions_source()
+
+    session.set_instructions(instructions, source="api")
+
+    # Update the server instructions
+    ctx.fastmcp.instructions = get_instructions(session.get_instructions())
+
+    preview = instructions[:200] + "..." if len(instructions) > 200 else instructions
+
+    return {
+        "success": True,
+        "instructions_preview": preview,
+        "previous_source": previous_source,
+    }
+
+
+async def get_custom_instructions(ctx: Context) -> dict[str, Any]:
+    """Get current custom instructions.
+
+    Returns:
+        {has_instructions, instructions, source}
+    """
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    instructions = session.get_instructions() if session is not None else None
+
+    return {
+        "has_instructions": instructions is not None,
+        "instructions": instructions,
+        "source": session.get_instructions_source() if session is not None else "none",
+    }
+
+
+async def clear_custom_instructions(ctx: Context) -> dict[str, str]:
+    """Clear custom instructions, reverting to defaults.
+
+    Returns:
+        {status: "cleared" or "no_instructions_set"}
+    """
+    from iam_validator.mcp.instructions import BASE_INSTRUCTIONS
+
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    had_instructions = session.clear_instructions() if session is not None else False
+
+    # Reset to base instructions
+    ctx.fastmcp.instructions = BASE_INSTRUCTIONS
+
+    return {
+        "status": "cleared" if had_instructions else "no_instructions_set",
+    }
+
+
+TOOLS: tuple[ToolSpec, ...] = (
+    ToolSpec(
+        tag="orgconfig",
+        mutating=True,
+        name="set_organization_config",
+        fn=set_organization_config,
+        annotations=_MUTATING_ANNOTATIONS,
+        output_schema=infer_output_schema(set_organization_config),
+    ),
+    ToolSpec(
+        tag="orgconfig",
+        name="get_organization_config",
+        fn=get_organization_config,
+        annotations=_READ_ONLY_ANNOTATIONS,
+        output_schema=infer_output_schema(get_organization_config),
+    ),
+    ToolSpec(
+        tag="orgconfig",
+        mutating=True,
+        name="clear_organization_config",
+        fn=clear_organization_config,
+        annotations=_MUTATING_ANNOTATIONS,
+        output_schema=infer_output_schema(clear_organization_config),
+    ),
+    ToolSpec(
+        tag="orgconfig",
+        mutating=True,
+        name="load_organization_config_from_yaml",
+        fn=load_organization_config_from_yaml,
+        annotations=_MUTATING_ANNOTATIONS,
+        output_schema=infer_output_schema(load_organization_config_from_yaml),
+    ),
+    ToolSpec(
+        tag="orgconfig",
+        name="check_org_compliance",
+        fn=check_org_compliance,
+        annotations=_READ_ONLY_ANNOTATIONS,
+        output_schema=infer_output_schema(check_org_compliance),
+    ),
+    ToolSpec(
+        tag="orgconfig",
+        name="validate_with_config",
+        fn=validate_with_config,
+        annotations=_READ_ONLY_ANNOTATIONS,
+        output_schema=infer_output_schema(validate_with_config),
+    ),
+    ToolSpec(
+        tag="orgconfig",
+        mutating=True,
+        name="set_custom_instructions",
+        fn=set_custom_instructions,
+        annotations=_MUTATING_ANNOTATIONS,
+        output_schema=infer_output_schema(set_custom_instructions),
+    ),
+    ToolSpec(
+        tag="orgconfig",
+        name="get_custom_instructions",
+        fn=get_custom_instructions,
+        annotations=_READ_ONLY_ANNOTATIONS,
+        output_schema=infer_output_schema(get_custom_instructions),
+    ),
+    ToolSpec(
+        tag="orgconfig",
+        mutating=True,
+        name="clear_custom_instructions",
+        fn=clear_custom_instructions,
+        annotations=_MUTATING_ANNOTATIONS,
+        output_schema=infer_output_schema(clear_custom_instructions),
+    ),
+)
+
+
 __all__ = [
     "set_organization_config_impl",
     "get_organization_config_impl",
@@ -298,4 +565,14 @@ __all__ = [
     "load_organization_config_from_yaml_impl",
     "check_org_compliance_impl",
     "validate_with_config_impl",
+    "set_organization_config",
+    "get_organization_config",
+    "clear_organization_config",
+    "load_organization_config_from_yaml",
+    "check_org_compliance",
+    "validate_with_config",
+    "set_custom_instructions",
+    "get_custom_instructions",
+    "clear_custom_instructions",
+    "TOOLS",
 ]

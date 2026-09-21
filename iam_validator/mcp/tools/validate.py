@@ -14,10 +14,14 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from fastmcp import Context
+from mcp.types import ToolAnnotations
 
 from iam_validator.core.check_registry import create_default_registry
 from iam_validator.core.models import IAMPolicy, ValidationIssue
 from iam_validator.core.policy_checks import validate_policies
+from iam_validator.mcp.component_spec import ToolSpec, infer_output_schema
+from iam_validator.mcp.context import get_server_context
 from iam_validator.mcp.models import ValidationResult
 
 # Track temp files for cleanup on exit (safety net for abnormal termination)
@@ -262,10 +266,7 @@ async def validate_policy(
                 aws_services_dir=services_dir,
             )
     else:
-        # Common path: reuse the registry (and config) ServerContext built once
-        # at startup, instead of rebuilding it -- and reimporting custom checks
-        # / entry-point plugins -- on every call. Mirrors the accessor pattern
-        # in server.py's _get_check_catalog().
+        # Reuse the startup registry: rebuilding reimports custom checks and entry-point plugins.
         registry = context.registry if context is not None else create_default_registry()
         results = await validate_policies(
             policies=[("inline-policy", iam_policy)],
@@ -423,3 +424,137 @@ async def quick_validate(policy: dict[str, Any], ctx: Any = None) -> dict[str, A
         "sensitive_actions_found": sensitive_actions_count,
         "wildcards_detected": wildcards_detected,
     }
+
+
+# =============================================================================
+# MCP tool wrappers (registered via TOOLS below)
+# =============================================================================
+
+
+async def _validate_policy_tool(
+    policy: dict[str, Any],
+    ctx: Context,
+    policy_type: str | None = None,
+    verbose: bool = True,
+    use_org_config: bool = True,
+) -> dict[str, Any]:
+    """Validate an IAM policy against AWS rules and security best practices.
+
+    Auto-detects policy type (identity/resource/trust) from structure if not specified.
+
+    Args:
+        policy: IAM policy dictionary
+        policy_type: "identity", "resource", or "trust" (auto-detected if None)
+        verbose: Return all fields (True) or essential only (False)
+        use_org_config: Apply session org config (default: True)
+
+    Returns:
+        {is_valid, issues, policy_file}
+    """
+    result = await validate_policy(policy=policy, policy_type=policy_type, use_org_config=use_org_config, ctx=ctx)
+    return {
+        "is_valid": result.is_valid,
+        "issues": [issue_to_dict(i, verbose=verbose) for i in result.issues],
+        "policy_file": result.policy_file,
+    }
+
+
+async def _quick_validate_tool(policy: dict[str, Any], ctx: Context) -> dict[str, Any]:
+    """Quick pass/fail validation returning only essential info.
+
+    Args:
+        policy: IAM policy dictionary
+
+    Returns:
+        {is_valid, issue_count, critical_issues}
+    """
+    return await quick_validate(policy=policy, ctx=ctx)
+
+
+async def get_active_profile(ctx: Context) -> dict[str, Any]:
+    """Return the active MCP profile and the tools it currently exposes.
+
+    Useful when a tool you expect is missing — confirms the server profile.
+    """
+    context = get_server_context(ctx)
+    profile = context.settings.profile if context is not None else "full"
+    tools = await ctx.fastmcp.list_tools()
+    return {
+        "profile": profile,
+        "tool_count": len(tools),
+        "tool_names": sorted(t.name for t in tools),
+    }
+
+
+async def validate_policies_batch(
+    policies: list[dict[str, Any]],
+    ctx: Context,
+    policy_type: str | None = None,
+    verbose: bool = False,
+    max_concurrency: int = 10,
+) -> list[dict[str, Any]]:
+    """Validate multiple IAM policies in parallel (more efficient than multiple validate_policy calls).
+
+    Args:
+        policies: List of IAM policy dictionaries
+        policy_type: "identity", "resource", or "trust" (auto-detected if None)
+        verbose: Return all fields (True) or essential only (False)
+        max_concurrency: Maximum concurrent validations (default 10) — caps the
+            thundering herd against AWS-side rate limits when N is large.
+
+    Returns:
+        List of {policy_index, is_valid, issues}
+    """
+    import asyncio
+
+    from iam_validator.mcp.context import get_shared_fetcher
+
+    # Ensure shared fetcher is available (validates actions exist)
+    _ = get_shared_fetcher(ctx)
+
+    sem = asyncio.Semaphore(max(1, max_concurrency))
+
+    async def validate_one(idx: int, policy: dict[str, Any]) -> dict[str, Any]:
+        async with sem:
+            result = await validate_policy(policy=policy, policy_type=policy_type, ctx=ctx)
+        return {
+            "policy_index": idx,
+            "is_valid": result.is_valid,
+            "issues": [issue_to_dict(i, verbose=verbose) for i in result.issues],
+        }
+
+    # Run all validations in parallel (capped by max_concurrency)
+    results = await asyncio.gather(*[validate_one(i, p) for i, p in enumerate(policies)])
+    return list(results)
+
+
+TOOLS: tuple[ToolSpec, ...] = (
+    ToolSpec(
+        tag="validate",
+        name="validate_policy",
+        fn=_validate_policy_tool,
+        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+        output_schema=infer_output_schema(_validate_policy_tool),
+    ),
+    ToolSpec(
+        tag="validate",
+        name="quick_validate",
+        fn=_quick_validate_tool,
+        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+        output_schema=infer_output_schema(_quick_validate_tool),
+    ),
+    ToolSpec(
+        tag="validate",
+        name="get_active_profile",
+        fn=get_active_profile,
+        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+        output_schema=infer_output_schema(get_active_profile),
+    ),
+    ToolSpec(
+        tag="validate",
+        name="validate_policies_batch",
+        fn=validate_policies_batch,
+        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+        output_schema=infer_output_schema(validate_policies_batch),
+    ),
+)

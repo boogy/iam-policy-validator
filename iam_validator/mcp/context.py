@@ -12,6 +12,7 @@ and reached from tool/resource bodies via ``ctx.request_context.lifespan_context
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -21,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from iam_validator.core.aws_service import AWSServiceFetcher
-from iam_validator.core.check_registry import CheckRegistry
+from iam_validator.core.check_registry import CheckRegistry, create_default_registry
 from iam_validator.core.config.config_loader import ConfigLoader, ValidatorConfig
 from iam_validator.core.policy_checks import build_registry
 from iam_validator.core.report import ReportGenerator
@@ -29,6 +30,8 @@ from iam_validator.mcp.settings import ServerSettings
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
+
+logger = logging.getLogger(__name__)
 
 
 class SessionState:
@@ -210,9 +213,16 @@ def _resolve_startup_instructions(settings: ServerSettings) -> str | None:
 
 
 @asynccontextmanager
-async def server_lifespan(_server: FastMCP) -> AsyncIterator[ServerContext]:
-    """FastMCP lifespan: build the context once, prewarm it, and tear it down on exit."""
-    settings = ServerSettings.from_env()
+async def server_lifespan(_server: FastMCP, settings: ServerSettings | None = None) -> AsyncIterator[ServerContext]:
+    """FastMCP lifespan: build the context once, prewarm it, and tear it down on exit.
+
+    ``settings`` lets ``build_server()`` thread the same settings it used for
+    tool/resource gating into the runtime context (so e.g. ``get_active_profile``
+    reports the profile that was actually built); falls back to
+    ``ServerSettings.from_env()`` when constructed directly.
+    """
+    if settings is None:
+        settings = ServerSettings.from_env()
     context = build_context(settings)
 
     custom_instructions = _resolve_startup_instructions(settings)
@@ -221,7 +231,7 @@ async def server_lifespan(_server: FastMCP) -> AsyncIterator[ServerContext]:
 
     await prewarm(context)
 
-    from iam_validator.mcp.server import get_instructions
+    from iam_validator.mcp.instructions import get_instructions
 
     _server.instructions = get_instructions(custom_instructions)
 
@@ -241,6 +251,122 @@ def get_server_context(ctx: Any) -> ServerContext | None:
     return lifespan if isinstance(lifespan, ServerContext) else None
 
 
+def get_aws_session(ctx: Any, region: str, profile: str | None) -> Any:
+    """Return a (cached) boto3 Session for ``(region, profile)``.
+
+    Mirrors ``get_shared_fetcher``'s fallback: if no lifespan context is
+    available (tests, direct calls outside MCP), build a fresh session each
+    call rather than crashing.
+    """
+    import boto3
+
+    context = get_server_context(ctx)
+    cache = context.aws_sessions if context is not None else None
+
+    if cache is None:
+        kwargs: dict[str, Any] = {"region_name": region}
+        if profile:
+            kwargs["profile_name"] = profile
+        return boto3.Session(**kwargs)
+
+    key = (region, profile)
+    if key not in cache:
+        kwargs = {"region_name": region}
+        if profile:
+            kwargs["profile_name"] = profile
+        cache[key] = boto3.Session(**kwargs)
+    return cache[key]
+
+
+def get_shared_fetcher(ctx: Any) -> AWSServiceFetcher | None:
+    """Get the shared AWSServiceFetcher from context.
+
+    Returns ``None`` if not available (tests, direct calls outside MCP);
+    callers typically create a new fetcher instance in that case. Logged at
+    DEBUG level since this happens routinely outside of an MCP request.
+    """
+    context = get_server_context(ctx)
+    if context is not None:
+        return context.fetcher
+
+    logger.debug("Shared fetcher unavailable from context; tool will create a new one.")
+    return None
+
+
+def effective_check_settings(check_id: str, default_severity: str, ctx: Any) -> tuple[bool, str]:
+    """``(enabled, severity)`` after the session config that validate_policy applies."""
+    context = get_server_context(ctx)
+    config = context.mutable.get_config() if context is not None and context.mutable is not None else None
+    if config is None:
+        return True, default_severity
+    return (
+        config.is_check_enabled(check_id),
+        config.get_check_severity(check_id) or default_severity,
+    )
+
+
+def get_check_catalog(ctx: Any = None) -> tuple[dict[str, Any], ...]:
+    """Every registered check, with session-config enablement and severity resolved.
+
+    Not cached: the session config can change between calls.
+    """
+    context = get_server_context(ctx)
+    registry = context.registry if context is not None else create_default_registry()
+
+    catalog: list[dict[str, Any]] = []
+    for check_instance in registry.get_all_checks():
+        enabled, severity = effective_check_settings(check_instance.check_id, check_instance.default_severity, ctx)
+        catalog.append(
+            {
+                "check_id": check_instance.check_id,
+                "description": check_instance.description,
+                "default_severity": check_instance.default_severity,
+                "severity": severity,
+                "enabled": enabled,
+            }
+        )
+    return tuple(sorted(catalog, key=lambda x: x["check_id"]))
+
+
+def get_check_details(check_id: str, ctx: Any = None) -> dict[str, Any]:
+    """Get full documentation for a validation check (registry-driven).
+
+    Backs the parameterised MCP resource ``iam://checks/{check_id}``.
+
+    Returns:
+        {check_id, description, default_severity, category, example_violation,
+         example_fix, configuration, related}
+    """
+    context = get_server_context(ctx)
+    registry = context.registry if context is not None else create_default_registry()
+    check = registry.get_check(check_id)
+
+    if check is None:
+        return {
+            "check_id": check_id,
+            "description": "Check not found",
+            "default_severity": None,
+            "category": "unknown",
+            "example_violation": None,
+            "example_fix": None,
+            "configuration": {},
+            "related": [],
+        }
+
+    enabled, severity = effective_check_settings(check_id, check.default_severity, ctx)
+
+    return {
+        "check_id": check_id,
+        "description": check.description,
+        "default_severity": check.default_severity,
+        "category": "general",
+        "example_violation": None,
+        "example_fix": None,
+        "configuration": {"enabled": enabled, "severity": severity},
+        "related": [],
+    }
+
+
 __all__ = [
     "ServerContext",
     "SessionState",
@@ -248,4 +374,9 @@ __all__ = [
     "prewarm",
     "server_lifespan",
     "get_server_context",
+    "get_aws_session",
+    "get_shared_fetcher",
+    "effective_check_settings",
+    "get_check_catalog",
+    "get_check_details",
 ]

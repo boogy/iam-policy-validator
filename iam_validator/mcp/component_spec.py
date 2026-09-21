@@ -48,4 +48,16 @@ class PromptSpec(ComponentSpec):
     fn: Callable[..., Any]
 
 
-__all__ = ["ComponentSpec", "ToolSpec", "ResourceSpec", "PromptSpec"]
+def infer_output_schema(fn: Callable[..., Any]) -> dict[str, Any]:
+    """Compute the output schema ``@mcp.tool()`` would auto-infer for ``fn``.
+
+    ``ToolSpec.output_schema`` is required (no ``None``/sentinel), so
+    ``TOOLS`` tuples compute it eagerly at import time via the same
+    machinery FastMCP's decorator uses internally.
+    """
+    from fastmcp.tools.function_tool import FunctionTool
+
+    return FunctionTool.from_function(fn).output_schema
+
+
+__all__ = ["ComponentSpec", "ToolSpec", "ResourceSpec", "PromptSpec", "infer_output_schema"]

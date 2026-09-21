@@ -1,9 +1,7 @@
 """AWS Access Analyzer integration for MCP.
 
-Wraps the existing sync :class:`AccessAnalyzerValidator` in
-``asyncio.to_thread`` so an MCP async tool can call it without blocking the
-event loop. The MCP wrapper in ``server.py`` passes a cached
-:class:`boto3.Session` to avoid re-creating sessions per call.
+Wraps the sync :class:`AccessAnalyzerValidator` in ``asyncio.to_thread`` so an
+async MCP tool can call it without blocking the event loop.
 """
 
 from __future__ import annotations
@@ -12,7 +10,12 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
+from fastmcp import Context
 from fastmcp.exceptions import ToolError
+from mcp.types import ToolAnnotations
+
+from iam_validator.mcp.component_spec import ToolSpec, infer_output_schema
+from iam_validator.mcp.context import get_aws_session
 
 if TYPE_CHECKING:
     import boto3
@@ -89,4 +92,82 @@ async def analyze_policy(
     }
 
 
-__all__ = ["analyze_policy"]
+# =============================================================================
+# MCP tool wrapper (registered via TOOLS below)
+# =============================================================================
+
+
+async def aws_access_analyzer_validate(
+    policy: dict[str, Any],
+    ctx: Context,
+    policy_type: str = "IDENTITY_POLICY",
+    partition: str = "aws",
+    region: str | None = None,
+    profile: str | None = None,
+    timeout_seconds: float = 30.0,
+) -> dict[str, Any]:
+    """Run AWS Access Analyzer ValidatePolicy against the policy.
+
+    This tool calls the live AWS Access Analyzer API and requires AWS
+    credentials. Complements the local ``validate_policy`` tool by surfacing
+    AWS-only checks (deprecated globals, type-specific rules). Slower than
+    ``validate_policy`` because it incurs an HTTP round-trip per call.
+
+    Args:
+        policy: IAM policy dict (Version + Statement).
+        policy_type: One of "IDENTITY_POLICY", "RESOURCE_POLICY",
+            "SERVICE_CONTROL_POLICY".
+        partition: AWS partition (aws, aws-cn, aws-us-gov, aws-eusc,
+            aws-iso, aws-iso-b, aws-iso-e, aws-iso-f). Used to default
+            ``region`` if omitted.
+        region: AWS region for the API call. When omitted, defaults to the
+            canonical region for the chosen ``partition`` (e.g. ``aws-cn`` →
+            ``cn-north-1``).
+        profile: Optional AWS profile name.
+        timeout_seconds: Hard timeout on the AWS API call (default 30s).
+            Prevents an unresponsive AWS endpoint from blocking the MCP server.
+
+    Returns:
+        ``{findings: [...], finding_count: int}``. Each finding has
+        ``finding_type``, ``issue_code``, ``message``, ``learn_more_link``,
+        ``locations``.
+
+    Raises:
+        ToolError: bad policy_type, unsupported partition, missing AWS
+            credentials, AWS API failure, or timeout.
+    """
+    from iam_validator.core.constants import PARTITION_DEFAULT_REGION
+
+    if partition not in PARTITION_DEFAULT_REGION:
+        raise ToolError(f"Unsupported partition '{partition}'. Allowed: {', '.join(sorted(PARTITION_DEFAULT_REGION))}.")
+
+    effective_region = region or PARTITION_DEFAULT_REGION[partition]
+
+    session = get_aws_session(ctx, effective_region, profile)
+    try:
+        return await asyncio.wait_for(
+            analyze_policy(
+                policy=policy,
+                policy_type=policy_type,
+                region=effective_region,
+                profile=profile,
+                session=session,
+            ),
+            timeout=timeout_seconds,
+        )
+    except asyncio.TimeoutError as e:
+        raise ToolError(f"AWS Access Analyzer call timed out after {timeout_seconds}s.") from e
+
+
+TOOLS: tuple[ToolSpec, ...] = (
+    ToolSpec(
+        tag="analyze",
+        name="aws_access_analyzer_validate",
+        fn=aws_access_analyzer_validate,
+        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
+        output_schema=infer_output_schema(aws_access_analyzer_validate),
+    ),
+)
+
+
+__all__ = ["analyze_policy", "aws_access_analyzer_validate", "TOOLS"]

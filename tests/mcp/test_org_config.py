@@ -139,7 +139,7 @@ class TestOrgConfigToolImplementations:
 
     async def test_set_organization_config(self, session):
         """Test the set_organization_config implementation."""
-        from iam_validator.mcp.tools.org_config_tools import (
+        from iam_validator.mcp.tools.config import (
             set_organization_config_impl,
         )
 
@@ -157,7 +157,7 @@ class TestOrgConfigToolImplementations:
 
     async def test_set_organization_config_no_session(self):
         """Hosted mode (session=None) reports a structured error, not a crash."""
-        from iam_validator.mcp.tools.org_config_tools import (
+        from iam_validator.mcp.tools.config import (
             set_organization_config_impl,
         )
 
@@ -168,7 +168,7 @@ class TestOrgConfigToolImplementations:
 
     async def test_get_organization_config_none_set(self, session):
         """Test get_organization_config when none is set."""
-        from iam_validator.mcp.tools.org_config_tools import (
+        from iam_validator.mcp.tools.config import (
             get_organization_config_impl,
         )
 
@@ -180,7 +180,7 @@ class TestOrgConfigToolImplementations:
 
     async def test_get_organization_config_with_config(self, session):
         """Test get_organization_config when config is set."""
-        from iam_validator.mcp.tools.org_config_tools import (
+        from iam_validator.mcp.tools.config import (
             get_organization_config_impl,
             set_organization_config_impl,
         )
@@ -199,7 +199,7 @@ class TestOrgConfigToolImplementations:
 
     async def test_clear_organization_config(self, session):
         """Test clearing organization config."""
-        from iam_validator.mcp.tools.org_config_tools import (
+        from iam_validator.mcp.tools.config import (
             clear_organization_config_impl,
             get_organization_config_impl,
             set_organization_config_impl,
@@ -215,7 +215,7 @@ class TestOrgConfigToolImplementations:
 
     async def test_clear_organization_config_when_none(self, session):
         """Test clearing when no config is set."""
-        from iam_validator.mcp.tools.org_config_tools import (
+        from iam_validator.mcp.tools.config import (
             clear_organization_config_impl,
         )
 
@@ -225,7 +225,7 @@ class TestOrgConfigToolImplementations:
 
     async def test_clear_organization_config_no_session(self):
         """Hosted mode (session=None) reports no_config_set rather than crashing."""
-        from iam_validator.mcp.tools.org_config_tools import (
+        from iam_validator.mcp.tools.config import (
             clear_organization_config_impl,
         )
 
@@ -235,7 +235,7 @@ class TestOrgConfigToolImplementations:
 
     async def test_load_organization_config_from_yaml(self, session):
         """Test loading config from YAML."""
-        from iam_validator.mcp.tools.org_config_tools import (
+        from iam_validator.mcp.tools.config import (
             load_organization_config_from_yaml_impl,
         )
 
@@ -252,7 +252,7 @@ settings:
 
     async def test_load_organization_config_from_yaml_invalid(self, session):
         """Test loading invalid YAML."""
-        from iam_validator.mcp.tools.org_config_tools import (
+        from iam_validator.mcp.tools.config import (
             load_organization_config_from_yaml_impl,
         )
 
@@ -263,7 +263,7 @@ settings:
 
     async def test_load_organization_config_from_yaml_no_session(self):
         """Hosted mode (session=None) reports a structured error, not a crash."""
-        from iam_validator.mcp.tools.org_config_tools import (
+        from iam_validator.mcp.tools.config import (
             load_organization_config_from_yaml_impl,
         )
 
@@ -274,7 +274,7 @@ settings:
 
     async def test_check_org_compliance_no_config(self, session):
         """Test compliance check when no org config is set."""
-        from iam_validator.mcp.tools.org_config_tools import check_org_compliance_impl
+        from iam_validator.mcp.tools.config import check_org_compliance_impl
 
         policy = {
             "Version": "2012-10-17",
@@ -294,7 +294,7 @@ settings:
 
     async def test_check_org_compliance_with_config(self, session):
         """Test compliance check with a session config set."""
-        from iam_validator.mcp.tools.org_config_tools import (
+        from iam_validator.mcp.tools.config import (
             check_org_compliance_impl,
             set_organization_config_impl,
         )
@@ -325,7 +325,7 @@ settings:
 
     async def test_check_org_compliance_no_session(self):
         """Hosted mode (session=None) behaves like no config set."""
-        from iam_validator.mcp.tools.org_config_tools import check_org_compliance_impl
+        from iam_validator.mcp.tools.config import check_org_compliance_impl
 
         policy = {
             "Version": "2012-10-17",
@@ -344,7 +344,7 @@ settings:
 
     async def test_validate_with_config_impl(self):
         """Test validating with inline config."""
-        from iam_validator.mcp.tools.org_config_tools import validate_with_config_impl
+        from iam_validator.mcp.tools.config import validate_with_config_impl
 
         policy = {
             "Version": "2012-10-17",

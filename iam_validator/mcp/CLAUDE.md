@@ -26,31 +26,40 @@ End-user install + Claude Desktop config: see `docs/integrations/mcp-server.md`.
 
 ```
 mcp/
-├── __init__.py            # CLI argparse, entry-point, profile dispatch
-├── server.py              # FastMCP server: 24 @mcp.tool, 7 @mcp.resource (dissolved by TASK-05)
+├── __init__.py            # CLI argparse, entry-point, --profile -> IAM_VALIDATOR_MCP_PROFILE
 ├── settings.py            # ServerSettings — resolves mode/transport/auth/limits from
 │                          # IAM_VALIDATOR_MCP_* env vars + defaults; ServerSettings.from_env()
 ├── component_spec.py      # ComponentSpec/ToolSpec/ResourceSpec/PromptSpec — shared gating fields
-├── build.py               # spec_survives() + build_server(settings) -> fresh FastMCP instance
-├── instructions.py        # BASE_INSTRUCTIONS + get_instructions() (server.py re-exports both)
-├── resources.py           # RESOURCES: list[ResourceSpec] (empty until TASK-05 ports server.py's 7)
-├── prompts.py             # PROMPTS: list[PromptSpec] (empty until TASK-05 ports server.py's 3)
+├── build.py               # spec_survives() + build_server(settings) -> fresh FastMCP instance;
+│                          # sole server-construction path (create_server()/run_server() call it)
+├── instructions.py        # BASE_INSTRUCTIONS + get_instructions()
+├── resources.py           # RESOURCES: list[ResourceSpec] (7 entries)
+├── prompts.py             # PROMPTS: list[PromptSpec] (3 entries)
 ├── models.py              # Pydantic request/response models
 ├── context.py             # ServerContext (built once, held in the FastMCP lifespan) +
 │                          # SessionState (session-scoped org config / custom instructions)
 └── tools/
-    ├── validation.py       # validate_policy, quick_validate (forward ServerContext.settings paths
-    │                       # and ServerContext.mutable's session config) — still server.py's tools
-    ├── query.py            # query_service_actions, … — still server.py's tools, no TOOLS list yet
-    ├── analyze.py          # analyze_policy — wraps boto3 Access Analyzer in asyncio.to_thread,
-    │                       # still server.py's tool, no TOOLS list yet
-    └── org_config_tools.py # set/get/clear organization_config, check_org_compliance, validate_with_config
+    ├── validate.py         # TOOLS: validate_policy, quick_validate, get_active_profile,
+    │                       # validate_policies_batch
+    ├── query.py            # TOOLS: query_service_actions, query_action_details,
+    │                       # expand_wildcard_action, query_condition_keys, query_arn_formats,
+    │                       # get_policy_summary, get_condition_requirements_for_action,
+    │                       # query_actions_batch, check_actions_batch, get_issue_guidance
+    ├── analyze.py           # TOOLS: aws_access_analyzer_validate — wraps boto3 Access Analyzer
+    │                       # in asyncio.to_thread
+    └── config.py           # TOOLS: set/get/clear_organization_config,
+                            # load_organization_config_from_yaml, check_org_compliance,
+                            # validate_with_config, set/get/clear_custom_instructions
 ```
 
-No `tools/*.py` module defines `TOOLS` yet, so `build_server()` currently registers
-zero tools. `validate.py`/`checks.py`/`config.py` are created by TASK-05/TASK-08–11.
+`build_server(settings)` is the only place a `FastMCP` instance is constructed. It
+iterates a fixed `_TOOL_MODULES` tuple (`validate`, `query`, `config`,
+`analyze`) reading each module's `TOOLS` attribute, plus `resources.RESOURCES` and
+`prompts.PROMPTS`, filtering every spec through `spec_survives()` before registering
+it — never a module-level singleton, so two calls with different `ServerSettings`
+(e.g. different `--profile`) return independently configured servers.
 
-`server.py` lifespan (`context.py:server_lifespan()`) builds one `ServerContext` at
+The lifespan (`context.py:server_lifespan()`) builds one `ServerContext` at
 startup — registry, `ReportGenerator`, shared `AWSServiceFetcher`, and a per-`(region,
 profile)` boto3 session cache — and every tool call reaches it via
 `ctx.request_context.lifespan_context` (see `context.py:get_server_context()`). No MCP
@@ -63,10 +72,15 @@ routed through it: `check_org_compliance`, `validate_with_config`, `validate_pol
 per call, _except_ when an explicit `config_path` is given or a session-config override
 (`set_organization_config`) is active — that path still resolves its own registry each
 call, since baking session config into the shared registry is TASK-07's job. In that
-override case, `_get_check_catalog()`/`get_check_details` resolve each check's `enabled`/
-`severity` through `ServerContext.mutable` (a `SessionState`, `None` in hosted mode) on
-every call, so the catalog agrees with what `validate_policy` runs; nothing memoizes
-the resolved values.
+override case, `get_check_catalog()`/`get_check_details()` (in `context.py`) resolve each
+check's `enabled`/`severity` through `ServerContext.mutable` (a `SessionState`, `None` in
+hosted mode) on every call, so the catalog agrees with what `validate_policy` runs;
+nothing memoizes the resolved values.
+
+Several `tools/*.py` modules define an underscore-prefixed `_..._tool` wrapper (e.g.
+`validate.py:_validate_policy_tool`) alongside an impl function of the desired MCP
+name (`validate_policy`) — the wrapper is what gets registered, via `ToolSpec(name=...)`,
+so the impl function stays importable/testable under its own name without a collision.
 
 ---
 
@@ -92,21 +106,25 @@ The `--profile` flag uses these tags to enable/disable groups:
 | `validate-and-query` | `validate` + `query` (no live AWS API; analyze is excluded) |
 | `read-only`          | Excludes anything tagged `mutating` — useful for CI/sandbox |
 
-This table describes `server.py`'s current 24-tool surface, still built with
-tag-based `mcp.enable`/`mcp.disable` calls. Real profile enforcement is moving
-to `component_spec.py`/`build.py` (below); the CLI's `--profile` flag doesn't
-call either mechanism yet (TASK-05/TASK-15 wire it up), so it's currently only
-recorded for `get_active_profile()` introspection.
+`--profile` sets `IAM_VALIDATOR_MCP_PROFILE`, which `ServerSettings.from_env()` reads
+at startup; `build_server(settings)` runs every spec through `spec_survives()`
+before registering it, so an excluded tool is never present in `list_tools()` (not
+merely hidden from a client that asks nicely). `get_active_profile()` reports the
+resolved `settings.profile` plus the live tool count/names from
+`await ctx.fastmcp.list_tools()`.
 
-### ComponentSpec and build_server (target mechanism)
+### ComponentSpec and build_server
 
 `component_spec.py` declares `ComponentSpec` (shared `tag`/`modes`/
 `transports`/`scopes`/`mutating` gating fields) and its `ToolSpec`/
-`ResourceSpec`/`PromptSpec` subclasses. Each `tools/*.py` module will expose a
-`TOOLS: list[ToolSpec]`; `resources.py`/`prompts.py` expose `RESOURCES`/
+`ResourceSpec`/`PromptSpec` subclasses. Each `tools/*.py` module exposes a
+`TOOLS: tuple[ToolSpec, ...]`; `resources.py`/`prompts.py` expose `RESOURCES`/
 `PROMPTS` the same way — every resource carries the tag of whatever tool
-returns equivalent data (e.g. `iam://checks` mirrors `describe_checks`), so
-gating a tool can't be bypassed by reading its resource twin.
+returns equivalent data, so gating a tool can't be bypassed by reading its
+resource twin. `ToolSpec.output_schema` is computed via
+`component_spec.infer_output_schema(fn)` (wraps
+`FunctionTool.from_function(fn).output_schema`) rather than hand-written, so it
+can't drift from the function signature.
 
 `build.py::build_server(settings)` filters every spec through
 `spec_survives()` — by `mode`, `transport`, and `profile` (`read-only`
@@ -116,10 +134,8 @@ filters on `mutating` instead of `tag`) — and registers survivors on a fresh
 settings produce an identical tool-name sequence (MCP 2026-07-28 requires
 this for client-side list caching).
 
-As of TASK-04 no `tools/*.py` module defines `TOOLS` yet, so `build_server()`
-registers zero tools and isn't wired into the run path; TASK-05 ports
-`server.py`'s 24 tools/7 resources/3 prompts unchanged, and TASK-08–11
-consolidate them into the target 6-tool surface.
+The remaining consolidation from this 24-tool surface down to the target
+6-tool surface is TASK-08–11's job; this module currently still exposes all 24.
 
 ### Token cost
 
@@ -137,14 +153,24 @@ Tags + tool annotations + slimmed `BASE_INSTRUCTIONS` produce these footprints
 Static resources cache client-side and don't count against per-turn token
 budget the way tool descriptions do:
 
-- `iam://checks` — registered check catalog (id, description, default_severity, plus
-  the session-config-resolved `severity` and `enabled`)
-- `iam://sensitive-categories` — sensitive-action category descriptions
-- `iam://sensitive-actions/{category}` — actions for a category (parameterized)
-- `iam://checks/{check_id}` — per-check docs, registry-driven (parameterized)
-- `iam://config-schema` — JSON Schema for session config
-- `iam://config-examples` — example YAML configs by security posture
-- `iam://workflow-examples` — guided example workflows
+- `iam://checks` (tag `validate`) — registered check catalog (id, description,
+  default_severity, plus the session-config-resolved `severity` and `enabled`)
+- `iam://sensitive-categories` (tag `validate`) — sensitive-action category descriptions
+- `iam://sensitive-actions/{category}` (tag `validate`) — actions for a category (parameterized)
+- `iam://checks/{check_id}` (tag `validate`) — per-check docs, registry-driven (parameterized)
+- `iam://config-schema` (tag `orgconfig`) — JSON Schema for session config
+- `iam://config-examples` (tag `orgconfig`) — example YAML configs by security posture
+- `iam://workflow-examples` (tag `validate`) — guided example workflows
+
+All four `validate`-tagged resources survive under `--profile validate-only`, matching
+the tools that produce equivalent data — a resource's gating tag must never be looser
+than the tool it mirrors.
+
+## Prompts (3)
+
+- `generate_secure_policy` — guided workflow for building a least-privilege policy
+- `fix_policy_issues_workflow` — bounded (2-iteration) issue-fixing workflow
+- `review_policy_security` — read-only security review of a supplied policy
 
 ---
 
@@ -152,24 +178,28 @@ budget the way tool descriptions do:
 
 ### Tool
 
-Implement in `tools/<category>.py`, then register in `server.py` with
-`@mcp.tool(tags={"<one-tag>"}, annotations=ToolAnnotations(...))` plus a
-docstring (the docstring becomes the Claude-facing description). Pick a single
-tag; if it could fit two, the dominant one is right.
+Implement in `tools/<category>.py`, add it to that module's `TOOLS` tuple as a
+`ToolSpec(tag="<one-tag>", name=..., fn=..., annotations=ToolAnnotations(...),
+output_schema=infer_output_schema(fn))`, plus a docstring on the function (the
+docstring becomes the Claude-facing description). Pick a single tag; if it
+could fit two, the dominant one is right. If a module already has an impl
+function under the desired tool name, register a distinct wrapper function
+(see the `_..._tool` convention above) rather than renaming the impl.
 
 ### Resource
 
 ```python
-@mcp.resource("iam://my-resource")
 async def my_resource() -> str:
     """What this exposes."""
     return json.dumps({...}, indent=2)
+
+
+RESOURCES.append(ResourceSpec(tag="<one-tag>", uri="iam://my-resource", name="my_resource", fn=my_resource))
 ```
 
-Parameterized:
+Parameterized (uri contains `{name}`, function takes a matching parameter):
 
 ```python
-@mcp.resource("iam://my-thing/{name}")
 async def my_thing(name: str) -> str:
     return json.dumps({"name": name, "data": ...}, indent=2)
 ```
@@ -178,6 +208,17 @@ async def my_thing(name: str) -> str:
 return the check's `description` and `default_severity` from
 `ServerContext.registry` (falling back to `create_default_registry()` outside an
 MCP request), with no curated per-check example data.
+
+### Prompt
+
+```python
+def my_prompt(arg: str) -> str:
+    """What this prompt is for."""
+    return f"...{arg}..."
+
+
+PROMPTS.append(PromptSpec(tag="<one-tag>", name="my_prompt", fn=my_prompt))
+```
 
 ---
 
@@ -194,9 +235,15 @@ Test files of note:
   `build_server()` determinism test that derives the expected tool-name order from a
   monkeypatched `_TOOL_MODULES` and fails under a hash-based sort
 - `test_profiles.py` — `spec_survives()` profile-tag semantics with fixture specs, plus
-  `server.py`'s live `mcp` singleton (`iam://checks` demotion, `get_active_profile()`)
+  `build_server()`'s live tool catalog (`iam://checks` demotion, `get_active_profile()`)
 - `test_transport.py` — in-process FastMCP `Client` round-trip (annotations, resources, errors)
+  against a `build_server(ServerSettings())` instance
+- `test_server_integration.py` — check catalog, server metadata, tool/resource registration
+- `test_prompt_schema.py` — guards prompt argument descriptions against FastMCP's generic
+  schema fallback (triggered by a stray `from __future__ import annotations` in `prompts.py`)
 - `test_analyze.py` — Access Analyzer wrapper + cached boto3 session
+- `test_accuracy_fixes.py` — quick_validate wildcard detection, Access Analyzer
+  partition/timeout defaults, malformed-input error shape
 
 Mock fetcher / network — no real API or AWS calls. Debug interactively via
 `mise run mcp:inspector`. Requires `fastmcp>=3.2,<5` (installed via

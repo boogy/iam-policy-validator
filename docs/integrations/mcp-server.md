@@ -1703,7 +1703,7 @@ uvx --from 'iam-policy-validator[mcp]' iam-validator-mcp --instructions "Require
 While designed for AI assistants, you can also use the MCP tools programmatically:
 
 ```python
-from iam_validator.mcp.tools.validation import validate_policy
+from iam_validator.mcp.tools.validate import validate_policy
 from iam_validator.mcp.tools.generation import build_minimal_policy
 
 # Validate a policy

@@ -72,7 +72,7 @@ async def test_analyze_invalid_policy_type_raises():
 
 def test_get_aws_session_caches_per_region_profile(monkeypatch):
     """Same (region, profile) returns the same Session; different keys do not."""
-    from iam_validator.mcp.server import get_aws_session
+    from iam_validator.mcp.context import get_aws_session
 
     created: list = []
 
@@ -96,7 +96,7 @@ def test_get_aws_session_caches_per_region_profile(monkeypatch):
 
 def test_get_aws_session_falls_back_when_no_lifespan(monkeypatch):
     """Tests / direct callers without an MCP lifespan must not crash."""
-    from iam_validator.mcp.server import get_aws_session
+    from iam_validator.mcp.context import get_aws_session
 
     class FakeSession:
         def __init__(self, **kw):
@@ -111,7 +111,7 @@ def test_get_aws_session_falls_back_when_no_lifespan(monkeypatch):
 
 def test_get_aws_session_includes_profile_when_set(monkeypatch):
     """profile= must propagate into the Session constructor."""
-    from iam_validator.mcp.server import get_aws_session
+    from iam_validator.mcp.context import get_aws_session
 
     class FakeSession:
         def __init__(self, **kw):

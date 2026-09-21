@@ -1,12 +1,12 @@
 """MCP tools for IAM policy validation and querying.
 
 This package contains the MCP tool implementations organized by category:
-- validation: Policy validation tools
+- validate: Policy validation tools
 - query: AWS service and action query tools
-- org_config_tools: Organization configuration tools
+- config: Organization configuration tools
 """
 
-from iam_validator.mcp.tools.org_config_tools import (
+from iam_validator.mcp.tools.config import (
     check_org_compliance_impl,
     clear_organization_config_impl,
     get_organization_config_impl,
@@ -25,7 +25,7 @@ from iam_validator.mcp.tools.query import (
     query_condition_keys,
     query_service_actions,
 )
-from iam_validator.mcp.tools.validation import (
+from iam_validator.mcp.tools.validate import (
     quick_validate,
     validate_policy,
     validate_policy_json,

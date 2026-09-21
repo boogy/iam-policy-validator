@@ -113,13 +113,13 @@ class TestGetInstructions:
     """Test suite for the module-level ``get_instructions`` function."""
 
     def test_returns_base_when_no_custom(self):
-        from iam_validator.mcp.server import BASE_INSTRUCTIONS, get_instructions
+        from iam_validator.mcp.instructions import BASE_INSTRUCTIONS, get_instructions
 
         result = get_instructions()
         assert result == BASE_INSTRUCTIONS
 
     def test_appends_custom_instructions(self):
-        from iam_validator.mcp.server import BASE_INSTRUCTIONS, get_instructions
+        from iam_validator.mcp.instructions import BASE_INSTRUCTIONS, get_instructions
 
         custom = "Always require MFA"
         result = get_instructions(custom)

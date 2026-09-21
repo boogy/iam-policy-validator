@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from iam_validator.mcp.tools.validation import (
+from iam_validator.mcp.tools.validate import (
     quick_validate,
     validate_policy,
     validate_policy_json,

@@ -1,6 +1,4 @@
-"""Base MCP server instructions, split out so build.py can read them without
-importing server.py (which registers a second FastMCP instance as a side effect).
-"""
+"""Base MCP server instructions."""
 
 from __future__ import annotations
 

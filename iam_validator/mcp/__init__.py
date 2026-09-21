@@ -37,9 +37,10 @@ def create_server() -> "FastMCP":
         ImportError: If fastmcp is not installed
     """
     try:
-        from iam_validator.mcp.server import create_server as _create_server
+        from iam_validator.mcp.build import build_server
+        from iam_validator.mcp.settings import ServerSettings
 
-        return _create_server()
+        return build_server(ServerSettings.from_env())
     except ImportError as e:
         raise ImportError("fastmcp is required for MCP server. Install with: uv sync --extra mcp") from e
 
@@ -138,7 +139,7 @@ def run_server() -> None:
     args = parser.parse_args()
 
     if args.list_profiles:
-        from iam_validator.mcp.server import PROFILE_DESCRIPTIONS
+        from iam_validator.mcp.build import PROFILE_DESCRIPTIONS
 
         for name, desc in PROFILE_DESCRIPTIONS.items():
             print(f"{name:>20s}  {desc}")
@@ -178,17 +179,16 @@ def run_server() -> None:
         os.environ["IAM_VALIDATOR_MCP_AWS_SERVICES_DIR"] = args.aws_services_dir
         print(f"AWS services dir: {args.aws_services_dir}", file=sys.stderr)
 
-    # Only records the profile for get_active_profile(); doesn't gate tool visibility yet.
     if args.profile != "full":
-        from iam_validator.mcp.server import set_active_profile
-
-        set_active_profile(args.profile)
+        os.environ["IAM_VALIDATOR_MCP_PROFILE"] = args.profile
         print(f"MCP profile: {args.profile}", file=sys.stderr)
 
     try:
-        from iam_validator.mcp.server import run_server as _run_server
+        from iam_validator.mcp.build import build_server
+        from iam_validator.mcp.settings import ServerSettings
 
-        _run_server()
+        mcp = build_server(ServerSettings.from_env())
+        mcp.run()
     except ImportError as e:
         raise ImportError("fastmcp is required for MCP server. Install with: uv sync --extra mcp") from e
 
