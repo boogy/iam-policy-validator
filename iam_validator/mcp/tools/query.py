@@ -481,27 +481,6 @@ async def _query_arn_formats_tool(service: str, ctx: Context) -> list[dict[str, 
     return cast(list[dict[str, Any]], await query_arn_formats(service=service, fetcher=fetcher))
 
 
-async def _get_policy_summary_tool(policy: dict[str, Any]) -> dict[str, Any]:
-    """Get summary statistics for a policy.
-
-    Args:
-        policy: IAM policy dictionary
-
-    Returns:
-        {total_statements, allow_statements, deny_statements, services_used, actions_count, has_wildcards, has_conditions}
-    """
-    result = await get_policy_summary(policy=policy)
-    return {
-        "total_statements": result.total_statements,
-        "allow_statements": result.allow_statements,
-        "deny_statements": result.deny_statements,
-        "services_used": result.services_used,
-        "actions_count": result.actions_count,
-        "has_wildcards": result.has_wildcards,
-        "has_conditions": result.has_conditions,
-    }
-
-
 async def get_condition_requirements_for_action(action: str) -> dict[str, Any] | None:
     """Get condition requirements for a specific action.
 
@@ -677,7 +656,7 @@ async def get_issue_guidance(check_id: str, ctx: Context) -> dict[str, Any]:
             ],
             "example_before": None,
             "example_after": None,
-            "related": ["iam://checks", "validate_policy"],
+            "related": ["iam://checks", "validate_policies"],
         }
 
     return {
@@ -685,13 +664,13 @@ async def get_issue_guidance(check_id: str, ctx: Context) -> dict[str, Any]:
         "description": check.description,
         "default_severity": check.default_severity,
         "fix_steps": [
-            "Read the issue's `message` and `suggestion` fields from validate_policy",
+            "Read the issue's `message` and `suggestion` fields from validate_policies",
             "Apply the example fix from the issue, if provided",
-            "Re-validate with validate_policy",
+            "Re-validate with validate_policies",
         ],
         "example_before": None,
         "example_after": None,
-        "related": ["validate_policy"],
+        "related": ["validate_policies"],
     }
 
 
@@ -730,13 +709,6 @@ TOOLS: tuple[ToolSpec, ...] = (
         fn=_query_arn_formats_tool,
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
         output_schema=infer_output_schema(_query_arn_formats_tool),
-    ),
-    ToolSpec(
-        tag="validate",
-        name="get_policy_summary",
-        fn=_get_policy_summary_tool,
-        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-        output_schema=infer_output_schema(_get_policy_summary_tool),
     ),
     ToolSpec(
         tag="query",

@@ -15,7 +15,7 @@ async def checks_resource(ctx: Context | None = None) -> str:
 
     Each entry carries the check's id, description and class ``default_severity``
     plus the ``severity`` and ``enabled`` flag the current session config resolves
-    to, so the catalog matches what validate_policy will actually run.
+    to, so the catalog matches what validate_policies will actually run.
     """
     return json.dumps(get_check_catalog(ctx), indent=2)
 
@@ -281,7 +281,7 @@ STEPS:
      template_name="lambda-s3-trigger",
      variables={"bucket_name": "user-bucket", "function_name": "my-func", ...}
    )
-4. validate_policy on result
+4. validate_policies on result
 5. Present validated policy to user
 
 ## Example 2: Validate Overly Permissive Policy
@@ -289,7 +289,7 @@ STEPS:
 USER: "Validate this policy: {Action: *, Resource: *}"
 
 STEPS:
-1. validate_policy → returns issues (wildcard_action, wildcard_resource)
+1. validate_policies → returns issues (wildcard_action, wildcard_resource)
 2. fix_policy_issues → unfixed_issues shows wildcards can't be auto-fixed
 3. RESPOND to user:
    "This policy grants full admin access. I need to know:
@@ -311,7 +311,7 @@ STEPS:
        "arn:aws:s3:::backups/*"
      ]
    )
-4. validate_policy on result
+4. validate_policies on result
 5. Review security_notes and present to user
 
 ## Example 4: Fix Validation Issues
@@ -319,7 +319,7 @@ STEPS:
 USER provides policy with issues
 
 STEPS:
-1. validate_policy → returns is_valid=false with issues
+1. validate_policies → returns is_valid=false with issues
 2. For each issue, read the `example` field - it shows the exact fix
 3. fix_policy_issues → applies auto-fixes (Version, SIDs)
 4. For remaining unfixed_issues:
@@ -341,7 +341,7 @@ STEPS:
 USER provides multiple policies to check
 
 STEPS:
-1. validate_policies_batch(policies=[...], verbose=False)
+1. validate_policies(policies=[...], detail="summary")
 2. For each result, show policy_index and is_valid
 3. Detail issues only for invalid policies
 """

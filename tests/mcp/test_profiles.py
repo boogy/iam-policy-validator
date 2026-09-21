@@ -36,7 +36,7 @@ async def test_get_active_profile_reflects_state():
     async with Client(mcp) as client:
         result = await client.call_tool("get_active_profile", {})
     assert result.data["profile"] == "validate-only"
-    assert "validate_policy" in result.data["tool_names"]
+    assert "validate_policies" in result.data["tool_names"]
 
 
 def test_unknown_profile_rejected_by_settings():

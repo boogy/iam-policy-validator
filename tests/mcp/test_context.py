@@ -10,7 +10,7 @@ from iam_validator.core.report import ReportGenerator
 from iam_validator.mcp.context import ServerContext, SessionState, build_context, get_server_context
 from iam_validator.mcp.settings import ServerSettings
 
-# validate_policy() imports fastmcp.exceptions at call time.
+# validate_policies() imports fastmcp.exceptions at call time.
 pytest.importorskip("fastmcp", reason="MCP tests require 'pip install iam-policy-validator[mcp]'")
 
 
@@ -96,7 +96,7 @@ def _fake_ctx(context: ServerContext) -> SimpleNamespace:
 
 
 class TestRegistryBuiltOnceAcrossValidateCalls:
-    """The startup registry must survive repeat validate_policy calls unrebuilt.
+    """The startup registry must survive repeat validate_policies calls unrebuilt.
 
     ``build_context`` calls ``build_registry`` once; nothing downstream may call
     it again. ``test_registry_identity_is_stable_across_lookups`` above only
@@ -118,26 +118,29 @@ class TestRegistryBuiltOnceAcrossValidateCalls:
         monkeypatch.setattr(policy_checks_module, "build_registry", counting)
         return calls
 
-    async def test_validate_policy_does_not_rebuild_registry(self, simple_policy_dict, monkeypatch):
-        from iam_validator.mcp.tools.validate import validate_policy
+    async def test_validate_policies_does_not_rebuild_registry(self, simple_policy_dict, monkeypatch):
+        from iam_validator.mcp.tools.validate import validate_policies
 
         context = build_context(ServerSettings(mode="local"))
         ctx = _fake_ctx(context)
         calls = self._counting_build_registry(monkeypatch)
 
-        await validate_policy(simple_policy_dict, ctx=ctx)
-        await validate_policy(simple_policy_dict, ctx=ctx)
+        await validate_policies(policies=[simple_policy_dict], ctx=ctx)
+        await validate_policies(policies=[simple_policy_dict], ctx=ctx)
 
         assert calls == [], f"build_registry ran {len(calls)} time(s) after startup"
 
-    async def test_check_org_compliance_does_not_rebuild_registry(self, simple_policy_dict, monkeypatch):
-        from iam_validator.mcp.tools.config import check_org_compliance_impl
+    async def test_validate_policies_with_session_config_does_not_rebuild_registry(
+        self, simple_policy_dict, monkeypatch
+    ):
+        from iam_validator.mcp.tools.validate import validate_policies
 
         context = build_context(ServerSettings(mode="local"))
+        context.mutable.set_config({"settings": {"fail_on_severity": ["critical"]}}, source="session")
         ctx = _fake_ctx(context)
         calls = self._counting_build_registry(monkeypatch)
 
-        await check_org_compliance_impl(simple_policy_dict, session=context.mutable, ctx=ctx)
-        await check_org_compliance_impl(simple_policy_dict, session=context.mutable, ctx=ctx)
+        await validate_policies(policies=[simple_policy_dict], ctx=ctx)
+        await validate_policies(policies=[simple_policy_dict], ctx=ctx)
 
         assert calls == [], f"build_registry ran {len(calls)} time(s) after startup"

@@ -176,118 +176,6 @@ async def load_organization_config_from_yaml_impl(
         }
 
 
-async def check_org_compliance_impl(
-    policy: dict[str, Any],
-    session: "SessionState | None",
-    ctx: Any = None,
-) -> dict[str, Any]:
-    """Check if a policy passes validation with the session configuration.
-
-    This runs the full validator with the session configuration and returns
-    the validation results. It does NOT use separate guardrail logic - all
-    checking is done by the validator's built-in checks.
-
-    Args:
-        policy: IAM policy as a dictionary
-        session: The caller's session state, or ``None`` in hosted mode.
-        ctx: The MCP request context, forwarded to ``validate_policy``.
-
-    Returns:
-        Dictionary with compliance status and validation issues
-    """
-    from iam_validator.mcp.tools.validate import validate_policy
-
-    config = session.get_config() if session is not None else None
-
-    if config is None:
-        # No session config - validate with defaults
-        result = await validate_policy(policy=policy, use_org_config=False, ctx=ctx)
-        return {
-            "compliant": result.is_valid,
-            "has_org_config": False,
-            "violations": [
-                {"type": issue.issue_type, "message": issue.message, "severity": issue.severity}
-                for issue in result.issues
-            ],
-            "warnings": ["No session config set - using default validator settings"],
-            "suggestions": [issue.suggestion for issue in result.issues if issue.suggestion],
-        }
-
-    # Validate with the session config
-    result = await validate_policy(policy=policy, use_org_config=True, ctx=ctx)
-
-    violations = [
-        {"type": issue.issue_type, "message": issue.message, "severity": issue.severity} for issue in result.issues
-    ]
-
-    suggestions = [issue.suggestion for issue in result.issues if issue.suggestion]
-
-    return {
-        "compliant": result.is_valid,
-        "has_org_config": True,
-        "violations": violations,
-        "warnings": [],
-        "suggestions": suggestions,
-    }
-
-
-async def validate_with_config_impl(
-    policy: dict[str, Any],
-    config: dict[str, Any],
-    policy_type: str | None = None,
-    ctx: Any = None,
-) -> dict[str, Any]:
-    """Validate a policy with explicit inline configuration.
-
-    This runs validation with the provided config without affecting
-    the session configuration.
-
-    Args:
-        policy: IAM policy to validate
-        config: Inline configuration (same format as CLI config files)
-        policy_type: Type of policy. If None, auto-detects from policy structure.
-        ctx: The MCP request context, forwarded to ``validate_policy``.
-
-    Returns:
-        Dictionary with validation results
-    """
-    from iam_validator.mcp.tools.validate import validate_policy
-
-    try:
-        # Inline config, applied directly -- bypasses the filesystem and session config.
-        validation_result = await validate_policy(
-            policy=policy,
-            policy_type=policy_type,
-            config=config,
-            use_org_config=False,
-            ctx=ctx,
-        )
-    except Exception as e:
-        return {
-            "is_valid": False,
-            "issues": [],
-            "error": str(e),
-            "config_applied": None,
-        }
-
-    # Build issues list
-    issues = [
-        {
-            "severity": issue.severity,
-            "message": issue.message,
-            "suggestion": issue.suggestion,
-            "check_id": issue.check_id,
-        }
-        for issue in validation_result.issues
-    ]
-
-    return {
-        "is_valid": validation_result.is_valid,
-        "issues": issues,
-        "config_applied": config,
-    }
-
-
 # =============================================================================
 # MCP tool wrappers (registered via TOOLS below)
 # =============================================================================
@@ -359,54 +247,6 @@ async def load_organization_config_from_yaml(yaml_content: str, ctx: Context) ->
     context = get_server_context(ctx)
     session = context.mutable if context is not None else None
     return await load_organization_config_from_yaml_impl(yaml_content, session)
-
-
-async def check_org_compliance(
-    policy: dict[str, Any],
-    ctx: Context,
-    verbose: bool = False,
-) -> dict[str, Any]:
-    """Validate a policy using session org config (or defaults if none set).
-
-    Args:
-        policy: IAM policy dictionary
-        verbose: Return all fields (True) or essential only (False)
-
-    Returns:
-        {compliant, has_org_config, violations, warnings, suggestions}
-    """
-    context = get_server_context(ctx)
-    session = context.mutable if context is not None else None
-    result = await check_org_compliance_impl(policy, session, ctx=ctx)
-
-    if not verbose:
-        # Lean response: counts instead of full lists
-        result["violation_count"] = len(result.get("violations", []))
-        result["warning_count"] = len(result.get("warnings", []))
-        if "suggestions" in result and isinstance(result["suggestions"], list):
-            result["suggestion_count"] = len(result["suggestions"])
-            del result["suggestions"]
-
-    return result
-
-
-async def validate_with_config(
-    policy: dict[str, Any],
-    config: dict[str, Any],
-    ctx: Context,
-    policy_type: str | None = None,
-) -> dict[str, Any]:
-    """Validate a policy with inline configuration (one-off, doesn't modify session).
-
-    Args:
-        policy: IAM policy to validate
-        config: Same format as set_organization_config
-        policy_type: "identity", "resource", or "trust" (auto-detected if None)
-
-    Returns:
-        {is_valid, issues, config_applied}
-    """
-    return await validate_with_config_impl(policy, config, policy_type, ctx=ctx)
 
 
 async def set_custom_instructions(instructions: str, ctx: Context) -> dict[str, Any]:
@@ -523,20 +363,6 @@ TOOLS: tuple[ToolSpec, ...] = (
     ),
     ToolSpec(
         tag="orgconfig",
-        name="check_org_compliance",
-        fn=check_org_compliance,
-        annotations=_READ_ONLY_ANNOTATIONS,
-        output_schema=infer_output_schema(check_org_compliance),
-    ),
-    ToolSpec(
-        tag="orgconfig",
-        name="validate_with_config",
-        fn=validate_with_config,
-        annotations=_READ_ONLY_ANNOTATIONS,
-        output_schema=infer_output_schema(validate_with_config),
-    ),
-    ToolSpec(
-        tag="orgconfig",
         mutating=True,
         modes=frozenset({"local"}),
         name="set_custom_instructions",
@@ -568,14 +394,10 @@ __all__ = [
     "get_organization_config_impl",
     "clear_organization_config_impl",
     "load_organization_config_from_yaml_impl",
-    "check_org_compliance_impl",
-    "validate_with_config_impl",
     "set_organization_config",
     "get_organization_config",
     "clear_organization_config",
     "load_organization_config_from_yaml",
-    "check_org_compliance",
-    "validate_with_config",
     "set_custom_instructions",
     "get_custom_instructions",
     "clear_custom_instructions",

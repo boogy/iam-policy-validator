@@ -39,17 +39,17 @@ mcp/
 ├── context.py             # ServerContext (built once, held in the FastMCP lifespan) +
 │                          # SessionState (session-scoped org config / custom instructions)
 └── tools/
-    ├── validate.py         # TOOLS: validate_policy, quick_validate, get_active_profile,
-    │                       # validate_policies_batch
+    ├── validate.py         # TOOLS: validate_policies (mode-gated local/hosted variants,
+    │                       # local carries path/glob), get_active_profile
     ├── query.py            # TOOLS: query_service_actions, query_action_details,
     │                       # expand_wildcard_action, query_condition_keys, query_arn_formats,
-    │                       # get_policy_summary, get_condition_requirements_for_action,
+    │                       # get_condition_requirements_for_action,
     │                       # query_actions_batch, check_actions_batch, get_issue_guidance
     ├── analyze.py           # TOOLS: aws_access_analyzer_validate — wraps boto3 Access Analyzer
     │                       # in asyncio.to_thread
     └── config.py           # TOOLS: set/get/clear_organization_config,
-                            # load_organization_config_from_yaml, check_org_compliance,
-                            # validate_with_config, set/get/clear_custom_instructions
+                            # load_organization_config_from_yaml,
+                            # set/get/clear_custom_instructions
 ```
 
 `build_server(settings)` is the only place a `FastMCP` instance is constructed. It
@@ -66,17 +66,16 @@ profile)` boto3 session cache — and every tool call reaches it via
 tool reads a module-level global.
 
 `ServerContext.registry` is built once at startup via `build_registry()` (not lazily —
-it loads third-party entry-point plugins once). `validate_policy` (and everything
-routed through it: `check_org_compliance`, `validate_with_config`, `validate_policy_json`,
-`quick_validate`) reuses `ServerContext.registry`/`.config` directly and does not rebuild
-per call. An inline `config=` dict, an explicit `config_path`, or an active session-config
-override (`set_organization_config`) instead go through
+it loads third-party entry-point plugins once). `validate_policies` reuses
+`ServerContext.registry`/`.config` directly and does not rebuild per call, including
+when an active session-config override (`set_organization_config`) is present — that
+path goes through
 `iam_validator.core.policy_checks.overlay_registry_config(base_registry, config)`, which
 reuses the startup registry's already-imported check instances (and their `source`
 provenance) under the override's settings — no re-import, no temp file. In that
 override case, `get_check_catalog()`/`get_check_details()` (in `context.py`) resolve each
 check's `enabled`/`severity` through `ServerContext.mutable` (a `SessionState`, `None` in
-hosted mode) on every call, so the catalog agrees with what `validate_policy` runs;
+hosted mode) on every call, so the catalog agrees with what `validate_policies` runs;
 nothing memoizes the resolved values.
 
 ### Hosted config resolution + config_digest
@@ -101,27 +100,28 @@ distribution's entry point without it appearing anywhere in the YAML.
 `CheckRegistry.register(check, *, source=...)` records provenance
 (`builtin`/`entry_point`/`config_module`/`discovered`); `get_source(check_id)` reads it
 back. The digest is returned by `get_config`/`get_organization_config` and attached to
-every `validate_policy`/`validate_policies_batch` response.
+every `validate_policies` response as `config_digest`.
 
-Several `tools/*.py` modules define an underscore-prefixed `_..._tool` wrapper (e.g.
-`validate.py:_validate_policy_tool`) alongside an impl function of the desired MCP
-name (`validate_policy`) — the wrapper is what gets registered, via `ToolSpec(name=...)`,
-so the impl function stays importable/testable under its own name without a collision.
+`validate.py` registers two `ToolSpec`s under the same name `validate_policies`, one
+per `modes` (`{"local"}` wraps `validate_policies` with `path`/`glob` on its signature;
+`{"hosted"}` wraps `_validate_policies_hosted`, which lacks them) — `build_server()`
+includes exactly one per process since `modes` is mutually exclusive, so hosted schemas
+never expose local-only filesystem parameters.
 
 ---
 
-## Tools (24) — tagged for `--profile` gating
+## Tools (19) — tagged for `--profile` gating
 
 Every tool carries exactly one functional tag (some also carry `mutating`).
 The `--profile` flag uses these tags to enable/disable groups:
 
-| Tag         | Tools                                                                                                                                                                                                                                               |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `validate`  | `validate_policy`, `quick_validate`, `validate_policies_batch`, `get_policy_summary`, `get_active_profile`                                                                                                                                          |
-| `query`     | `query_service_actions`, `query_action_details`, `expand_wildcard_action`, `query_condition_keys`, `query_arn_formats`, `get_condition_requirements_for_action`, `query_actions_batch`, `check_actions_batch`                                       |
-| `fix`       | `get_issue_guidance`                                                                                                                                                                                                                                |
-| `orgconfig` | `set_/get_/clear_organization_config` (set/clear also tagged `mutating`), `load_organization_config_from_yaml` (also `mutating`), `check_org_compliance`, `validate_with_config`, `set_/get_/clear_custom_instructions` (set/clear also `mutating`) |
-| `analyze`   | `aws_access_analyzer_validate` (only tool with `openWorldHint=True` — calls live AWS API)                                                                                                                                                           |
+| Tag         | Tools                                                                                                                                                                                                                  |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `validate`  | `validate_policies` (consolidates the former `validate_policy`, `quick_validate`, `validate_policies_batch`, `validate_with_config`, `check_org_compliance`, `get_policy_summary` — see TASK-08), `get_active_profile` |
+| `query`     | `query_service_actions`, `query_action_details`, `expand_wildcard_action`, `query_condition_keys`, `query_arn_formats`, `get_condition_requirements_for_action`, `query_actions_batch`, `check_actions_batch`          |
+| `fix`       | `get_issue_guidance`                                                                                                                                                                                                   |
+| `orgconfig` | `set_/get_/clear_organization_config` (set/clear also tagged `mutating`), `load_organization_config_from_yaml` (also `mutating`), `set_/get_/clear_custom_instructions` (set/clear also `mutating`)                    |
+| `analyze`   | `aws_access_analyzer_validate` (only tool with `openWorldHint=True` — calls live AWS API)                                                                                                                              |
 
 ### Profiles
 
@@ -160,8 +160,9 @@ filters on `mutating` instead of `tag`) — and registers survivors on a fresh
 settings produce an identical tool-name sequence (MCP 2026-07-28 requires
 this for client-side list caching).
 
-The remaining consolidation from this 24-tool surface down to the target
-6-tool surface is TASK-08–11's job; this module currently still exposes all 24.
+TASK-08 consolidated the six `validate`-tagged validation tools into
+`validate_policies`; the remaining consolidation from 19 tools down to the target
+6-tool surface is TASK-09–11's job.
 
 ### Token cost
 
@@ -170,9 +171,9 @@ Tags + tool annotations + slimmed `BASE_INSTRUCTIONS` produce these footprints
 
 | Profile              | Tools | Total | % full |
 | -------------------- | ----- | ----- | ------ |
-| `full`               | 24    | 3165  | 100%   |
-| `validate-only`      | 5     | 1416  | 45%    |
-| `validate-and-query` | 13    | 1994  | 63%    |
+| `full`               | 19    | 3070  | 100%   |
+| `validate-only`      | 2     | 1309  | 43%    |
+| `validate-and-query` | 10    | 1887  | 61%    |
 
 ## Resources (7)
 
@@ -268,16 +269,22 @@ Test files of note:
 - `test_prompt_schema.py` — guards prompt argument descriptions against FastMCP's generic
   schema fallback (triggered by a stray `from __future__ import annotations` in `prompts.py`)
 - `test_analyze.py` — Access Analyzer wrapper + cached boto3 session
-- `test_accuracy_fixes.py` — quick_validate wildcard detection, Access Analyzer
+- `test_accuracy_fixes.py` — `validate_policies` wildcard detection, Access Analyzer
   partition/timeout defaults, malformed-input error shape
+- `test_validation_tools.py` — `validate_policies`: input forms (dict/JSON/YAML/object),
+  detail levels, format enum (rejects `console`/`enhanced`), `fails_policy` derivation,
+  policy-type resolution (`cli-flag`/config-glob/auto-detect/default) incl. per-entry
+  override, session-config overlay, the five `ServerSettings` request limits (each
+  raising `ToolError`, except `max_response_bytes` which degrades + sets `truncated`),
+  hosted schema excludes `path`/`glob`
 - `test_immutable_config.py` — hosted-mode mutating-tool exclusion + config/digest
   unchanged after every hosted-surviving tool call
 - `test_hosted_startup_custom_checks.py` — a declared custom check that fails to
   import exits hosted startup non-zero naming it; local mode boots with a warning
 - `test_config_digest.py` — `config_digest` stability across processes, and change on
   severity edit / disable / entry-point check addition
-- `test_no_tempfile.py` — `validate_policy`/`validate_with_config` never call
-  `tempfile.NamedTemporaryFile` for an inline config override
+- `test_no_tempfile.py` — `validate_policies` never calls `tempfile.NamedTemporaryFile`
+  for an inline config override
 
 Mock fetcher / network — no real API or AWS calls. Debug interactively via
 `mise run mcp:inspector`. Requires `fastmcp>=3.2,<5` (installed via

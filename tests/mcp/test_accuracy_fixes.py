@@ -2,7 +2,6 @@
 
 Tests the accuracy / robustness improvements made on top of v1.20.0:
 
-- ``quick_validate`` includes ``full_wildcard`` in wildcards_detected.
 - ``aws_access_analyzer_validate`` defaults region per partition + timeout.
 - Malformed input → clean ``ToolError`` (not Pydantic stacktrace).
 """
@@ -22,41 +21,6 @@ from iam_validator.mcp.tools import analyze
 def stub_ctx_no_fetcher():
     """Context where get_shared_fetcher returns None (forces fallback paths)."""
     return SimpleNamespace(request_context=None)
-
-
-# ---------------------------------------------------------------------------
-# quick_validate — wildcards_detected must include full_wildcard
-# ---------------------------------------------------------------------------
-
-
-async def test_quick_validate_detects_full_wildcard(monkeypatch):
-    """A policy emitting a full_wildcard issue must report wildcards_detected=True."""
-    from iam_validator.core.models import ValidationIssue
-    from iam_validator.mcp.models import ValidationResult
-    from iam_validator.mcp.tools import validate as validation_mod
-
-    fake_result = ValidationResult(
-        is_valid=False,
-        issues=[
-            ValidationIssue(
-                severity="critical",
-                statement_index=0,
-                issue_type="overly_permissive",
-                message="Action and Resource are both '*'",
-                suggestion="...",
-                check_id="full_wildcard",
-            )
-        ],
-        policy_file="inline-policy",
-    )
-
-    async def fake_validate(**kwargs):
-        return fake_result
-
-    monkeypatch.setattr(validation_mod, "validate_policy", fake_validate)
-
-    result = await validation_mod.quick_validate({"Version": "2012-10-17", "Statement": []})
-    assert result["wildcards_detected"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -147,14 +111,14 @@ async def test_aws_access_analyzer_validate_timeout(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-async def test_validate_policy_malformed_raises_tool_error():
+async def test_validate_policies_malformed_raises_tool_error():
     """Schema-violating policy dict raises ToolError, not a Pydantic stacktrace."""
     from iam_validator.mcp.tools import validate as validation_mod
 
     # Statement set to a non-list/dict value triggers a Pydantic ValidationError
     # because the IAMPolicy model rejects scalars there.
     with pytest.raises(ToolError, match="Malformed IAM policy"):
-        await validation_mod.validate_policy(policy={"Version": "2012-10-17", "Statement": 12345})
+        await validation_mod.validate_policies(policies=[{"Version": "2012-10-17", "Statement": 12345}])
 
 
 # ---------------------------------------------------------------------------

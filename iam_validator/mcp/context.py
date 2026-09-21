@@ -435,7 +435,7 @@ def get_shared_fetcher(ctx: Any) -> AWSServiceFetcher | None:
 
 
 def effective_check_settings(check_id: str, default_severity: str, ctx: Any) -> tuple[bool, str]:
-    """``(enabled, severity)`` after the session config that validate_policy applies."""
+    """``(enabled, severity)`` after the session config that validate_policies applies."""
     context = get_server_context(ctx)
     config = context.mutable.get_config() if context is not None and context.mutable is not None else None
     if config is None:

@@ -132,9 +132,7 @@ class TestServerTools:
     async def test_validation_tools_registered(self):
         """Validation tools should be registered."""
         tool_names = [t.name for t in await mcp.list_tools()]
-        assert "validate_policy" in tool_names
-        assert "quick_validate" in tool_names
-        assert "validate_policies_batch" in tool_names
+        assert "validate_policies" in tool_names
 
     async def test_query_tools_registered(self):
         """Query tools should be registered.

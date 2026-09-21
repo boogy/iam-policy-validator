@@ -39,7 +39,7 @@ If found, use `generate_policy_from_template` with the resource values.
 3. Call `build_minimal_policy` with the specific actions and resources
 
 ### Step 3: Validate ONCE
-Call `validate_policy` on the generated policy.
+Call `validate_policies` on the generated policy.
 
 ### Step 4: Fix Only BLOCKING Issues
 BLOCKING issues (MUST fix): severity = "error" or "critical"
@@ -68,7 +68,7 @@ def fix_policy_issues_workflow(policy_json: str, issues_description: str) -> str
 
     Args:
         policy_json: The IAM policy JSON that has issues
-        issues_description: Description of the issues found (from validate_policy)
+        issues_description: Description of the issues found (from validate_policies)
     """
     return f"""Fix the following IAM policy issues systematically:
 
@@ -89,7 +89,7 @@ For each issue with severity "error" or "critical":
 3. For structural issues (Version, Effect case), use `fix_policy_issues` tool
 
 ### After Fixing:
-Call `validate_policy` ONE more time to verify blocking issues are resolved.
+Call `validate_policies` ONE more time to verify blocking issues are resolved.
 
 ### Iteration 2 (only if needed):
 If new "error" or "critical" issues appeared, fix those.
@@ -129,7 +129,7 @@ def review_policy_security(policy_json: str) -> str:
 ## REVIEW WORKFLOW:
 
 ### Step 1: Validate
-Call `validate_policy` with the policy above.
+Call `validate_policies` with the policy above.
 
 ### Step 2: Check Sensitive Actions
 Call `check_sensitive_actions` to identify high-risk permissions.

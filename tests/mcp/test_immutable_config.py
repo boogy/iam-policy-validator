@@ -65,11 +65,9 @@ def test_hosted_config_unchanged_after_every_surviving_tool_call(hosted_context,
     assert "set_organization_config" not in surviving_names
 
     async def _exercise():
-        await validate.validate_policy(policy=simple_policy_dict, ctx=ctx)
-        await validate._validate_policy_tool(policy=simple_policy_dict, ctx=ctx)
+        await validate._validate_policies_hosted(policies=[simple_policy_dict], ctx=ctx)
         await config.get_organization_config(ctx)
         await config.get_custom_instructions(ctx)
-        await config.check_org_compliance(policy=simple_policy_dict, ctx=ctx)
 
     asyncio.run(_exercise())
 

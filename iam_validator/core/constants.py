@@ -617,3 +617,11 @@ AWS_TAG_VALUE_MAX_LENGTH = 256
 
 # Minimum length for AWS tag values (can be empty)
 AWS_TAG_VALUE_MIN_LENGTH = 0
+
+# ============================================================================
+# MCP Formatter Gating
+# ============================================================================
+
+# Formatters unusable outside an interactive terminal (ANSI/Rich output) —
+# excluded from the MCP validate_policies `format` enum.
+TERMINAL_FORMATS: frozenset[str] = frozenset({"console", "enhanced"})

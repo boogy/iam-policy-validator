@@ -1,30 +1,40 @@
 """Validation tools for MCP server.
 
-This module provides MCP tools for validating IAM policies using the existing
-SDK validation functionality. All functions wrap the core validation logic
-from iam_validator.sdk without reimplementing it.
+This module provides the consolidated ``validate_policies`` MCP tool, which
+wraps the core validation SDK (``iam_validator.core.policy_checks``) without
+reimplementing it.
 """
 
+import asyncio
 import json
-from typing import Any
+from collections import Counter
+from typing import Annotated, Any, Literal
 
+import yaml
 from fastmcp import Context
+from fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
+from pydantic import BaseModel, Field
+from pydantic import ValidationError as PydanticValidationError
 
-from iam_validator.core.check_registry import create_default_registry
-from iam_validator.core.config.config_loader import ValidatorConfig
-from iam_validator.core.models import IAMPolicy, ValidationIssue
-from iam_validator.core.policy_checks import overlay_registry_config, validate_policies
+from iam_validator.core import constants
+from iam_validator.core.formatters.base import get_global_registry
+from iam_validator.core.models import IAMPolicy, PolicyType, PolicyValidationResult, ValidationIssue
+from iam_validator.core.policy_checks import build_registry
+from iam_validator.core.policy_checks import validate_policies as sdk_validate_policies
+from iam_validator.core.policy_loader import PolicyLoader
+from iam_validator.core.report import ReportGenerator
 from iam_validator.mcp.component_spec import ToolSpec, infer_output_schema
 from iam_validator.mcp.context import get_server_context
-from iam_validator.mcp.models import ValidationResult
+from iam_validator.mcp.settings import ServerSettings
+from iam_validator.mcp.tools.query import get_policy_summary
 
 
 def issue_to_dict(issue: ValidationIssue, *, verbose: bool = False) -> dict[str, Any]:
     """Map a ``ValidationIssue`` to the JSON shape MCP tools return.
 
     Single source of truth for the verbose-vs-lean projection so every
-    validation/generation tool reports identical fields.
+    validation tool reports identical fields.
     """
     if not verbose:
         return {
@@ -40,9 +50,9 @@ def issue_to_dict(issue: ValidationIssue, *, verbose: bool = False) -> dict[str,
         "example": issue.example,
         "check_id": issue.check_id,
         "statement_index": issue.statement_index,
-        "action": getattr(issue, "action", None),
-        "resource": getattr(issue, "resource", None),
-        "field_name": getattr(issue, "field_name", None),
+        "action": issue.action,
+        "resource": issue.resource,
+        "field_name": issue.field_name,
         "risk_explanation": issue.risk_explanation,
         "documentation_url": issue.documentation_url,
         "remediation_steps": issue.remediation_steps,
@@ -58,381 +68,419 @@ _POLICY_TYPE_SHORT_FORM: dict[str, str] = {
     "SERVICE_CONTROL_POLICY": "scp",
     "RESOURCE_CONTROL_POLICY": "rcp",
 }
+_POLICY_TYPE_LONG_FORM: dict[str, PolicyType] = {short: long for long, short in _POLICY_TYPE_SHORT_FORM.items()}
 
 
-def _detect_policy_type(policy: dict[str, Any]) -> str:
-    """Auto-detect policy type from a raw dict.
+def _normalize_policy_type(value: str | None, *, label: str) -> PolicyType | None:
+    if value is None:
+        return None
+    normalized = _POLICY_TYPE_LONG_FORM.get(value.lower())
+    if normalized is None:
+        raise ToolError(f"{label}: invalid policy_type {value!r}. Must be one of: identity, resource, trust, scp, rcp")
+    return normalized
 
-    Thin wrapper around ``iam_validator.checks.policy_structure.detect_policy_type``
-    so the MCP tool and the CLI orchestrator agree on what each policy is. The
-    canonical detector returns a ``PolicyType`` literal (e.g. ``TRUST_POLICY``);
-    this wrapper maps it back to the short string form (``"trust"``,
-    ``"resource"``, ``"identity"``, etc.) that the MCP API exposes.
 
-    If the dict cannot be parsed into an ``IAMPolicy`` (malformed input), falls
-    back to ``"identity"`` so the caller still gets a reasonable default.
-    """
-    # Local import to avoid import cycles at module load time.
-    from iam_validator.checks.policy_structure import (  # pylint: disable=import-outside-toplevel
-        detect_policy_type as _canonical_detect,
+# Formatters must be registered on the global FormatterRegistry before the
+# format enum below is computed (core/report.py's ReportGenerator does the
+# registration as a side effect of construction).
+_report_generator = ReportGenerator()
+_TERMINAL_FORMATS = constants.TERMINAL_FORMATS
+_ALLOWED_FORMATS: tuple[str, ...] = tuple(sorted(set(get_global_registry().list_formatters()) - _TERMINAL_FORMATS))
+FormatChoice = Literal[_ALLOWED_FORMATS]  # type: ignore[valid-type]
+
+
+class PolicyInputObject(BaseModel):
+    """The object form of a ``PolicyInput`` batch entry."""
+
+    policy: dict[str, Any] | str
+    name: str | None = Field(default=None, description="Opaque label; used only for policy_types: glob matching")
+    policy_type: str | None = Field(
+        default=None, description="identity|resource|trust|scp|rcp, overrides the run-wide policy_type for this entry"
     )
 
+
+PolicyInput = Annotated[
+    PolicyInputObject | dict[str, Any] | str,
+    Field(description="A policy as a dict, a JSON/YAML string, or {policy, name?, policy_type?}"),
+]
+
+
+class PolicyResultEntry(BaseModel):
+    """Per-policy result inside a ``validate_policies`` response."""
+
+    name: str | None = None
+    is_valid: bool
+    fails_policy: bool
+    severity_counts: dict[str, int] = Field(default_factory=dict)
+    policy_type: str
+    policy_type_source: Literal["cli-flag", "config-glob", "auto-detect", "default"]
+    issues: list[dict[str, Any]] | None = None
+    summary: dict[str, Any] | None = None
+
+
+class ValidatePoliciesResponse(BaseModel):
+    """Response of the consolidated ``validate_policies`` tool."""
+
+    results: list[PolicyResultEntry]
+    config_digest: str | None = None
+    report: str | None = None
+    truncated: bool = False
+    truncated_count: int = 0
+
+
+def _parse_policy_text(text: str, label: str) -> dict[str, Any]:
     try:
-        iam_policy = IAMPolicy(**policy)
-    except Exception:  # pragma: no cover - malformed policy dicts
-        return "identity"
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        try:
+            parsed = yaml.safe_load(text)
+        except yaml.YAMLError as e:
+            raise ToolError(f"{label}: could not parse policy text as JSON or YAML: {e}") from e
+    if not isinstance(parsed, dict):
+        raise ToolError(f"{label}: parsed policy text is not a JSON/YAML object")
+    return parsed
 
-    return _POLICY_TYPE_SHORT_FORM.get(_canonical_detect(iam_policy), "identity")
+
+def _split_policy_input(entry: Any, label: str) -> tuple[dict[str, Any], str | None, str | None]:
+    """Split one ``PolicyInput`` into (raw_policy_dict, name, per_entry_policy_type)."""
+    name: str | None = None
+    entry_policy_type: str | None = None
+    raw_source: Any = entry
+
+    if isinstance(entry, PolicyInputObject):
+        raw_source = entry.policy
+        name = entry.name
+        entry_policy_type = entry.policy_type
+    elif isinstance(entry, dict) and "policy" in entry:
+        raw_source = entry["policy"]
+        name = entry.get("name")
+        entry_policy_type = entry.get("policy_type")
+
+    if isinstance(raw_source, str):
+        raw_dict = _parse_policy_text(raw_source, label)
+    elif isinstance(raw_source, dict):
+        raw_dict = raw_source
+    else:
+        raise ToolError(f"{label}: policy must be a dict, a JSON/YAML string, or an object with a 'policy' field")
+
+    return raw_dict, name, entry_policy_type
 
 
-async def validate_policy(
-    policy: dict[str, Any],
-    policy_type: str | None = None,
-    config_path: str | None = None,
-    config: dict[str, Any] | None = None,
-    use_org_config: bool = True,
-    ctx: Any = None,
-) -> ValidationResult:
-    """Validate an IAM policy dictionary.
+def _resolve_entry_policy_type(
+    iam_policy: IAMPolicy,
+    name: str | None,
+    entry_policy_type: str | None,
+    run_policy_type: str | None,
+    config: Any,
+    label: str,
+) -> tuple[PolicyType, str]:
+    """Per-entry resolution: entry override > run-wide override > config-glob(name) > auto-detect > default."""
+    normalized_entry = _normalize_policy_type(entry_policy_type, label=label)
+    if normalized_entry is not None:
+        return normalized_entry, "cli-flag"
 
-    This tool validates a policy object against AWS IAM rules and security best
-    practices. It runs all enabled checks and returns detailed validation results.
+    normalized_run = _normalize_policy_type(run_policy_type, label=label)
+    if normalized_run is not None:
+        return normalized_run, "cli-flag"
 
-    Policy Type Auto-Detection:
-    If policy_type is None (default), the policy type is automatically detected:
-    - "trust" if contains sts:AssumeRole action (trust/assume role policy)
-    - "resource" if contains Principal/NotPrincipal (resource-based policy)
-    - "identity" otherwise (identity-based policy attached to users/roles/groups)
+    if name:
+        glob_type = config.get_policy_type_for_path(name)
+        if glob_type is not None:
+            return glob_type, "config-glob"
 
-    Configuration priority:
-    1. config (if provided) - inline configuration dict
-    2. config_path (if provided) - explicit YAML config file path
-    3. Session org config (if use_org_config=True and config set)
-    4. Default validator configuration
+    from iam_validator.checks.policy_structure import detect_policy_type
 
-    Args:
-        policy: IAM policy as a Python dictionary (must contain Version and Statement)
-        policy_type: Type of policy to validate. If None (default), auto-detects from structure.
-            Explicit options:
-            - "identity": Identity-based policy (attached to users/roles/groups)
-            - "resource": Resource-based policy (attached to resources like S3 buckets)
-            - "trust": Trust policy (role assumption policy)
-        config_path: Optional path to YAML configuration file
-        config: Optional inline configuration dict, applied directly without
-            touching the filesystem
-        use_org_config: Whether to use session organization config (default: True)
+    detected = detect_policy_type(iam_policy)
+    if detected != "IDENTITY_POLICY":
+        return detected, "auto-detect"
+    return "IDENTITY_POLICY", "default"
 
-    Returns:
-        ValidationResult with:
-            - is_valid: True if no errors/warnings found
-            - issues: List of ValidationIssue objects with details
-            - policy_file: Set to "inline-policy" for dict validation
-            - policy_type_detected: The policy type used (auto-detected or provided)
 
-    Example:
-        >>> policy = {
-        ...     "Version": "2012-10-17",
-        ...     "Statement": [{
-        ...         "Effect": "Allow",
-        ...         "Action": "s3:GetObject",
-        ...         "Resource": "arn:aws:s3:::my-bucket/*"
-        ...     }]
-        ... }
-        >>> result = await validate_policy(policy)
-        >>> print(f"Valid: {result.is_valid}, Issues: {len(result.issues)}")
-    """
-    # Auto-detect policy type if not provided
-    effective_policy_type = policy_type
-    if effective_policy_type is None:
-        effective_policy_type = _detect_policy_type(policy)
-
-    # Map user-friendly policy type names to internal constants
-    policy_type_mapping = {
-        "identity": "IDENTITY_POLICY",
-        "resource": "RESOURCE_POLICY",
-        "trust": "TRUST_POLICY",
-        "scp": "SERVICE_CONTROL_POLICY",
-        "rcp": "RESOURCE_CONTROL_POLICY",
-    }
-
-    # Normalize the policy type
-    normalized_type = policy_type_mapping.get(effective_policy_type.lower(), "IDENTITY_POLICY")
-
-    # Parse the dict into an IAMPolicy model. Surface schema errors as a clean
-    # ToolError instead of letting Pydantic's ValidationError stacktrace leak
-    # through the MCP protocol.
-    from fastmcp.exceptions import ToolError
-    from pydantic import ValidationError as _PydanticValidationError
-
+def _parse_iam_policy(raw_dict: dict[str, Any], label: str) -> IAMPolicy:
     try:
-        iam_policy = IAMPolicy(**policy)
-    except _PydanticValidationError as e:
+        return IAMPolicy(**raw_dict)
+    except PydanticValidationError as e:
         raise ToolError(
-            f"Malformed IAM policy: {e.error_count()} validation error(s). "
+            f"{label}: Malformed IAM policy: {e.error_count()} validation error(s). "
             "First error: " + (e.errors()[0].get("msg", "unknown") if e.errors() else "unknown")
         ) from e
     except (TypeError, ValueError) as e:
-        raise ToolError(f"Malformed IAM policy: {e}") from e
+        raise ToolError(f"{label}: Malformed IAM policy: {e}") from e
 
-    from iam_validator.mcp.context import get_server_context
 
+def _entry_byte_size(raw_dict: dict[str, Any]) -> int:
+    return len(json.dumps(raw_dict, default=str).encode())
+
+
+class _RunContext:
+    __slots__ = ("config", "registry", "settings", "formatters", "config_digest")
+
+    def __init__(
+        self,
+        config: Any,
+        registry: Any,
+        settings: ServerSettings,
+        formatters: ReportGenerator,
+        config_digest: str | None,
+    ) -> None:
+        self.config = config
+        self.registry = registry
+        self.settings = settings
+        self.formatters = formatters
+        self.config_digest = config_digest
+
+
+def _resolve_run_context(ctx: Any) -> _RunContext:
     context = get_server_context(ctx)
+    if context is not None:
+        session_config = context.mutable.get_config() if context.mutable is not None else None
+        if session_config is not None:
+            from iam_validator.core.policy_checks import overlay_registry_config
 
-    # Determine config path and session_config to use
-    session_config = None
-    if not config and not config_path and use_org_config and context is not None and context.mutable is not None:
-        session_config = context.mutable.get_config()
-
-    # Pull CLI-supplied paths (--custom-checks-dir / --aws-services-dir) so the
-    # MCP tool reaches feature parity with the CLI's `iam-validator validate`.
-    custom_dir = str(context.settings.custom_checks_dir) if context and context.settings.custom_checks_dir else None
-    services_dir = str(context.settings.aws_services_dir) if context and context.settings.aws_services_dir else None
-
-    if config is not None:
-        # An inline config dict (see validate_with_config) is applied directly
-        # -- no filesystem round-trip -- overlaid onto the startup registry's
-        # already-imported check instances instead of rebuilding it.
-        inline_config = ValidatorConfig(config, use_defaults=True)
-        base_registry = context.registry if context is not None else create_default_registry()
-        registry = overlay_registry_config(base_registry, inline_config)
-        results = await validate_policies(
-            policies=[("inline-policy", iam_policy)],
-            config=inline_config,
-            registry=registry,
-            policy_type=normalized_type,  # type: ignore
-            custom_checks_dir=custom_dir,
-            aws_services_dir=services_dir,
-        )
-    elif config_path:
-        # An explicit config_path asks for check settings the startup registry
-        # doesn't have baked in, so this path still resolves its own config.
-        results = await validate_policies(
-            policies=[("inline-policy", iam_policy)],
-            config_path=config_path,
-            policy_type=normalized_type,  # type: ignore
-            custom_checks_dir=custom_dir,
-            aws_services_dir=services_dir,
-        )
-    elif session_config is not None:
-        # An active session-config override (see set_organization_config)
-        # overlays onto the startup registry's already-imported check
-        # instances instead of rebuilding it from scratch.
-        base_registry = context.registry if context is not None else create_default_registry()
-        registry = overlay_registry_config(base_registry, session_config)
-        results = await validate_policies(
-            policies=[("inline-policy", iam_policy)],
-            config=session_config,
-            registry=registry,
-            policy_type=normalized_type,  # type: ignore
-            custom_checks_dir=custom_dir,
-            aws_services_dir=services_dir,
-        )
-    else:
-        # Reuse the startup registry: rebuilding reimports custom checks and entry-point plugins.
-        registry = context.registry if context is not None else create_default_registry()
-        results = await validate_policies(
-            policies=[("inline-policy", iam_policy)],
-            config=context.config if context is not None else None,
-            registry=registry,
-            policy_type=normalized_type,  # type: ignore
-            custom_checks_dir=custom_dir,
-            aws_services_dir=services_dir,
+            registry = overlay_registry_config(context.registry, session_config)
+            return _RunContext(session_config, registry, context.settings, context.formatters, context.config_digest)
+        return _RunContext(
+            context.config, context.registry, context.settings, context.formatters, context.config_digest
         )
 
-    # Get the first (and only) result
-    sdk_result = results[0] if results else None
-    if not sdk_result:
-        # Fallback if no results returned (shouldn't happen)
-        from iam_validator.core.models import PolicyValidationResult
+    from iam_validator.core.config.config_loader import ConfigLoader
 
-        sdk_result = PolicyValidationResult(
-            policy_file="inline-policy",
-            is_valid=False,
-            issues=[],
-        )
+    config = ConfigLoader.load_config(allow_missing=True)
+    registry = build_registry(config)
+    return _RunContext(config, registry, ServerSettings(), _report_generator, None)
 
-    # Convert SDK result to MCP ValidationResult
-    return ValidationResult(
-        is_valid=sdk_result.is_valid,
-        issues=sdk_result.issues,
-        policy_file=sdk_result.policy_file,
-        policy_type_detected=effective_policy_type,
+
+def _build_entry_response(
+    result: PolicyValidationResult,
+    raw_dict: dict[str, Any],
+    name: str | None,
+    resolved_type: PolicyType,
+    source: str,
+    detail: str,
+) -> PolicyResultEntry:
+    severity_counts = dict(Counter(issue.severity for issue in result.issues))
+    entry = PolicyResultEntry(
+        name=name,
+        is_valid=result.is_valid,
+        fails_policy=not result.is_valid,
+        severity_counts=severity_counts,
+        policy_type=resolved_type,
+        policy_type_source=source,  # type: ignore[arg-type]
     )
+    if detail in ("findings", "full"):
+        entry.issues = [issue_to_dict(i, verbose=(detail == "full")) for i in result.issues]
+    return entry
 
 
-async def validate_policy_json(policy_json: str, policy_type: str | None = None, ctx: Any = None) -> ValidationResult:
-    """Validate an IAM policy from a JSON string.
-
-    This tool parses a JSON string into a policy object and validates it.
-    Useful when working with policy text from files, API responses, or user input.
-
-    Policy Type Auto-Detection:
-    If policy_type is None (default), the policy type is automatically detected
-    from the policy structure (see validate_policy for details).
-
-    Args:
-        policy_json: IAM policy as a JSON string
-        policy_type: Type of policy to validate. If None (default), auto-detects.
-            Options: "identity", "resource", "trust"
-
-    Returns:
-        ValidationResult with validation status and issues
-
-    Raises:
-        Returns ValidationResult with parsing error if JSON is invalid
-
-    Example:
-        >>> policy_json = '''
-        ... {
-        ...   "Version": "2012-10-17",
-        ...   "Statement": [{
-        ...     "Effect": "Allow",
-        ...     "Action": "*",
-        ...     "Resource": "*"
-        ...   }]
-        ... }
-        ... '''
-        >>> result = await validate_policy_json(policy_json)
-        >>> for issue in result.issues:
-        ...     print(f"{issue.severity}: {issue.message}")
-    """
-    try:
-        # Parse JSON string to dict
-        policy_dict = json.loads(policy_json)
-    except json.JSONDecodeError as e:
-        # Return validation result with parsing error
-        from iam_validator.core.models import ValidationIssue
-
-        return ValidationResult(
-            is_valid=False,
-            issues=[
-                ValidationIssue(
-                    severity="error",
-                    statement_index=-1,
-                    issue_type="json_parse_error",
-                    message=f"Failed to parse policy JSON: {e}",
-                    suggestion="Ensure the policy is valid JSON format",
-                    check_id="policy_structure",
-                )
-            ],
-            policy_file="inline-policy",
-        )
-
-    # Validate the parsed policy dict
-    return await validate_policy(policy=policy_dict, policy_type=policy_type, ctx=ctx)
+async def _attach_summaries(entries: list[PolicyResultEntry], raw_dicts: list[dict[str, Any]], detail: str) -> None:
+    if detail not in ("summary", "full"):
+        return
+    for entry, raw_dict in zip(entries, raw_dicts, strict=True):
+        summary = await get_policy_summary(raw_dict)
+        entry.summary = summary.model_dump()
 
 
-async def quick_validate(policy: dict[str, Any], ctx: Any = None) -> dict[str, Any]:
-    """Quick pass/fail validation check for a policy.
+def _load_path_glob_entries(path: str, glob: str | None) -> list[tuple[dict[str, Any], str, None]]:
+    from pathlib import Path as _Path
 
-    This is a lightweight validation that returns just the essential information:
-    whether the policy is valid, the number of issues found, and critical issues.
-    Useful for rapid validation without detailed issue analysis.
+    loader = PolicyLoader()
+    base = _Path(path)
+    if glob:
+        file_paths: list[_Path] = sorted(p for p in base.glob(glob) if p.is_file())
+    else:
+        file_paths = sorted(loader._get_policy_files(path))
 
-    Args:
-        policy: IAM policy as a Python dictionary
-
-    Returns:
-        Dictionary containing:
-            - is_valid (bool): Whether the policy passed validation
-            - issue_count (int): Total number of issues found
-            - critical_issues (list[str]): List of critical/high severity issue messages
-            - sensitive_actions_found (int): Count of sensitive actions detected
-            - wildcards_detected (bool): Whether wildcards were found in actions/resources
-
-    Example:
-        >>> policy = {"Version": "2012-10-17", "Statement": [...]}
-        >>> result = await quick_validate(policy)
-        >>> if result["is_valid"]:
-        ...     print("Policy is valid!")
-        >>> else:
-        ...     print(f"Found {result['issue_count']} issues")
-        ...     for msg in result["critical_issues"]:
-        ...         print(f"  - {msg}")
-    """
-    # Use validate_policy to get full results
-    validation_result = await validate_policy(policy=policy, ctx=ctx)
-
-    # Filter critical and high severity issues
-    critical_issues = []
-    sensitive_actions_count = 0
-    wildcards_detected = False
-
-    for issue in validation_result.issues:
-        severity = issue.severity.lower()
-        if severity in {"critical", "high", "error"}:
-            critical_issues.append(issue.message)
-
-        # Count sensitive action issues
-        if issue.check_id == "sensitive_action":
-            sensitive_actions_count += 1
-
-        # Detect wildcard issues — keep this set in lockstep with the wildcard
-        # checks registered in core/check_registry.py. Missing one here causes
-        # `wildcards_detected` to silently lie (1.20.0 fix: include full_wildcard).
-        if issue.check_id in {
-            "wildcard_action",
-            "wildcard_resource",
-            "service_wildcard",
-            "full_wildcard",
-        }:
-            wildcards_detected = True
-
-    # Return simplified result with enhanced fields
-    return {
-        "is_valid": validation_result.is_valid,
-        "issue_count": len(validation_result.issues),
-        "critical_issues": critical_issues,
-        "sensitive_actions_found": sensitive_actions_count,
-        "wildcards_detected": wildcards_detected,
-    }
+    entries: list[tuple[dict[str, Any], str, None]] = []
+    for file_path in file_paths:
+        loaded = loader.load_from_file(str(file_path), return_raw_dict=True, record_size_error=True)
+        if loaded is None:
+            continue
+        _iam_policy, raw_dict = loaded
+        entries.append((raw_dict, str(file_path), None))
+    return entries
 
 
-# =============================================================================
-# MCP tool wrappers (registered via TOOLS below)
-# =============================================================================
-
-
-async def _validate_policy_tool(
-    policy: dict[str, Any],
-    ctx: Context,
-    policy_type: str | None = None,
-    verbose: bool = True,
-    use_org_config: bool = True,
+async def _validate_policies_impl(
+    policies: list[Any] | None,
+    policy_type: str | None,
+    detail: str,
+    format: str,
+    ctx: Any,
+    *,
+    path: str | None = None,
+    glob: str | None = None,
 ) -> dict[str, Any]:
-    """Validate an IAM policy against AWS rules and security best practices.
+    if format not in _ALLOWED_FORMATS:
+        raise ToolError(f"format: invalid value {format!r}. Must be one of: {', '.join(_ALLOWED_FORMATS)}")
+    if detail not in ("summary", "findings", "full"):
+        raise ToolError(f"detail: invalid value {detail!r}. Must be one of: summary, findings, full")
 
-    Auto-detects policy type (identity/resource/trust) from structure if not specified.
+    run = _resolve_run_context(ctx)
+
+    raw_entries: list[tuple[dict[str, Any], str | None, str | None]] = []
+    if policies:
+        if len(policies) > run.settings.max_policies:
+            raise ToolError(f"max_policies limit is {run.settings.max_policies}, got {len(policies)} policies")
+        for idx, entry in enumerate(policies):
+            raw_dict, name, entry_type = _split_policy_input(entry, label=f"policies[{idx}]")
+            raw_entries.append((raw_dict, name, entry_type))
+    if path is not None:
+        raw_entries.extend(_load_path_glob_entries(path, glob))
+
+    if not raw_entries:
+        raise ToolError("policies: at least one policy is required (or path in local mode)")
+
+    if len(raw_entries) > run.settings.max_policies:
+        raise ToolError(f"max_policies limit is {run.settings.max_policies}, got {len(raw_entries)} policies")
+
+    total_bytes = 0
+    for idx, (raw_dict, _name, _etype) in enumerate(raw_entries):
+        size = _entry_byte_size(raw_dict)
+        if size > run.settings.max_policy_bytes:
+            raise ToolError(f"max_policy_bytes limit is {run.settings.max_policy_bytes}, entry {idx} is {size} bytes")
+        total_bytes += size
+    if total_bytes > run.settings.max_request_bytes:
+        raise ToolError(f"max_request_bytes limit is {run.settings.max_request_bytes}, got {total_bytes} bytes")
+
+    async def _do_validate() -> dict[str, Any]:
+        parsed: list[tuple[dict[str, Any], str | None, IAMPolicy]] = []
+        for idx, (raw_dict, name, _etype) in enumerate(raw_entries):
+            parsed.append((raw_dict, name, _parse_iam_policy(raw_dict, label=f"policies[{idx}]")))
+
+        resolved: list[tuple[PolicyType, str]] = []
+        for idx, (raw_dict, name, iam_policy) in enumerate(parsed):
+            entry_type = raw_entries[idx][2]
+            resolved.append(
+                _resolve_entry_policy_type(
+                    iam_policy, name, entry_type, policy_type, run.config, label=f"policies[{idx}]"
+                )
+            )
+
+        groups: dict[PolicyType, list[int]] = {}
+        for idx, (resolved_type, _source) in enumerate(resolved):
+            groups.setdefault(resolved_type, []).append(idx)
+
+        ordered_results: list[PolicyValidationResult | None] = [None] * len(parsed)
+        for group_type, indices in groups.items():
+            group_items = [(parsed[i][1] or f"policy-{i}", parsed[i][2], parsed[i][0]) for i in indices]
+            group_results = await sdk_validate_policies(
+                policies=group_items,
+                config=run.config,
+                registry=run.registry,
+                policy_type=group_type,
+            )
+            for i, result in zip(indices, group_results, strict=True):
+                ordered_results[i] = result
+
+        sdk_results = [r for r in ordered_results if r is not None]
+
+        entries = [
+            _build_entry_response(result, parsed[i][0], parsed[i][1], resolved[i][0], resolved[i][1], detail)
+            for i, result in enumerate(sdk_results)
+        ]
+        await _attach_summaries(entries, [parsed[i][0] for i in range(len(parsed))], detail)
+
+        response: dict[str, Any] = {
+            "results": [e.model_dump() for e in entries],
+            "config_digest": run.config_digest,
+            "truncated": False,
+            "truncated_count": 0,
+        }
+        if format != "json":
+            report = run.formatters.generate_report(results=sdk_results)
+            response["report"] = run.formatters.format_report(report, format_id=format)
+        return response
+
+    try:
+        response = await asyncio.wait_for(_do_validate(), timeout=run.settings.request_timeout_s)
+    except TimeoutError as e:
+        raise ToolError(
+            f"request_timeout_s limit is {run.settings.request_timeout_s}s; validation did not complete in time"
+        ) from e
+
+    response = _degrade_if_oversized(response, run.settings.max_response_bytes, detail)
+    return response
+
+
+def _response_size(response: dict[str, Any]) -> int:
+    return len(json.dumps(response, default=str).encode())
+
+
+def _degrade_if_oversized(response: dict[str, Any], max_response_bytes: int, detail: str) -> dict[str, Any]:
+    if _response_size(response) <= max_response_bytes:
+        return response
+
+    for degraded_detail in ("findings", "summary"):
+        if detail == "full" and degraded_detail == "findings":
+            for entry in response["results"]:
+                entry.pop("summary", None)
+        if degraded_detail == "summary":
+            for entry in response["results"]:
+                entry.pop("issues", None)
+                entry.pop("summary", None)
+        response["truncated"] = True
+        if _response_size(response) <= max_response_bytes:
+            return response
+        detail = degraded_detail
+
+    omitted = 0
+    while response["results"] and _response_size(response) > max_response_bytes:
+        response["results"].pop()
+        omitted += 1
+    response["truncated"] = True
+    response["truncated_count"] = omitted
+    return response
+
+
+async def validate_policies(
+    policies: list[PolicyInput] | None = None,
+    policy_type: str | None = None,
+    detail: Literal["summary", "findings", "full"] = "findings",
+    format: FormatChoice = "json",  # type: ignore[assignment]
+    path: str | None = None,
+    glob: str | None = None,
+    ctx: Context = None,  # type: ignore[assignment]
+) -> dict[str, Any]:
+    """Validate one or more IAM policies (local-mode: also from disk via path/glob).
+
+    Consolidates the former validate_policy, quick_validate, validate_policies_batch,
+    validate_with_config, check_org_compliance, and get_policy_summary tools.
 
     Args:
-        policy: IAM policy dictionary
-        policy_type: "identity", "resource", or "trust" (auto-detected if None)
-        verbose: Return all fields (True) or essential only (False)
-        use_org_config: Apply session org config (default: True)
+        policies: Inline policies — each a dict, a JSON/YAML string, or
+            {policy, name?, policy_type?}. name is an opaque label used only
+            for policy_types: glob matching and echoed back in the result.
+            policy_type on an entry overrides the run-wide policy_type below.
+        policy_type: identity|resource|trust|scp|rcp applied to every policy
+            that doesn't set its own. None resolves per policy via
+            policy_types: glob -> content auto-detect -> default.
+        detail: "summary" (structural stats, no findings), "findings"
+            (default; lean issue list), or "full" (verbose issues + summary).
+        format: Report format. "json" returns only structured results; any
+            other value additionally renders a "report" string.
+        path: Local mode only. Load policies from this file or directory
+            instead of (or in addition to) `policies`.
+        glob: Local mode only. Restrict `path` (a directory) to files
+            matching this glob pattern.
 
     Returns:
-        {is_valid, issues, policy_file, config_digest}
+        {results: [...], config_digest, report?, truncated, truncated_count}
     """
-    result = await validate_policy(policy=policy, policy_type=policy_type, use_org_config=use_org_config, ctx=ctx)
-    context = get_server_context(ctx)
-    return {
-        "is_valid": result.is_valid,
-        "issues": [issue_to_dict(i, verbose=verbose) for i in result.issues],
-        "policy_file": result.policy_file,
-        "config_digest": context.config_digest if context is not None else None,
-    }
+    return await _validate_policies_impl(policies, policy_type, detail, format, ctx, path=path, glob=glob)
 
 
-async def _quick_validate_tool(policy: dict[str, Any], ctx: Context) -> dict[str, Any]:
-    """Quick pass/fail validation returning only essential info.
+async def _validate_policies_hosted(
+    policies: list[PolicyInput],
+    policy_type: str | None = None,
+    detail: Literal["summary", "findings", "full"] = "findings",
+    format: FormatChoice = "json",  # type: ignore[assignment]
+    ctx: Context = None,  # type: ignore[assignment]
+) -> dict[str, Any]:
+    """Validate one or more IAM policies. See validate_policies for full docs.
 
-    Args:
-        policy: IAM policy dictionary
-
-    Returns:
-        {is_valid, issue_count, critical_issues}
+    Hosted mode has no filesystem access, so path/glob are not available here.
     """
-    return await quick_validate(policy=policy, ctx=ctx)
+    return await _validate_policies_impl(policies, policy_type, detail, format, ctx)
 
 
 async def get_active_profile(ctx: Context) -> dict[str, Any]:
@@ -450,66 +498,22 @@ async def get_active_profile(ctx: Context) -> dict[str, Any]:
     }
 
 
-async def validate_policies_batch(
-    policies: list[dict[str, Any]],
-    ctx: Context,
-    policy_type: str | None = None,
-    verbose: bool = False,
-    max_concurrency: int = 10,
-) -> list[dict[str, Any]]:
-    """Validate multiple IAM policies in parallel (more efficient than multiple validate_policy calls).
-
-    Args:
-        policies: List of IAM policy dictionaries
-        policy_type: "identity", "resource", or "trust" (auto-detected if None)
-        verbose: Return all fields (True) or essential only (False)
-        max_concurrency: Maximum concurrent validations (default 10) — caps the
-            thundering herd against AWS-side rate limits when N is large.
-
-    Returns:
-        List of {policy_index, is_valid, issues, config_digest}
-    """
-    import asyncio
-
-    from iam_validator.mcp.context import get_shared_fetcher
-
-    # Ensure shared fetcher is available (validates actions exist)
-    _ = get_shared_fetcher(ctx)
-
-    context = get_server_context(ctx)
-    config_digest = context.config_digest if context is not None else None
-
-    sem = asyncio.Semaphore(max(1, max_concurrency))
-
-    async def validate_one(idx: int, policy: dict[str, Any]) -> dict[str, Any]:
-        async with sem:
-            result = await validate_policy(policy=policy, policy_type=policy_type, ctx=ctx)
-        return {
-            "policy_index": idx,
-            "is_valid": result.is_valid,
-            "issues": [issue_to_dict(i, verbose=verbose) for i in result.issues],
-            "config_digest": config_digest,
-        }
-
-    # Run all validations in parallel (capped by max_concurrency)
-    results = await asyncio.gather(*[validate_one(i, p) for i, p in enumerate(policies)])
-    return list(results)
-
-
 TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         tag="validate",
-        name="validate_policy",
-        fn=_validate_policy_tool,
+        name="validate_policies",
+        fn=validate_policies,
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-        output_schema=infer_output_schema(_validate_policy_tool),
+        output_schema=infer_output_schema(validate_policies),
+        modes=frozenset({"local"}),
     ),
     ToolSpec(
         tag="validate",
-        name="quick_validate",
-        fn=_quick_validate_tool,
+        name="validate_policies",
+        fn=_validate_policies_hosted,
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-        output_schema=infer_output_schema(_quick_validate_tool),
+        output_schema=infer_output_schema(_validate_policies_hosted),
+        modes=frozenset({"hosted"}),
     ),
     ToolSpec(
         tag="validate",
@@ -517,12 +521,5 @@ TOOLS: tuple[ToolSpec, ...] = (
         fn=get_active_profile,
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
         output_schema=infer_output_schema(get_active_profile),
-    ),
-    ToolSpec(
-        tag="validate",
-        name="validate_policies_batch",
-        fn=validate_policies_batch,
-        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-        output_schema=infer_output_schema(validate_policies_batch),
     ),
 )

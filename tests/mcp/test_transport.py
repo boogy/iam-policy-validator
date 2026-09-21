@@ -15,26 +15,28 @@ from iam_validator.mcp.settings import ServerSettings
 mcp = build_server(ServerSettings())
 
 
-async def test_validate_policy_round_trip():
+async def test_validate_policies_round_trip():
     async with Client(mcp) as client:
         result = await client.call_tool(
-            "validate_policy",
+            "validate_policies",
             {
-                "policy": {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Action": "s3:GetObject",
-                            "Resource": "arn:aws:s3:::b/*",
-                        }
-                    ],
-                }
+                "policies": [
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": "s3:GetObject",
+                                "Resource": "arn:aws:s3:::b/*",
+                            }
+                        ],
+                    }
+                ]
             },
         )
         assert result.is_error is False
         assert result.structured_content is not None
-        assert "issues" in result.structured_content
+        assert "issues" in result.structured_content["results"][0]
 
 
 async def test_resources_listed():
@@ -98,7 +100,7 @@ async def test_tool_annotations_round_trip():
     async with Client(mcp) as client:
         tools = await client.list_tools()
         by_name = {t.name: t for t in tools}
-        assert by_name["validate_policy"].annotations.readOnlyHint is True
+        assert by_name["validate_policies"].annotations.readOnlyHint is True
         assert by_name["set_organization_config"].annotations.destructiveHint is False
         assert by_name["aws_access_analyzer_validate"].annotations.openWorldHint is True
 

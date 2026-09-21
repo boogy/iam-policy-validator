@@ -7,12 +7,10 @@ This package contains the MCP tool implementations organized by category:
 """
 
 from iam_validator.mcp.tools.config import (
-    check_org_compliance_impl,
     clear_organization_config_impl,
     get_organization_config_impl,
     load_organization_config_from_yaml_impl,
     set_organization_config_impl,
-    validate_with_config_impl,
 )
 from iam_validator.mcp.tools.query import (
     expand_wildcard_action,
@@ -25,17 +23,11 @@ from iam_validator.mcp.tools.query import (
     query_condition_keys,
     query_service_actions,
 )
-from iam_validator.mcp.tools.validate import (
-    quick_validate,
-    validate_policy,
-    validate_policy_json,
-)
+from iam_validator.mcp.tools.validate import validate_policies
 
 __all__ = [
     # Validation tools
-    "validate_policy",
-    "validate_policy_json",
-    "quick_validate",
+    "validate_policies",
     # Query tools
     "query_service_actions",
     "query_action_details",
@@ -51,6 +43,4 @@ __all__ = [
     "get_organization_config_impl",
     "clear_organization_config_impl",
     "load_organization_config_from_yaml_impl",
-    "check_org_compliance_impl",
-    "validate_with_config_impl",
 ]
