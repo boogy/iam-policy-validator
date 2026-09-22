@@ -233,44 +233,52 @@ async def get_config(ctx: Context) -> dict[str, Any]:
     Returns:
         {has_config, config, source, config_digest, mode, profile,
          tool_count, tool_names, custom_instructions}
+
+    Emits one audit record per call in hosted mode (see mcp/audit.py); local
+    mode does not.
     """
-    context = get_server_context(ctx)
+    from iam_validator.mcp.audit import audited_call
 
-    if context is not None and context.mutable is None:
-        source = str(context.settings.config_source) if context.settings.config_source else "hosted"
-        config_result: dict[str, Any] = {
-            "has_config": True,
-            "config": {
-                "settings": context.config.settings,
-                "checks": context.config.checks_config,
-            },
-            "source": source,
-            "config_digest": context.config_digest,
+    async def _do_get_config() -> dict[str, Any]:
+        context = get_server_context(ctx)
+
+        if context is not None and context.mutable is None:
+            source = str(context.settings.config_source) if context.settings.config_source else "hosted"
+            config_result: dict[str, Any] = {
+                "has_config": True,
+                "config": {
+                    "settings": context.config.settings,
+                    "checks": context.config.checks_config,
+                },
+                "source": source,
+                "config_digest": context.config_digest,
+            }
+            instructions_result = {"has_instructions": False, "instructions": None, "source": "none"}
+        else:
+            session = context.mutable if context is not None else None
+            config_result = await get_organization_config_impl(session)
+            config_result.setdefault("config_digest", context.config_digest if context is not None else None)
+            instructions = session.get_instructions() if session is not None else None
+            instructions_result = {
+                "has_instructions": instructions is not None,
+                "instructions": instructions,
+                "source": session.get_instructions_source() if session is not None else "none",
+            }
+
+        mode = context.settings.mode if context is not None else "local"
+        profile = context.settings.profile if context is not None else "full"
+        tools = await ctx.fastmcp.list_tools()
+
+        return {
+            **config_result,
+            "mode": mode,
+            "profile": profile,
+            "tool_count": len(tools),
+            "tool_names": sorted(t.name for t in tools),
+            "custom_instructions": instructions_result,
         }
-        instructions_result = {"has_instructions": False, "instructions": None, "source": "none"}
-    else:
-        session = context.mutable if context is not None else None
-        config_result = await get_organization_config_impl(session)
-        config_result.setdefault("config_digest", context.config_digest if context is not None else None)
-        instructions = session.get_instructions() if session is not None else None
-        instructions_result = {
-            "has_instructions": instructions is not None,
-            "instructions": instructions,
-            "source": session.get_instructions_source() if session is not None else "none",
-        }
 
-    mode = context.settings.mode if context is not None else "local"
-    profile = context.settings.profile if context is not None else "full"
-    tools = await ctx.fastmcp.list_tools()
-
-    return {
-        **config_result,
-        "mode": mode,
-        "profile": profile,
-        "tool_count": len(tools),
-        "tool_names": sorted(t.name for t in tools),
-        "custom_instructions": instructions_result,
-    }
+    return await audited_call("get_config", ctx, 0, _do_get_config)
 
 
 # The one tool-provenance exemption (every tool must trace to a CLI command or SDK

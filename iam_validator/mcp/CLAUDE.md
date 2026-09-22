@@ -54,6 +54,8 @@ mcp/
 ├── models.py              # Pydantic request/response models
 ├── context.py             # ServerContext (built once, held in the FastMCP lifespan) +
 │                          # SessionState (session-scoped org config / custom instructions)
+├── audit.py               # audited_call() -- one structured JSON log record per hosted
+│                          # tool call, across all five tools (see "Audit logging" below)
 └── tools/
     ├── validate.py         # TOOLS: validate_policies (mode-gated local/hosted variants,
     │                       # local carries path/glob)
@@ -171,6 +173,41 @@ scope requirement and stays visible to any caller. Per MCP 2026-07-28, the tool
 set may vary per-request by presented authorization (this); `spec_survives()`'s
 profile filtering must not vary per-connection, and doesn't — it's fixed at
 `build_server()` call time.
+
+### Audit logging
+
+`audit.py:audited_call(tool_name, ctx, policy_count, call)` wraps every tool's
+body — `validate_policies`, `analyze_policy`, `query`, `describe_checks`, and
+`get_config` all route every call through it unconditionally — and is itself
+mode-aware rather than requiring a separate hosted-only wrapper: it checks
+`ServerContext.settings.mode` and, outside hosted mode (including when there
+is no `ServerContext` at all, e.g. a test calling a tool function directly
+with `ctx=None`), just awaits and returns `call()` with no side effect. This
+is what lets `query`/`describe_checks`/`get_config` — each a single `ToolSpec`
+shared across local and hosted, unlike `validate_policies`/`analyze_policy`'s
+mode-gated variants — go through the same wrapper unconditionally while local
+stdio mode still emits no audit records.
+
+In hosted mode it emits exactly one JSON record per call on the
+`iam_validator.mcp.audit` logger, in a `try`/`except`/`finally` so success, a
+`ToolError`, a caller-side `asyncio.CancelledError`, or any other exception
+all still produce a record. Fields: `timestamp`, `tool`, `subject` (the
+verified `AccessToken.subject`, falling back to `client_id`, or `"anonymous"`
+under `--auth none` — via `fastmcp.server.dependencies.get_access_token()`),
+`scopes`, `config_digest` (`ServerContext.config_digest`), `policy_count`,
+`duration_s`, `outcome` (`success`/`tool_error`/`cancelled`/`internal_error`),
+and `severity_counts` (summed from each response entry's own pre-aggregated
+`severity_counts`; `0`/`{}` for the three tools that submit no policies —
+that's the correct value, not a reason to skip them). The record is built
+only from primitives and that summed count dict — it never touches the input
+policy, a finding `message`, or any other request/response field, so policy
+content can't reach the log at any level. `analyze_policy` always attributes
+to the caller's subject even though it spends the server's own AWS
+credentials with no other per-caller attribution. Building or emitting the
+record is itself wrapped in a `try`/`except`: a failure there (e.g. a broken
+log sink) is logged separately at warning level and never fails the call
+being observed. Local stdio mode has one user and no central aggregation, so
+it never emits audit records regardless of which tool is called.
 
 ---
 
@@ -378,6 +415,16 @@ Test files of note:
   behavior. Uses `conftest.as_caller(*scopes)`, which sets the SDK's
   `auth_context_var` directly to simulate a request-bound token for direct
   `list_tools()`-style calls that bypass FastMCP's real transport dispatch.
+- `test_audit.py` — hosted `validate_policies`/`analyze_policy`/`query`/
+  `describe_checks`/`get_config` each emit exactly one audit record carrying
+  every field (the latter three with `policy_count=0`/`severity_counts={}`);
+  the redaction test (a marker unique to the request reaches no emitted
+  record, checked at `DEBUG`); a `ToolError` path still emits a record with
+  `outcome="tool_error"`; a cancelled call emits `outcome="cancelled"` rather
+  than the default `success`; a raising log sink doesn't break the call it's
+  observing; a malformed response shape doesn't break severity counting;
+  `analyze_policy`'s record carries the caller's subject; local mode emits no
+  audit record at all, for any of the five tools.
 
 Mock fetcher / network — no real API or AWS calls. Debug interactively via
 `mise run mcp:inspector`. Requires `fastmcp>=3.2,<5` (installed via

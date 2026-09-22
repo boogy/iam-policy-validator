@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from iam_validator.core.check_registry import CheckConfig
-from iam_validator.core.models import IAMPolicy, Statement, ValidationIssue
+from iam_validator.core.models import ActionDetail, ConditionKey, IAMPolicy, ServiceDetail, Statement, ValidationIssue
 
 
 @contextmanager
@@ -73,35 +73,43 @@ def mock_fetcher():
 
     fetcher.expand_wildcard_action = AsyncMock(side_effect=mock_expand_wildcard)
 
-    # Mock fetch_service_by_name
-    async def mock_fetch_service(service: str):
+    def _action(name: str, access_flag: str | None) -> ActionDetail:
+        """An ``ActionDetail`` carrying the ``Properties`` flag ``_get_access_level`` reads."""
+        return ActionDetail(name=name, annotations={"Properties": {access_flag: True}} if access_flag else None)
+
+    # Mock fetch_service_by_name -- returns real ServiceDetail/ActionDetail/ConditionKey
+    # instances (not bare MagicMocks), so `.actions`/`.condition_keys` are the dicts
+    # production code expects, not the list shape a hand-rolled mock could drift into.
+    async def mock_fetch_service(service: str) -> ServiceDetail:
         if service == "s3":
-            service_mock = MagicMock()
-            service_mock.service_prefix = "s3"
-            service_mock.actions = [
-                {"name": "GetObject", "access_level": "Read"},
-                {"name": "PutObject", "access_level": "Write"},
-                {"name": "ListBucket", "access_level": "List"},
-            ]
-            service_mock.condition_keys = [
-                "s3:prefix",
-                "s3:x-amz-acl",
-                "aws:SecureTransport",
-            ]
-            return service_mock
+            return ServiceDetail(
+                name="Amazon S3",
+                prefix="s3",
+                actions_list=[
+                    _action("GetObject", None),
+                    _action("PutObject", "IsWrite"),
+                    _action("ListBucket", "IsList"),
+                ],
+                condition_keys_list=[
+                    ConditionKey(name="s3:prefix"),
+                    ConditionKey(name="s3:x-amz-acl"),
+                    ConditionKey(name="aws:SecureTransport"),
+                ],
+            )
         elif service == "iam":
-            service_mock = MagicMock()
-            service_mock.service_prefix = "iam"
-            service_mock.actions = [
-                {"name": "CreateUser", "access_level": "Write"},
-                {"name": "GetUser", "access_level": "Read"},
-                {"name": "PassRole", "access_level": "Write"},
-            ]
-            service_mock.condition_keys = [
-                "iam:PassedToService",
-                "iam:PolicyARN",
-            ]
-            return service_mock
+            return ServiceDetail(
+                name="AWS Identity and Access Management",
+                prefix="iam",
+                actions_list=[
+                    _action("CreateUser", "IsWrite"),
+                    _action("GetUser", None),
+                    _action("PassRole", "IsWrite"),
+                ],
+                condition_keys_list=[
+                    ConditionKey(name="iam:PassedToService"),
+                    ConditionKey(name="iam:PolicyARN"),
+                ],
+            )
         else:
             raise ValueError(f"Service not found: {service}")
 

@@ -479,8 +479,16 @@ async def _validate_policies_hosted(
     """Validate one or more IAM policies. See validate_policies for full docs.
 
     Hosted mode has no filesystem access, so path/glob are not available here.
+    Emits one audit record per call (see mcp/audit.py); local mode does not.
     """
-    return await _validate_policies_impl(policies, policy_type, detail, format, ctx)
+    from iam_validator.mcp.audit import audited_call
+
+    return await audited_call(
+        "validate_policies",
+        ctx,
+        len(policies),
+        lambda: _validate_policies_impl(policies, policy_type, detail, format, ctx),
+    )
 
 
 TOOLS: tuple[ToolSpec, ...] = (

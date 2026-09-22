@@ -612,49 +612,61 @@ async def query(
     Returns:
         A ``{kind, ...}`` object whose remaining shape is fixed by ``kind``
         (see ``query``'s output schema for the exact branch).
+
+    Emits one audit record per call in hosted mode (see mcp/audit.py); local
+    mode does not.
     """
-    required_param = _REQUIRED_PARAM_FOR_KIND.get(kind)
-    if required_param is None:
-        raise ToolError(f"kind: invalid value {kind!r}. Must be one of: {', '.join(_REQUIRED_PARAM_FOR_KIND)}")
+    from iam_validator.mcp.audit import audited_call
 
-    provided = {"service": service, "actions": actions, "patterns": patterns}[required_param]
-    if not provided:
-        raise ToolError(f"kind={kind!r} requires '{required_param}'")
+    async def _do_query() -> dict[str, Any]:
+        required_param = _REQUIRED_PARAM_FOR_KIND.get(kind)
+        if required_param is None:
+            raise ToolError(f"kind: invalid value {kind!r}. Must be one of: {', '.join(_REQUIRED_PARAM_FOR_KIND)}")
 
-    fetcher = get_shared_fetcher(ctx)
+        provided = {"service": service, "actions": actions, "patterns": patterns}[required_param]
+        if not provided:
+            raise ToolError(f"kind={kind!r} requires '{required_param}'")
 
-    try:
-        if kind == "service_actions":
-            assert service is not None
-            result_actions = await query_service_actions(service=service, access_level=access_level, fetcher=fetcher)
-            if name_filter:
-                needle = name_filter.lower()
-                result_actions = [a for a in result_actions if needle in a.lower()]
-            return ServiceActionsResult(service=service, actions=result_actions, total=len(result_actions)).model_dump()
+        fetcher = get_shared_fetcher(ctx)
 
-        if kind == "action_details":
-            assert actions is not None
-            entries = await _query_action_details_batch(actions, fetcher)
-            return ActionDetailsResult(results=entries).model_dump()
+        try:
+            if kind == "service_actions":
+                assert service is not None
+                result_actions = await query_service_actions(
+                    service=service, access_level=access_level, fetcher=fetcher
+                )
+                if name_filter:
+                    needle = name_filter.lower()
+                    result_actions = [a for a in result_actions if needle in a.lower()]
+                return ServiceActionsResult(
+                    service=service, actions=result_actions, total=len(result_actions)
+                ).model_dump()
 
-        if kind == "condition_keys":
-            assert service is not None
-            keys = await query_condition_keys(service=service, fetcher=fetcher)
-            return ConditionKeysResult(service=service, condition_keys=keys).model_dump()
+            if kind == "action_details":
+                assert actions is not None
+                entries = await _query_action_details_batch(actions, fetcher)
+                return ActionDetailsResult(results=entries).model_dump()
 
-        if kind == "arn_formats":
-            assert service is not None
-            arn_formats = cast(list[dict[str, Any]], await query_arn_formats(service=service, fetcher=fetcher))
-            return ArnFormatsResult(
-                service=service, arn_formats=[ArnFormatEntry(**a) for a in arn_formats]
-            ).model_dump()
+            if kind == "condition_keys":
+                assert service is not None
+                keys = await query_condition_keys(service=service, fetcher=fetcher)
+                return ConditionKeysResult(service=service, condition_keys=keys).model_dump()
 
-        assert kind == "expand_wildcard"
-        assert patterns is not None
-        entries = await _expand_wildcard_batch(patterns, fetcher)
-        return ExpandWildcardResult(results=entries).model_dump()
-    except ValueError as e:
-        raise ToolError(f"kind={kind!r}, service={service!r}: {e}") from e
+            if kind == "arn_formats":
+                assert service is not None
+                arn_formats = cast(list[dict[str, Any]], await query_arn_formats(service=service, fetcher=fetcher))
+                return ArnFormatsResult(
+                    service=service, arn_formats=[ArnFormatEntry(**a) for a in arn_formats]
+                ).model_dump()
+
+            assert kind == "expand_wildcard"
+            assert patterns is not None
+            entries = await _expand_wildcard_batch(patterns, fetcher)
+            return ExpandWildcardResult(results=entries).model_dump()
+        except ValueError as e:
+            raise ToolError(f"kind={kind!r}, service={service!r}: {e}") from e
+
+    return await audited_call("query", ctx, 0, _do_query)
 
 
 TOOLS: tuple[ToolSpec, ...] = (

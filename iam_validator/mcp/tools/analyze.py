@@ -230,8 +230,18 @@ async def _analyze_policy_tool_hosted(
         ``{findings: [...], finding_count: int}``. Each finding has
         ``finding_type``, ``issue_code``, ``message``, ``learn_more_link``,
         ``locations``.
+
+    Emits one audit record per call, carrying the authenticated subject (see
+    mcp/audit.py); local mode does not.
     """
-    return await _analyze_policy_tool_impl(policy, ctx, policy_type, partition, region, None, timeout_seconds)
+    from iam_validator.mcp.audit import audited_call
+
+    return await audited_call(
+        "analyze_policy",
+        ctx,
+        1,
+        lambda: _analyze_policy_tool_impl(policy, ctx, policy_type, partition, region, None, timeout_seconds),
+    )
 
 
 TOOLS: tuple[ToolSpec, ...] = (

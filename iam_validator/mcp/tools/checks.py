@@ -66,37 +66,45 @@ async def describe_checks(check_ids: list[str] | None = None, ctx: Context = Non
 
     Returns:
         {"checks": [...]} — see each entry's fields above.
+
+    Emits one audit record per call in hosted mode (see mcp/audit.py); local
+    mode does not.
     """
-    context = get_server_context(ctx)
-    registry = context.registry if context is not None else create_default_registry()
-    active_config = get_active_config(ctx)
+    from iam_validator.mcp.audit import audited_call
 
-    checks = registry.get_all_checks()
-    if check_ids is not None:
-        wanted = set(check_ids)
-        checks = [c for c in checks if c.check_id in wanted]
+    async def _do_describe() -> dict[str, Any]:
+        context = get_server_context(ctx)
+        registry = context.registry if context is not None else create_default_registry()
+        active_config = get_active_config(ctx)
 
-    entries: list[CheckDescription] = []
-    for check in sorted(checks, key=lambda c: c.check_id):
-        enabled, severity = effective_check_settings(check.check_id, check.default_severity, ctx)
-        resolved_config = active_config.get_check_config(check.check_id) if active_config is not None else {}
-        entries.append(
-            CheckDescription(
-                check_id=check.check_id,
-                description=check.description,
-                default_severity=check.default_severity,
-                docstring=inspect.getdoc(type(check)),
-                applies_to_policy_types=(
-                    sorted(check.applies_to_policy_types) if check.applies_to_policy_types is not None else None
-                ),
-                supersedes=sorted(check.supersedes),
-                config={k: v for k, v in resolved_config.items() if k not in ("enabled", "severity")},
-                enabled=enabled,
-                severity=severity,
-                source=registry.get_source(check.check_id) or "builtin",
+        checks = registry.get_all_checks()
+        if check_ids is not None:
+            wanted = set(check_ids)
+            checks = [c for c in checks if c.check_id in wanted]
+
+        entries: list[CheckDescription] = []
+        for check in sorted(checks, key=lambda c: c.check_id):
+            enabled, severity = effective_check_settings(check.check_id, check.default_severity, ctx)
+            resolved_config = active_config.get_check_config(check.check_id) if active_config is not None else {}
+            entries.append(
+                CheckDescription(
+                    check_id=check.check_id,
+                    description=check.description,
+                    default_severity=check.default_severity,
+                    docstring=inspect.getdoc(type(check)),
+                    applies_to_policy_types=(
+                        sorted(check.applies_to_policy_types) if check.applies_to_policy_types is not None else None
+                    ),
+                    supersedes=sorted(check.supersedes),
+                    config={k: v for k, v in resolved_config.items() if k not in ("enabled", "severity")},
+                    enabled=enabled,
+                    severity=severity,
+                    source=registry.get_source(check.check_id) or "builtin",
+                )
             )
-        )
-    return DescribeChecksResponse(checks=entries).model_dump()
+        return DescribeChecksResponse(checks=entries).model_dump()
+
+    return await audited_call("describe_checks", ctx, 0, _do_describe)
 
 
 TOOLS: tuple[ToolSpec, ...] = (
