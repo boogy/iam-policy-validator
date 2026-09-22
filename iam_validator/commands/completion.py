@@ -253,7 +253,7 @@ _iam_validator_completion() {{
             fi
             return 0
             ;;
-        --path|-p|--config|-c|--custom-checks-dir|--aws-services-dir|--report|-r|--check-no-new-access)
+        --path|-p|--config|-c|--custom-checks-dir|--aws-services-dir|--cache-directory|--instructions-file|--report|-r|--check-no-new-access)
             # File/directory completion
             COMPREPLY=( $(compgen -f -- "$cur") )
             return 0
@@ -263,7 +263,7 @@ _iam_validator_completion() {{
             COMPREPLY=( $(compgen -d -- "$cur") )
             return 0
             ;;
-        --resource-type|--condition|--has-condition-key|--name|--batch-size|--host|--port)
+        --resource-type|--condition|--has-condition-key|--name|--batch-size|--host|--port|--instructions|--allowed-regions|--analyze-rate-limit|--max-policies|--max-policy-bytes|--max-request-bytes|--request-timeout-s|--max-response-bytes)
             # Allow any input
             return 0
             ;;
@@ -272,7 +272,19 @@ _iam_validator_completion() {{
             return 0
             ;;
         --transport)
-            COMPREPLY=( $(compgen -W "stdio sse" -- "$cur") )
+            COMPREPLY=( $(compgen -W "stdio http" -- "$cur") )
+            return 0
+            ;;
+        --mode)
+            COMPREPLY=( $(compgen -W "local hosted" -- "$cur") )
+            return 0
+            ;;
+        --profile)
+            COMPREPLY=( $(compgen -W "full validate-only validate-and-query read-only" -- "$cur") )
+            return 0
+            ;;
+        --auth)
+            COMPREPLY=( $(compgen -W "none token jwt azure google github keycloak auth0 workos" -- "$cur") )
             return 0
             ;;
         --off-diff-comment-mode)
@@ -387,7 +399,7 @@ _iam_validator_completion() {{
             return 0
             ;;
         mcp)
-            opts="--transport --host --port --verbose -v --config"
+            opts="--mode --transport --host --port --config --auth --profile --list-profiles --custom-checks-dir --aws-services-dir --cache-directory --instructions --instructions-file --allowed-regions --analyze-rate-limit --max-policies --max-policy-bytes --max-request-bytes --request-timeout-s --max-response-bytes"
             COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
             return 0
             ;;
@@ -571,11 +583,26 @@ _iam_validator() {{
                     ;;
                 mcp)
                     _arguments \\
-                        '--transport[Transport protocol]:transport:(stdio sse)' \\
-                        '--host[Host for SSE transport]:host:' \\
-                        '--port[Port for SSE transport]:port:' \\
-                        '(--verbose -v)'{{--verbose,-v}}'[Enable verbose logging]' \\
-                        '--config[Path to configuration YAML file]:file:_files'
+                        '--mode[Server mode]:mode:(local hosted)' \\
+                        '--transport[Transport protocol]:transport:(stdio http)' \\
+                        '--host[Bind host, used only with --transport http]:host:' \\
+                        '--port[Bind port, used only with --transport http]:port:' \\
+                        '--config[Path to configuration YAML file]:file:_files' \\
+                        '--auth[Auth provider]:provider:(none token jwt azure google github keycloak auth0 workos)' \\
+                        '--profile[Limit which MCP tools are exposed]:profile:(full validate-only validate-and-query read-only)' \\
+                        '--list-profiles[Print the profile -> tool taxonomy and exit]' \\
+                        '--custom-checks-dir[Directory of custom PolicyCheck subclasses]:dir:_files -/' \\
+                        '--aws-services-dir[Directory of pre-downloaded AWS service definitions]:dir:_files -/' \\
+                        '--cache-directory[Directory for the AWS service-data disk cache]:dir:_files -/' \\
+                        '(--instructions --instructions-file)--instructions[Inline custom instructions]:text:' \\
+                        '(--instructions --instructions-file)--instructions-file[Path to custom instructions file]:file:_files' \\
+                        '--allowed-regions[Comma-separated AWS regions analyze_policy may target]:regions:' \\
+                        '--analyze-rate-limit[Max analyze_policy calls per minute]:limit:' \\
+                        '--max-policies[Max policies per validate_policies call]:count:' \\
+                        '--max-policy-bytes[Max size of a single policy, in bytes]:bytes:' \\
+                        '--max-request-bytes[Max total request size, in bytes]:bytes:' \\
+                        '--request-timeout-s[Per-request timeout, in seconds]:seconds:' \\
+                        '--max-response-bytes[Max response size before detail is degraded, in bytes]:bytes:'
                     ;;
             esac
             ;;

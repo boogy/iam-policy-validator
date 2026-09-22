@@ -8,11 +8,20 @@ Round-trips the MCP protocol against the actual server instance to catch:
 """
 
 from fastmcp.client import Client
+from mcp.types import LATEST_PROTOCOL_VERSION
 
 from iam_validator.mcp.build import build_server
 from iam_validator.mcp.settings import ServerSettings
 
 mcp = build_server(ServerSettings())
+
+
+async def test_negotiated_protocol_version_is_current():
+    """Pins the negotiated MCP protocol version so a dependency bump that regresses it
+    fails loudly (fastmcp==4.0.5's mcp SDK currently reports 2026-07-28)."""
+    assert LATEST_PROTOCOL_VERSION == "2026-07-28"
+    async with Client(mcp) as client:
+        assert client.protocol_version == "2026-07-28"
 
 
 async def test_validate_policies_round_trip():

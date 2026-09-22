@@ -16,7 +16,16 @@ iam-validator-mcp --custom-checks-dir ./my-checks     # CLI parity (custom check
 iam-validator-mcp --aws-services-dir ./aws-services   # CLI parity (offline AWS data)
 iam-validator-mcp --profile validate-only             # token-efficient profile
 iam-validator-mcp --list-profiles                     # print profile taxonomy
+iam-validator-mcp --transport http --host 127.0.0.1 --port 8000  # Streamable HTTP
 ```
+
+`iam-validator mcp` (the subcommand) takes the identical flag set — both entry points
+build their parser from `iam_validator.mcp.cli.add_arguments()` and resolve it to a
+`ServerSettings` via `iam_validator.mcp.cli.resolve_settings()`, so the same flags on
+either produce the same settings. `--transport` accepts only `stdio`/`http`; `sse` is
+rejected with a message naming `http` (MCP spec 2026-07-28 defines only stdio and
+Streamable HTTP — HTTP+SSE was replaced in 2025-03-26 and has since been removed from
+the spec, not merely deprecated).
 
 End-user install + Claude Desktop config: see `docs/integrations/mcp-server.md`.
 
@@ -26,7 +35,11 @@ End-user install + Claude Desktop config: see `docs/integrations/mcp-server.md`.
 
 ```
 mcp/
-├── __init__.py            # CLI argparse, entry-point, --profile -> IAM_VALIDATOR_MCP_PROFILE
+├── __init__.py            # run_server()/create_server() -- iam-validator-mcp entry point,
+│                          # builds its parser from cli.add_arguments()
+├── cli.py                 # add_arguments()/resolve_settings() -- the one argparse builder
+│                          # both entry points (iam-validator-mcp, iam-validator mcp) share;
+│                          # merges flags over IAM_VALIDATOR_MCP_* env vars, flags win
 ├── settings.py            # ServerSettings — resolves mode/transport/auth/limits from
 │                          # IAM_VALIDATOR_MCP_* env vars + defaults; ServerSettings.from_env()
 ├── component_spec.py      # ComponentSpec/ToolSpec/ResourceSpec/PromptSpec — shared gating fields
@@ -322,7 +335,13 @@ Test files of note:
 - `test_profiles.py` — `spec_survives()` profile-tag semantics with fixture specs, plus
   `build_server()`'s live tool catalog (`iam://checks` demotion, `get_config()`)
 - `test_transport.py` — in-process FastMCP `Client` round-trip (annotations, resources, errors)
-  against a `build_server(ServerSettings())` instance
+  against a `build_server(ServerSettings())` instance, plus a test pinning the negotiated
+  `mcp.types.LATEST_PROTOCOL_VERSION` to `"2026-07-28"`
+- `test_cli.py` — the shared `cli.py` argparse layer: both entry points resolve identical
+  flags to an identical `ServerSettings`, `--transport sse` fails naming `http` (not
+  argparse's generic "invalid choice"), `--host` defaults to `127.0.0.1`, flags win over
+  `IAM_VALIDATOR_MCP_*` env vars which win over defaults, and `--auth`/`auth_explicitly_set`
+  semantics
 - `test_server_integration.py` — check catalog (incl. the hosted-baseline-not-stock-defaults
   regression), server metadata, tool/resource registration
 - `test_dynamic_checks.py` — a check registered at runtime (not built in) reaches both

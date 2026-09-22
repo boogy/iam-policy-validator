@@ -142,10 +142,11 @@ class ServerSettings(BaseModel):
         return self
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str] | None = None) -> ServerSettings:
-        """Build settings from ``IAM_VALIDATOR_MCP_*`` env vars and defaults only.
+    def _env_kwargs(cls, env: Mapping[str, str] | None = None) -> dict[str, Any]:
+        """Unvalidated ``IAM_VALIDATOR_MCP_*`` -> field-name kwargs, for layering with CLI flags.
 
-        Never reads argv, so the Lambda handler can call this with no command line.
+        Returns kwargs rather than a ``ServerSettings`` so no env-only intermediate is
+        ever validated -- cross-field validators must only see the merged result.
         """
         source = env if env is not None else os.environ
         kwargs: dict[str, Any] = {}
@@ -164,4 +165,12 @@ class ServerSettings(BaseModel):
             kwargs[field_name] = raw
         if "auth" in kwargs:
             kwargs["auth_explicitly_set"] = True
-        return cls(**kwargs)
+        return kwargs
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> ServerSettings:
+        """Build settings from ``IAM_VALIDATOR_MCP_*`` env vars and defaults only.
+
+        Never reads argv, so the Lambda handler can call this with no command line.
+        """
+        return cls(**cls._env_kwargs(env))
