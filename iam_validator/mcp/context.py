@@ -358,7 +358,7 @@ async def server_lifespan(_server: FastMCP, settings: ServerSettings | None = No
     """FastMCP lifespan: build the context once, prewarm it, and tear it down on exit.
 
     ``settings`` lets ``build_server()`` thread the same settings it used for
-    tool/resource gating into the runtime context (so e.g. ``get_active_profile``
+    tool/resource gating into the runtime context (so e.g. ``get_config``
     reports the profile that was actually built); falls back to
     ``ServerSettings.from_env()`` when constructed directly.
     """
@@ -434,10 +434,24 @@ def get_shared_fetcher(ctx: Any) -> AWSServiceFetcher | None:
     return None
 
 
+def get_active_config(ctx: Any) -> ValidatorConfig | None:
+    """The config that ``validate_policies`` would apply right now: session override if
+    set, else the startup baseline (``context.config``, which is the hosted baseline in
+    hosted mode). ``None`` outside an MCP request (tests, direct calls).
+    """
+    context = get_server_context(ctx)
+    if context is None:
+        return None
+    if context.mutable is not None:
+        session_config = context.mutable.get_config()
+        if session_config is not None:
+            return session_config
+    return context.config
+
+
 def effective_check_settings(check_id: str, default_severity: str, ctx: Any) -> tuple[bool, str]:
     """``(enabled, severity)`` after the session config that validate_policies applies."""
-    context = get_server_context(ctx)
-    config = context.mutable.get_config() if context is not None and context.mutable is not None else None
+    config = get_active_config(ctx)
     if config is None:
         return True, default_severity
     return (
@@ -518,6 +532,7 @@ __all__ = [
     "get_server_context",
     "get_aws_session",
     "get_shared_fetcher",
+    "get_active_config",
     "effective_check_settings",
     "get_check_catalog",
     "get_check_details",

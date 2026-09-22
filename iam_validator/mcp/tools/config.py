@@ -14,6 +14,7 @@ Each ``*_impl`` function takes the caller's ``SessionState`` (``ServerContext.mu
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context
+from fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from iam_validator.mcp.component_spec import ToolSpec, infer_output_schema
@@ -176,94 +177,12 @@ async def load_organization_config_from_yaml_impl(
         }
 
 
-# =============================================================================
-# MCP tool wrappers (registered via TOOLS below)
-# =============================================================================
-
-
-async def set_organization_config(config: dict[str, Any], ctx: Context) -> dict[str, Any]:
-    """Set validator configuration for this MCP session.
-
-    Args:
-        config: Config with "settings" (fail_on_severity, parallel_execution) and
-            check IDs as keys (enabled, severity, ignore_patterns)
-
-    Returns:
-        {success, applied_config, warnings}
-    """
-    context = get_server_context(ctx)
-    session = context.mutable if context is not None else None
-    return await set_organization_config_impl(config, session)
-
-
-async def get_organization_config(ctx: Context) -> dict[str, Any]:
-    """Get the current session organization configuration.
-
-    In hosted mode there is no session override (``context.mutable`` is
-    ``None``); this reports the immutable baseline config resolved at startup.
-
-    Returns:
-        {has_config, config, source, config_digest}
-    """
-    context = get_server_context(ctx)
-    if context is not None and context.mutable is None:
-        source = str(context.settings.config_source) if context.settings.config_source else "hosted"
-        return {
-            "has_config": True,
-            "config": {
-                "settings": context.config.settings,
-                "checks": context.config.checks_config,
-            },
-            "source": source,
-            "config_digest": context.config_digest,
-        }
-
-    session = context.mutable if context is not None else None
-    result = await get_organization_config_impl(session)
-    result.setdefault("config_digest", context.config_digest if context is not None else None)
-    return result
-
-
-async def clear_organization_config(ctx: Context) -> dict[str, str]:
-    """Clear session organization config, reverting to defaults.
-
-    Returns:
-        {status: "cleared" or "no_config_set"}
-    """
-    context = get_server_context(ctx)
-    session = context.mutable if context is not None else None
-    return await clear_organization_config_impl(session)
-
-
-async def load_organization_config_from_yaml(yaml_content: str, ctx: Context) -> dict[str, Any]:
-    """Load validator configuration from YAML content and set as session config.
-
-    Args:
-        yaml_content: YAML string with settings and check configurations
-
-    Returns:
-        {success, applied_config, warnings, error}
-    """
-    context = get_server_context(ctx)
-    session = context.mutable if context is not None else None
-    return await load_organization_config_from_yaml_impl(yaml_content, session)
-
-
-async def set_custom_instructions(instructions: str, ctx: Context) -> dict[str, Any]:
-    """Set custom validation guidelines for this session.
-
-    Instructions are appended to default server instructions.
-
-    Args:
-        instructions: Custom instructions text (markdown supported)
-
-    Returns:
-        {success, instructions_preview, previous_source}
-    """
+async def _set_custom_instructions_impl(
+    instructions: str,
+    session: "SessionState | None",
+    ctx: Context,
+) -> dict[str, Any]:
     from iam_validator.mcp.instructions import get_instructions
-
-    context = get_server_context(ctx)
-    session = context.mutable if context is not None else None
 
     if session is None:
         return {
@@ -274,14 +193,10 @@ async def set_custom_instructions(instructions: str, ctx: Context) -> dict[str, 
         }
 
     previous_source = session.get_instructions_source()
-
     session.set_instructions(instructions, source="api")
-
-    # Update the server instructions
     ctx.fastmcp.instructions = get_instructions(session.get_instructions())
 
     preview = instructions[:200] + "..." if len(instructions) > 200 else instructions
-
     return {
         "success": True,
         "instructions_preview": preview,
@@ -289,36 +204,10 @@ async def set_custom_instructions(instructions: str, ctx: Context) -> dict[str, 
     }
 
 
-async def get_custom_instructions(ctx: Context) -> dict[str, Any]:
-    """Get current custom instructions.
-
-    Returns:
-        {has_instructions, instructions, source}
-    """
-    context = get_server_context(ctx)
-    session = context.mutable if context is not None else None
-    instructions = session.get_instructions() if session is not None else None
-
-    return {
-        "has_instructions": instructions is not None,
-        "instructions": instructions,
-        "source": session.get_instructions_source() if session is not None else "none",
-    }
-
-
-async def clear_custom_instructions(ctx: Context) -> dict[str, str]:
-    """Clear custom instructions, reverting to defaults.
-
-    Returns:
-        {status: "cleared" or "no_instructions_set"}
-    """
+async def _clear_custom_instructions_impl(session: "SessionState | None", ctx: Context) -> dict[str, str]:
     from iam_validator.mcp.instructions import BASE_INSTRUCTIONS
 
-    context = get_server_context(ctx)
-    session = context.mutable if context is not None else None
     had_instructions = session.clear_instructions() if session is not None else False
-
-    # Reset to base instructions
     ctx.fastmcp.instructions = BASE_INSTRUCTIONS
 
     return {
@@ -326,65 +215,146 @@ async def clear_custom_instructions(ctx: Context) -> dict[str, str]:
     }
 
 
+# =============================================================================
+# MCP tool wrappers (registered via TOOLS below)
+# =============================================================================
+
+
+async def get_config(ctx: Context) -> dict[str, Any]:
+    """Effective validator config, active profile, and custom instructions.
+
+    Consolidates the former get_organization_config, get_active_profile, and
+    get_custom_instructions tools. Always available, in every mode/transport
+    (contrast set_config, local/stdio only).
+
+    In hosted mode there is no session override (``context.mutable`` is
+    ``None``); this reports the immutable baseline config resolved at startup.
+
+    Returns:
+        {has_config, config, source, config_digest, mode, profile,
+         tool_count, tool_names, custom_instructions}
+    """
+    context = get_server_context(ctx)
+
+    if context is not None and context.mutable is None:
+        source = str(context.settings.config_source) if context.settings.config_source else "hosted"
+        config_result: dict[str, Any] = {
+            "has_config": True,
+            "config": {
+                "settings": context.config.settings,
+                "checks": context.config.checks_config,
+            },
+            "source": source,
+            "config_digest": context.config_digest,
+        }
+        instructions_result = {"has_instructions": False, "instructions": None, "source": "none"}
+    else:
+        session = context.mutable if context is not None else None
+        config_result = await get_organization_config_impl(session)
+        config_result.setdefault("config_digest", context.config_digest if context is not None else None)
+        instructions = session.get_instructions() if session is not None else None
+        instructions_result = {
+            "has_instructions": instructions is not None,
+            "instructions": instructions,
+            "source": session.get_instructions_source() if session is not None else "none",
+        }
+
+    mode = context.settings.mode if context is not None else "local"
+    profile = context.settings.profile if context is not None else "full"
+    tools = await ctx.fastmcp.list_tools()
+
+    return {
+        **config_result,
+        "mode": mode,
+        "profile": profile,
+        "tool_count": len(tools),
+        "tool_names": sorted(t.name for t in tools),
+        "custom_instructions": instructions_result,
+    }
+
+
+# The one tool-provenance exemption (every tool must trace to a CLI command or SDK
+# export): this edits ServerContext.mutable, an MCP-only concept with no such counterpart.
+async def set_config(
+    ctx: Context,
+    config: dict[str, Any] | None = None,
+    yaml_content: str | None = None,
+    clear_config: bool = False,
+    instructions: str | None = None,
+    clear_instructions: bool = False,
+) -> dict[str, Any]:
+    """Mutate this session's validator config and/or custom instructions.
+
+    Consolidates the former set_organization_config, clear_organization_config,
+    load_organization_config_from_yaml, set_custom_instructions, and
+    clear_custom_instructions tools. Local mode / stdio transport only — see
+    get_config for the read-only, always-available counterpart.
+
+    Args:
+        config: Set validator config from a dict (same shape the CLI's YAML
+            config uses). Mutually exclusive with yaml_content/clear_config.
+        yaml_content: Set validator config by parsing this YAML string.
+            Mutually exclusive with config/clear_config.
+        clear_config: Clear the session validator config, reverting to
+            defaults. Mutually exclusive with config/yaml_content.
+        instructions: Set custom instructions for this session. Mutually
+            exclusive with clear_instructions.
+        clear_instructions: Clear custom instructions, reverting to defaults.
+            Mutually exclusive with instructions.
+
+    Returns:
+        {config_result?, instructions_result?} — present depending on which
+        of the above were passed.
+    """
+    config_actions = [a for a in (config is not None, yaml_content is not None, clear_config) if a]
+    if len(config_actions) > 1:
+        raise ToolError("set_config: config, yaml_content, and clear_config are mutually exclusive")
+
+    instructions_actions = [a for a in (instructions is not None, clear_instructions) if a]
+    if len(instructions_actions) > 1:
+        raise ToolError("set_config: instructions and clear_instructions are mutually exclusive")
+
+    if not config_actions and not instructions_actions:
+        raise ToolError(
+            "set_config: nothing to do; pass config, yaml_content, clear_config, instructions, or clear_instructions"
+        )
+
+    context = get_server_context(ctx)
+    session = context.mutable if context is not None else None
+    result: dict[str, Any] = {}
+
+    if config is not None:
+        result["config_result"] = await set_organization_config_impl(config, session)
+    elif yaml_content is not None:
+        result["config_result"] = await load_organization_config_from_yaml_impl(yaml_content, session)
+    elif clear_config:
+        result["config_result"] = await clear_organization_config_impl(session)
+
+    if instructions is not None:
+        result["instructions_result"] = await _set_custom_instructions_impl(instructions, session, ctx)
+    elif clear_instructions:
+        result["instructions_result"] = await _clear_custom_instructions_impl(session, ctx)
+
+    return result
+
+
 TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         tag="orgconfig",
-        mutating=True,
-        modes=frozenset({"local"}),
-        name="set_organization_config",
-        fn=set_organization_config,
-        annotations=_MUTATING_ANNOTATIONS,
-        output_schema=infer_output_schema(set_organization_config),
-    ),
-    ToolSpec(
-        tag="orgconfig",
-        name="get_organization_config",
-        fn=get_organization_config,
+        name="get_config",
+        fn=get_config,
         annotations=_READ_ONLY_ANNOTATIONS,
-        output_schema=infer_output_schema(get_organization_config),
+        output_schema=infer_output_schema(get_config),
     ),
     ToolSpec(
         tag="orgconfig",
         mutating=True,
         modes=frozenset({"local"}),
-        name="clear_organization_config",
-        fn=clear_organization_config,
+        transports=frozenset({"stdio"}),
+        name="set_config",
+        fn=set_config,
         annotations=_MUTATING_ANNOTATIONS,
-        output_schema=infer_output_schema(clear_organization_config),
-    ),
-    ToolSpec(
-        tag="orgconfig",
-        mutating=True,
-        modes=frozenset({"local"}),
-        name="load_organization_config_from_yaml",
-        fn=load_organization_config_from_yaml,
-        annotations=_MUTATING_ANNOTATIONS,
-        output_schema=infer_output_schema(load_organization_config_from_yaml),
-    ),
-    ToolSpec(
-        tag="orgconfig",
-        mutating=True,
-        modes=frozenset({"local"}),
-        name="set_custom_instructions",
-        fn=set_custom_instructions,
-        annotations=_MUTATING_ANNOTATIONS,
-        output_schema=infer_output_schema(set_custom_instructions),
-    ),
-    ToolSpec(
-        tag="orgconfig",
-        name="get_custom_instructions",
-        fn=get_custom_instructions,
-        annotations=_READ_ONLY_ANNOTATIONS,
-        output_schema=infer_output_schema(get_custom_instructions),
-    ),
-    ToolSpec(
-        tag="orgconfig",
-        mutating=True,
-        modes=frozenset({"local"}),
-        name="clear_custom_instructions",
-        fn=clear_custom_instructions,
-        annotations=_MUTATING_ANNOTATIONS,
-        output_schema=infer_output_schema(clear_custom_instructions),
+        output_schema=infer_output_schema(set_config),
     ),
 )
 
@@ -394,12 +364,7 @@ __all__ = [
     "get_organization_config_impl",
     "clear_organization_config_impl",
     "load_organization_config_from_yaml_impl",
-    "set_organization_config",
-    "get_organization_config",
-    "clear_organization_config",
-    "load_organization_config_from_yaml",
-    "set_custom_instructions",
-    "get_custom_instructions",
-    "clear_custom_instructions",
+    "get_config",
+    "set_config",
     "TOOLS",
 ]

@@ -19,6 +19,7 @@ import pytest
 fastmcp = pytest.importorskip("fastmcp", reason="MCP tests require 'pip install iam-policy-validator[mcp]'")
 
 from iam_validator.core.check_registry import create_default_registry  # noqa: E402
+from iam_validator.core.config.config_loader import ValidatorConfig  # noqa: E402
 from iam_validator.mcp.build import build_server  # noqa: E402
 from iam_validator.mcp.context import ServerContext, SessionState, get_check_catalog  # noqa: E402
 from iam_validator.mcp.settings import ServerSettings  # noqa: E402
@@ -27,9 +28,15 @@ mcp = build_server(ServerSettings())
 
 
 def _fake_ctx(session: SessionState) -> SimpleNamespace:
-    """A fake MCP ``Context`` wrapping a real ServerContext with the given session."""
+    """A fake MCP ``Context`` wrapping a real ServerContext with the given session.
+
+    ``config`` is a real (empty) ValidatorConfig, not a MagicMock: get_active_config()
+    falls back to it whenever the session has no override, so it must behave like the
+    ambient startup baseline (every check enabled at its default severity) rather than
+    a mock whose truthy-by-default methods would silently pass every assertion.
+    """
     context = ServerContext(
-        config=MagicMock(),
+        config=ValidatorConfig({}),
         registry=create_default_registry(),
         formatters=MagicMock(),
         fetcher=MagicMock(),
@@ -112,6 +119,28 @@ class TestCheckCatalog:
         assert before["enabled"] is True
         assert after["enabled"] is False
 
+    def test_catalog_reflects_hosted_baseline_not_stock_defaults(self):
+        """Regression: hosted mode (mutable=None) must report the hosted baseline's
+        enabled/severity, not always fall back to (True, default_severity).
+        """
+        context = ServerContext(
+            config=ValidatorConfig(
+                {"checks": {"wildcard_action": {"enabled": False}, "wildcard_resource": {"severity": "critical"}}}
+            ),
+            registry=create_default_registry(),
+            formatters=MagicMock(),
+            fetcher=MagicMock(),
+            aws_sessions={},
+            settings=MagicMock(),
+            mutable=None,
+        )
+        ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context=context))
+
+        by_id = {c["check_id"]: c for c in get_check_catalog(ctx)}
+
+        assert by_id["wildcard_action"]["enabled"] is False
+        assert by_id["wildcard_resource"]["severity"] == "critical"
+
 
 class TestMCPServer:
     """Test MCP server configuration."""
@@ -135,23 +164,16 @@ class TestServerTools:
         assert "validate_policies" in tool_names
 
     async def test_query_tools_registered(self):
-        """The consolidated query tool should be registered.
-
-        Note: list_checks was demoted to the iam://checks resource in v1.20.0 —
-        it must NOT appear as a tool. query_service_actions/query_action_details/
-        expand_wildcard_action etc. were consolidated into `query` [TASK-09].
-        """
         tool_names = [t.name for t in await mcp.list_tools()]
         assert "query" in tool_names
         assert "list_checks" not in tool_names
         assert "query_service_actions" not in tool_names
 
     async def test_org_config_tools_registered(self):
-        """Organization config tools should be registered."""
+        """Consolidated organization config tools should be registered."""
         tool_names = [t.name for t in await mcp.list_tools()]
-        assert "set_organization_config" in tool_names
-        assert "get_organization_config" in tool_names
-        assert "clear_organization_config" in tool_names
+        assert "get_config" in tool_names
+        assert "set_config" in tool_names
 
 
 class TestServerResources:

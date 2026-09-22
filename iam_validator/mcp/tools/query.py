@@ -22,8 +22,8 @@ from iam_validator.core.config.sensitive_actions import (
     SENSITIVE_ACTION_CATEGORIES,
     get_category_for_action,
 )
-from iam_validator.mcp.component_spec import ToolSpec, infer_output_schema
-from iam_validator.mcp.context import get_server_context, get_shared_fetcher
+from iam_validator.mcp.component_spec import ToolSpec
+from iam_validator.mcp.context import get_shared_fetcher
 from iam_validator.mcp.models import ActionDetails, PolicySummary
 from iam_validator.sdk import ArnTypeInfo, get_actions_by_access_level, parse_policy, query_arn_types
 from iam_validator.sdk import get_policy_summary as sdk_get_policy_summary
@@ -657,48 +657,6 @@ async def query(
         raise ToolError(f"kind={kind!r}, service={service!r}: {e}") from e
 
 
-async def get_issue_guidance(check_id: str, ctx: Context) -> dict[str, Any]:
-    """Get fix guidance for a validation issue (registry-driven).
-
-    Args:
-        check_id: Check ID (e.g., "wildcard_action", "sensitive_action")
-
-    Returns:
-        {check_id, description, default_severity, fix_steps,
-         example_before, example_after, related}
-    """
-    context = get_server_context(ctx)
-    registry = context.registry if context is not None else create_default_registry()
-    check = registry.get_check(check_id)
-
-    if check is None:
-        return {
-            "check_id": check_id,
-            "description": f"Unknown check: {check_id}",
-            "default_severity": None,
-            "fix_steps": [
-                "Read the iam://checks resource for the catalog of available checks.",
-            ],
-            "example_before": None,
-            "example_after": None,
-            "related": ["iam://checks", "validate_policies"],
-        }
-
-    return {
-        "check_id": check_id,
-        "description": check.description,
-        "default_severity": check.default_severity,
-        "fix_steps": [
-            "Read the issue's `message` and `suggestion` fields from validate_policies",
-            "Apply the example fix from the issue, if provided",
-            "Re-validate with validate_policies",
-        ],
-        "example_before": None,
-        "example_after": None,
-        "related": ["validate_policies"],
-    }
-
-
 TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         tag="query",
@@ -707,13 +665,6 @@ TOOLS: tuple[ToolSpec, ...] = (
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
         output_schema=_QUERY_OUTPUT_SCHEMA,
         input_schema=_QUERY_INPUT_SCHEMA,
-    ),
-    ToolSpec(
-        tag="fix",
-        name="get_issue_guidance",
-        fn=get_issue_guidance,
-        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-        output_schema=infer_output_schema(get_issue_guidance),
     ),
 )
 
@@ -729,6 +680,5 @@ __all__ = [
     "list_sensitive_actions",
     "get_condition_requirements",
     "query",
-    "get_issue_guidance",
     "TOOLS",
 ]

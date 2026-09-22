@@ -20,12 +20,12 @@ from iam_validator.mcp.instructions import BASE_INSTRUCTIONS
 from iam_validator.mcp.prompts import PROMPTS
 from iam_validator.mcp.resources import RESOURCES
 from iam_validator.mcp.settings import ServerSettings
-from iam_validator.mcp.tools import analyze, config, query, validate
+from iam_validator.mcp.tools import analyze, checks, config, query, validate
 
 if TYPE_CHECKING:
     from iam_validator.mcp.context import ServerContext
 
-_TOOL_MODULES = (validate, query, config, analyze)
+_TOOL_MODULES = (validate, query, checks, config, analyze)
 
 # Every profile except "read-only" filters by ComponentSpec.tag; "read-only"
 # filters by ComponentSpec.mutating instead (checked directly in spec_survives).

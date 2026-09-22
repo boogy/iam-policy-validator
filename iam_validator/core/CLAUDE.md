@@ -135,7 +135,7 @@ back. `load_entry_point_checks` registers with `source="entry_point"`,
 config)` builds a new registry that reuses `base_registry`'s check instances (and their
 provenance) under a different `ValidatorConfig`, for a caller that wants to apply a
 one-off or session config override without re-importing custom checks/entry points —
-the MCP server's `set_organization_config`/`validate_with_config` paths use this instead
+the MCP server's `set_config`/`validate_policies` session-override paths use this instead
 of rebuilding via `build_registry`.
 
 ---

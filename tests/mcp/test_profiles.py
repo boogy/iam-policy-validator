@@ -31,12 +31,15 @@ async def test_list_checks_demoted_to_resource_not_tool():
     assert "get_check_details" not in names
 
 
-async def test_get_active_profile_reflects_state():
-    mcp = build_server(ServerSettings(profile="validate-only"))
+async def test_get_config_reflects_active_profile():
+    # get_config is tagged "orgconfig", so it only survives "full"/"read-only" —
+    # the other named profiles filter by tag and don't include "orgconfig".
+    mcp = build_server(ServerSettings(profile="read-only"))
     async with Client(mcp) as client:
-        result = await client.call_tool("get_active_profile", {})
-    assert result.data["profile"] == "validate-only"
+        result = await client.call_tool("get_config", {})
+    assert result.data["profile"] == "read-only"
     assert "validate_policies" in result.data["tool_names"]
+    assert "set_config" not in result.data["tool_names"]
 
 
 def test_unknown_profile_rejected_by_settings():

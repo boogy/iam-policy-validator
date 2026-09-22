@@ -66,3 +66,25 @@ class TestTransportGating:
         stdio_only = _tool_spec("set_config", transports=frozenset({"stdio"}))
         assert spec_survives(stdio_only, ServerSettings(transport="http")) is False
         assert spec_survives(stdio_only, ServerSettings(transport="stdio")) is True
+
+
+class TestOrgConfigToolGating:
+    """get_config/set_config: real ToolSpecs from tools/config.py, not fixtures."""
+
+    async def test_hosted_build_registers_get_config_not_set_config(self):
+        mcp = build_server(ServerSettings(mode="hosted", auth="token", auth_explicitly_set=True))
+        names = {t.name for t in await mcp.list_tools()}
+        assert "get_config" in names
+        assert "set_config" not in names
+
+    async def test_set_config_absent_over_http_even_in_local_mode(self):
+        mcp = build_server(ServerSettings(mode="local", transport="http"))
+        names = {t.name for t in await mcp.list_tools()}
+        assert "get_config" in names
+        assert "set_config" not in names
+
+    async def test_set_config_present_over_stdio_in_local_mode(self):
+        mcp = build_server(ServerSettings(mode="local", transport="stdio"))
+        names = {t.name for t in await mcp.list_tools()}
+        assert "get_config" in names
+        assert "set_config" in names

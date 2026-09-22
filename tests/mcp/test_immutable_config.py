@@ -8,15 +8,23 @@ import pytest
 from iam_validator.mcp.build import spec_survives
 from iam_validator.mcp.context import build_context
 from iam_validator.mcp.settings import ServerSettings
-from iam_validator.mcp.tools import analyze, config, query, validate
+from iam_validator.mcp.tools import analyze, checks, config, query, validate
 
 pytest.importorskip("fastmcp", reason="MCP tests require 'pip install iam-policy-validator[mcp]'")
 
-_TOOL_MODULES = (validate, query, config, analyze)
+_TOOL_MODULES = (validate, query, checks, config, analyze)
 
 
 def _fake_ctx(context):
-    return SimpleNamespace(request_context=SimpleNamespace(lifespan_context=context))
+    # get_config() calls ctx.fastmcp.list_tools(); the tool catalog itself is
+    # irrelevant to what these tests assert, so an empty stub is enough.
+    async def _list_tools():
+        return []
+
+    return SimpleNamespace(
+        request_context=SimpleNamespace(lifespan_context=context),
+        fastmcp=SimpleNamespace(list_tools=_list_tools),
+    )
 
 
 @pytest.fixture
@@ -43,13 +51,7 @@ def test_mutating_orgconfig_tools_excluded_from_hosted_registration(hosted_conte
         for spec in getattr(module, "TOOLS", ())
         if spec.mutating and not spec_survives(spec, settings)
     }
-    assert excluded == {
-        "set_organization_config",
-        "clear_organization_config",
-        "load_organization_config_from_yaml",
-        "set_custom_instructions",
-        "clear_custom_instructions",
-    }
+    assert excluded == {"set_config"}
 
 
 def test_hosted_config_unchanged_after_every_surviving_tool_call(hosted_context, simple_policy_dict):
@@ -62,12 +64,11 @@ def test_hosted_config_unchanged_after_every_surviving_tool_call(hosted_context,
     surviving_names = {
         spec.name for module in _TOOL_MODULES for spec in getattr(module, "TOOLS", ()) if spec_survives(spec, settings)
     }
-    assert "set_organization_config" not in surviving_names
+    assert "set_config" not in surviving_names
 
     async def _exercise():
         await validate._validate_policies_hosted(policies=[simple_policy_dict], ctx=ctx)
-        await config.get_organization_config(ctx)
-        await config.get_custom_instructions(ctx)
+        await config.get_config(ctx)
 
     asyncio.run(_exercise())
 
@@ -80,7 +81,7 @@ def test_get_config_reports_hosted_baseline_and_digest(hosted_context):
     context, _settings = hosted_context
     ctx = _fake_ctx(context)
 
-    result = asyncio.run(config.get_organization_config(ctx))
+    result = asyncio.run(config.get_config(ctx))
 
     assert result["has_config"] is True
     assert result["config_digest"] == context.config_digest

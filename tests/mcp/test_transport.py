@@ -101,7 +101,7 @@ async def test_tool_annotations_round_trip():
         tools = await client.list_tools()
         by_name = {t.name: t for t in tools}
         assert by_name["validate_policies"].annotations.readOnlyHint is True
-        assert by_name["set_organization_config"].annotations.destructiveHint is False
+        assert by_name["set_config"].annotations.destructiveHint is False
         assert by_name["aws_access_analyzer_validate"].annotations.openWorldHint is True
 
 

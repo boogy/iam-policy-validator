@@ -40,18 +40,19 @@ mcp/
 │                          # SessionState (session-scoped org config / custom instructions)
 └── tools/
     ├── validate.py         # TOOLS: validate_policies (mode-gated local/hosted variants,
-    │                       # local carries path/glob), get_active_profile
+    │                       # local carries path/glob)
     ├── query.py            # TOOLS: query (kind=service_actions|action_details|
-    │                       # condition_keys|arn_formats|expand_wildcard), get_issue_guidance
+    │                       # condition_keys|arn_formats|expand_wildcard)
+    ├── checks.py           # TOOLS: describe_checks (registry-driven check catalog +
+    │                       # resolved enabled/severity/config + provenance source)
     ├── analyze.py           # TOOLS: aws_access_analyzer_validate — wraps boto3 Access Analyzer
     │                       # in asyncio.to_thread
-    └── config.py           # TOOLS: set/get/clear_organization_config,
-                            # load_organization_config_from_yaml,
-                            # set/get/clear_custom_instructions
+    └── config.py           # TOOLS: get_config (always available), set_config
+                            # (local/stdio only, mutating)
 ```
 
 `build_server(settings)` is the only place a `FastMCP` instance is constructed. It
-iterates a fixed `_TOOL_MODULES` tuple (`validate`, `query`, `config`,
+iterates a fixed `_TOOL_MODULES` tuple (`validate`, `query`, `checks`, `config`,
 `analyze`) reading each module's `TOOLS` attribute, plus `resources.RESOURCES` and
 `prompts.PROMPTS`, filtering every spec through `spec_survives()` before registering
 it — never a module-level singleton, so two calls with different `ServerSettings`
@@ -66,24 +67,26 @@ tool reads a module-level global.
 `ServerContext.registry` is built once at startup via `build_registry()` (not lazily —
 it loads third-party entry-point plugins once). `validate_policies` reuses
 `ServerContext.registry`/`.config` directly and does not rebuild per call, including
-when an active session-config override (`set_organization_config`) is present — that
+when an active session-config override (`set_config`) is present — that
 path goes through
 `iam_validator.core.policy_checks.overlay_registry_config(base_registry, config)`, which
 reuses the startup registry's already-imported check instances (and their `source`
 provenance) under the override's settings — no re-import, no temp file. In that
-override case, `get_check_catalog()`/`get_check_details()` (in `context.py`) resolve each
-check's `enabled`/`severity` through `ServerContext.mutable` (a `SessionState`, `None` in
-hosted mode) on every call, so the catalog agrees with what `validate_policies` runs;
+override case, `get_check_catalog()`/`get_check_details()`/`describe_checks()` (in
+`context.py`/`tools/checks.py`) resolve each check's `enabled`/`severity` via
+`context.py:get_active_config()` — the session override if one is set, else
+`ServerContext.config` (the hosted baseline in hosted mode, never a hardcoded
+default) — on every call, so the catalog agrees with what `validate_policies` runs;
 nothing memoizes the resolved values.
 
 ### Hosted config resolution + config_digest
 
 In hosted mode (`--config`/`IAM_VALIDATOR_MCP_CONFIG`), `context.py:build_context()`
 resolves the config once at startup into `ServerContext.config` and never rereads or
-reloads it (redeploy only) — `set_config` and the other 4 session-mutating `orgconfig`
-tools are structurally excluded from hosted `build_server()` via
-`ToolSpec(modes=frozenset({"local"}))`, so hosted config is immutable for the process
-lifetime. A missing/unreadable/schema-invalid config file, or a declared custom check
+reloads it (redeploy only) — `set_config`, the sole session-mutating `orgconfig`
+tool, is structurally excluded from hosted `build_server()` via
+`ToolSpec(modes=frozenset({"local"}), transports=frozenset({"stdio"}))`, so hosted
+config is immutable for the process lifetime. A missing/unreadable/schema-invalid config file, or a declared custom check
 that fails to import, raises `HostedStartupError` naming the problem and exits non-zero
 (`_load_hosted_config`/`_verify_hosted_custom_checks`) — local mode keeps
 `ConfigLoader`'s warn-and-continue contract unchanged. `custom_instructions` is also read
@@ -97,7 +100,7 @@ the built registry — the registry is included, not just the config dict, becau
 distribution's entry point without it appearing anywhere in the YAML.
 `CheckRegistry.register(check, *, source=...)` records provenance
 (`builtin`/`entry_point`/`config_module`/`discovered`); `get_source(check_id)` reads it
-back. The digest is returned by `get_config`/`get_organization_config` and attached to
+back. The digest is returned by `get_config` and attached to
 every `validate_policies` response as `config_digest`.
 
 `validate.py` registers two `ToolSpec`s under the same name `validate_policies`, one
@@ -108,18 +111,17 @@ never expose local-only filesystem parameters.
 
 ---
 
-## Tools (12) — tagged for `--profile` gating
+## Tools (6) — tagged for `--profile` gating
 
 Every tool carries exactly one functional tag (some also carry `mutating`).
 The `--profile` flag uses these tags to enable/disable groups:
 
-| Tag         | Tools                                                                                                                                                                                                                            |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `validate`  | `validate_policies` (consolidates the former `validate_policy`, `quick_validate`, `validate_policies_batch`, `validate_with_config`, `check_org_compliance`, `get_policy_summary`), `get_active_profile`                         |
-| `query`     | `query` (kind-dispatched selector; consolidates the former `query_service_actions`, `query_action_details`, `query_actions_batch`, `check_actions_batch`, `query_condition_keys`, `query_arn_formats`, `expand_wildcard_action`) |
-| `fix`       | `get_issue_guidance`                                                                                                                                                                                                             |
-| `orgconfig` | `set_/get_/clear_organization_config` (set/clear also tagged `mutating`), `load_organization_config_from_yaml` (also `mutating`), `set_/get_/clear_custom_instructions` (set/clear also `mutating`)                              |
-| `analyze`   | `aws_access_analyzer_validate` (only tool with `openWorldHint=True` — calls live AWS API)                                                                                                                                        |
+| Tag         | Tools                                                                                                                                                                                                                                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `validate`  | `validate_policies` (consolidates the former `validate_policy`, `quick_validate`, `validate_policies_batch`, `validate_with_config`, `check_org_compliance`, `get_policy_summary`), `describe_checks` (consolidates the former `get_issue_guidance`, `check_sensitive_actions`, `get_condition_requirements_for_action`) |
+| `query`     | `query` (kind-dispatched selector; consolidates the former `query_service_actions`, `query_action_details`, `query_actions_batch`, `check_actions_batch`, `query_condition_keys`, `query_arn_formats`, `expand_wildcard_action`)                                                                                         |
+| `orgconfig` | `get_config` (always available; consolidates the former `get_organization_config`, `get_active_profile`, `get_custom_instructions`), `set_config` (local/stdio only, `mutating`; consolidates the former `set_/clear_organization_config`, `load_organization_config_from_yaml`, `set_/clear_custom_instructions`)       |
+| `analyze`   | `aws_access_analyzer_validate` (only tool with `openWorldHint=True` — calls live AWS API)                                                                                                                                                                                                                                |
 
 ### Profiles
 
@@ -133,9 +135,10 @@ The `--profile` flag uses these tags to enable/disable groups:
 `--profile` sets `IAM_VALIDATOR_MCP_PROFILE`, which `ServerSettings.from_env()` reads
 at startup; `build_server(settings)` runs every spec through `spec_survives()`
 before registering it, so an excluded tool is never present in `list_tools()` (not
-merely hidden from a client that asks nicely). `get_active_profile()` reports the
-resolved `settings.profile` plus the live tool count/names from
-`await ctx.fastmcp.list_tools()`.
+merely hidden from a client that asks nicely). `get_config()` reports the resolved
+`settings.profile` plus the live tool count/names from `await ctx.fastmcp.list_tools()`.
+Note `orgconfig` isn't in `_PROFILE_TAGS` for `validate-only`/`validate-and-query`, so
+`get_config`/`set_config` only survive under `full` or `read-only`.
 
 ### ComponentSpec and build_server
 
@@ -159,13 +162,13 @@ settings produce an identical tool-name sequence (MCP 2026-07-28 requires
 this for client-side list caching).
 
 The six `validate`-tagged validation tools were consolidated into
-`validate_policies`, and seven of the eight `query`-tagged tools into a single
+`validate_policies`; seven of the eight `query`-tagged tools into a single
 `query` selector (`kind` = `service_actions` | `action_details` |
-`condition_keys` | `arn_formats` | `expand_wildcard`).
-`get_condition_requirements_for_action` will instead be re-exposed by a
-`describe_checks` tool in a follow-up. The local `full` surface is now 12 tools
-(down from 19); consolidation down to the target 6-tool surface is still
-pending.
+`condition_keys` | `arn_formats` | `expand_wildcard`); `get_issue_guidance`,
+`check_sensitive_actions`, and `get_condition_requirements_for_action` into
+`describe_checks`; and the seven `orgconfig` tools into `get_config`/
+`set_config`. The local `full` surface has reached the target 6-tool surface
+(down from 19).
 
 ### Token cost
 
@@ -174,9 +177,9 @@ Tags + tool annotations + slimmed `BASE_INSTRUCTIONS` produce these footprints
 
 | Profile              | Tools | Total | % full |
 | -------------------- | ----- | ----- | ------ |
-| `full`               | 12    | 2761  | 100%   |
-| `validate-only`      | 2     | 1317  | 48%    |
-| `validate-and-query` | 3     | 1578  | 57%    |
+| `full`               | 6     | 2976  | 100%   |
+| `validate-only`      | 2     | 1515  | 51%    |
+| `validate-and-query` | 3     | 1776  | 60%    |
 
 ## Resources (7)
 
@@ -234,10 +237,11 @@ async def my_thing(name: str) -> str:
     return json.dumps({"name": name, "data": ...}, indent=2)
 ```
 
-`get_issue_guidance` and `get_check_details` are registry-driven only — they
-return the check's `description` and `default_severity` from
-`ServerContext.registry` (falling back to `create_default_registry()` outside an
-MCP request), with no curated per-check example data.
+`describe_checks` (tool) and `get_check_details` (resource, via `iam://checks/{check_id}`)
+are registry-driven only — they return each check's `description` and
+`default_severity` from `ServerContext.registry` (falling back to
+`create_default_registry()` outside an MCP request), with no curated per-check
+example data.
 
 ### Prompt
 
@@ -261,14 +265,20 @@ uv run pytest tests/mcp/
 Test files of note:
 
 - `test_constants_alignment.py` — guard rails: MCP must source shared literals from `core/constants`
-- `test_build.py` — `spec_survives()` mutating/transport gating with fixture specs, and a
+- `test_build.py` — `spec_survives()` mutating/transport gating with fixture specs, a
   `build_server()` determinism test that derives the expected tool-name order from a
-  monkeypatched `_TOOL_MODULES` and fails under a hash-based sort
+  monkeypatched `_TOOL_MODULES` and fails under a hash-based sort, and
+  `TestOrgConfigToolGating` (real `config.py` specs: hosted registers `get_config` not
+  `set_config`; `set_config` absent over `http` even in local mode; present over `stdio`)
 - `test_profiles.py` — `spec_survives()` profile-tag semantics with fixture specs, plus
-  `build_server()`'s live tool catalog (`iam://checks` demotion, `get_active_profile()`)
+  `build_server()`'s live tool catalog (`iam://checks` demotion, `get_config()`)
 - `test_transport.py` — in-process FastMCP `Client` round-trip (annotations, resources, errors)
   against a `build_server(ServerSettings())` instance
-- `test_server_integration.py` — check catalog, server metadata, tool/resource registration
+- `test_server_integration.py` — check catalog (incl. the hosted-baseline-not-stock-defaults
+  regression), server metadata, tool/resource registration
+- `test_dynamic_checks.py` — a check registered at runtime (not built in) reaches both
+  `iam://checks` and `describe_checks`, across all four provenance `source` values, with
+  no `iam_validator/mcp/` file hardcoding a check list
 - `test_prompt_schema.py` — guards prompt argument descriptions against FastMCP's generic
   schema fallback (triggered by a stray `from __future__ import annotations` in `prompts.py`)
 - `test_analyze.py` — Access Analyzer wrapper + cached boto3 session

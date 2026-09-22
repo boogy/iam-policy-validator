@@ -483,21 +483,6 @@ async def _validate_policies_hosted(
     return await _validate_policies_impl(policies, policy_type, detail, format, ctx)
 
 
-async def get_active_profile(ctx: Context) -> dict[str, Any]:
-    """Return the active MCP profile and the tools it currently exposes.
-
-    Useful when a tool you expect is missing — confirms the server profile.
-    """
-    context = get_server_context(ctx)
-    profile = context.settings.profile if context is not None else "full"
-    tools = await ctx.fastmcp.list_tools()
-    return {
-        "profile": profile,
-        "tool_count": len(tools),
-        "tool_names": sorted(t.name for t in tools),
-    }
-
-
 TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         tag="validate",
@@ -514,12 +499,5 @@ TOOLS: tuple[ToolSpec, ...] = (
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
         output_schema=infer_output_schema(_validate_policies_hosted),
         modes=frozenset({"hosted"}),
-    ),
-    ToolSpec(
-        tag="validate",
-        name="get_active_profile",
-        fn=get_active_profile,
-        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-        output_schema=infer_output_schema(get_active_profile),
     ),
 )
