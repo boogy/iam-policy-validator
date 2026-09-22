@@ -135,16 +135,16 @@ class TestServerTools:
         assert "validate_policies" in tool_names
 
     async def test_query_tools_registered(self):
-        """Query tools should be registered.
+        """The consolidated query tool should be registered.
 
         Note: list_checks was demoted to the iam://checks resource in v1.20.0 —
-        it must NOT appear as a tool.
+        it must NOT appear as a tool. query_service_actions/query_action_details/
+        expand_wildcard_action etc. were consolidated into `query` [TASK-09].
         """
         tool_names = [t.name for t in await mcp.list_tools()]
-        assert "query_service_actions" in tool_names
-        assert "query_action_details" in tool_names
-        assert "expand_wildcard_action" in tool_names
+        assert "query" in tool_names
         assert "list_checks" not in tool_names
+        assert "query_service_actions" not in tool_names
 
     async def test_org_config_tools_registered(self):
         """Organization config tools should be registered."""

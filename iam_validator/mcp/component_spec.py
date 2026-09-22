@@ -29,6 +29,8 @@ class ToolSpec(ComponentSpec):
     fn: Callable[..., Any]
     annotations: ToolAnnotations
     output_schema: dict[str, Any]
+    # Overrides the auto-inferred inputSchema, e.g. for discriminated-union parameters.
+    input_schema: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

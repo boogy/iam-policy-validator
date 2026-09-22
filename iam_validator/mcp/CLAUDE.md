@@ -41,10 +41,8 @@ mcp/
 └── tools/
     ├── validate.py         # TOOLS: validate_policies (mode-gated local/hosted variants,
     │                       # local carries path/glob), get_active_profile
-    ├── query.py            # TOOLS: query_service_actions, query_action_details,
-    │                       # expand_wildcard_action, query_condition_keys, query_arn_formats,
-    │                       # get_condition_requirements_for_action,
-    │                       # query_actions_batch, check_actions_batch, get_issue_guidance
+    ├── query.py            # TOOLS: query (kind=service_actions|action_details|
+    │                       # condition_keys|arn_formats|expand_wildcard), get_issue_guidance
     ├── analyze.py           # TOOLS: aws_access_analyzer_validate — wraps boto3 Access Analyzer
     │                       # in asyncio.to_thread
     └── config.py           # TOOLS: set/get/clear_organization_config,
@@ -110,18 +108,18 @@ never expose local-only filesystem parameters.
 
 ---
 
-## Tools (19) — tagged for `--profile` gating
+## Tools (12) — tagged for `--profile` gating
 
 Every tool carries exactly one functional tag (some also carry `mutating`).
 The `--profile` flag uses these tags to enable/disable groups:
 
-| Tag         | Tools                                                                                                                                                                                                                  |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `validate`  | `validate_policies` (consolidates the former `validate_policy`, `quick_validate`, `validate_policies_batch`, `validate_with_config`, `check_org_compliance`, `get_policy_summary` — see TASK-08), `get_active_profile` |
-| `query`     | `query_service_actions`, `query_action_details`, `expand_wildcard_action`, `query_condition_keys`, `query_arn_formats`, `get_condition_requirements_for_action`, `query_actions_batch`, `check_actions_batch`          |
-| `fix`       | `get_issue_guidance`                                                                                                                                                                                                   |
-| `orgconfig` | `set_/get_/clear_organization_config` (set/clear also tagged `mutating`), `load_organization_config_from_yaml` (also `mutating`), `set_/get_/clear_custom_instructions` (set/clear also `mutating`)                    |
-| `analyze`   | `aws_access_analyzer_validate` (only tool with `openWorldHint=True` — calls live AWS API)                                                                                                                              |
+| Tag         | Tools                                                                                                                                                                                                                            |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `validate`  | `validate_policies` (consolidates the former `validate_policy`, `quick_validate`, `validate_policies_batch`, `validate_with_config`, `check_org_compliance`, `get_policy_summary`), `get_active_profile`                         |
+| `query`     | `query` (kind-dispatched selector; consolidates the former `query_service_actions`, `query_action_details`, `query_actions_batch`, `check_actions_batch`, `query_condition_keys`, `query_arn_formats`, `expand_wildcard_action`) |
+| `fix`       | `get_issue_guidance`                                                                                                                                                                                                             |
+| `orgconfig` | `set_/get_/clear_organization_config` (set/clear also tagged `mutating`), `load_organization_config_from_yaml` (also `mutating`), `set_/get_/clear_custom_instructions` (set/clear also `mutating`)                              |
+| `analyze`   | `aws_access_analyzer_validate` (only tool with `openWorldHint=True` — calls live AWS API)                                                                                                                                        |
 
 ### Profiles
 
@@ -160,9 +158,14 @@ filters on `mutating` instead of `tag`) — and registers survivors on a fresh
 settings produce an identical tool-name sequence (MCP 2026-07-28 requires
 this for client-side list caching).
 
-TASK-08 consolidated the six `validate`-tagged validation tools into
-`validate_policies`; the remaining consolidation from 19 tools down to the target
-6-tool surface is TASK-09–11's job.
+The six `validate`-tagged validation tools were consolidated into
+`validate_policies`, and seven of the eight `query`-tagged tools into a single
+`query` selector (`kind` = `service_actions` | `action_details` |
+`condition_keys` | `arn_formats` | `expand_wildcard`).
+`get_condition_requirements_for_action` will instead be re-exposed by a
+`describe_checks` tool in a follow-up. The local `full` surface is now 12 tools
+(down from 19); consolidation down to the target 6-tool surface is still
+pending.
 
 ### Token cost
 
@@ -171,9 +174,9 @@ Tags + tool annotations + slimmed `BASE_INSTRUCTIONS` produce these footprints
 
 | Profile              | Tools | Total | % full |
 | -------------------- | ----- | ----- | ------ |
-| `full`               | 19    | 3070  | 100%   |
-| `validate-only`      | 2     | 1309  | 43%    |
-| `validate-and-query` | 10    | 1887  | 61%    |
+| `full`               | 12    | 2761  | 100%   |
+| `validate-only`      | 2     | 1317  | 48%    |
+| `validate-and-query` | 3     | 1578  | 57%    |
 
 ## Resources (7)
 

@@ -4,10 +4,13 @@ This module provides query tools for querying AWS service definitions,
 listing validation checks, analyzing policies, and querying sensitive actions.
 """
 
-from typing import Any, cast
+import asyncio
+from typing import Annotated, Any, Literal, cast
 
 from fastmcp import Context
+from fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
+from pydantic import BaseModel, Field, TypeAdapter
 
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import create_default_registry
@@ -16,6 +19,8 @@ from iam_validator.core.config.sensitive_actions import (
     DATA_ACCESS_ACTIONS,
     PRIV_ESC_ACTIONS,
     RESOURCE_EXPOSURE_ACTIONS,
+    SENSITIVE_ACTION_CATEGORIES,
+    get_category_for_action,
 )
 from iam_validator.mcp.component_spec import ToolSpec, infer_output_schema
 from iam_validator.mcp.context import get_server_context, get_shared_fetcher
@@ -372,264 +377,284 @@ async def get_condition_requirements(action: str) -> dict[str, Any] | None:
 
 
 # =============================================================================
-# MCP tool wrappers (registered via TOOLS below)
+# `query` — consolidated selector tool (registered via TOOLS below)
 # =============================================================================
 
+QueryKind = Literal["service_actions", "action_details", "condition_keys", "arn_formats", "expand_wildcard"]
 
-async def _query_service_actions_tool(
-    service: str,
-    ctx: Context,
-    access_level: str | None = None,
-    limit: int | None = None,
-    offset: int = 0,
-    verbose: bool = False,
-) -> dict[str, Any]:
-    """Get all actions for a service, optionally filtered by access level.
+_ACCESS_LEVELS: tuple[str, ...] = ("read", "write", "list", "tagging", "permissions-management")
 
-    Args:
-        service: Service prefix (e.g., "s3", "iam", "ec2")
-        access_level: Filter: read|write|list|tagging|permissions-management
-        limit: Max actions to return
-        offset: Skip N actions for pagination
-        verbose: Return full action details (True) or names only (False)
-
-    Returns:
-        {actions, total, has_more}
-    """
-    fetcher = get_shared_fetcher(ctx)
-    all_actions = await query_service_actions(service=service, access_level=access_level, fetcher=fetcher)
-    total = len(all_actions)
-
-    # Apply pagination
-    if offset:
-        all_actions = all_actions[offset:]
-    if limit:
-        all_actions = all_actions[:limit]
-
-    # Lean response: just action names as strings if not verbose
-    if not verbose and all_actions and isinstance(all_actions[0], dict):
-        all_actions = [a.get("name", a) if isinstance(a, dict) else a for a in all_actions]
-
-    return {
-        "actions": all_actions,
-        "total": total,
-        "has_more": offset + len(all_actions) < total,
-    }
+# Input field each kind requires; drives both the inputSchema branches and the ToolError backstop.
+_REQUIRED_PARAM_FOR_KIND: dict[QueryKind, str] = {
+    "service_actions": "service",
+    "action_details": "actions",
+    "condition_keys": "service",
+    "arn_formats": "service",
+    "expand_wildcard": "patterns",
+}
 
 
-async def _query_action_details_tool(action: str, ctx: Context) -> dict[str, Any] | None:
-    """Get metadata for a specific action.
+class SensitiveInfo(BaseModel):
+    """Sensitivity classification for a single action, from the sensitive-actions catalog."""
 
-    Args:
-        action: Full action name (e.g., "s3:GetObject", "iam:CreateUser")
+    category: str
+    severity: str
+    name: str
 
-    Returns:
-        {action, service, access_level, resource_types, condition_keys, description} or None
-    """
-    fetcher = get_shared_fetcher(ctx)
-    result = await query_action_details(action=action, fetcher=fetcher)
-    if result is None:
+
+class ServiceActionsResult(BaseModel):
+    """``kind="service_actions"``: all (optionally filtered) actions for a service."""
+
+    kind: Literal["service_actions"] = "service_actions"
+    service: str
+    actions: list[str]
+    total: int
+
+
+class ActionDetailEntry(BaseModel):
+    """One action's validity, metadata and sensitivity — one entry per input action."""
+
+    action: str
+    valid: bool
+    error: str | None = None
+    service: str | None = None
+    access_level: str | None = None
+    resource_types: list[str] = Field(default_factory=list)
+    condition_keys: list[str] = Field(default_factory=list)
+    description: str | None = None
+    sensitive: SensitiveInfo | None = None
+
+
+class ActionDetailsResult(BaseModel):
+    """``kind="action_details"``: batch action lookup, absorbing query_actions_batch/check_actions_batch."""
+
+    kind: Literal["action_details"] = "action_details"
+    results: list[ActionDetailEntry]
+
+
+class ConditionKeysResult(BaseModel):
+    """``kind="condition_keys"``: condition keys supported by a service."""
+
+    kind: Literal["condition_keys"] = "condition_keys"
+    service: str
+    condition_keys: list[str]
+
+
+class ArnFormatEntry(BaseModel):
+    """ARN format patterns for one resource type."""
+
+    resource_type: str
+    arn_formats: list[str]
+
+
+class ArnFormatsResult(BaseModel):
+    """``kind="arn_formats"``: ARN format patterns for a service's resource types."""
+
+    kind: Literal["arn_formats"] = "arn_formats"
+    service: str
+    arn_formats: list[ArnFormatEntry]
+
+
+class ExpandWildcardEntry(BaseModel):
+    """One pattern's expansion — one entry per input pattern."""
+
+    pattern: str
+    actions: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
+class ExpandWildcardResult(BaseModel):
+    """``kind="expand_wildcard"``: batch wildcard expansion."""
+
+    kind: Literal["expand_wildcard"] = "expand_wildcard"
+    results: list[ExpandWildcardEntry]
+
+
+QueryResult = Annotated[
+    ServiceActionsResult | ActionDetailsResult | ConditionKeysResult | ArnFormatsResult | ExpandWildcardResult,
+    Field(discriminator="kind"),
+]
+
+# Derived from QueryResult so the oneOf branches can't drift from the return type.
+_QUERY_OUTPUT_SCHEMA: dict[str, Any] = TypeAdapter(QueryResult).json_schema()
+
+# allOf/if/then marks the one parameter each `kind` requires (JSON Schema 2020-12).
+_QUERY_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": list(_REQUIRED_PARAM_FOR_KIND),
+            "description": "Which query to run; determines which other parameter is required.",
+        },
+        "service": {
+            "type": ["string", "null"],
+            "description": "AWS service prefix, e.g. 's3', 'iam'. Required for service_actions|condition_keys|arn_formats.",
+        },
+        "actions": {
+            "type": ["array", "null"],
+            "items": {"type": "string"},
+            "description": "Full action names, e.g. ['s3:GetObject']. Required for action_details.",
+        },
+        "patterns": {
+            "type": ["array", "null"],
+            "items": {"type": "string"},
+            "description": "Wildcard action patterns, e.g. ['s3:Get*']. Required for expand_wildcard.",
+        },
+        "access_level": {
+            "type": ["string", "null"],
+            "enum": [*_ACCESS_LEVELS, None],
+            "description": "Optional access-level filter for service_actions.",
+        },
+        "name_filter": {
+            "type": ["string", "null"],
+            "description": "Optional case-insensitive substring filter on action names for service_actions.",
+        },
+    },
+    "required": ["kind"],
+    "allOf": [
+        {
+            "if": {"properties": {"kind": {"const": kind}}, "required": ["kind"]},
+            "then": {"required": [param]},
+        }
+        for kind, param in _REQUIRED_PARAM_FOR_KIND.items()
+    ],
+    "additionalProperties": False,
+}
+
+
+def _sensitive_info(action: str) -> SensitiveInfo | None:
+    category = get_category_for_action(action)
+    if category is None:
         return None
-    return {
-        "action": result.action,
-        "service": result.service,
-        "access_level": result.access_level,
-        "resource_types": result.resource_types,
-        "condition_keys": result.condition_keys,
-        "description": result.description,
-    }
+    category_data = SENSITIVE_ACTION_CATEGORIES[category]
+    return SensitiveInfo(category=category, severity=category_data["severity"], name=category_data["name"])
 
 
-async def _expand_wildcard_action_tool(pattern: str, ctx: Context) -> list[str]:
-    """Expand wildcard action pattern to specific actions.
+async def _query_action_details_batch(actions: list[str], fetcher: AWSServiceFetcher | None) -> list[ActionDetailEntry]:
+    """Batch existence-check + metadata + sensitivity lookup, in request order.
 
-    Args:
-        pattern: Pattern with wildcards (e.g., "s3:Get*", "iam:*User*")
-
-    Returns:
-        List of matching action names
+    Absorbs query_actions_batch and check_actions_batch. Uses
+    ``validate_actions_batch`` for validity, which — unlike ``parse_action`` —
+    returns a normal result for an action it cannot parse instead of raising.
     """
-    fetcher = get_shared_fetcher(ctx)
-    return await expand_wildcard_action(pattern=pattern, fetcher=fetcher)
+    _fetcher = fetcher if fetcher is not None else AWSServiceFetcher()
+    should_close = fetcher is None
+    if should_close:
+        await _fetcher.__aenter__()
+    try:
+        validity = await _fetcher.validate_actions_batch(actions)
+
+        async def build_entry(action: str) -> ActionDetailEntry:
+            is_valid, error, _is_wildcard = validity.get(action, (False, "Unknown error", False))
+            entry = ActionDetailEntry(action=action, valid=is_valid, error=None if is_valid else error)
+            if is_valid:
+                details = await query_action_details(action=action, fetcher=_fetcher)
+                if details is not None:
+                    entry.service = details.service
+                    entry.access_level = details.access_level
+                    entry.resource_types = details.resource_types
+                    entry.condition_keys = details.condition_keys
+                    entry.description = details.description
+            entry.sensitive = _sensitive_info(action)
+            return entry
+
+        return list(await asyncio.gather(*[build_entry(action) for action in actions]))
+    finally:
+        if should_close:
+            await _fetcher.__aexit__(None, None, None)
 
 
-async def _query_condition_keys_tool(service: str, ctx: Context) -> list[str]:
-    """Get resource-level condition keys for a service.
+async def _expand_wildcard_batch(patterns: list[str], fetcher: AWSServiceFetcher | None) -> list[ExpandWildcardEntry]:
+    """Batch wildcard expansion, in request order. Absorbs the single-pattern tool."""
 
-    Use with get_condition_requirements_for_action for complete condition coverage (action + resource).
-
-    Args:
-        service: Service prefix (e.g., "s3", "iam")
-
-    Returns:
-        List of condition keys (e.g., ["s3:prefix", "s3:x-amz-acl"])
-    """
-    fetcher = get_shared_fetcher(ctx)
-    return await query_condition_keys(service=service, fetcher=fetcher)
-
-
-async def _query_arn_formats_tool(service: str, ctx: Context) -> list[dict[str, Any]]:
-    """Get ARN format patterns for a service's resources.
-
-    Args:
-        service: Service prefix (e.g., "s3", "iam")
-
-    Returns:
-        List of {resource_type, arn_formats}
-    """
-    fetcher = get_shared_fetcher(ctx)
-    return cast(list[dict[str, Any]], await query_arn_formats(service=service, fetcher=fetcher))
-
-
-async def get_condition_requirements_for_action(action: str) -> dict[str, Any] | None:
-    """Get condition requirements for a specific action.
-
-    Args:
-        action: Full action name (e.g., "iam:PassRole", "s3:GetObject")
-
-    Returns:
-        Condition requirements dict, or None if no requirements
-    """
-    return await get_condition_requirements(action=action)
-
-
-async def query_actions_batch(actions: list[str], ctx: Context) -> dict[str, dict[str, Any] | None]:
-    """Get details for multiple actions in parallel (more efficient than multiple query_action_details calls).
-
-    Args:
-        actions: Action names (e.g., ["s3:GetObject", "iam:CreateUser"])
-
-    Returns:
-        Dict mapping action names to {service, access_level, resource_types, condition_keys} or None
-    """
-    import asyncio
-
-    # Use shared fetcher from context
-    shared_fetcher = get_shared_fetcher(ctx)
-
-    async def query_one(action: str) -> tuple[str, dict[str, Any] | None]:
-        """Query a single action and return (action, details) tuple."""
+    async def expand_one(pattern: str) -> ExpandWildcardEntry:
         try:
-            details = await query_action_details(action=action, fetcher=shared_fetcher)
-            if details:
-                return (
-                    action,
-                    {
-                        "service": details.service,
-                        "access_level": details.access_level,
-                        "resource_types": details.resource_types,
-                        "condition_keys": details.condition_keys,
-                        "description": details.description,
-                    },
-                )
-            return (action, None)
-        except Exception:
-            return (action, None)
+            actions = await expand_wildcard_action(pattern=pattern, fetcher=fetcher)
+            return ExpandWildcardEntry(pattern=pattern, actions=actions)
+        except ValueError as e:
+            return ExpandWildcardEntry(pattern=pattern, error=str(e))
 
-    # Run all queries in parallel
-    query_results = await asyncio.gather(*[query_one(action) for action in actions])
-    return dict(query_results)
+    return list(await asyncio.gather(*[expand_one(p) for p in patterns]))
 
 
-async def check_actions_batch(
-    actions: list[str],
+async def query(
+    kind: QueryKind,
     ctx: Context,
-    verbose: bool = False,
+    service: str | None = None,
+    actions: list[str] | None = None,
+    patterns: list[str] | None = None,
+    access_level: str | None = None,
+    name_filter: str | None = None,
 ) -> dict[str, Any]:
-    """Validate existence and check sensitivity for multiple actions in parallel.
+    """Query AWS service/action reference data. One selector for five query kinds.
+
+    Consolidates the former query_service_actions, query_action_details,
+    query_actions_batch, check_actions_batch, query_condition_keys,
+    query_arn_formats and expand_wildcard_action tools.
 
     Args:
-        actions: AWS actions to check (e.g., ["s3:GetObject", "iam:PassRole"])
-        verbose: Return all fields (True) or essential only (False)
+        kind: Which query to run — service_actions|action_details|condition_keys
+            |arn_formats|expand_wildcard. Determines which other parameter is
+            required (see the field descriptions below).
+        service: AWS service prefix, e.g. "s3", "iam". Required for
+            service_actions, condition_keys, arn_formats.
+        actions: Full action names, e.g. ["s3:GetObject"]. Required for
+            action_details; validity, metadata and sensitivity are checked
+            for every entry, in request order (batch — was two tools).
+        patterns: Wildcard action patterns, e.g. ["s3:Get*"]. Required for
+            expand_wildcard, expanded in request order (batch).
+        access_level: Optional read|write|list|tagging|permissions-management
+            filter, service_actions only.
+        name_filter: Optional case-insensitive substring filter on action
+            names, service_actions only.
 
     Returns:
-        {valid_actions, invalid_actions, sensitive_actions}
+        A ``{kind, ...}`` object whose remaining shape is fixed by ``kind``
+        (see ``query``'s output schema for the exact branch).
     """
-    import asyncio
+    required_param = _REQUIRED_PARAM_FOR_KIND.get(kind)
+    if required_param is None:
+        raise ToolError(f"kind: invalid value {kind!r}. Must be one of: {', '.join(_REQUIRED_PARAM_FOR_KIND)}")
 
-    from iam_validator.core.config.sensitive_actions import (
-        SENSITIVE_ACTION_CATEGORIES,
-        get_category_for_action,
-    )
+    provided = {"service": service, "actions": actions, "patterns": patterns}[required_param]
+    if not provided:
+        raise ToolError(f"kind={kind!r} requires '{required_param}'")
 
-    async def check_one_action(action: str, fetcher: AWSServiceFetcher) -> dict[str, Any]:
-        """Check a single action for validity and sensitivity."""
-        result: dict[str, Any] = {
-            "action": action,
-            "is_valid": False,
-            "error": None,
-            "sensitive": None,
-        }
+    fetcher = get_shared_fetcher(ctx)
 
-        # Check if action is valid
-        try:
-            if "*" in action:
-                # Wildcard - try to expand
-                expanded = await fetcher.expand_wildcard_action(action)
-                if expanded:
-                    result["is_valid"] = True
-                else:
-                    result["error"] = "No matching actions"
-            else:
-                is_valid, error, _ = await fetcher.validate_action(action)
-                if is_valid:
-                    result["is_valid"] = True
-                else:
-                    result["error"] = error or "Unknown error"
-        except Exception as e:
-            result["error"] = str(e)
+    try:
+        if kind == "service_actions":
+            assert service is not None
+            result_actions = await query_service_actions(service=service, access_level=access_level, fetcher=fetcher)
+            if name_filter:
+                needle = name_filter.lower()
+                result_actions = [a for a in result_actions if needle in a.lower()]
+            return ServiceActionsResult(service=service, actions=result_actions, total=len(result_actions)).model_dump()
 
-        # Check sensitivity (even for invalid actions - they might be typos of sensitive ones)
-        category = get_category_for_action(action)
-        if category:
-            category_data = SENSITIVE_ACTION_CATEGORIES[category]
-            result["sensitive"] = {
-                "category": category,
-                "severity": category_data["severity"],
-                "name": category_data["name"],
-            }
+        if kind == "action_details":
+            assert actions is not None
+            entries = await _query_action_details_batch(actions, fetcher)
+            return ActionDetailsResult(results=entries).model_dump()
 
-        return result
+        if kind == "condition_keys":
+            assert service is not None
+            keys = await query_condition_keys(service=service, fetcher=fetcher)
+            return ConditionKeysResult(service=service, condition_keys=keys).model_dump()
 
-    # Try to get shared fetcher from context, fall back to creating new one
-    shared_fetcher = get_shared_fetcher(ctx)
-    if shared_fetcher:
-        # Use shared fetcher - run all checks in parallel
-        check_results = await asyncio.gather(*[check_one_action(action, shared_fetcher) for action in actions])
-    else:
-        # Fall back to creating new fetcher
-        async with AWSServiceFetcher() as fetcher:
-            check_results = await asyncio.gather(*[check_one_action(action, fetcher) for action in actions])
+        if kind == "arn_formats":
+            assert service is not None
+            arn_formats = cast(list[dict[str, Any]], await query_arn_formats(service=service, fetcher=fetcher))
+            return ArnFormatsResult(
+                service=service, arn_formats=[ArnFormatEntry(**a) for a in arn_formats]
+            ).model_dump()
 
-    # Aggregate results
-    valid_actions: list[str] = []
-    invalid_actions: list[dict[str, str]] = []
-    sensitive_actions: list[dict[str, Any]] = []
-
-    for result in check_results:
-        action = result["action"]
-        if result["is_valid"]:
-            valid_actions.append(action)
-        elif result["error"]:
-            invalid_actions.append({"action": action, "error": result["error"]})
-
-        if result["sensitive"]:
-            sensitive_actions.append({"action": action, **result["sensitive"]})
-
-    if verbose:
-        return {
-            "valid_actions": valid_actions,
-            "invalid_actions": invalid_actions,
-            "sensitive_actions": sensitive_actions,
-        }
-    else:
-        return {
-            "valid_actions": valid_actions,
-            "invalid_count": len(invalid_actions),
-            "sensitive_count": len(sensitive_actions),
-            "invalid_actions": [ia["action"] for ia in invalid_actions],
-            "sensitive_actions": [sa["action"] for sa in sensitive_actions],
-        }
+        assert kind == "expand_wildcard"
+        assert patterns is not None
+        entries = await _expand_wildcard_batch(patterns, fetcher)
+        return ExpandWildcardResult(results=entries).model_dump()
+    except ValueError as e:
+        raise ToolError(f"kind={kind!r}, service={service!r}: {e}") from e
 
 
 async def get_issue_guidance(check_id: str, ctx: Context) -> dict[str, Any]:
@@ -677,59 +702,11 @@ async def get_issue_guidance(check_id: str, ctx: Context) -> dict[str, Any]:
 TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         tag="query",
-        name="query_service_actions",
-        fn=_query_service_actions_tool,
+        name="query",
+        fn=query,
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-        output_schema=infer_output_schema(_query_service_actions_tool),
-    ),
-    ToolSpec(
-        tag="query",
-        name="query_action_details",
-        fn=_query_action_details_tool,
-        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-        output_schema=infer_output_schema(_query_action_details_tool),
-    ),
-    ToolSpec(
-        tag="query",
-        name="expand_wildcard_action",
-        fn=_expand_wildcard_action_tool,
-        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-        output_schema=infer_output_schema(_expand_wildcard_action_tool),
-    ),
-    ToolSpec(
-        tag="query",
-        name="query_condition_keys",
-        fn=_query_condition_keys_tool,
-        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-        output_schema=infer_output_schema(_query_condition_keys_tool),
-    ),
-    ToolSpec(
-        tag="query",
-        name="query_arn_formats",
-        fn=_query_arn_formats_tool,
-        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-        output_schema=infer_output_schema(_query_arn_formats_tool),
-    ),
-    ToolSpec(
-        tag="query",
-        name="get_condition_requirements_for_action",
-        fn=get_condition_requirements_for_action,
-        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-        output_schema=infer_output_schema(get_condition_requirements_for_action),
-    ),
-    ToolSpec(
-        tag="query",
-        name="query_actions_batch",
-        fn=query_actions_batch,
-        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-        output_schema=infer_output_schema(query_actions_batch),
-    ),
-    ToolSpec(
-        tag="query",
-        name="check_actions_batch",
-        fn=check_actions_batch,
-        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
-        output_schema=infer_output_schema(check_actions_batch),
+        output_schema=_QUERY_OUTPUT_SCHEMA,
+        input_schema=_QUERY_INPUT_SCHEMA,
     ),
     ToolSpec(
         tag="fix",
@@ -751,9 +728,7 @@ __all__ = [
     "get_policy_summary",
     "list_sensitive_actions",
     "get_condition_requirements",
-    "get_condition_requirements_for_action",
-    "query_actions_batch",
-    "check_actions_batch",
+    "query",
     "get_issue_guidance",
     "TOOLS",
 ]

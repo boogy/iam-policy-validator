@@ -34,8 +34,8 @@ Call `list_templates` to check if a pre-built secure template exists for {servic
 If found, use `generate_policy_from_template` with the resource values.
 
 ### Step 2: If No Template, Build Manually
-1. Call `query_service_actions("{service}")` to find exact action names
-2. Call `query_arn_formats("{service}")` to get correct ARN patterns
+1. Call `query(kind="service_actions", service="{service}")` to find exact action names
+2. Call `query(kind="arn_formats", service="{service}")` to get correct ARN patterns
 3. Call `build_minimal_policy` with the specific actions and resources
 
 ### Step 3: Validate ONCE

@@ -332,7 +332,7 @@ STEPS:
 USER: "What S3 write actions exist?"
 
 STEPS:
-1. query_service_actions(service="s3", access_level="write")
+1. query(kind="service_actions", service="s3", access_level="write")
 2. Present the list to user
 3. If they pick actions, use check_sensitive_actions to warn about risks
 

@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from fastmcp import FastMCP
+from fastmcp.tools.function_tool import FunctionTool
 
 from iam_validator.mcp.component_spec import ComponentSpec
 from iam_validator.mcp.instructions import BASE_INSTRUCTIONS
@@ -80,13 +81,25 @@ def build_server(settings: ServerSettings) -> FastMCP:
         for tool_spec in getattr(module, "TOOLS", ()):
             if not spec_survives(tool_spec, settings):
                 continue
-            mcp.tool(
-                tool_spec.fn,
-                name=tool_spec.name,
-                tags={tool_spec.tag},
-                annotations=tool_spec.annotations,
-                output_schema=tool_spec.output_schema,
-            )
+            if tool_spec.input_schema is not None:
+                # from_function() can't infer a discriminated union and rejects a non-object output_schema.
+                tool = FunctionTool.from_function(
+                    tool_spec.fn,
+                    name=tool_spec.name,
+                    tags={tool_spec.tag},
+                    annotations=tool_spec.annotations,
+                )
+                tool.parameters = tool_spec.input_schema
+                tool.output_schema = tool_spec.output_schema
+                mcp.add_tool(tool)
+            else:
+                mcp.tool(
+                    tool_spec.fn,
+                    name=tool_spec.name,
+                    tags={tool_spec.tag},
+                    annotations=tool_spec.annotations,
+                    output_schema=tool_spec.output_schema,
+                )
 
     for resource_spec in RESOURCES:
         if not spec_survives(resource_spec, settings):

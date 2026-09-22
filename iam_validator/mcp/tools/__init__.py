@@ -13,27 +13,20 @@ from iam_validator.mcp.tools.config import (
     set_organization_config_impl,
 )
 from iam_validator.mcp.tools.query import (
-    expand_wildcard_action,
     get_condition_requirements,
     get_policy_summary,
     list_checks,
     list_sensitive_actions,
-    query_action_details,
-    query_arn_formats,
-    query_condition_keys,
-    query_service_actions,
 )
+
+# Aliased: binding "query" here would shadow the "query" submodule other modules import.
+from iam_validator.mcp.tools.query import query as query_tool
 from iam_validator.mcp.tools.validate import validate_policies
 
 __all__ = [
     # Validation tools
     "validate_policies",
-    # Query tools
-    "query_service_actions",
-    "query_action_details",
-    "expand_wildcard_action",
-    "query_condition_keys",
-    "query_arn_formats",
+    "query_tool",
     "list_checks",
     "get_policy_summary",
     "list_sensitive_actions",
