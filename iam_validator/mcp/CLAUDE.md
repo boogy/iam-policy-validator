@@ -32,6 +32,9 @@ mcp/
 ├── component_spec.py      # ComponentSpec/ToolSpec/ResourceSpec/PromptSpec — shared gating fields
 ├── build.py               # spec_survives() + build_server(settings) -> fresh FastMCP instance;
 │                          # sole server-construction path (create_server()/run_server() call it)
+├── auth.py                 # get_auth_provider(settings) -> AuthProvider | None, dispatched on
+│                           # settings.auth (none/token/jwt/<idp>); SCOPE_TO_TAG constant.
+│                           # Not yet wired into build_server().
 ├── instructions.py        # BASE_INSTRUCTIONS + get_instructions()
 ├── resources.py           # RESOURCES: list[ResourceSpec] (6 entries)
 ├── prompts.py             # PROMPTS: list[PromptSpec] (3 entries)
@@ -119,6 +122,19 @@ server's own region only) before a boto3 session is created, and enforces
 `ServerContext.analyze_rate_limiter` — a best-effort in-process sliding-window counter
 from `ServerSettings.analyze_rate_limit`, not a quota; reserved concurrency, API
 Gateway usage plans, and `iam:analyze`-scope gating are external/future controls.
+
+### Auth providers
+
+`auth.py:get_auth_provider(settings)` is the only place a FastMCP `AuthProvider` is
+constructed, dispatched on `ServerSettings.auth`: `"none"` -> `None` (hosted mode
+refuses this unless `auth_explicitly_set`, re-enforcing the check `settings.py`
+already makes at construction time, since `ServerSettings` has no
+`validate_assignment`), `"token"` -> `StaticTokenVerifier`, `"jwt"` -> `JWTVerifier`,
+or an IdP name (`azure`/`google`/`github`/`keycloak`/`auth0`/`workos`). All provider
+material comes from `IAM_VALIDATOR_MCP_AUTH_*` env vars or a file path they name,
+never a CLI flag; every failure prints to stderr and exits non-zero. `SCOPE_TO_TAG`
+is the canonical `iam:validate`/`iam:query`/`iam:analyze`/`iam:config` -> tag mapping
+for scope-based gating. Not yet wired into `build_server()`.
 
 ---
 
@@ -308,6 +324,10 @@ Test files of note:
   severity edit / disable / entry-point check addition
 - `test_no_tempfile.py` — `validate_policies` never calls `tempfile.NamedTemporaryFile`
   for an inline config override
+- `test_auth.py` — `get_auth_provider()` per-`auth` value dispatch (none/token/jwt/
+  unknown), the hosted-open guard proven load-bearing via `ServerSettings.model_construct()`
+  (bypassing the constructor-time check), token source precedence/rejection, and JWT
+  scope enforcement via `RSAKeyPair`-minted tokens (no network calls)
 
 Mock fetcher / network — no real API or AWS calls. Debug interactively via
 `mise run mcp:inspector`. Requires `fastmcp>=3.2,<5` (installed via
