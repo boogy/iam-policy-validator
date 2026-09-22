@@ -39,6 +39,11 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - `query_service_actions`, `query_action_details`, `query_actions_batch`, `check_actions_batch`, `query_condition_keys`, `query_arn_formats` and `expand_wildcard_action` tools — superseded by the single `query` tool above (their underlying implementation functions are unchanged and still used internally). The MCP server now exposes 12 tools (previously 19).
 - `get_condition_requirements_for_action` tool wrapper — its `get_condition_requirements()` helper is retained in `query.py`; the per-action condition-requirement lookup it used to expose is superseded by `describe_checks`'s per-check resolved `config` field.
 - `get_issue_guidance`, `check_sensitive_actions` tools — superseded by `describe_checks` (`check_sensitive_actions`'s functionality had already moved to `query`'s `action_details` kind). `set_organization_config`, `get_organization_config`, `clear_organization_config`, `load_organization_config_from_yaml`, `set_custom_instructions`, `get_custom_instructions`, `clear_custom_instructions` and `get_active_profile` tools — superseded by `get_config`/`set_config` above. The MCP server now exposes 6 tools (previously 12) — the target surface reached.
+- The `iam://workflow-examples` resource — its example workflows were built entirely on the removed generation surface (template → generate → auto-fix). The MCP server now exposes 6 resources (previously 7).
+
+### Changed
+
+- The three `@mcp.prompt` prompts (`generate_secure_policy`, `fix_policy_issues_workflow`, `review_policy_security`) are rewritten to name only tools that still exist — `validate_policies` and `query` — replacing references to tools removed or renamed earlier in this release (`list_templates`, `generate_policy_from_template`, `build_minimal_policy`, `suggest_actions`, `fix_policy_issues`, `validate_policy`, `check_sensitive_actions`).
 
 ### Fixed
 

@@ -261,92 +261,6 @@ condition_key_validation:
 """
 
 
-def workflow_examples_resource() -> str:
-    """Detailed workflow examples for common IAM policy tasks.
-
-    This resource contains step-by-step examples showing how to use
-    the IAM Policy Validator tools effectively.
-    """
-    return """
-# IAM Policy Validator - Workflow Examples
-
-## Example 1: Create Policy from Template
-
-USER: "I need a policy for Lambda to read from S3"
-
-STEPS:
-1. list_templates → found "lambda-s3-trigger"
-2. ASK USER: "What's your S3 bucket name?"
-3. generate_policy_from_template(
-     template_name="lambda-s3-trigger",
-     variables={"bucket_name": "user-bucket", "function_name": "my-func", ...}
-   )
-4. validate_policies on result
-5. Present validated policy to user
-
-## Example 2: Validate Overly Permissive Policy
-
-USER: "Validate this policy: {Action: *, Resource: *}"
-
-STEPS:
-1. validate_policies → returns issues (wildcard_action, wildcard_resource)
-2. fix_policy_issues → unfixed_issues shows wildcards can't be auto-fixed
-3. RESPOND to user:
-   "This policy grants full admin access. I need to know:
-   - Which AWS service(s) do you need access to?
-   - What operations (read/write/delete)?
-   - Which specific resources (bucket names, table names, etc.)?"
-
-## Example 3: Build Custom Policy
-
-USER: "Create a policy to read DynamoDB table 'users' and write to S3 bucket 'backups'"
-
-STEPS:
-1. suggest_actions("read DynamoDB", "dynamodb") → get read actions
-2. suggest_actions("write S3", "s3") → get write actions
-3. build_minimal_policy(
-     actions=["dynamodb:GetItem", "dynamodb:Query", "s3:PutObject"],
-     resources=[
-       "arn:aws:dynamodb:us-east-1:123456789012:table/users",
-       "arn:aws:s3:::backups/*"
-     ]
-   )
-4. validate_policies on result
-5. Review security_notes and present to user
-
-## Example 4: Fix Validation Issues
-
-USER provides policy with issues
-
-STEPS:
-1. validate_policies → returns is_valid=false with issues
-2. For each issue, read the `example` field - it shows the exact fix
-3. fix_policy_issues → applies auto-fixes (Version, SIDs)
-4. For remaining unfixed_issues:
-   - If wildcard: ask user for specific actions/resources
-   - If missing condition: use get_required_conditions to see what's needed
-5. Re-validate until is_valid=true
-
-## Example 5: Research Actions
-
-USER: "What S3 write actions exist?"
-
-STEPS:
-1. query(kind="service_actions", service="s3", access_level="write")
-2. Present the list to user
-3. If they pick actions, use check_sensitive_actions to warn about risks
-
-## Example 6: Batch Validation
-
-USER provides multiple policies to check
-
-STEPS:
-1. validate_policies(policies=[...], detail="summary")
-2. For each result, show policy_index and is_valid
-3. Detail issues only for invalid policies
-"""
-
-
 RESOURCES: list[ResourceSpec] = [
     ResourceSpec(
         tag="validate",
@@ -383,12 +297,6 @@ RESOURCES: list[ResourceSpec] = [
         uri="iam://config-examples",
         name="config_examples_resource",
         fn=config_examples_resource,
-    ),
-    ResourceSpec(
-        tag="validate",
-        uri="iam://workflow-examples",
-        name="workflow_examples_resource",
-        fn=workflow_examples_resource,
     ),
 ]
 

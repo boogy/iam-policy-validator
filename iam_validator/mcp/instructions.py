@@ -23,8 +23,7 @@ remaining `high`/`medium`/`low`/`warning` items as informational only.
 When in doubt, PRESENT THE POLICY.
 
 ## RESOURCES
-iam://checks, iam://sensitive-actions/{category},
-iam://checks/{check_id}, iam://workflow-examples.
+iam://checks, iam://sensitive-actions/{category}, iam://checks/{check_id}.
 Default policy Version is "__VERSION__".
 """
 

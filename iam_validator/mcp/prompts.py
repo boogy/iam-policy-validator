@@ -29,19 +29,16 @@ def generate_secure_policy(
 
 ## WORKFLOW (Follow these steps in order):
 
-### Step 1: Find a Template
-Call `list_templates` to check if a pre-built secure template exists for {service}.
-If found, use `generate_policy_from_template` with the resource values.
+### Step 1: Ground the Policy in Live AWS Data
+1. Call `query(kind="service_actions", service="{service}")` to find exact action names.
+2. Call `query(kind="arn_formats", service="{service}")` to get correct ARN patterns.
+3. Draft the least-privilege policy JSON using only actions and ARN shapes confirmed
+   by Step 1.
 
-### Step 2: If No Template, Build Manually
-1. Call `query(kind="service_actions", service="{service}")` to find exact action names
-2. Call `query(kind="arn_formats", service="{service}")` to get correct ARN patterns
-3. Call `build_minimal_policy` with the specific actions and resources
+### Step 2: Validate
+Call `validate_policies` on the drafted policy.
 
-### Step 3: Validate ONCE
-Call `validate_policies` on the generated policy.
-
-### Step 4: Fix Only BLOCKING Issues
+### Step 3: Fix Only BLOCKING Issues
 BLOCKING issues (MUST fix): severity = "error" or "critical"
 - Use the `example` field from the issue - it shows the exact fix
 - Apply the fix directly
@@ -50,13 +47,17 @@ NON-BLOCKING issues (present with warnings): severity = "high", "medium", "low",
 - Do NOT try to fix these automatically
 - Present them to the user as security recommendations
 
+### Step 4: Re-validate (only if you changed the policy in Step 3)
+Call `validate_policies` again to confirm the blocking issues are resolved.
+
 ### Step 5: Present the Policy
 Show the final policy with:
 1. The complete JSON policy
 2. Any non-blocking warnings as "Security Considerations"
 3. Explanation of what permissions are granted
 
-⚠️ IMPORTANT: Do NOT validate more than once. Do NOT loop trying to fix warnings.
+⚠️ IMPORTANT: Do NOT call `validate_policies` more than twice. Do NOT loop trying to
+fix warnings.
 """
 
 
@@ -85,8 +86,8 @@ def fix_policy_issues_workflow(policy_json: str, issues_description: str) -> str
 ### Iteration 1: Fix All BLOCKING Issues
 For each issue with severity "error" or "critical":
 1. Read the `example` field - it shows exactly how to fix it
-2. Apply the fix to the policy
-3. For structural issues (Version, Effect case), use `fix_policy_issues` tool
+2. Apply the fix directly to the policy JSON (e.g. correct `Version`, `Effect`
+   casing, narrow a wildcard action/resource, add a missing condition)
 
 ### After Fixing:
 Call `validate_policies` ONE more time to verify blocking issues are resolved.
@@ -129,10 +130,13 @@ def review_policy_security(policy_json: str) -> str:
 ## REVIEW WORKFLOW:
 
 ### Step 1: Validate
-Call `validate_policies` with the policy above.
+Call `validate_policies` (`detail="full"` for complete issue context) with the
+policy above.
 
-### Step 2: Check Sensitive Actions
-Call `check_sensitive_actions` to identify high-risk permissions.
+### Step 2: Check Action Sensitivity
+Call `query(kind="action_details", actions=[...])` with the policy's actions.
+Each result's `sensitive` field, where present, names the risk category and
+severity for that action.
 
 ### Step 3: Analyze Results
 Categorize issues by severity:
@@ -153,7 +157,7 @@ Format your response as:
 - [List high/medium issues with explanations]
 
 **Sensitive Actions Detected**:
-- [List any sensitive actions and their risk category]
+- [List any actions with a `sensitive` classification and their risk category]
 
 **Overall Assessment**:
 [Brief summary of the policy's security posture]

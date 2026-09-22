@@ -33,7 +33,7 @@ mcp/
 ├── build.py               # spec_survives() + build_server(settings) -> fresh FastMCP instance;
 │                          # sole server-construction path (create_server()/run_server() call it)
 ├── instructions.py        # BASE_INSTRUCTIONS + get_instructions()
-├── resources.py           # RESOURCES: list[ResourceSpec] (7 entries)
+├── resources.py           # RESOURCES: list[ResourceSpec] (6 entries)
 ├── prompts.py             # PROMPTS: list[PromptSpec] (3 entries)
 ├── models.py              # Pydantic request/response models
 ├── context.py             # ServerContext (built once, held in the FastMCP lifespan) +
@@ -192,7 +192,7 @@ Tags + tool annotations + slimmed `BASE_INSTRUCTIONS` produce these footprints
 | `validate-only`      | 2     | 1515  | 51%    |
 | `validate-and-query` | 3     | 1776  | 60%    |
 
-## Resources (7)
+## Resources (6)
 
 Static resources cache client-side and don't count against per-turn token
 budget the way tool descriptions do:
@@ -204,7 +204,6 @@ budget the way tool descriptions do:
 - `iam://checks/{check_id}` (tag `validate`) — per-check docs, registry-driven (parameterized)
 - `iam://config-schema` (tag `orgconfig`) — JSON Schema for session config
 - `iam://config-examples` (tag `orgconfig`) — example YAML configs by security posture
-- `iam://workflow-examples` (tag `validate`) — guided example workflows
 
 All four `validate`-tagged resources survive under `--profile validate-only`, matching
 the tools that produce equivalent data — a resource's gating tag must never be looser
