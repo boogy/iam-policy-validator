@@ -7,12 +7,33 @@ Note: These tests require the optional 'mcp' extra (fastmcp package).
       Tests will be skipped if fastmcp is not installed.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.models import IAMPolicy, Statement, ValidationIssue
+
+
+@contextmanager
+def as_caller(*scopes: str, client_id: str = "test-caller") -> Iterator[None]:
+    """Simulate an authenticated request carrying ``scopes``, for direct calls to
+    ``list_tools()``/``get_tool()``/etc. that bypass FastMCP's real transport dispatch
+    (which is the only place that would otherwise populate the access-token context).
+    """
+    from mcp.server.auth.middleware.auth_context import auth_context_var
+    from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+    from mcp.server.auth.provider import AccessToken
+
+    token = auth_context_var.set(
+        AuthenticatedUser(AccessToken(token="test-token", client_id=client_id, scopes=list(scopes)))
+    )
+    try:
+        yield
+    finally:
+        auth_context_var.reset(token)
 
 
 @pytest.fixture

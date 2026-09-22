@@ -12,6 +12,8 @@ from iam_validator.mcp.build import build_server, spec_survives
 from iam_validator.mcp.component_spec import PromptSpec, ResourceSpec, ToolSpec
 from iam_validator.mcp.settings import ServerSettings
 
+from .conftest import as_caller
+
 pytest.importorskip("fastmcp", reason="MCP tests require 'pip install iam-policy-validator[mcp]'")
 
 
@@ -71,9 +73,14 @@ class TestTransportGating:
 class TestOrgConfigToolGating:
     """get_config/set_config: real ToolSpecs from tools/config.py, not fixtures."""
 
-    async def test_hosted_build_registers_get_config_not_set_config(self):
+    async def test_hosted_build_registers_get_config_not_set_config(self, monkeypatch):
+        monkeypatch.setenv(
+            "IAM_VALIDATOR_MCP_AUTH_TOKENS",
+            '{"tok": {"client_id": "test-client", "scopes": ["iam:config"]}}',
+        )
         mcp = build_server(ServerSettings(mode="hosted", auth="token", auth_explicitly_set=True))
-        names = {t.name for t in await mcp.list_tools()}
+        with as_caller("iam:config"):
+            names = {t.name for t in await mcp.list_tools()}
         assert "get_config" in names
         assert "set_config" not in names
 

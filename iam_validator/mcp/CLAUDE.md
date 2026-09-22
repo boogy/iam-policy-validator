@@ -34,7 +34,7 @@ mcp/
 │                          # sole server-construction path (create_server()/run_server() call it)
 ├── auth.py                 # get_auth_provider(settings) -> AuthProvider | None, dispatched on
 │                           # settings.auth (none/token/jwt/<idp>); SCOPE_TO_TAG constant.
-│                           # Not yet wired into build_server().
+│                           # Wired into build_server()'s FastMCP(auth=...) and per-component gating.
 ├── instructions.py        # BASE_INSTRUCTIONS + get_instructions()
 ├── resources.py           # RESOURCES: list[ResourceSpec] (6 entries)
 ├── prompts.py             # PROMPTS: list[PromptSpec] (3 entries)
@@ -134,7 +134,30 @@ or an IdP name (`azure`/`google`/`github`/`keycloak`/`auth0`/`workos`). All prov
 material comes from `IAM_VALIDATOR_MCP_AUTH_*` env vars or a file path they name,
 never a CLI flag; every failure prints to stderr and exits non-zero. `SCOPE_TO_TAG`
 is the canonical `iam:validate`/`iam:query`/`iam:analyze`/`iam:config` -> tag mapping
-for scope-based gating. Not yet wired into `build_server()`.
+for scope-based gating.
+
+### Scope gating
+
+`build_server()` passes `get_auth_provider(settings)` straight into
+`FastMCP(auth=...)`, and attaches a `fastmcp.server.auth.restrict_tag(tag,
+scopes=[...])` check to every tool/resource/prompt whose tag has a scope (via
+`_component_auth()`, `spec.scopes` overriding a `SCOPE_TO_TAG`-derived default per
+tag) — but only when `auth_provider is not None`. Outside a real request (e.g. a
+test calling `list_tools()` directly) or under `auth="none"`, FastMCP has no
+token to check, so the gate is skipped entirely rather than denying everyone.
+
+FastMCP hides a component a caller's token lacks scope for — `list_tools()`/
+`list_resources()`/`list_prompts()` omit it and `get_tool()`/`get_resource()`/
+`get_prompt()` return `None` — rather than returning an explicit authorization
+error, which would leak the scope taxonomy to an unauthorized caller. Every
+`validate`/`query`/`analyze`/`orgconfig`-tagged resource carries the same tag
+(and therefore the same gate) as its tool twin, so a caller who can't see
+`describe_checks` also can't read `iam://checks` directly. A tag absent from
+`SCOPE_TO_TAG` (e.g. the `fix_policy_issues_workflow` prompt's `fix` tag) has no
+scope requirement and stays visible to any caller. Per MCP 2026-07-28, the tool
+set may vary per-request by presented authorization (this); `spec_survives()`'s
+profile filtering must not vary per-connection, and doesn't — it's fixed at
+`build_server()` call time.
 
 ---
 
@@ -328,6 +351,14 @@ Test files of note:
   unknown), the hosted-open guard proven load-bearing via `ServerSettings.model_construct()`
   (bypassing the constructor-time check), token source precedence/rejection, and JWT
   scope enforcement via `RSAKeyPair`-minted tokens (no network calls)
+- `test_scope_gating.py` — component-level scope gating end to end: a token missing a
+  scope sees neither the tool nor its equivalent resource/prompt in any list response,
+  and direct `get_tool()`/`get_resource()`/`get_prompt()` return `None` rather than an
+  authorization error; two tokens against the same server see different surfaces; the
+  same token sees the same surface twice; `auth="none"` keeps today's unfiltered
+  behavior. Uses `conftest.as_caller(*scopes)`, which sets the SDK's
+  `auth_context_var` directly to simulate a request-bound token for direct
+  `list_tools()`-style calls that bypass FastMCP's real transport dispatch.
 
 Mock fetcher / network — no real API or AWS calls. Debug interactively via
 `mise run mcp:inspector`. Requires `fastmcp>=3.2,<5` (installed via
