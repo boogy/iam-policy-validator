@@ -2,7 +2,7 @@
 
 Tests the accuracy / robustness improvements made on top of v1.20.0:
 
-- ``aws_access_analyzer_validate`` defaults region per partition + timeout.
+- ``analyze_policy`` defaults region per partition + timeout.
 - Malformed input → clean ``ToolError`` (not Pydantic stacktrace).
 """
 
@@ -24,7 +24,7 @@ def stub_ctx_no_fetcher():
 
 
 # ---------------------------------------------------------------------------
-# aws_access_analyzer_validate — partition→region defaulting + bad partition
+# analyze_policy — partition→region defaulting + bad partition
 # ---------------------------------------------------------------------------
 
 
@@ -40,7 +40,7 @@ def test_partition_default_region_table(partition: str, expected_region: str):
     assert PARTITION_DEFAULT_REGION[partition] == expected_region
 
 
-async def test_aws_access_analyzer_validate_rejects_bad_partition(monkeypatch):
+async def test_analyze_policy_rejects_bad_partition(monkeypatch):
     """Unknown partition raises ToolError before touching boto3."""
     # Stub get_aws_session so we can confirm it's never reached.
     called = {"hit": False}
@@ -52,7 +52,7 @@ async def test_aws_access_analyzer_validate_rejects_bad_partition(monkeypatch):
     monkeypatch.setattr(analyze, "get_aws_session", fake_get_aws_session)
 
     with pytest.raises(ToolError, match="Unsupported partition"):
-        await analyze.aws_access_analyzer_validate(
+        await analyze._analyze_policy_tool(
             policy={"Version": "2012-10-17", "Statement": []},
             ctx=SimpleNamespace(request_context=None),
             partition="aws-bogus",
@@ -60,7 +60,7 @@ async def test_aws_access_analyzer_validate_rejects_bad_partition(monkeypatch):
     assert called["hit"] is False
 
 
-async def test_aws_access_analyzer_validate_uses_partition_default_region(monkeypatch):
+async def test_analyze_policy_uses_partition_default_region(monkeypatch):
     """When region is omitted, defaults to PARTITION_DEFAULT_REGION[partition]."""
     captured_region: dict[str, Any] = {}
 
@@ -75,7 +75,7 @@ async def test_aws_access_analyzer_validate_uses_partition_default_region(monkey
     monkeypatch.setattr(analyze, "get_aws_session", fake_get_aws_session)
     monkeypatch.setattr("iam_validator.mcp.tools.analyze.analyze_policy", fake_analyze)
 
-    await analyze.aws_access_analyzer_validate(
+    await analyze._analyze_policy_tool(
         policy={"Version": "2012-10-17", "Statement": []},
         ctx=SimpleNamespace(request_context=None),
         partition="aws-cn",
@@ -84,7 +84,7 @@ async def test_aws_access_analyzer_validate_uses_partition_default_region(monkey
     assert captured_region["analyze_region"] == "cn-north-1"
 
 
-async def test_aws_access_analyzer_validate_timeout(monkeypatch):
+async def test_analyze_policy_timeout(monkeypatch):
     """Hung AWS API call surfaces as a ToolError, not an open hang."""
     import asyncio
 
@@ -99,7 +99,7 @@ async def test_aws_access_analyzer_validate_timeout(monkeypatch):
     monkeypatch.setattr("iam_validator.mcp.tools.analyze.analyze_policy", slow_analyze)
 
     with pytest.raises(ToolError, match="timed out"):
-        await analyze.aws_access_analyzer_validate(
+        await analyze._analyze_policy_tool(
             policy={"Version": "2012-10-17", "Statement": []},
             ctx=SimpleNamespace(request_context=None),
             timeout_seconds=0.1,

@@ -390,7 +390,7 @@ principal_validation:
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `explain_policy`                | Generate a human-readable explanation of what a policy allows or denies, including security concerns and services used |
 | `compare_policies`              | Compare two IAM policies and highlight differences in permissions, actions added/removed, and resource scope changes   |
-| `aws_access_analyzer_validate`  | Run AWS Access Analyzer ValidatePolicy (live AWS API — needs credentials). Surfaces AWS-only checks beyond the local validator. |
+| `analyze_policy`                | Run AWS Access Analyzer ValidatePolicy (live AWS API — needs credentials). Surfaces AWS-only checks beyond the local validator. `profile` is local-mode only. |
 
 ### Query Tools
 

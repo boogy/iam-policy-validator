@@ -19,9 +19,11 @@ import json
 import logging
 import sys
 import threading
+import time
+from collections import deque
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -38,6 +40,33 @@ if TYPE_CHECKING:
     from fastmcp import FastMCP
 
 logger = logging.getLogger(__name__)
+
+
+class AnalyzeRateLimiter:
+    """Best-effort in-process sliding-window cap on ``analyze_policy`` calls.
+
+    Not a quota: a multi-replica deployment multiplies this by the replica count,
+    and it resets on every process restart. It only guards against a single
+    runaway client within one process. ``limit <= 0`` disables the cap.
+    """
+
+    def __init__(self, limit: int, window_s: float = 60.0) -> None:
+        self._limit = limit
+        self._window_s = window_s
+        self._lock = threading.Lock()
+        self._calls: deque[float] = deque()
+
+    def allow(self) -> bool:
+        if self._limit <= 0:
+            return True
+        now = time.monotonic()
+        with self._lock:
+            while self._calls and now - self._calls[0] >= self._window_s:
+                self._calls.popleft()
+            if len(self._calls) >= self._limit:
+                return False
+            self._calls.append(now)
+            return True
 
 
 class SessionState:
@@ -152,6 +181,7 @@ class ServerContext:
     aws_sessions: dict[tuple[str, str | None], Any]
     settings: ServerSettings
     mutable: SessionState | None
+    analyze_rate_limiter: AnalyzeRateLimiter = field(default_factory=lambda: AnalyzeRateLimiter(0))
     # Stable hash of the resolved config + registry provenance; see _compute_config_digest.
     config_digest: str | None = None
     # Set True once the fetcher prewarm completes; TASK-19's /ready endpoint reads this.
@@ -331,6 +361,7 @@ def build_context(settings: ServerSettings) -> ServerContext:
         aws_sessions={},
         settings=settings,
         mutable=mutable,
+        analyze_rate_limiter=AnalyzeRateLimiter(settings.analyze_rate_limit),
         config_digest=config_digest,
     )
 
@@ -525,6 +556,7 @@ def get_check_details(check_id: str, ctx: Any = None) -> dict[str, Any]:
 __all__ = [
     "ServerContext",
     "SessionState",
+    "AnalyzeRateLimiter",
     "HostedStartupError",
     "build_context",
     "prewarm",

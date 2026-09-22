@@ -45,8 +45,9 @@ mcp/
     │                       # condition_keys|arn_formats|expand_wildcard)
     ├── checks.py           # TOOLS: describe_checks (registry-driven check catalog +
     │                       # resolved enabled/severity/config + provenance source)
-    ├── analyze.py           # TOOLS: aws_access_analyzer_validate — wraps boto3 Access Analyzer
-    │                       # in asyncio.to_thread
+    ├── analyze.py           # TOOLS: analyze_policy (mode-gated local/hosted variants,
+    │                       # local carries profile) — wraps boto3 Access Analyzer in
+    │                       # asyncio.to_thread, bounded by allowed_regions + AnalyzeRateLimiter
     └── config.py           # TOOLS: get_config (always available), set_config
                             # (local/stdio only, mutating)
 ```
@@ -109,6 +110,16 @@ per `modes` (`{"local"}` wraps `validate_policies` with `path`/`glob` on its sig
 includes exactly one per process since `modes` is mutually exclusive, so hosted schemas
 never expose local-only filesystem parameters.
 
+`analyze.py` follows the same pattern under the shared name `analyze_policy`: the
+local `ToolSpec` wraps `_analyze_policy_tool` (has `profile`), the hosted one wraps
+`_analyze_policy_tool_hosted` (no `profile` — a client must not select among
+credential profiles on a shared host). Both funnel through `_analyze_policy_tool_impl`,
+which rejects a `region` outside `ServerSettings.allowed_regions` (default: the
+server's own region only) before a boto3 session is created, and enforces
+`ServerContext.analyze_rate_limiter` — a best-effort in-process sliding-window counter
+from `ServerSettings.analyze_rate_limit`, not a quota; reserved concurrency, API
+Gateway usage plans, and `iam:analyze`-scope gating are external/future controls.
+
 ---
 
 ## Tools (6) — tagged for `--profile` gating
@@ -121,7 +132,7 @@ The `--profile` flag uses these tags to enable/disable groups:
 | `validate`  | `validate_policies` (consolidates the former `validate_policy`, `quick_validate`, `validate_policies_batch`, `validate_with_config`, `check_org_compliance`, `get_policy_summary`), `describe_checks` (consolidates the former `get_issue_guidance`, `check_sensitive_actions`, `get_condition_requirements_for_action`) |
 | `query`     | `query` (kind-dispatched selector; consolidates the former `query_service_actions`, `query_action_details`, `query_actions_batch`, `check_actions_batch`, `query_condition_keys`, `query_arn_formats`, `expand_wildcard_action`)                                                                                         |
 | `orgconfig` | `get_config` (always available; consolidates the former `get_organization_config`, `get_active_profile`, `get_custom_instructions`), `set_config` (local/stdio only, `mutating`; consolidates the former `set_/clear_organization_config`, `load_organization_config_from_yaml`, `set_/clear_custom_instructions`)       |
-| `analyze`   | `aws_access_analyzer_validate` (only tool with `openWorldHint=True` — calls live AWS API)                                                                                                                                                                                                                                |
+| `analyze`   | `analyze_policy` (mode-gated local/hosted variants, local carries `profile`; only tool with `openWorldHint=True` — calls live AWS API; `region` bound by `ServerSettings.allowed_regions`, calls bound by `ServerSettings.analyze_rate_limit`)                                                                           |
 
 ### Profiles
 
