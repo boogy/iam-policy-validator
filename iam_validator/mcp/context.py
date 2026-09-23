@@ -184,7 +184,7 @@ class ServerContext:
     analyze_rate_limiter: AnalyzeRateLimiter = field(default_factory=lambda: AnalyzeRateLimiter(0))
     # Stable hash of the resolved config + registry provenance; see _compute_config_digest.
     config_digest: str | None = None
-    # Set True once the fetcher prewarm completes; TASK-19's /ready endpoint reads this.
+    # Set True once the fetcher prewarm completes; the /ready endpoint reads this.
     ready: bool = False
 
 
@@ -296,6 +296,23 @@ def _verify_hosted_custom_checks(config: ValidatorConfig, custom_checks_dir: str
         )
 
 
+def _verify_writable_cache_directory(cache_directory: Path | str | None) -> None:
+    """Raise ``HostedStartupError`` if an explicitly configured cache directory isn't writable."""
+    if cache_directory is None:
+        return
+    directory = Path(cache_directory)
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        probe = directory / ".iam-validator-writability-check"
+        probe.write_text("")
+        probe.unlink()
+    except OSError as e:
+        raise HostedStartupError(
+            f"cache_directory {directory} is not writable: {e}. Point it at a writable "
+            "volume or tmpfs -- a read-only container root filesystem is the usual cause."
+        ) from e
+
+
 def _compute_config_digest(config: ValidatorConfig, registry: CheckRegistry) -> str:
     """Stable SHA-256 over the resolved config plus the built registry's provenance.
 
@@ -344,11 +361,16 @@ def build_context(settings: ServerSettings) -> ServerContext:
 
     config_digest = _compute_config_digest(config, registry)
 
+    if settings.mode == "hosted":
+        _verify_writable_cache_directory(settings.cache_directory)
+
     fetcher = AWSServiceFetcher(
         prefetch_common=True,
         memory_cache_size=512,
         aws_services_dir=str(settings.aws_services_dir) if settings.aws_services_dir else None,
         cache_dir=str(settings.cache_directory) if settings.cache_directory else None,
+        connection_pool_size=settings.http_max_connections,
+        keepalive_connections=settings.http_max_keepalive_connections,
     )
 
     mutable = None if settings.mode == "hosted" else SessionState()
@@ -385,29 +407,37 @@ def _resolve_startup_instructions(settings: ServerSettings, config: ValidatorCon
 
 
 @asynccontextmanager
-async def server_lifespan(_server: FastMCP, settings: ServerSettings | None = None) -> AsyncIterator[ServerContext]:
+async def server_lifespan(
+    _server: FastMCP,
+    settings: ServerSettings | None = None,
+    context: ServerContext | None = None,
+) -> AsyncIterator[ServerContext]:
     """FastMCP lifespan: build the context once, prewarm it, and tear it down on exit.
 
     ``settings`` lets ``build_server()`` thread the same settings it used for
     tool/resource gating into the runtime context (so e.g. ``get_config``
     reports the profile that was actually built); falls back to
-    ``ServerSettings.from_env()`` when constructed directly.
+    ``ServerSettings.from_env()`` when constructed directly. ``context``, when
+    given, is used as-is instead of building a new one -- the ASGI app builder
+    (``mcp/asgi.py``) pre-builds it so ``/health``/``/ready`` handlers can read
+    the same instance this lifespan prewarms.
     """
     if settings is None:
         settings = ServerSettings.from_env()
-    context = build_context(settings)
+    if context is None:
+        context = build_context(settings)
 
     custom_instructions = _resolve_startup_instructions(settings, context.config)
     if context.mutable is not None and custom_instructions:
         context.mutable.set_instructions(custom_instructions, source="settings")
 
-    await prewarm(context)
-
-    from iam_validator.mcp.instructions import get_instructions
-
-    _server.instructions = get_instructions(custom_instructions)
-
     try:
+        await prewarm(context)
+
+        from iam_validator.mcp.instructions import get_instructions
+
+        _server.instructions = get_instructions(custom_instructions)
+
         yield context
     finally:
         await context.fetcher.__aexit__(None, None, None)

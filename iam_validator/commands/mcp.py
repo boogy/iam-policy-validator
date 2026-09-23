@@ -107,9 +107,8 @@ Features:
             logging.error("Make sure the MCP module is properly installed with: uv sync --extra mcp")
             return 1
 
-        settings = resolve_settings(args)
-
         try:
+            settings = resolve_settings(args)
             server = build_server(settings)
             logging.info(f"Starting MCP server with {settings.transport} transport...")
             await server.run_async(transport=settings.transport, **run_kwargs(settings))

@@ -58,6 +58,7 @@ docs = [
 ]
 mcp = [
   "fastmcp>=3.2,<5",
+  "uvicorn[standard]>=0.30.0",
 ]
 
 [project.scripts]

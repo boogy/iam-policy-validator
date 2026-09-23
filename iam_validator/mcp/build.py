@@ -91,17 +91,20 @@ def _component_auth(spec: ComponentSpec, auth_provider: AuthProvider | None) -> 
     return restrict_tag(spec.tag, scopes=list(scopes))
 
 
-def build_server(settings: ServerSettings) -> FastMCP:
+def build_server(settings: ServerSettings, context: ServerContext | None = None) -> FastMCP:
     """Construct a fresh ``FastMCP`` instance carrying only the specs ``settings`` allow.
 
     Never reuses a module-level singleton: each call returns its own instance.
+    ``context``, when given, is used as-is instead of being built by the lifespan
+    (see ``server_lifespan``) -- ``mcp/asgi.py`` uses this to share one pre-built
+    ``ServerContext`` between MCP tool calls and the ``/health``/``/ready`` routes.
     """
     from iam_validator.mcp.context import server_lifespan
 
     @asynccontextmanager
     async def _lifespan(server: FastMCP) -> AsyncIterator[ServerContext]:
-        async with server_lifespan(server, settings) as context:
-            yield context
+        async with server_lifespan(server, settings, context) as ctx:
+            yield ctx
 
     auth_provider = get_auth_provider(settings)
     mcp = FastMCP(

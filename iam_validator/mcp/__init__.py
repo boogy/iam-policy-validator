@@ -81,15 +81,20 @@ def run_server() -> None:
             print(f"{name:>20s}  {desc}")
         sys.exit(0)
 
-    settings = resolve_settings(args)
-
     try:
+        settings = resolve_settings(args)
+
         from iam_validator.mcp.build import build_server
 
         mcp = build_server(settings)
         mcp.run(transport=settings.transport, **run_kwargs(settings))
     except ImportError as e:
         raise ImportError("fastmcp is required for MCP server. Install with: uv sync --extra mcp") from e
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except Exception as e:
+        print(f"Failed to start MCP server: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 __all__ = [

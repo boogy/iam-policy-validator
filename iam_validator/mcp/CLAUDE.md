@@ -56,6 +56,8 @@ mcp/
 │                          # SessionState (session-scoped org config / custom instructions)
 ├── audit.py               # audited_call() -- one structured JSON log record per hosted
 │                          # tool call, across all five tools (see "Audit logging" below)
+├── asgi.py                # create_app(settings) -- production ASGI app factory (uvicorn
+│                          # entrypoint); mounts the FastMCP app under outer /health, /ready
 └── tools/
     ├── validate.py         # TOOLS: validate_policies (mode-gated local/hosted variants,
     │                       # local carries path/glob)
@@ -97,6 +99,45 @@ override case, `get_check_catalog()`/`get_check_details()`/`describe_checks()` (
 `ServerContext.config` (the hosted baseline in hosted mode, never a hardcoded
 default) — on every call, so the catalog agrees with what `validate_policies` runs;
 nothing memoizes the resolved values.
+
+### Production serving (ASGI, Docker)
+
+`iam-validator-mcp --transport http`/`iam-validator mcp --transport http` call
+`FastMCP.run()`/`run_async()` for local, single-process serving. `asgi.py:create_app()`
+is a separate, production path: it builds one `ServerContext`, passes it into
+`build_server(settings, context=...)`, and returns a plain `Starlette` ASGI app —
+`mcp.http_app(stateless_http=True, host_origin_protection="auto")` mounted at `/` under
+two outer routes, `/health` (liveness) and `/ready` (readiness: config resolved,
+registry built, `context.ready` — flips true when the lifespan's `prewarm()`
+completes). The Docker image's `CMD` runs it via
+`uvicorn iam_validator.mcp.asgi:create_app --factory`, so a process manager can run
+multiple workers behind a reverse proxy.
+
+`/health`/`/ready` are declared as top-level routes on the _outer_ app, not
+`@mcp.custom_route`s on the FastMCP app itself, specifically so they never pass through
+the mounted sub-app's middleware stack — FastMCP's Origin/Host DNS-rebinding guard
+(`host_origin_protection="auto"`, required by the MCP spec) and its `auth` provider both
+live there. A `custom_route` would share that stack and 403/401 a load balancer probe
+that sends no `Origin` header and no bearer token; mounting makes both checks
+structurally unreachable from `/health`/`/ready` while `/mcp` itself still enforces
+both (see `tests/mcp/test_health_routes.py`'s bypass tests and their `/mcp` controls).
+
+The server binds `127.0.0.1` by default; `0.0.0.0` (what the Docker image sets) is an
+explicit opt-in via `--host`/`IAM_VALIDATOR_MCP_HOST`. Behind a reverse proxy, disable
+response buffering for the `/mcp` SSE stream (`proxy_buffering off` on nginx, plus
+`X-Accel-Buffering: no`) and raise `proxy_read_timeout`.
+
+See the repo-root `Dockerfile` for the hosted image: it bakes AWS service reference
+data at build time (`iam-validator sync-services`) so the running container makes no
+outbound calls, installs the package as a built wheel rather than an editable source
+tree, runs as a non-root user, and never sets `PYTHONOPTIMIZE`/`-O` (would strip the
+docstrings `describe_checks` reads as each check's description). It deliberately leaves
+`IAM_VALIDATOR_MCP_AUTH` and any config file unset — an operator must supply
+`--auth`/`IAM_VALIDATOR_MCP_AUTH` and `--config`/`IAM_VALIDATOR_MCP_CONFIG` explicitly,
+same as any other hosted-mode deployment. `IAM_VALIDATOR_MCP_CACHE_DIRECTORY` points at
+`/tmp/iam-validator-cache`, but the image does not mount a tmpfs there — under a
+read-only container root filesystem, an operator must mount a writable volume or run
+the container with `--tmpfs /tmp`, or startup fails with `HostedStartupError`.
 
 ### Hosted config resolution + config_digest
 
@@ -423,9 +464,12 @@ Test files of note:
   run-wide override, a `name` hint resolves through a `policy_types:` config glob,
   and an SCP-shaped policy is never auto-detected without an explicit hint
 - `test_hosted_startup.py` — a valid custom check still lets hosted startup verify
-  and boot; an unwritable `cache_directory` fails startup with `OSError` (the real
-  `AWSServiceFetcher` constructor `mkdir`s it synchronously); local mode defaults
-  to `auth="none"` unset
+  and boot; an explicitly-set, unwritable `cache_directory` fails startup with
+  `HostedStartupError` naming it (`_verify_writable_cache_directory`'s own
+  mkdir/write probe, ahead of `AWSServiceFetcher` construction), covering both a
+  non-directory path and a permission-denied directory; the writability check is
+  skipped when `cache_directory` is left unset; local mode defaults to `auth="none"`
+  unset
 - `test_no_policy_in_logs.py` — a policy-content marker reaches no log record at
   any level, beyond the hosted-`validate_policies`-only slice `test_audit.py`
   covers: local-mode `validate_policies` and hosted `analyze_policy`
@@ -474,6 +518,11 @@ Test files of note:
   identical across local and hosted mode, not just the one `test_transport.py` pins
 - `test_query_schema.py` — each `query` `kind` branch's required parameter is enforced
   by the declared `inputSchema` (schema-level, not just a runtime `ToolError`)
+- `test_health_routes.py` — `asgi.py`'s `/health`/`/ready`: payload shape
+  (`version`/`config_digest`/`config_source`), `/ready`'s 503→200 transition tracking
+  `context.ready` across the lifespan's `prewarm()`, and — with `/mcp` itself as the
+  control — that both routes bypass the Origin guard and the hosted auth provider that
+  `/mcp` still enforces
 
 Mock fetcher / network — no real API or AWS calls. `conftest.py`'s three autouse
 fixtures: `_no_real_aws_fetcher`/`_no_real_aws_fetcher_in_context` redirect
