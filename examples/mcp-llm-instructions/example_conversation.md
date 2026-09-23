@@ -34,8 +34,9 @@ For this example, I'll assume:
 First, let me verify the actions we need aren't flagged as sensitive:
 
 ```
-Tool: check_sensitive_actions
+Tool: query
 Input: {
+  "kind": "action_details",
   "actions": ["s3:GetObject", "dynamodb:PutItem", "dynamodb:UpdateItem", "logs:CreateLogStream"]
 }
 ```
@@ -45,8 +46,8 @@ Input: {
 ### Step 2: Query Correct ARN Formats
 
 ```
-Tool: query_arn_formats
-Input: {"service": "dynamodb"}
+Tool: query
+Input: {"kind": "arn_formats", "service": "dynamodb"}
 ```
 
 **Result**: `arn:aws:dynamodb:{region}:{account}:table/{table-name}`
@@ -111,10 +112,9 @@ Input: {"service": "dynamodb"}
 ### Step 4: Validate the Policy
 
 ```
-Tool: validate_policy
+Tool: validate_policies
 Input: {
-  "policy": <policy above>,
-  "policy_type": "identity"
+  "policies": [{"policy": <policy above>, "policy_type": "identity"}]
 }
 ```
 
@@ -199,20 +199,20 @@ If the user had asked "just give me full access", here's how to respond:
 ### Step 1: Check Sensitive Actions
 
 ```
-Tool: check_sensitive_actions
-Input: {"actions": ["sts:AssumeRole"]}
+Tool: query
+Input: {"kind": "action_details", "actions": ["sts:AssumeRole"]}
 ```
 
 **Result**: `sts:AssumeRole` is flagged as sensitive - requires conditions.
 
-### Step 2: Get Required Conditions
+### Step 2: Check Required Conditions
 
 ```
-Tool: get_required_conditions
-Input: {"actions": ["sts:AssumeRole"]}
+Tool: describe_checks
+Input: {"check_ids": ["action_condition_enforcement"]}
 ```
 
-**Result**: Recommend `sts:ExternalId` or source restrictions.
+**Result**: The resolved requirements for `sts:AssumeRole` recommend `sts:ExternalId` or a source restriction.
 
 ### Step 3: Generate Secure Policy
 
@@ -241,7 +241,8 @@ Input: {"actions": ["sts:AssumeRole"]}
 ### Step 4: Validate
 
 ```
-Tool: validate_policy
+Tool: validate_policies
+Input: {"policies": [{"policy": <policy above>}]}
 ```
 
 **Result**: Valid with 0 issues.

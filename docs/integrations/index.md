@@ -41,6 +41,14 @@ Integrate IAM Policy Validator into your CI/CD pipelines, AI assistants, and dev
 
     [:octicons-arrow-right-24: MCP Server](mcp-server.md)
 
+-   :material-server-network:{ .lg .middle } **MCP Hosting**
+
+    ---
+
+    Deploy the MCP server as a shared, multi-tenant HTTP service
+
+    [:octicons-arrow-right-24: MCP Hosting](mcp-hosting.md)
+
 -   :material-console-line:{ .lg .middle } **Claude Code Skill**
 
     ---

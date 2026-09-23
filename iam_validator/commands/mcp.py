@@ -64,9 +64,10 @@ Every flag also reads its IAM_VALIDATOR_MCP_* environment variable (flags win); 
 'iam-validator-mcp --help' -- both entry points resolve the same flags identically.
 
 Features:
-  - Policy validation with 20+ security checks
-  - AWS service queries (actions, resources, condition keys)
-  - Session-wide configuration management
+  - Policy validation with 23 security checks
+  - AWS service queries (actions, resources, condition keys, ARN formats)
+  - AWS Access Analyzer integration
+  - Session-wide configuration management (local mode)
         """
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:

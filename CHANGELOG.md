@@ -6,6 +6,8 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ## [Unreleased]
 
+Breaking changes in this release affect MCP server users only (the MCP tools, resources and prompts, plus the `iam-validator mcp`/`iam-validator-mcp` server flags). `iam-validator validate`/`analyze` and the other CLI commands, the SDK's validation API and the GitHub Action are unaffected.
+
 ### Added
 
 - `iam_validator.mcp.asgi.create_app()`: a production ASGI app factory exposing unauthenticated `/health` and `/ready` routes alongside the mounted MCP server, for `uvicorn`/multi-worker deployments behind a reverse proxy. Both report `version`, `config_digest`, and `config_source` (`"file"`/`"none"`).
@@ -38,10 +40,11 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Four guard-test files encoding structural invariants the MCP redesign must not regress: `tests/mcp/test_no_hardcoded_ids.py` (no retired tool name, unregistered formatter, or unregistered check-config stanza is referenced anywhere), `tests/mcp/test_tool_provenance.py` (every registered MCP tool maps to a CLI command or SDK export), `tests/mcp/test_no_globals.py` (no module-level mutable state reappears under `iam_validator/mcp/`), and additions to `tests/mcp/test_dynamic_checks.py`. `tests/mcp/test_cli.py` also gained a test proving no `IAM_VALIDATOR_MCP_*` env var can forge `auth_explicitly_set` by name alone.
 - Behaviour-level MCP test coverage: `tests/mcp/test_cli_parity.py` (`validate_policies` matches CLI output under a custom config), `tests/mcp/test_isolation.py` (concurrent callers against one hosted server are never attributed to each other's identity in audit records), `tests/mcp/test_output_schemas.py` (every tool's declared `output_schema` round-trips against its actual response), plus new coverage for protocol-version negotiation, query input schemas, policy-type precedence, hosted startup, log redaction, and registry reuse. `tests/mcp/test_build.py` gained a test pinning the exact 5-tool hosted / 6-tool local surfaces.
 - `tests/mcp/conftest.py` gained three autouse fixtures ensuring no MCP test can reach the real AWS Service Reference cache or endpoint: two redirect `AWSServiceFetcher` construction to a mock fetcher, and a third patches `AWSServiceFetcher.__init__` itself so a test constructing the real class directly still gets a `tmp_path` cache directory. Most of `tests/mcp/test_query_tools.py` now passes a mock fetcher into `query`; one test instead swaps a real fetcher's `fetch_service_by_name` to prove `query()` reuses the context-provided fetcher rather than constructing its own.
+- `docs/integrations/mcp-hosting.md`: a new page documenting hosted-mode auth providers, scope-based tool gating, immutable startup config, audit logging, and production ASGI/Docker deployment.
 
 ### Removed
 
-- The MCP policy-generation surface: `explain_policy`, `compare_policies`, `fix_policy_issues`, `list_templates`, `generate_policy_from_template`, `build_minimal_policy`, `suggest_actions`, `build_arn`, `check_sensitive_actions` and `get_required_conditions` tools, the `iam://templates` resource, the `templates/` package (15 built-in templates), curated per-check examples, and the `generation` tag/`no-generation` profile. `get_issue_guidance` and `get_check_details` now return registry-driven descriptions and default severities only, with no curated example fixes. The MCP server now exposes 24 tools and 7 resources (previously 33 and 8).
+- The MCP policy-generation surface: `explain_policy`, `compare_policies`, `fix_policy_issues`, `list_templates`, `generate_policy_from_template`, `build_minimal_policy`, `suggest_actions`, `build_arn`, `check_sensitive_actions` and `get_required_conditions` tools, the `iam://templates` resource, the `templates/` package (15 built-in templates), its `merge_conditions` helper (also dropped from `iam_validator.mcp.__all__`), curated per-check examples, and the `generation` tag/`no-generation` profile. `get_issue_guidance` and `get_check_details` now return registry-driven descriptions and default severities only, with no curated example fixes. The MCP server now exposes 24 tools and 7 resources (previously 33 and 8).
 - `iam_validator.mcp.session_config`: `SessionConfigManager` and `CustomInstructionsManager` are gone, superseded by `ServerContext`/`SessionState`.
 - `iam_validator.mcp.server.apply_profile()`/`set_active_profile()` and their `mcp._transforms` snapshot poke — decorator-driven tag enable/disable, superseded by `build.build_server()`'s declarative `ComponentSpec` filtering, now driven directly by the CLI's `--profile` flag.
 - `iam_validator/mcp/server.py` itself, and its module-level `mcp` FastMCP singleton — superseded by `build_server(settings)`, which returns a fresh instance per call.
@@ -58,6 +61,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 - The three `@mcp.prompt` prompts (`generate_secure_policy`, `fix_policy_issues_workflow`, `review_policy_security`) are rewritten to name only tools that still exist — `validate_policies` and `query` — replacing references to tools removed or renamed earlier in this release.
 - `iam-validator-mcp` and `iam-validator mcp` now share one argparse layer instead of maintaining separate, drifting flag sets; both accept the same flags (`--mode`, `--transport`, `--host`, `--port`, `--config`, `--auth`, `--profile`, `--custom-checks-dir`, `--aws-services-dir`, `--cache-directory`, `--instructions`/`--instructions-file`, `--allowed-regions`, `--analyze-rate-limit`, and the five request-limit flags) plus `--list-profiles`.
+- `docs/integrations/mcp-server.md` is rewritten in full to describe the current 6-tool/6-resource/3-prompt MCP surface, replacing stale references to tools removed earlier in this release.
 
 ### Fixed
 

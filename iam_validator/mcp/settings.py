@@ -24,8 +24,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Numeric limit defaults. Nothing outside this module needs them yet; if a future
-# task (e.g. TASK-08 enforcement) needs to share one, move it to
-# iam_validator/core/constants.py instead of duplicating it.
+# caller needs to share one, move it to iam_validator/core/constants.py instead of
+# duplicating it.
 DEFAULT_PORT = 8000
 DEFAULT_ANALYZE_RATE_LIMIT = 10
 DEFAULT_MAX_POLICIES = 50

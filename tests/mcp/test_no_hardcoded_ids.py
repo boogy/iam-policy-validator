@@ -64,43 +64,6 @@ _EXCLUDED_DOC_DIRS = (
     REPO_ROOT / "docs" / "developer-guide" / "sdk",
 )
 
-_MCP_SERVER_DOC = REPO_ROOT / "docs" / "integrations" / "mcp-server.md"
-
-# Pre-existing debt (not introduced here): pins the exact stale-reference counts this page
-# already has, so a *new* one still fails and the debt can't silently shrink either without
-# updating this baseline. Remove entirely once the page is rewritten to the current surface.
-_MCP_SERVER_DOC_BASELINE: dict[str, int] = {
-    "build_arn": 1,
-    "build_minimal_policy": 6,
-    "check_actions_batch": 1,
-    "check_org_compliance": 1,
-    "check_sensitive_actions": 1,
-    "clear_custom_instructions": 1,
-    "clear_organization_config": 1,
-    "compare_policies": 1,
-    "explain_policy": 1,
-    "fix_policy_issues": 4,
-    "generate_policy_from_template": 1,
-    "get_check_details": 1,
-    "get_condition_requirements_for_action": 1,
-    "get_custom_instructions": 1,
-    "get_issue_guidance": 1,
-    "get_organization_config": 1,
-    "get_required_conditions": 1,
-    "list_checks": 1,
-    "list_sensitive_actions": 1,
-    "list_templates": 2,
-    "load_organization_config_from_yaml": 1,
-    "query_actions_batch": 1,
-    "query_service_actions": 2,
-    "set_custom_instructions": 2,
-    "set_organization_config": 1,
-    "suggest_actions": 1,
-    "validate_policies_batch": 1,
-    "validate_policy": 4,
-    "validate_with_config": 1,
-}
-
 _FORMAT_FLAG_RE = re.compile(r"iam-validator (?:validate|analyze)\b[^\n`]*--format\s+([a-z][a-z0-9_]*)")
 _YAML_CHECK_STANZA_RE = re.compile(
     r"^([a-z][a-z0-9_]+):\s*$\n(?:^\s+#.*$\n)*^\s+(?:enabled|severity|message|suggestion):",
@@ -134,15 +97,6 @@ async def _registered_tool_names() -> set[str]:
     return names
 
 
-def _word_boundary_counts(text: str, names: frozenset[str]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for name in names:
-        n = len(re.findall(r"\b" + re.escape(name) + r"\b", text))
-        if n:
-            counts[name] = n
-    return counts
-
-
 class TestNoRetiredToolNameLiterals:
     async def test_no_prompt_or_doc_references_a_retired_tool_name(self):
         live_names = await _registered_tool_names() | set(_sdk_exports)
@@ -151,22 +105,11 @@ class TestNoRetiredToolNameLiterals:
 
         hits: dict[str, set[str]] = {}
         for path in (*_MCP_PROSE_FILES, *_doc_files()):
-            if path == _MCP_SERVER_DOC:
-                continue
             found = _word_boundary_hits(path.read_text(), dead_names)
             if found:
                 hits[str(path.relative_to(REPO_ROOT))] = found
 
         assert not hits, f"retired MCP tool name(s) referenced as if still callable: {hits}"
-
-    async def test_mcp_server_doc_stale_refs_match_pinned_baseline_exactly(self):
-        live_names = await _registered_tool_names() | set(_sdk_exports)
-        dead_names = _RETIRED_TOOL_NAMES - live_names
-        actual = _word_boundary_counts(_MCP_SERVER_DOC.read_text(), dead_names)
-        assert actual == _MCP_SERVER_DOC_BASELINE, (
-            f"stale reference counts drifted from _MCP_SERVER_DOC_BASELINE (new refs must be fixed, "
-            f"shrinkage must update the baseline): {actual}"
-        )
 
 
 class TestNoOrphanedRegistryDrivenLiterals:

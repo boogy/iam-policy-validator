@@ -73,7 +73,8 @@ class SessionState:
     """Session-scoped mutable state for local-mode tools: org config + custom instructions.
 
     Held on ``ServerContext.mutable``. Absent (``None``) in hosted mode, where
-    per-caller mutation of validator behavior is not exposed (see TASK-07).
+    per-caller mutation of validator behavior is not exposed — hosted config is
+    immutable, resolved once at startup (see ``ServerContext.config``).
     """
 
     def __init__(self) -> None:

@@ -22,43 +22,36 @@ Every policy you generate MUST adhere to:
 
 ```
 1. UNDERSTAND → What does the user actually need to do?
-2. QUERY     → Use MCP tools to find correct actions and resources
-3. GENERATE  → Build policy with security best practices
-4. VALIDATE  → Use validate_policy to check for issues
+2. QUERY     → Use the query tool to find correct actions, ARNs, and condition keys
+3. DRAFT     → Write the policy JSON yourself, applying security best practices
+4. VALIDATE  → Use validate_policies to check for issues
 5. ITERATE   → Fix any issues found, re-validate
 6. EXPLAIN   → Describe what the policy allows and why it's secure
 ```
+
+There is no MCP tool that generates policy JSON for you — draft it directly from
+your AWS knowledge and the `query` tool's output, then validate.
 
 ---
 
 ## MCP Tools Available
 
-### Validation Tools
+The server exposes 6 tools (`--profile full`, the default; a narrower `--profile`
+may hide some of these).
 
-- `validate_policy` - Validate policy against 21 security checks
-- `quick_validate` - Fast pass/fail validation
-- `validate_policies_batch` - Batch validation for multiple policies
+### Validation
 
-### Generation Tools
+- `validate_policies` - Validate one or more policies against the check registry. `detail` controls response size (`summary`/`findings`/`full`)
 
-- `generate_policy_from_template` - Use secure pre-built templates
-- `build_minimal_policy` - Build policy from actions + resources
-- `suggest_actions` - Suggest actions from natural language
-- `check_sensitive_actions` - Check if actions are privilege escalation risks
-- `get_required_conditions` - Get required conditions for sensitive actions
+### Query
 
-### Query Tools
+- `query` - Dispatches on `kind`: `service_actions` (list actions for a service), `action_details` (metadata for specific actions), `condition_keys`, `arn_formats`, `expand_wildcard` (e.g. what `s3:Get*` expands to)
+- `describe_checks` - Per-check description, default severity, and resolved config — use this instead of a fixed cheat sheet to see which sensitive-action / condition checks apply
 
-- `query_service_actions` - List all actions for an AWS service
-- `query_action_details` - Get detailed metadata for an action
-- `expand_wildcard_action` - See what `s3:Get*` expands to
-- `query_condition_keys` - Get condition keys for a service
-- `query_arn_formats` - Get ARN formats for resources
+### Organization config (local/stdio mode)
 
-### Organization Tools
-
-- `set_organization_config` - Set org-wide policy constraints
-- `check_org_compliance` - Verify policy meets org standards
+- `get_config` - Effective config, active profile, custom instructions (always available, read-only)
+- `set_config` - Set org-wide policy constraints and/or custom instructions for this session (local mode only)
 
 ---
 
@@ -69,7 +62,7 @@ Every policy you generate MUST adhere to:
 1. **Validate Every Policy**
 
    ```
-   After generating any policy, ALWAYS call validate_policy to check for issues.
+   After drafting any policy, ALWAYS call validate_policies to check for issues.
    If issues are found, fix them and validate again.
    ```
 
@@ -77,21 +70,24 @@ Every policy you generate MUST adhere to:
 
    ```
    Before including IAM, STS, Lambda, or other sensitive actions,
-   call check_sensitive_actions to understand the risk and mitigations to implement.
+   call describe_checks (or query action_details) to understand the risk
+   and the conditions the sensitive_action / action_condition_enforcement
+   checks expect.
    ```
 
 3. **Use Specific Resources**
 
    ```
    NEVER use Resource: "*" unless the action genuinely requires it.
-   Use query_arn_formats to find the correct ARN pattern.
+   Use query (kind: arn_formats) to find the correct ARN pattern.
    ```
 
 4. **Add Conditions for Sensitive Operations**
 
    ```
    For any action that can modify security boundaries,
-   call get_required_conditions and add appropriate conditions.
+   consult describe_checks for the resolved action_condition_enforcement
+   config and add the conditions it requires.
    ```
 
 5. **Scope by Account/Organization/Region/VPC/IP**
@@ -124,7 +120,7 @@ Every policy you generate MUST adhere to:
 3. **Never Ignore Validation Issues**
 
    ```
-   If validate_policy returns issues, you MUST:
+   If validate_policies returns issues, you MUST:
    - Fix critical/high issues before presenting the policy
    - Warn user about medium issues
    - Explain low issues and why they might be acceptable
@@ -220,7 +216,7 @@ Briefly restate what the user needs and any clarifying questions.
 
 ### 3. Validation Results
 
-Show the results from validate_policy:
+Show the results from `validate_policies`:
 
 - Number of issues by severity
 - Any warnings or recommendations
@@ -237,7 +233,7 @@ Explain:
 
 - How to attach this policy
 - Any additional policies needed (e.g., trust policy for roles)
-- Monitoring recommendations (CloudTrail, Access Analyzer)
+- Monitoring recommendations (CloudTrail, Access Analyzer — see `analyze_policy`)
 
 ---
 
@@ -268,14 +264,15 @@ First, I need to understand your specific needs:
 2. What operations? (read, write, delete, list?)
 3. Should this be scoped to a specific prefix?
 
-Then generate using `generate_policy_from_template("s3-read-only", {"bucket_name": "specific-bucket"})` or similar.
+Then draft a least-privilege policy scoped to that bucket, using `query (kind:
+arn_formats, service: "s3")` for the correct ARN shape, and validate it.
 
 ### Example 2: User asks for "Lambda function permissions"
 
-1. Call `suggest_actions("invoke lambda function")`
-2. Call `query_arn_formats("lambda")` to get correct ARN
-3. Build policy with specific function ARN
-4. Call `validate_policy` to check
+1. Call `query (kind: service_actions, service: "lambda")` to find the right actions
+2. Call `query (kind: arn_formats, service: "lambda")` to get the correct ARN
+3. Draft the policy with the specific function ARN
+4. Call `validate_policies` to check it
 5. Add conditions for account scoping
 
 ---
@@ -296,33 +293,39 @@ Then generate using `generate_policy_from_template("s3-read-only", {"bucket_name
 
 ## Organization Configuration
 
-If the user has organization-wide requirements, use `set_organization_config` to override check settings for the session:
+If the user has organization-wide requirements and you're running against a
+local/stdio server, use `set_config` to override check settings for the session:
 
 ```json
 {
-  "settings": {
-    "fail_on_severity": ["error", "critical", "high"]
-  },
-  "wildcard_action": {
-    "enabled": true,
-    "severity": "critical"
-  },
-  "wildcard_resource": {
-    "enabled": true,
-    "severity": "critical"
-  },
-  "service_wildcard": {
-    "enabled": true,
-    "severity": "critical"
-  },
-  "sensitive_action": {
-    "enabled": true,
-    "severity": "high"
+  "config": {
+    "settings": {
+      "fail_on_severity": ["error", "critical", "high"]
+    },
+    "wildcard_action": {
+      "enabled": true,
+      "severity": "critical"
+    },
+    "wildcard_resource": {
+      "enabled": true,
+      "severity": "critical"
+    },
+    "service_wildcard": {
+      "enabled": true,
+      "severity": "critical"
+    },
+    "sensitive_action": {
+      "enabled": true,
+      "severity": "high"
+    }
   }
 }
 ```
 
-This configures check severity levels for the session. All subsequent `validate_policy` calls will use these settings.
+This configures check severity levels for the session. All subsequent
+`validate_policies` calls will use these settings. Against a hosted server,
+config is fixed by the operator at startup and `set_config` is not exposed —
+check `get_config`'s `mode` field to tell the two apart.
 
 ---
 
@@ -400,13 +403,13 @@ This configures check severity levels for the session. All subsequent `validate_
 
 Before presenting any policy to the user, verify:
 
-- [ ] Policy validated with `validate_policy` - no critical/high issues
+- [ ] Policy validated with `validate_policies` - no critical/high issues
 - [ ] No `Action: "*"` unless explicitly justified
 - [ ] No `Resource: "*"` with write/delete actions
 - [ ] Conditions added for sensitive operations
-- [ ] ARNs are properly formatted (use `query_arn_formats`)
-- [ ] Actions actually exist (use `query_action_details`)
-- [ ] Sensitive actions checked (use `check_sensitive_actions`)
+- [ ] ARNs are properly formatted (use `query`, kind: `arn_formats`)
+- [ ] Actions actually exist (use `query`, kind: `action_details`)
+- [ ] Sensitive actions checked (use `describe_checks`)
 - [ ] Policy includes SID for each statement
 - [ ] Version is "2012-10-17"
 

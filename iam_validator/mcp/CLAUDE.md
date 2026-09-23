@@ -435,10 +435,9 @@ Test files of note:
   `format` enum tracks `FormatterRegistry.list_formatters()` minus `TERMINAL_FORMATS`, and
   that its `policy_type` short-form mapping covers every `PolicyType` literal
 - `test_no_hardcoded_ids.py` — prompts/instructions and every docs page (excluding
-  `docs/api-reference`, `docs/developer-guide/sdk`, and, as documented pre-existing debt,
-  `docs/integrations/mcp-server.md`) never reference a retired MCP tool name, and every
-  documented `--format` example / per-check YAML config stanza names a formatter/check the
-  current build actually registers
+  `docs/api-reference`, `docs/developer-guide/sdk`) never reference a retired MCP tool
+  name, and every documented `--format` example / per-check YAML config stanza names a
+  formatter/check the current build actually registers
 - `test_tool_provenance.py` — every registered MCP tool maps to a CLI command or SDK
   export, `set_config` the sole named exemption (edits session state, an MCP-only
   concept); the deleted `templates/` package and `tools/generation.py` never reappear
