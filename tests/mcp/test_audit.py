@@ -177,7 +177,10 @@ async def test_query_describe_checks_get_config_hosted_each_emit_one_record(host
     with as_caller("iam:orgconfig", client_id="config-caller"):
         await config.get_config(ctx)
 
-    records = {r["tool"]: r for r in _audit_records(caplog)}
+    raw_records = _audit_records(caplog)
+    # Assert the count before keying by tool name, or a double-emission bug would collapse silently.
+    assert len(raw_records) == 3, f"expected exactly 3 records (one per call), got {raw_records}"
+    records = {r["tool"]: r for r in raw_records}
     assert set(records) == {"query", "describe_checks", "get_config"}
     for tool_name, record in records.items():
         for field in _RECORD_FIELDS:

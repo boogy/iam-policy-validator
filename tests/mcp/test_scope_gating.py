@@ -6,12 +6,18 @@ import json
 
 import pytest
 
+from iam_validator.mcp.auth import SCOPE_FREE_TAGS, SCOPE_TO_TAG
 from iam_validator.mcp.build import build_server
+from iam_validator.mcp.prompts import PROMPTS
+from iam_validator.mcp.resources import RESOURCES
 from iam_validator.mcp.settings import ServerSettings
+from iam_validator.mcp.tools import analyze, checks, config, query, validate
 
 from .conftest import as_caller
 
 pytest.importorskip("fastmcp", reason="MCP tests require 'pip install iam-policy-validator[mcp]'")
+
+_TOOL_MODULES = (validate, query, checks, config, analyze)
 
 
 @pytest.fixture
@@ -113,6 +119,23 @@ class TestScopeGatingDeterminismAndIsolation:
         assert query_view == {"query"}
         assert analyze_view == {"analyze_policy"}
         assert query_view != analyze_view
+
+
+class TestEveryTagIsDeliberatelyGatedOrExempted:
+    """Every tag must be in SCOPE_TO_TAG or SCOPE_FREE_TAGS, never absent from both by omission."""
+
+    def test_every_registered_tag_is_mapped_or_explicitly_exempted(self):
+        all_tags = {spec.tag for module in _TOOL_MODULES for spec in getattr(module, "TOOLS", ())}
+        all_tags |= {spec.tag for spec in RESOURCES}
+        all_tags |= {spec.tag for spec in PROMPTS}
+
+        known_tags = set(SCOPE_TO_TAG.values()) | SCOPE_FREE_TAGS
+        unaccounted = all_tags - known_tags
+        assert not unaccounted, (
+            f"tag(s) {unaccounted} are neither in SCOPE_TO_TAG nor SCOPE_FREE_TAGS -- "
+            "add a scope mapping in auth.py, or add the tag to SCOPE_FREE_TAGS with a "
+            "comment saying why it should stay ungated"
+        )
 
 
 class TestAuthNoneUnaffected:

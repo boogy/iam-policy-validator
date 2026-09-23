@@ -31,6 +31,9 @@ SCOPE_TO_TAG: dict[str, str] = {
     "iam:config": "orgconfig",
 }
 
+# Tags deliberately left ungated; test_scope_gating.py requires every tag to appear here or in SCOPE_TO_TAG.
+SCOPE_FREE_TAGS: frozenset[str] = frozenset({"fix"})
+
 _ENV_PREFIX = "IAM_VALIDATOR_MCP_AUTH_"
 
 
@@ -240,4 +243,4 @@ def get_auth_provider(
         _fail(f"--auth {settings.auth} configuration is invalid: {exc}")
 
 
-__all__ = ["get_auth_provider", "SCOPE_TO_TAG"]
+__all__ = ["get_auth_provider", "SCOPE_TO_TAG", "SCOPE_FREE_TAGS"]

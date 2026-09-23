@@ -149,7 +149,9 @@ or an IdP name (`azure`/`google`/`github`/`keycloak`/`auth0`/`workos`). All prov
 material comes from `IAM_VALIDATOR_MCP_AUTH_*` env vars or a file path they name,
 never a CLI flag; every failure prints to stderr and exits non-zero. `SCOPE_TO_TAG`
 is the canonical `iam:validate`/`iam:query`/`iam:analyze`/`iam:config` -> tag mapping
-for scope-based gating.
+for scope-based gating. `SCOPE_FREE_TAGS` declares tags deliberately left ungated
+(`fix`) — a declaration `test_scope_gating.py`'s tag-coverage guard enforces, not
+something production code consults.
 
 ### Scope gating
 
@@ -168,10 +170,12 @@ error, which would leak the scope taxonomy to an unauthorized caller. Every
 `validate`/`query`/`analyze`/`orgconfig`-tagged resource carries the same tag
 (and therefore the same gate) as its tool twin, so a caller who can't see
 `describe_checks` also can't read `iam://checks` directly. A tag absent from
-`SCOPE_TO_TAG` (e.g. the `fix_policy_issues_workflow` prompt's `fix` tag) has no
-scope requirement and stays visible to any caller. Per MCP 2026-07-28, the tool
-set may vary per-request by presented authorization (this); `spec_survives()`'s
-profile filtering must not vary per-connection, and doesn't — it's fixed at
+`SCOPE_TO_TAG` must appear in `SCOPE_FREE_TAGS` instead (currently just `fix`,
+covering the `fix_policy_issues_workflow` prompt) so an ungated tag is always a
+deliberate declaration, never an omission; `test_scope_gating.py` enforces every
+tag lands in one set or the other. Per MCP 2026-07-28, the tool set may vary
+per-request by presented authorization (this); `spec_survives()`'s profile
+filtering must not vary per-connection, and doesn't — it's fixed at
 `build_server()` call time.
 
 ### Audit logging
@@ -378,12 +382,27 @@ Test files of note:
   flags to an identical `ServerSettings`, `--transport sse` fails naming `http` (not
   argparse's generic "invalid choice"), `--host` defaults to `127.0.0.1`, flags win over
   `IAM_VALIDATOR_MCP_*` env vars which win over defaults, and `--auth`/`auth_explicitly_set`
-  semantics
+  semantics, including that no `IAM_VALIDATOR_MCP_*` env var named after the field itself
+  can forge `auth_explicitly_set` and unlock `mode=hosted`+`auth=none`
 - `test_server_integration.py` — check catalog (incl. the hosted-baseline-not-stock-defaults
   regression), server metadata, tool/resource registration
 - `test_dynamic_checks.py` — a check registered at runtime (not built in) reaches both
   `iam://checks` and `describe_checks`, across all four provenance `source` values, with
-  no `iam_validator/mcp/` file hardcoding a check list
+  no `iam_validator/mcp/` file hardcoding a check list; also guards that `validate_policies`'
+  `format` enum tracks `FormatterRegistry.list_formatters()` minus `TERMINAL_FORMATS`, and
+  that its `policy_type` short-form mapping covers every `PolicyType` literal
+- `test_no_hardcoded_ids.py` — prompts/instructions and every docs page (excluding
+  `docs/api-reference`, `docs/developer-guide/sdk`, and, as documented pre-existing debt,
+  `docs/integrations/mcp-server.md`) never reference a retired MCP tool name, and every
+  documented `--format` example / per-check YAML config stanza names a formatter/check the
+  current build actually registers
+- `test_tool_provenance.py` — every registered MCP tool maps to a CLI command or SDK
+  export, `set_config` the sole named exemption (edits session state, an MCP-only
+  concept); the deleted `templates/` package and `tools/generation.py` never reappear
+- `test_no_globals.py` — `SessionConfigManager`, `CustomInstructionsManager`, and
+  `merge_conditions` never reappear anywhere under `iam_validator/mcp/` (AST-checked, not
+  grepped, so a docstring mention doesn't false-positive); no `global` statement or
+  `lru_cache`/`cache`-memoized function reintroduces module-level mutable state
 - `test_prompt_schema.py` — guards prompt argument descriptions against FastMCP's generic
   schema fallback (triggered by a stray `from __future__ import annotations` in `prompts.py`)
 - `test_analyze.py` — Access Analyzer wrapper + cached boto3 session
@@ -424,7 +443,10 @@ Test files of note:
   than the default `success`; a raising log sink doesn't break the call it's
   observing; a malformed response shape doesn't break severity counting;
   `analyze_policy`'s record carries the caller's subject; local mode emits no
-  audit record at all, for any of the five tools.
+  audit record at all, for any of the five tools. The `query`/`describe_checks`/
+  `get_config` multi-call test asserts the raw record count before keying by tool
+  name, so a double-emission regression for one tool can't be silently collapsed
+  and hidden.
 
 Mock fetcher / network — no real API or AWS calls. Debug interactively via
 `mise run mcp:inspector`. Requires `fastmcp>=3.2,<5` (installed via

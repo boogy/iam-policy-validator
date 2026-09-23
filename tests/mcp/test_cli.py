@@ -3,6 +3,7 @@
 import argparse
 
 import pytest
+from pydantic import ValidationError
 
 from iam_validator.mcp.cli import add_arguments, resolve_settings
 from iam_validator.mcp.settings import ServerSettings
@@ -132,6 +133,30 @@ class TestAuthExplicitlySet:
 
     def test_set_when_env_var_passed(self):
         settings = resolve_settings(_parse([]), env={"IAM_VALIDATOR_MCP_AUTH": "none"})
+        assert settings.auth_explicitly_set is True
+
+
+class TestAuthExplicitlySetCannotBeForgedByEnv:
+    """auth_explicitly_set must only be set via --auth/IAM_VALIDATOR_MCP_AUTH, never a same-named env var."""
+
+    def test_env_var_named_after_the_field_does_not_set_it(self):
+        env = {"IAM_VALIDATOR_MCP_AUTH_EXPLICITLY_SET": "true"}
+        settings = resolve_settings(_parse([]), env=env)
+        assert settings.auth_explicitly_set is False
+
+    def test_forged_env_var_does_not_unlock_hosted_auth_none(self):
+        env = {"IAM_VALIDATOR_MCP_MODE": "hosted", "IAM_VALIDATOR_MCP_AUTH_EXPLICITLY_SET": "true"}
+        with pytest.raises(ValidationError):
+            resolve_settings(_parse([]), env=env)
+
+    def test_setting_the_real_auth_env_var_does_unlock_it(self):
+        env = {"IAM_VALIDATOR_MCP_MODE": "hosted", "IAM_VALIDATOR_MCP_AUTH": "none"}
+        settings = resolve_settings(_parse([]), env=env)
+        assert settings.auth_explicitly_set is True
+
+    def test_cli_flag_alone_unlocks_it_over_env_forgery(self):
+        env = {"IAM_VALIDATOR_MCP_MODE": "hosted", "IAM_VALIDATOR_MCP_AUTH_EXPLICITLY_SET": "true"}
+        settings = resolve_settings(_parse(["--auth", "none"]), env=env)
         assert settings.auth_explicitly_set is True
 
 

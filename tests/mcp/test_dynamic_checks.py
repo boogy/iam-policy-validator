@@ -6,15 +6,19 @@ hardcoded check list.
 import json
 import textwrap
 from types import SimpleNamespace
-from typing import ClassVar
+from typing import ClassVar, get_args
 from unittest.mock import MagicMock
 
 import pytest
 
+from iam_validator.core import constants
 from iam_validator.core.check_registry import CheckRegistry, PolicyCheck, create_default_registry
 from iam_validator.core.config.config_loader import ConfigLoader, ValidatorConfig
+from iam_validator.core.formatters.base import get_global_registry
+from iam_validator.core.models import PolicyType
 from iam_validator.mcp.context import ServerContext
 from iam_validator.mcp.resources import checks_resource
+from iam_validator.mcp.tools import validate as validate_tool
 from iam_validator.mcp.tools.checks import describe_checks
 
 pytest.importorskip("fastmcp", reason="MCP tests require 'pip install iam-policy-validator[mcp]'")
@@ -171,3 +175,17 @@ async def test_describe_checks_reports_nonempty_docstring_for_a_builtin_check():
 
     docstrings = [c["docstring"] for c in result["checks"] if c["docstring"]]
     assert docstrings, "expected at least one built-in check to carry a non-empty docstring"
+
+
+def test_format_enum_tracks_the_live_formatter_registry():
+    """_ALLOWED_FORMATS is derived, not a literal; a hardcoded copy would drift."""
+    live = set(get_global_registry().list_formatters()) - constants.TERMINAL_FORMATS
+    assert set(validate_tool._ALLOWED_FORMATS) == live
+    assert live, "fixture sanity: expected at least one non-terminal formatter registered"
+
+
+def test_policy_type_short_form_mapping_covers_every_policy_type_literal():
+    """_POLICY_TYPE_SHORT_FORM is a hand-maintained dict, not derived; guards against omitting a new PolicyType."""
+    canonical = set(get_args(PolicyType))
+    assert set(validate_tool._POLICY_TYPE_SHORT_FORM) == canonical
+    assert canonical, "fixture sanity: expected at least one PolicyType literal"
