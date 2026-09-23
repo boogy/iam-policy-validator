@@ -95,3 +95,27 @@ class TestOrgConfigToolGating:
         names = {t.name for t in await mcp.list_tools()}
         assert "get_config" in names
         assert "set_config" in names
+
+
+class TestToolCounts:
+    async def test_hosted_registers_exactly_five_tools_no_set_config(self, monkeypatch):
+        monkeypatch.setenv(
+            "IAM_VALIDATOR_MCP_AUTH_TOKENS",
+            '{"tok": {"client_id": "test-client", "scopes": ["iam:validate", "iam:query", "iam:config", "iam:analyze"]}}',
+        )
+        mcp = build_server(ServerSettings(mode="hosted", auth="token", auth_explicitly_set=True))
+        with as_caller("iam:validate", "iam:query", "iam:config", "iam:analyze"):
+            names = {t.name for t in await mcp.list_tools()}
+        assert names == {"describe_checks", "get_config", "analyze_policy", "query", "validate_policies"}
+
+    async def test_local_registers_exactly_six_tools_incl_set_config(self):
+        mcp = build_server(ServerSettings(mode="local"))
+        names = {t.name for t in await mcp.list_tools()}
+        assert names == {
+            "describe_checks",
+            "get_config",
+            "set_config",
+            "analyze_policy",
+            "query",
+            "validate_policies",
+        }

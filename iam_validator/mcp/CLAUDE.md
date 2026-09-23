@@ -372,7 +372,9 @@ Test files of note:
   `build_server()` determinism test that derives the expected tool-name order from a
   monkeypatched `_TOOL_MODULES` and fails under a hash-based sort, and
   `TestOrgConfigToolGating` (real `config.py` specs: hosted registers `get_config` not
-  `set_config`; `set_config` absent over `http` even in local mode; present over `stdio`)
+  `set_config`; `set_config` absent over `http` even in local mode; present over `stdio`),
+  and `TestToolCounts` (hosted registers exactly the 5 tools minus `set_config`; local
+  registers exactly the 6 including it)
 - `test_profiles.py` — `spec_survives()` profile-tag semantics with fixture specs, plus
   `build_server()`'s live tool catalog (`iam://checks` demotion, `get_config()`)
 - `test_transport.py` — in-process FastMCP `Client` round-trip (annotations, resources, errors)
@@ -416,6 +418,20 @@ Test files of note:
   hosted schema excludes `path`/`glob`
 - `test_immutable_config.py` — hosted-mode mutating-tool exclusion + config/digest
   unchanged after every hosted-surviving tool call
+- `test_policy_type_input.py` — per-entry `policy_type` precedence beyond the
+  single-policy cases in `test_validation_tools.py`: entry override wins over a
+  run-wide override, a `name` hint resolves through a `policy_types:` config glob,
+  and an SCP-shaped policy is never auto-detected without an explicit hint
+- `test_hosted_startup.py` — a valid custom check still lets hosted startup verify
+  and boot; an unwritable `cache_directory` fails startup with `OSError` (the real
+  `AWSServiceFetcher` constructor `mkdir`s it synchronously); local mode defaults
+  to `auth="none"` unset
+- `test_no_policy_in_logs.py` — a policy-content marker reaches no log record at
+  any level, beyond the hosted-`validate_policies`-only slice `test_audit.py`
+  covers: local-mode `validate_policies` and hosted `analyze_policy`
+- `test_registry_reuse.py` — `_resolve_run_context` reuses `ServerContext.registry`
+  across repeat `validate_policies` calls rather than rebuilding it, and a
+  discovered custom check is instantiated once at startup, not per call
 - `test_hosted_startup_custom_checks.py` — a declared custom check that fails to
   import exits hosted startup non-zero naming it; local mode boots with a warning
 - `test_config_digest.py` — `config_digest` stability across processes, and change on
@@ -447,7 +463,25 @@ Test files of note:
   `get_config` multi-call test asserts the raw record count before keying by tool
   name, so a double-emission regression for one tool can't be silently collapsed
   and hidden.
+- `test_cli_parity.py` — `validate_policies` and the CLI agree on findings for
+  the same policy against a config that disables one check and retunes another's
+  severity; the load-bearing test that the two entry points share one validation path
+- `test_isolation.py` — concurrent in-process callers against one hosted server are
+  never attributed to each other's identity in logs or audit records
+- `test_output_schemas.py` — every registered tool declares an `output_schema`, and a
+  real response validates against it and mirrors the client-facing text content
+- `test_protocol_version.py` — the negotiated `mcp.types.LATEST_PROTOCOL_VERSION` is
+  identical across local and hosted mode, not just the one `test_transport.py` pins
+- `test_query_schema.py` — each `query` `kind` branch's required parameter is enforced
+  by the declared `inputSchema` (schema-level, not just a runtime `ToolError`)
 
-Mock fetcher / network — no real API or AWS calls. Debug interactively via
-`mise run mcp:inspector`. Requires `fastmcp>=3.2,<5` (installed via
-`uv sync --extra mcp`).
+Mock fetcher / network — no real API or AWS calls. `conftest.py`'s three autouse
+fixtures: `_no_real_aws_fetcher`/`_no_real_aws_fetcher_in_context` redirect
+`policy_checks.AWSServiceFetcher`/`context.AWSServiceFetcher` construction to
+`mock_fetcher`, so a test driving `validate_policies()` or a real server lifespan
+never reaches `servicereference.us-east-1.amazonaws.com`; `_no_real_aws_cache_dir`
+patches `AWSServiceFetcher.__init__` itself, so a test that constructs the real class
+directly (bypassing the two module-scoped patches above by importing the class itself)
+still gets a `tmp_path` cache directory instead of `~/Library/Caches/iam-validator`
+whenever it leaves `cache_dir` unset. Debug interactively via `mise run mcp:inspector`.
+Requires `fastmcp>=3.2,<5` (installed via `uv sync --extra mcp`).
