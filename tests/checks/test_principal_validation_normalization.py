@@ -162,6 +162,16 @@ class TestServiceWildcardDoesNotMaskOtherPrincipals:
 
         assert "blocked_principal" not in [i.issue_type for i in issues]
 
+    async def test_service_wildcard_is_blocked_when_its_dedicated_check_is_off(self, check, mock_fetcher):
+        issues = await check.execute(
+            _statement({"Service": "*"}),
+            0,
+            mock_fetcher,
+            _config(block_service_principal_wildcard=False, blocked_principals=["*"]),
+        )
+
+        assert [i.issue_type for i in issues] == ["blocked_principal"]
+
     async def test_condition_requirements_stay_suppressed_under_service_wildcard(self, check, mock_fetcher):
         statement = _statement({"Service": "*"})
 

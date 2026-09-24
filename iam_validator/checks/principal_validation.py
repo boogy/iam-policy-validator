@@ -146,8 +146,8 @@ class PrincipalValidationCheck(PolicyCheck):
         # Track blocked principals to skip condition checks for them
         blocked_principal_values: set[str] = set()
 
-        # {"Service": "*"} is reported by _check_service_principal_wildcards; skip only its own "*" entries
-        service_wildcards = self._service_principal_wildcard_count(statement)
+        # Skip only the "*" entries of a {"Service": "*"} already reported above
+        service_wildcards = self._service_principal_wildcard_count(statement) if service_wildcard_issues else 0
 
         for principal in principals:
             if principal == "*" and service_wildcards:
