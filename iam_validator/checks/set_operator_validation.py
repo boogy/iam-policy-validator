@@ -119,8 +119,11 @@ class SetOperatorValidationCheck(PolicyCheck):
         for operator, conditions in statement.condition.items():
             base_operator, _operator_type, _set_prefix = normalize_operator(operator)
             if base_operator == "Null":
-                for condition_key in conditions.keys():
-                    null_checked_keys.add(condition_key.lower())
+                for condition_key, null_value in conditions.items():
+                    values = null_value if isinstance(null_value, list) else [null_value]
+                    # Only `Null: false` requires the key to be present.
+                    if values and all(str(v).lower() == "false" for v in values):
+                        null_checked_keys.add(condition_key.lower())
 
         # Second pass: Validate set operator usage
         for operator, conditions in statement.condition.items():
