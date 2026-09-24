@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 from fastmcp import FastMCP
 from fastmcp.server.auth import restrict_tag
 from fastmcp.tools.function_tool import FunctionTool
+from mcp_types.methods import KNOWN_PROTOCOL_VERSIONS, SERVER_RESULTS
+from pydantic import TypeAdapter, ValidationError
 
 from iam_validator.mcp.auth import SCOPE_TO_TAG, get_auth_provider
 from iam_validator.mcp.component_spec import ComponentSpec
@@ -91,6 +93,23 @@ def _component_auth(spec: ComponentSpec, auth_provider: AuthProvider | None) -> 
     return restrict_tag(spec.tag, scopes=list(scopes))
 
 
+_TOOLS_ADAPTERS = {
+    v: TypeAdapter(SERVER_RESULTS[("tools/list", v)].model_fields["tools"].annotation) for v in KNOWN_PROTOCOL_VERSIONS
+}
+
+
+def _check_output_schema(tool_name: str, output_schema: dict[str, object]) -> None:
+    """Raise if output_schema fails the MCP tools/list wire model for any known protocol version."""
+    tool = {"name": tool_name, "inputSchema": {"type": "object"}, "outputSchema": output_schema}
+    for version, adapter in _TOOLS_ADAPTERS.items():
+        try:
+            adapter.validate_python([tool])
+        except ValidationError as exc:
+            raise ValueError(
+                f"Tool {tool_name!r} output_schema fails the MCP wire model at protocol {version!r}: {exc}"
+            ) from exc
+
+
 def build_server(
     settings: ServerSettings,
     context: ServerContext | None = None,
@@ -124,6 +143,7 @@ def build_server(
         for tool_spec in getattr(module, "TOOLS", ()):
             if not spec_survives(tool_spec, settings):
                 continue
+            _check_output_schema(tool_spec.name, tool_spec.output_schema)
             auth = _component_auth(tool_spec, auth_provider)
             if tool_spec.input_schema is not None:
                 # from_function() can't infer a discriminated union and rejects a non-object output_schema.

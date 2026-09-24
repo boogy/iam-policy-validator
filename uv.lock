@@ -1160,6 +1160,7 @@ lambda = [
 ]
 mcp = [
     { name = "fastmcp" },
+    { name = "mcp-types" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -1170,6 +1171,7 @@ requires-dist = [
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=4.0,<5" },
     { name = "httpx", extras = ["http2"], specifier = ">=0.27.0" },
     { name = "mangum", marker = "extra == 'lambda'", specifier = ">=0.17,<1" },
+    { name = "mcp-types", marker = "extra == 'mcp'", specifier = ">=2.2,<3" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6.0" },
     { name = "mkdocs-gen-files", marker = "extra == 'docs'", specifier = ">=0.5.0" },
     { name = "mkdocs-literate-nav", marker = "extra == 'docs'", specifier = ">=0.6.0" },

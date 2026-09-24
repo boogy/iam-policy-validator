@@ -59,6 +59,7 @@ docs = [
 mcp = [
   "fastmcp>=4.0,<5",
   "uvicorn[standard]>=0.30.0",
+  "mcp-types>=2.2,<3",
 ]
 lambda = [
   "mangum>=0.17,<1",

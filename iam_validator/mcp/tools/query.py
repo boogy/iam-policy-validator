@@ -476,7 +476,8 @@ QueryResult = Annotated[
 ]
 
 # Derived from QueryResult so the oneOf branches can't drift from the return type.
-_QUERY_OUTPUT_SCHEMA: dict[str, Any] = TypeAdapter(QueryResult).json_schema()
+# The wire model requires a top-level "type": "object"; see CHANGELOG for why.
+_QUERY_OUTPUT_SCHEMA: dict[str, Any] = {"type": "object", **TypeAdapter(QueryResult).json_schema()}
 
 # allOf/if/then marks the one parameter each `kind` requires (JSON Schema 2020-12).
 _QUERY_INPUT_SCHEMA: dict[str, Any] = {

@@ -75,6 +75,7 @@ Breaking changes in this release affect MCP server users only (the MCP tools, re
 - `tests/mcp/test_audit.py`'s multi-tool audit test keyed records by tool name before checking anything, which would silently collapse a double-emission bug into a single record and pass anyway; it now asserts the raw record count first.
 - `tests/checks/conftest.py`, `tests/core/conftest.py`, and `tests/core/test_example_policy_fixtures.py`'s `offline_fetcher` returned a bare `MagicMock()`, whose every attribute auto-creates rather than raising — tests asserting against `.actions`/`.condition_keys` passed against a shape production code can never return. All three now return a real `ServiceDetail(name=service, prefix=service)`; re-running against the real shape still passed, confirming the mock's vacuousness had not hidden a finding.
 - Seven docs admonitions (`pre-commit.md`, `configuration.md` x4, `advanced-checks.md` x2) were missing the blank line + 4-space indent their bodies need, so `prettier` had dedented them to empty boxes with the text spilled out below.
+- `tools/list` failed with `-32603 "Handler returned an invalid result"` on every real transport because the `query` tool's `output_schema` was a bare `oneOf` with no top-level `"type": "object"`, which the MCP wire model requires. `build_server()` now validates each tool's `output_schema` against the wire model for every known protocol version, so the failure can't recur silently.
 
 ## [1.29.0] - 2026-09-17
 

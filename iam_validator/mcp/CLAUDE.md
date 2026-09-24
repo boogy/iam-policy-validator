@@ -354,7 +354,17 @@ returns equivalent data, so gating a tool can't be bypassed by reading its
 resource twin. `ToolSpec.output_schema` is computed via
 `component_spec.infer_output_schema(fn)` (wraps
 `FunctionTool.from_function(fn).output_schema`) rather than hand-written, so it
-can't drift from the function signature.
+can't drift from the function signature. A hand-built schema (e.g. `query.py`'s
+`TypeAdapter(...).json_schema()` discriminated union) must still carry a top-level
+`"type": "object"` — the MCP wire model requires it through protocol 2025-11-25, but
+FastMCP's in-memory `Client` (which always negotiates the latest protocol) doesn't
+catch its absence, only a real transport does. `build_server()` validates every
+tool's `output_schema` at registration time against each `version` in
+`mcp_types.methods.KNOWN_PROTOCOL_VERSIONS`, via a `TypeAdapter` built from that
+version's `tools/list` result's `tools` field type — the same `Tool` model a real
+transport validates against, without pulling in unrelated envelope fields (e.g.
+`cacheScope`) — so a violation fails the build with pydantic's own error rather
+than the wire, with no duplicated rule.
 
 `build.py::build_server(settings)` filters every spec through
 `spec_survives()` — by `mode`, `transport`, and `profile` (`read-only`
@@ -571,6 +581,10 @@ Test files of note:
   never attributed to each other's identity in logs or audit records
 - `test_output_schemas.py` — every registered tool declares an `output_schema`, and a
   real response validates against it and mirrors the client-facing text content
+- `test_output_schema_wire_validation.py` — local and hosted `tools/list` catalogs
+  validated against the real `mcp_types.methods.serialize_server_result` wire model at
+  a legacy protocol version, catching an `output_schema` (e.g. `query`'s discriminated
+  union) that FastMCP's in-memory `Client` alone would miss
 - `test_protocol_version.py` — the negotiated `mcp.types.LATEST_PROTOCOL_VERSION` is
   identical across local and hosted mode, not just the one `test_transport.py` pins
 - `test_query_schema.py` — each `query` `kind` branch's required parameter is enforced
