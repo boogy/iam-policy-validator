@@ -156,6 +156,22 @@ class TestNotResourceWithDeny:
         assert "denies nothing" in issues[0].message.lower()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"resource": ["*"]},
+            {"resource": ["*"], "condition": {"Bool": {"aws:MultiFactorAuthPresent": "true"}}},
+            {"not_resource": ["arn:aws:s3:::safe/*"]},
+        ],
+    )
+    async def test_allow_with_wildcard_not_action_grants_nothing(self, check, config, mock_fetcher, extra) -> None:
+        statement = Statement(effect="Allow", not_action=["iam:*", "*"], **extra)
+        issues = await check.execute(statement, 0, mock_fetcher, config)
+        assert [i.issue_type for i in issues] == ["not_action_allow_ineffective"]
+        assert issues[0].severity == "low"
+        assert "grants nothing" in issues[0].message
+
+    @pytest.mark.asyncio
     async def test_wildcard_not_resource_flagged_for_narrow_actions_too(self, check, config, mock_fetcher) -> None:
         """A no-op deny is unambiguous, so it is reported regardless of action breadth."""
         statement = Statement(

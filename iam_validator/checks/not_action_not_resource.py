@@ -69,6 +69,7 @@ class NotActionNotResourceCheck(PolicyCheck):
     4. NotAction with Deny - inverted deny on the action axis, worth reviewing
     5. NotResource with Deny - inverted deny on the resource axis; a "*" exclusion
        denies nothing at all
+    6. NotAction "*" with Allow - excludes every action, so it grants nothing
 
     These patterns are particularly dangerous because they grant permissions
     by exclusion rather than explicit inclusion, making it easy to accidentally
@@ -94,6 +95,25 @@ class NotActionNotResourceCheck(PolicyCheck):
         not_actions = statement.get_not_actions()
         not_resources = statement.get_not_resources()
         effect = (statement.effect or "").strip().title()
+
+        if effect == "Allow" and "*" in not_actions:
+            issues.append(
+                ValidationIssue(
+                    severity="low",
+                    statement_sid=statement.sid,
+                    statement_index=statement_idx,
+                    issue_type="not_action_allow_ineffective",
+                    message=(
+                        "Statement uses `NotAction` with `Allow` effect and a `*` exclusion. "
+                        "Every action is excluded, so this statement grants nothing."
+                    ),
+                    suggestion="Replace `*` with the actions to exclude, or remove the statement.",
+                    line_number=statement.line_number,
+                    field_name="action",
+                    action=format_list_with_backticks(not_actions, 3),
+                )
+            )
+            return issues
 
         # When both NotAction AND NotResource are present with Allow,
         # only emit the combined critical finding (Check 3) to avoid noise.
