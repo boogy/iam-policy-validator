@@ -72,6 +72,7 @@ Breaking changes in this release affect MCP server users only (the MCP tools, re
 - `iam_validator.mcp.context.effective_check_settings`: in hosted mode, the check catalog (`iam://checks`, `describe_checks`) always reported stock defaults instead of the hosted baseline's actual settings — it never consulted `ServerContext.config`. Local mode was affected too whenever no session override was set yet. Both now resolve through a new `get_active_config(ctx)` helper: session override, else `ServerContext.config`, else class defaults outside an MCP request.
 - `tests/mcp/test_audit.py`'s multi-tool audit test keyed records by tool name before checking anything, which would silently collapse a double-emission bug into a single record and pass anyway; it now asserts the raw record count first.
 - `tests/checks/conftest.py`, `tests/core/conftest.py`, and `tests/core/test_example_policy_fixtures.py`'s `offline_fetcher` returned a bare `MagicMock()`, whose every attribute auto-creates rather than raising — tests asserting against `.actions`/`.condition_keys` passed against a shape production code can never return. All three now return a real `ServiceDetail(name=service, prefix=service)`; re-running against the real shape still passed, confirming the mock's vacuousness had not hidden a finding.
+- Seven docs admonitions (`pre-commit.md`, `configuration.md` x4, `advanced-checks.md` x2) were missing the blank line + 4-space indent their bodies need, so `prettier` had dedented them to empty boxes with the text spilled out below.
 
 ## [1.29.0] - 2026-09-17
 

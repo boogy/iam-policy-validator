@@ -105,7 +105,8 @@ Validates IAM role trust policies for security best practices.
 **Severity:** `high` (trust issues) / `medium` (confused deputy)
 
 !!! note "Opt-in Check"
-Trust policy validation is enabled when using `--policy-type TRUST_POLICY`. The validator auto-detects trust policies (containing `sts:AssumeRole` actions with Principal elements) and suggests using this flag.
+
+    Trust policy validation is enabled when using `--policy-type TRUST_POLICY`. The validator auto-detects trust policies (containing `sts:AssumeRole` actions with Principal elements) and suggests using this flag.
 
 ### What It Checks
 
@@ -165,7 +166,8 @@ Only services where the role is directly bound to a compute resource owned by th
 | `edgelambda.amazonaws.com` | Lambda@Edge, same model as Lambda                |
 
 !!! warning "All Other Services Require Conditions"
-All other AWS service principals -- including services that typically use service-linked roles (e.g., `guardduty`, `elasticloadbalancing`, `organizations`) -- require `aws:SourceArn` or `aws:SourceAccount` conditions when used in custom trust policies. If a customer writes a custom trust policy for any of these services, the confused deputy risk applies to that custom role.
+
+    All other AWS service principals -- including services that typically use service-linked roles (e.g., `guardduty`, `elasticloadbalancing`, `organizations`) -- require `aws:SourceArn` or `aws:SourceAccount` conditions when used in custom trust policies. If a customer writes a custom trust policy for any of these services, the confused deputy risk applies to that custom role.
 
 ### Required Conditions per Assume Action
 

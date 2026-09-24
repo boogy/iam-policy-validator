@@ -50,7 +50,10 @@ add it to `nav:`, link from related pages.
 ### Snippet patterns
 
 - **Admonitions**: `!!! note "Title"` / `!!! warning` / `!!! tip "Pro Tip"` / `!!! danger`
-  followed by 4-space-indented content.
+  followed by a **blank line**, then 4-space-indented content. Skipping the blank line
+  lets `prettier` dedent the body to column 0, which renders an empty box with the text
+  spilled out below it — `mkdocs build --strict` does not catch this.
+  `tests/core/test_docs_admonition_indentation.py` guards it.
 - **Tabs**: `=== "uv"` / `=== "pip"` blocks, body indented 4 spaces — code fences inside
   must also be indented to belong to the tab.
 - **Cross-reference a page**: `[Configuration](user-guide/configuration.md)`.
