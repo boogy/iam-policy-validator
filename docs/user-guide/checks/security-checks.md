@@ -308,6 +308,9 @@ operative word: a requirement removed by `merge_strategy`, excluded by `ignore_p
 or belonging to a disabled check does not suppress anything. Matching follows IAM
 semantics, so a requirement written as `iam:Pass*` covers `iam:PassRole`.
 
+A condition only on `aws:SecureTransport` or `aws:RequestedRegion` does not count: it
+still grants the action to every principal and resource the statement names.
+
 ### Sensitive Action Categories
 
 - **IAM Management:** `iam:CreateUser`, `iam:AttachRolePolicy`, `iam:PassRole`
@@ -362,8 +365,10 @@ spells the inversion with a principal, so those statements are still checked in 
 spelling it with a condition instead — `Principal: "*"` plus `ArnNotEquals` on
 `aws:PrincipalArn` — and that form is reported as `ineffective_deny_carve_out` when the
 carve-out is `*`, since exempting every principal denies nobody. `StringNotEquals` does not
-expand wildcards, so a `*` carve-out there exempts nobody and the deny applies to every
-principal; that is reported as `literal_wildcard_deny_carve_out`.
+expand wildcards, so a `*` carve-out there exempts nobody; that is reported as
+`literal_wildcard_deny_carve_out`. The finding says the deny applies to every principal only
+when `*` is the sole value of the only condition key and the operator is not `ForAnyValue:`,
+which does not match when the key is missing.
 
 See also [`rcp_best_practices`](advanced-checks.md#rcp_best_practices) and
 [`not_principal_validation`](aws-validation.md#not_principal_validation).
@@ -559,6 +564,7 @@ The same exclusion logic inverts a `Deny`: with `Deny`, the listed items are the
 5. **NotAction with Deny** - Low: Valid pattern but should be reviewed
 6. **NotResource with Deny** - Low: Inverted deny over broad actions, worth reviewing
 7. **NotResource with Deny and a `*` exclusion** - High: Every resource is excluded, so the statement denies nothing
+8. **NotAction `*` with Allow** - Low: Every action is excluded, so the statement grants nothing
 
 When both NotAction **and** NotResource are present in an Allow statement, only the combined critical finding is reported. The individual NotAction and NotResource warnings are suppressed to reduce noise.
 

@@ -92,7 +92,7 @@ Cached: memory LRU + disk TTL (7 days). Tests must mock — never hit the real A
 `invalid_action`, `invalid_resource`, `invalid_condition_key`, `invalid_operator`,
 `invalid_value_format`, `overly_permissive`, `missing_condition`, `privilege_escalation`,
 `invalid_not_principal`, `public_access`, `policy_structure`, `resource_mismatch`,
-`ineffective_deny_carve_out`, `literal_wildcard_deny_carve_out`, `unexpected_resource`,
+`ineffective_deny_carve_out`, `literal_wildcard_deny_carve_out`, `not_action_allow_ineffective`, `unexpected_resource`,
 `check_execution_error` (emitted by the registry when a check raises, never by a check
 itself).
 
