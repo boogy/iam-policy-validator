@@ -361,7 +361,9 @@ spells the inversion with a principal, so those statements are still checked in 
 [AWS recommends](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_notprincipal.html)
 spelling it with a condition instead — `Principal: "*"` plus `ArnNotEquals` on
 `aws:PrincipalArn` — and that form is reported as `ineffective_deny_carve_out` when the
-carve-out is `*`, since exempting every principal denies nobody.
+carve-out is `*`, since exempting every principal denies nobody. `StringNotEquals` does not
+expand wildcards, so a `*` carve-out there exempts nobody and the deny applies to every
+principal; that is reported as `literal_wildcard_deny_carve_out`.
 
 See also [`rcp_best_practices`](advanced-checks.md#rcp_best_practices) and
 [`not_principal_validation`](aws-validation.md#not_principal_validation).

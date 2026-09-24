@@ -92,7 +92,7 @@ Cached: memory LRU + disk TTL (7 days). Tests must mock — never hit the real A
 `invalid_action`, `invalid_resource`, `invalid_condition_key`, `invalid_operator`,
 `invalid_value_format`, `overly_permissive`, `missing_condition`, `privilege_escalation`,
 `invalid_not_principal`, `public_access`, `policy_structure`, `resource_mismatch`,
-`ineffective_deny_carve_out`, `unexpected_resource`,
+`ineffective_deny_carve_out`, `literal_wildcard_deny_carve_out`, `unexpected_resource`,
 `check_execution_error` (emitted by the registry when a check raises, never by a check
 itself).
 
@@ -134,7 +134,9 @@ Custom-check examples: `examples/custom_checks/`.
 
 `principal_validation` reports `ineffective_deny_carve_out` for both spellings of a
 `Deny` that exempts everyone: `NotPrincipal: "*"`, and `Principal: "*"` with
-`ArnNotEquals` on `aws:PrincipalArn: "*"`. A `Deny` carrying a `NotPrincipal` still falls
+`ArnNotEquals` on `aws:PrincipalArn: "*"`. The condition form counts only for a
+wildcard-capable operator; `StringNotEquals` on `"*"` exempts nobody and is reported as
+`literal_wildcard_deny_carve_out`. A `Deny` carrying a `NotPrincipal` still falls
 through to the blocked/allowed-principal rules, so both findings can appear on one
 statement; a `Deny` without one is otherwise skipped (a deny grants nothing).
 

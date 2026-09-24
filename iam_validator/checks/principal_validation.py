@@ -48,6 +48,7 @@ from iam_validator.checks.utils.condition_matching import (
 )
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
+from iam_validator.core.condition_validators import is_operator_supports_wildcards
 from iam_validator.core.config.service_principals import is_aws_service_principal
 from iam_validator.core.constants import ACCOUNT_ID_PATTERN, ARN_PARTITIONS, ROOT_ARN_PATTERN
 from iam_validator.core.models import Statement, ValidationIssue
@@ -274,13 +275,11 @@ class PrincipalValidationCheck(PolicyCheck):
         statement_idx: int,
         config: CheckConfig,
     ) -> list[ValidationIssue]:
-        """Flag an inverted Deny whose carve-out matches every principal.
+        """Flag an inverted Deny whose principal carve-out is ``"*"``.
 
-        AWS recommends replacing ``NotPrincipal`` with ``Deny`` + ``Principal: "*"`` and a
-        negated principal condition such as ``ArnNotEquals`` on ``aws:PrincipalArn``. That
-        rewrite exempts the listed principals from the deny, so a carve-out of ``"*"``
-        exempts everyone and the statement denies nothing -- the condition equivalent of
-        ``NotPrincipal: "*"``.
+        A wildcard-capable operator (``ArnNotEquals``, ``StringNotLike``) exempts every
+        principal, so the deny denies nothing. A literal operator (``StringNotEquals``)
+        matches no principal, so the carve-out exempts nobody.
         """
         if not statement.condition:
             return []
@@ -292,8 +291,29 @@ class PrincipalValidationCheck(PolicyCheck):
                 if not self._is_principal_condition_key(key):
                     continue
                 values = value if isinstance(value, list) else [value]
-                if not any(str(v).strip() == "*" for v in values):
+                wildcards = [v for v in values if str(v).strip() == "*"]
+                if not wildcards:
                     continue
+                if not is_operator_supports_wildcards(operator):
+                    denies_everyone = len(wildcards) == len(values)
+                    return [
+                        ValidationIssue(
+                            severity=self.get_severity(config),
+                            statement_sid=statement.sid,
+                            statement_index=statement_idx,
+                            issue_type="literal_wildcard_deny_carve_out",
+                            message=(
+                                f"`{operator}` compares `*` on `{key}` literally, so it exempts no principal"
+                                + (" and the `Deny` applies to every principal." if denies_everyone else ".")
+                            ),
+                            suggestion=(
+                                "Use a wildcard-capable operator (`StringNotLike`, or `ArnNotLike` for "
+                                "ARNs) if `*` is meant as a pattern, or list the exact values to exempt."
+                            ),
+                            line_number=statement.line_number,
+                            field_name="condition",
+                        )
+                    ]
                 return [
                     ValidationIssue(
                         severity=self.get_severity(config),
