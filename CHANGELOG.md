@@ -13,8 +13,8 @@ Breaking changes in this release affect MCP server users only (tools, resources,
 - **Breaking:** Rebuild the MCP server around a declarative `build_server(settings)`, replacing the monolithic `mcp/server.py` and its module-level globals with a lifespan `ServerContext` and `ComponentSpec`-gated tools, resources and prompts, so a profile or transport restriction cannot be bypassed through an equivalent resource ([#196])
 - **Breaking:** Consolidate the MCP tool surface from 33 tools to 6 — `validate_policies`, `query`, `describe_checks`, `get_config`, `set_config` and `analyze_policy` ([#196]):
   - `validate_policies` replaces `validate_policy`, `quick_validate`, `validate_policies_batch`, `validate_with_config`, `check_org_compliance` and `get_policy_summary`; it takes `policies`, `policy_type`, `detail` (`summary`/`findings`/`full`) and `format`, and returns `results` identical to the CLI's JSON output plus `config_digest`
-  - `query` replaces the seven `query_*`, `check_actions_batch` and `expand_wildcard_action` tools, dispatched by `kind` (`service_actions`/`action_details`/`condition_keys`/`arn_formats`/`expand_wildcard`)
-  - `describe_checks` replaces `get_issue_guidance` and `check_sensitive_actions`, reporting each check's description, default severity, policy-type scope, resolved options and provenance
+  - `query` replaces `query_service_actions`, `query_action_details`, `query_actions_batch`, `query_condition_keys`, `query_arn_formats`, `check_actions_batch` and `expand_wildcard_action`, dispatched by `kind` (`service_actions`/`action_details`/`condition_keys`/`arn_formats`/`expand_wildcard`)
+  - `describe_checks` replaces `get_issue_guidance` and `get_condition_requirements_for_action`, reporting each check's description, default severity, policy-type scope, resolved options and provenance
   - `get_config`/`set_config` replace the seven organization-config and custom-instructions tools and `get_active_profile`; `set_config` is local-mode only
   - `analyze_policy` replaces `aws_access_analyzer_validate`
 - **Breaking:** Share one argparse layer between `iam-validator mcp` and `iam-validator-mcp`, so both accept the same flags, each mirrored by an `IAM_VALIDATOR_MCP_*` environment variable (flags win) ([#196])
@@ -41,7 +41,7 @@ Breaking changes in this release affect MCP server users only (tools, resources,
 
 ### Removed
 
-- **Breaking:** Remove the MCP policy-generation surface: the `explain_policy`, `compare_policies`, `fix_policy_issues`, `list_templates`, `generate_policy_from_template`, `build_minimal_policy`, `suggest_actions`, `build_arn`, `check_sensitive_actions` and `get_required_conditions` tools, the 15 built-in templates, the `iam://templates` and `iam://workflow-examples` resources, and the `no-generation` profile ([#196])
+- **Breaking:** Remove the MCP policy-generation surface: the `explain_policy`, `compare_policies`, `fix_policy_issues`, `generate_policy_from_template`, `build_minimal_policy`, `suggest_actions`, `build_arn`, `check_sensitive_actions` and `get_required_conditions` tools, the 15 built-in templates, the `iam://templates` and `iam://workflow-examples` resources, and the `no-generation` profile ([#196])
 - **Breaking:** Remove the `sse` MCP transport; `--transport` accepts `stdio` or `http`, since MCP revision 2026-07-28 defines only stdio and Streamable HTTP ([#196])
 - **Breaking:** Remove `iam-validator mcp`'s `--verbose`/`-v` flag; use the global `--log-level` flag ([#196])
 - **Breaking:** Remove `iam_validator.mcp.session_config` (`SessionConfigManager`, `CustomInstructionsManager`), `iam_validator.mcp.server` (including `apply_profile()`/`set_active_profile()` and the module-level `mcp` instance) and `merge_conditions` from `iam_validator.mcp` ([#196])
