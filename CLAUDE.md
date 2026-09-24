@@ -112,7 +112,7 @@ iam_validator/
 │   └── formatters/           # console / enhanced / json / markdown / sarif / csv / html
 ├── checks/                   # 23 built-in checks — see checks/CLAUDE.md
 ├── commands/                 # 8 CLI commands — see commands/CLAUDE.md
-├── mcp/                      # MCP server (35+ tools, 15 templates) — see mcp/CLAUDE.md
+├── mcp/                      # MCP server (6 tools) — see mcp/CLAUDE.md
 ├── sdk/                      # public Python API — see sdk/CLAUDE.md
 └── integrations/             # GitHub PR + MS Teams — see integrations/CLAUDE.md
 
@@ -131,7 +131,7 @@ docs/                         # MkDocs site — see docs/CLAUDE.md
 | Constants      | `iam_validator/core/constants.py`            |
 | SDK public API | `iam_validator/sdk/__init__.py`              |
 | Config loader  | `iam_validator/core/config/config_loader.py` |
-| MCP server     | `iam_validator/mcp/server.py`                |
+| MCP server     | `iam_validator/mcp/build.py`                 |
 | GitHub Action  | `action.yaml`                                |
 
 ---

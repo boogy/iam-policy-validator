@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from iam_validator.core.check_registry import CheckConfig
-from iam_validator.core.models import IAMPolicy, Statement
+from iam_validator.core.models import IAMPolicy, ServiceDetail, Statement
 
 
 @pytest.fixture
@@ -14,7 +14,12 @@ def mock_fetcher():
     fetcher = MagicMock()
     fetcher.validate_action = AsyncMock(return_value=(True, None, False))
     fetcher.expand_wildcard_action = AsyncMock(return_value=[])
-    fetcher.fetch_service_by_name = AsyncMock(return_value=MagicMock())
+
+    async def _fetch_service_by_name(service: str) -> ServiceDetail:
+        """A real (empty) ServiceDetail, not a MagicMock whose every attribute auto-creates."""
+        return ServiceDetail(name=service, prefix=service)
+
+    fetcher.fetch_service_by_name = AsyncMock(side_effect=_fetch_service_by_name)
     return fetcher
 
 

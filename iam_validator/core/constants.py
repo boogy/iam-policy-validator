@@ -617,3 +617,25 @@ AWS_TAG_VALUE_MAX_LENGTH = 256
 
 # Minimum length for AWS tag values (can be empty)
 AWS_TAG_VALUE_MIN_LENGTH = 0
+
+# ============================================================================
+# MCP Formatter Gating
+# ============================================================================
+
+# Formatters unusable outside an interactive terminal (ANSI/Rich output) —
+# excluded from the MCP validate_policies `format` enum.
+TERMINAL_FORMATS: frozenset[str] = frozenset({"console", "enhanced"})
+
+# ============================================================================
+# MCP Audit Logging (hosted mode only; see mcp/audit.py)
+# ============================================================================
+
+# Logger name every audit record is emitted on, so an operator can attach a
+# handler and route it to a log aggregator without touching library code.
+MCP_AUDIT_LOGGER_NAME = "iam_validator.mcp.audit"
+
+# ``outcome`` field values for the audit record (see mcp/audit.py:audited_call).
+MCP_AUDIT_OUTCOME_SUCCESS = "success"
+MCP_AUDIT_OUTCOME_TOOL_ERROR = "tool_error"
+MCP_AUDIT_OUTCOME_INTERNAL_ERROR = "internal_error"
+MCP_AUDIT_OUTCOME_CANCELLED = "cancelled"

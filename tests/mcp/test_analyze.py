@@ -9,7 +9,29 @@ from unittest.mock import MagicMock
 import pytest
 from fastmcp.exceptions import ToolError
 
+from iam_validator.mcp.context import AnalyzeRateLimiter, ServerContext
+from iam_validator.mcp.settings import ServerSettings
+from iam_validator.mcp.tools import analyze
 from iam_validator.mcp.tools.analyze import analyze_policy
+
+
+def _fake_server_context(*, settings: ServerSettings | None = None) -> ServerContext:
+    """A minimal ServerContext for tests that only exercise aws_sessions."""
+    resolved_settings = settings or ServerSettings(allowed_regions=frozenset())
+    return ServerContext(
+        config=MagicMock(),
+        registry=MagicMock(),
+        formatters=MagicMock(),
+        fetcher=MagicMock(),
+        aws_sessions={},
+        settings=resolved_settings,
+        mutable=None,
+        analyze_rate_limiter=AnalyzeRateLimiter(resolved_settings.analyze_rate_limit),
+    )
+
+
+def _fake_ctx(context: ServerContext) -> SimpleNamespace:
+    return SimpleNamespace(request_context=SimpleNamespace(lifespan_context=context))
 
 
 @pytest.fixture
@@ -58,7 +80,7 @@ async def test_analyze_invalid_policy_type_raises():
 
 def test_get_aws_session_caches_per_region_profile(monkeypatch):
     """Same (region, profile) returns the same Session; different keys do not."""
-    from iam_validator.mcp.server import get_aws_session
+    from iam_validator.mcp.context import get_aws_session
 
     created: list = []
 
@@ -69,8 +91,7 @@ def test_get_aws_session_caches_per_region_profile(monkeypatch):
 
     monkeypatch.setattr("boto3.Session", FakeSession)
 
-    cache: dict = {}
-    ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context={"aws_sessions": cache}))
+    ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context=_fake_server_context()))
 
     a1 = get_aws_session(ctx, "us-east-1", None)
     a2 = get_aws_session(ctx, "us-east-1", None)
@@ -83,7 +104,7 @@ def test_get_aws_session_caches_per_region_profile(monkeypatch):
 
 def test_get_aws_session_falls_back_when_no_lifespan(monkeypatch):
     """Tests / direct callers without an MCP lifespan must not crash."""
-    from iam_validator.mcp.server import get_aws_session
+    from iam_validator.mcp.context import get_aws_session
 
     class FakeSession:
         def __init__(self, **kw):
@@ -98,7 +119,7 @@ def test_get_aws_session_falls_back_when_no_lifespan(monkeypatch):
 
 def test_get_aws_session_includes_profile_when_set(monkeypatch):
     """profile= must propagate into the Session constructor."""
-    from iam_validator.mcp.server import get_aws_session
+    from iam_validator.mcp.context import get_aws_session
 
     class FakeSession:
         def __init__(self, **kw):
@@ -106,7 +127,88 @@ def test_get_aws_session_includes_profile_when_set(monkeypatch):
 
     monkeypatch.setattr("boto3.Session", FakeSession)
 
-    cache: dict = {}
-    ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context={"aws_sessions": cache}))
+    ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context=_fake_server_context()))
     s = get_aws_session(ctx, "us-east-1", "my-profile")
     assert s.kw == {"region_name": "us-east-1", "profile_name": "my-profile"}
+
+
+class TestHostedSchema:
+    async def test_hosted_schema_has_no_profile_parameter(self):
+        from iam_validator.mcp.build import build_server
+
+        hosted = build_server(ServerSettings(mode="hosted", auth="none", auth_explicitly_set=True))
+        tools = await hosted.list_tools()
+        ap = next(t for t in tools if t.name == "analyze_policy")
+        assert "profile" not in ap.parameters.get("properties", {})
+
+    async def test_local_schema_has_profile_parameter(self):
+        from iam_validator.mcp.build import build_server
+
+        local = build_server(ServerSettings(mode="local"))
+        tools = await local.list_tools()
+        ap = next(t for t in tools if t.name == "analyze_policy")
+        assert "profile" in ap.parameters.get("properties", {})
+
+
+class TestOpenWorldHint:
+    async def test_analyze_policy_is_the_only_open_world_tool(self):
+        from iam_validator.mcp.build import build_server
+
+        server = build_server(ServerSettings(mode="local"))
+        tools = await server.list_tools()
+        open_world = [t.name for t in tools if t.annotations and t.annotations.open_world_hint]
+        assert open_world == ["analyze_policy"]
+
+
+class TestRegionAllowlist:
+    async def test_region_outside_allowlist_raises_without_creating_session(self, monkeypatch):
+        monkeypatch.setattr(analyze, "analyze_policy", MagicMock())  # must never be reached
+        context = _fake_server_context(settings=ServerSettings(allowed_regions=frozenset({"us-east-1"})))
+        ctx = _fake_ctx(context)
+
+        with pytest.raises(ToolError, match="us-east-1"):
+            await analyze._analyze_policy_tool(
+                policy={"Version": "2012-10-17", "Statement": []}, ctx=ctx, region="eu-west-1"
+            )
+        assert context.aws_sessions == {}
+
+    async def test_region_inside_allowlist_is_permitted(self, monkeypatch, mock_session):
+        monkeypatch.setattr(analyze, "get_aws_session", lambda ctx, region, profile: mock_session)
+        context = _fake_server_context(settings=ServerSettings(allowed_regions=frozenset({"us-east-1"})))
+        ctx = _fake_ctx(context)
+
+        result = await analyze._analyze_policy_tool(
+            policy={"Version": "2012-10-17", "Statement": []}, ctx=ctx, region="us-east-1"
+        )
+        assert result["finding_count"] == 1
+
+    async def test_empty_allowlist_is_unrestricted(self, monkeypatch, mock_session):
+        monkeypatch.setattr(analyze, "get_aws_session", lambda ctx, region, profile: mock_session)
+        context = _fake_server_context(settings=ServerSettings(allowed_regions=frozenset()))
+        ctx = _fake_ctx(context)
+
+        result = await analyze._analyze_policy_tool(
+            policy={"Version": "2012-10-17", "Statement": []}, ctx=ctx, region="ap-southeast-2"
+        )
+        assert result["finding_count"] == 1
+
+
+class TestAnalyzeRateLimit:
+    async def test_rate_limit_allows_up_to_the_cap_then_rejects(self, monkeypatch, mock_session):
+        monkeypatch.setattr(analyze, "get_aws_session", lambda ctx, region, profile: mock_session)
+        context = _fake_server_context(settings=ServerSettings(analyze_rate_limit=2))
+        ctx = _fake_ctx(context)
+
+        await analyze._analyze_policy_tool(policy={"Version": "2012-10-17", "Statement": []}, ctx=ctx)
+        await analyze._analyze_policy_tool(policy={"Version": "2012-10-17", "Statement": []}, ctx=ctx)
+        with pytest.raises(ToolError, match="rate limit"):
+            await analyze._analyze_policy_tool(policy={"Version": "2012-10-17", "Statement": []}, ctx=ctx)
+
+    async def test_zero_disables_the_cap(self, monkeypatch, mock_session):
+        monkeypatch.setattr(analyze, "get_aws_session", lambda ctx, region, profile: mock_session)
+        context = _fake_server_context(settings=ServerSettings(analyze_rate_limit=0))
+        ctx = _fake_ctx(context)
+
+        for _ in range(5):
+            result = await analyze._analyze_policy_tool(policy={"Version": "2012-10-17", "Statement": []}, ctx=ctx)
+            assert result["finding_count"] == 1

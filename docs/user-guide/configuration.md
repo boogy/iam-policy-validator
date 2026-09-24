@@ -163,9 +163,10 @@ settings:
 ```
 
 !!! warning "PR comment fingerprint churn"
-Switching from `false` to `true` (or vice versa) causes a one-time churn of
-existing PR comments anchored to the now-suppressed (or now-visible) check IDs.
-Re-run the validator once after changing this setting to refresh comment state.
+
+    Switching from `false` to `true` (or vice versa) causes a one-time churn of
+    existing PR comments anchored to the now-suppressed (or now-visible) check IDs.
+    Re-run the validator once after changing this setting to refresh comment state.
 
 ### on_check_error
 
@@ -198,9 +199,10 @@ settings:
 missing. This was the behaviour before the setting existed.
 
 !!! note "Custom checks"
-A bug in a custom check now fails the run instead of degrading quietly. If you load
-third-party checks you do not control and would rather not gate on their stability,
-set `on_check_error: warn` and watch the logs.
+
+    A bug in a custom check now fails the run instead of degrading quietly. If you load
+    third-party checks you do not control and would rather not gate on their stability,
+    set `on_check_error: warn` and watch the logs.
 
 ## Check Configuration
 
@@ -600,7 +602,8 @@ trust_policy_validation:
 The confused deputy detection is built-in and automatically checks service principals in trust policies for missing `aws:SourceArn` or `aws:SourceAccount` conditions. Only compute-bound services (`ec2`, `lambda`, `edgelambda`) are automatically excluded.
 
 !!! note "Opt-in Check"
-Trust policy validation is enabled when using `--policy-type TRUST_POLICY`. The validator auto-detects trust policies and suggests using this flag.
+
+    Trust policy validation is enabled when using `--policy-type TRUST_POLICY`. The validator auto-detects trust policies and suggests using this flag.
 
 #### not_principal_validation
 
@@ -634,7 +637,8 @@ policy_size:
 ```
 
 !!! note "SCP and RCP size validation"
-With `--policy-type SERVICE_CONTROL_POLICY` the SCP limit (10,240 bytes) applies, and with `RESOURCE_CONTROL_POLICY` the RCP limit (5,120 bytes). Both are measured as written from a `.json` file. See [`policy_size`](checks/aws-validation.md#policy_size).
+
+    With `--policy-type SERVICE_CONTROL_POLICY` the SCP limit (10,240 bytes) applies, and with `RESOURCE_CONTROL_POLICY` the RCP limit (5,120 bytes). Both are measured as written from a `.json` file. See [`policy_size`](checks/aws-validation.md#policy_size).
 
 ## Policy Type Resolution
 

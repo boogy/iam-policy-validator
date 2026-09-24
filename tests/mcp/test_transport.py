@@ -7,46 +7,51 @@ Round-trips the MCP protocol against the actual server instance to catch:
 - resource catalog drift
 """
 
-import pytest
 from fastmcp.client import Client
+from mcp.types import LATEST_PROTOCOL_VERSION
 
-from iam_validator.mcp.server import apply_profile, mcp
+from iam_validator.mcp.build import build_server
+from iam_validator.mcp.settings import ServerSettings
 
-
-@pytest.fixture(autouse=True)
-def _full_profile():
-    apply_profile("full")
-    yield
-    apply_profile("full")
+mcp = build_server(ServerSettings())
 
 
-async def test_validate_policy_round_trip():
+async def test_negotiated_protocol_version_is_current():
+    """Pins the negotiated MCP protocol version so a dependency bump that regresses it
+    fails loudly (fastmcp==4.0.5's mcp SDK currently reports 2026-07-28)."""
+    assert LATEST_PROTOCOL_VERSION == "2026-07-28"
+    async with Client(mcp) as client:
+        assert client.protocol_version == "2026-07-28"
+
+
+async def test_validate_policies_round_trip():
     async with Client(mcp) as client:
         result = await client.call_tool(
-            "validate_policy",
+            "validate_policies",
             {
-                "policy": {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Action": "s3:GetObject",
-                            "Resource": "arn:aws:s3:::b/*",
-                        }
-                    ],
-                }
+                "policies": [
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": "s3:GetObject",
+                                "Resource": "arn:aws:s3:::b/*",
+                            }
+                        ],
+                    }
+                ]
             },
         )
         assert result.is_error is False
         assert result.structured_content is not None
-        assert "issues" in result.structured_content
+        assert "issues" in result.structured_content["results"][0]
 
 
 async def test_resources_listed():
     async with Client(mcp) as client:
         resources = await client.list_resources()
         uris = {str(r.uri) for r in resources}
-        assert "iam://templates" in uris
         assert "iam://checks" in uris
         assert "iam://config-schema" in uris
 
@@ -55,7 +60,7 @@ async def test_resource_templates_listed():
     """Parameterized resources (Task 6g) must register as resource templates."""
     async with Client(mcp) as client:
         templates = await client.list_resource_templates()
-        uris = {str(t.uriTemplate) for t in templates}
+        uris = {str(t.uri_template) for t in templates}
         assert "iam://sensitive-actions/{category}" in uris
         assert "iam://checks/{check_id}" in uris
 
@@ -73,7 +78,6 @@ async def test_check_details_resource_round_trip():
         assert payload["check_id"] == "wildcard_action"
         assert payload["description"]
         assert payload["default_severity"] is not None
-        assert payload["example_violation"] is not None
 
 
 async def test_sensitive_actions_resource_round_trip():
@@ -105,46 +109,15 @@ async def test_tool_annotations_round_trip():
     async with Client(mcp) as client:
         tools = await client.list_tools()
         by_name = {t.name: t for t in tools}
-        assert by_name["validate_policy"].annotations.readOnlyHint is True
-        assert by_name["set_organization_config"].annotations.destructiveHint is False
-        assert by_name["aws_access_analyzer_validate"].annotations.openWorldHint is True
-
-
-async def test_validate_only_profile_exposes_minimal_set():
-    apply_profile("validate-only")
-    async with Client(mcp) as client:
-        tools = await client.list_tools()
-        names = {t.name for t in tools}
-        assert "validate_policy" in names
-        assert "generate_policy_from_template" not in names
-
-
-async def test_build_arn_raises_tool_error_for_bad_partition():
-    """Input-validation errors surface as protocol errors, not structured valid=False.
-
-    FastMCP's Client.call_tool defaults to raise_on_error=True; we opt out so we
-    can inspect the structured result.
-    """
-    async with Client(mcp) as client:
-        result = await client.call_tool(
-            "build_arn",
-            {
-                "service": "s3",
-                "resource_type": "bucket",
-                "partition": "bogus",
-            },
-            raise_on_error=False,
-        )
-        assert result.is_error is True
-        text = (result.content[0].text if result.content else "").lower()
-        assert "partition" in text
+        assert by_name["validate_policies"].annotations.read_only_hint is True
+        assert by_name["set_config"].annotations.destructive_hint is False
+        assert by_name["analyze_policy"].annotations.open_world_hint is True
 
 
 async def test_demoted_resources_no_longer_registered_as_tools():
-    """list_templates/list_checks/list_sensitive_actions/get_check_details = resources, not tools."""
+    """list_checks/list_sensitive_actions/get_check_details = resources, not tools."""
     async with Client(mcp) as client:
         names = {t.name for t in await client.list_tools()}
-        assert "list_templates" not in names
         assert "list_checks" not in names
         assert "list_sensitive_actions" not in names
         assert "get_check_details" not in names

@@ -488,7 +488,7 @@ For the full configuration reference including how `action_condition_enforcement
 
 ## MCP Server
 
-Use the IAM Policy Validator as an [MCP](https://modelcontextprotocol.io/) server for AI assistants like Claude Desktop. Provides 33 tools across validation, generation, AWS service querying, analysis, AWS Access Analyzer, and organization config management — plus tag-based `--profile` gating to slim the per-turn token cost.
+Use the IAM Policy Validator as an [MCP](https://modelcontextprotocol.io/) server for AI assistants like Claude Desktop. Provides 6 consolidated tools across validation, AWS service querying, AWS Access Analyzer, and organization config management — plus tag-based `--profile` gating to slim the per-turn token cost.
 
 ```bash
 # Quick start with uvx (no installation needed)
@@ -496,11 +496,14 @@ uvx --from "iam-policy-validator[mcp]" iam-validator-mcp
 
 # Or install with MCP extras
 pip install "iam-policy-validator[mcp]"
-iam-validator-mcp                                      # all 33 tools (default)
-iam-validator-mcp --profile validate-only              # 5 validation tools only
+iam-validator-mcp                                      # all 6 tools (default, --profile full)
+iam-validator-mcp --profile validate-only              # 2 validation tools only
 iam-validator-mcp --custom-checks-dir ./my-checks      # CLI parity: custom checks
 iam-validator-mcp --aws-services-dir ./aws-services    # CLI parity: offline AWS data
 ```
+
+Also runs in a hosted mode (`--mode hosted`, HTTP transport, auth required) for
+multi-tenant deployments — see [MCP Hosting](https://boogy.github.io/iam-policy-validator/integrations/mcp-hosting/).
 
 See the [MCP Server Documentation](https://boogy.github.io/iam-policy-validator/integrations/mcp-server/) for Claude Desktop configuration, tool reference, and the profile taxonomy.
 

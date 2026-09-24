@@ -4,6 +4,60 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.30.0] - 2026-09-24
+
+Breaking changes in this release affect MCP server users only (tools, resources, prompts and server flags). `iam-validator validate`/`analyze` and the other CLI commands, the SDK validation API and the GitHub Action are unaffected.
+
+### Changed
+
+- **Breaking:** Rebuild the MCP server around a declarative `build_server(settings)`, replacing the monolithic `mcp/server.py` and its module-level globals with a lifespan `ServerContext` and `ComponentSpec`-gated tools, resources and prompts, so a profile or transport restriction cannot be bypassed through an equivalent resource ([#196])
+- **Breaking:** Consolidate the MCP tool surface from 33 tools to 6 — `validate_policies`, `query`, `describe_checks`, `get_config`, `set_config` and `analyze_policy` ([#196]):
+  - `validate_policies` replaces `validate_policy`, `quick_validate`, `validate_policies_batch`, `validate_with_config`, `check_org_compliance` and `get_policy_summary`; it takes `policies`, `policy_type`, `detail` (`summary`/`findings`/`full`) and `format`, and returns `results` identical to the CLI's JSON output plus `config_digest`
+  - `query` replaces `query_service_actions`, `query_action_details`, `query_actions_batch`, `query_condition_keys`, `query_arn_formats`, `check_actions_batch` and `expand_wildcard_action`, dispatched by `kind` (`service_actions`/`action_details`/`condition_keys`/`arn_formats`/`expand_wildcard`)
+  - `describe_checks` replaces `get_issue_guidance` and `get_condition_requirements_for_action`, reporting each check's description, default severity, policy-type scope, resolved options and provenance
+  - `get_config`/`set_config` replace the seven organization-config and custom-instructions tools and `get_active_profile`; `set_config` is local-mode only
+  - `analyze_policy` replaces `aws_access_analyzer_validate`
+- **Breaking:** Share one argparse layer between `iam-validator mcp` and `iam-validator-mcp`, so both accept the same flags, each mirrored by an `IAM_VALIDATOR_MCP_*` environment variable (flags win) ([#196])
+- Rewrite the three MCP prompts to reference only `validate_policies` and `query` ([#196])
+- Reuse the startup check registry across MCP calls, overlaying per-call or session config via `overlay_registry_config()` instead of re-importing custom checks and writing a temporary YAML file on every call ([#196])
+- Require `fastmcp>=4.0,<5` for the `mcp` extra (was `>=3.2,<5`), and add `uvicorn[standard]` and `mcp-types` ([#196])
+
+### Added
+
+- Add a hosted MCP mode (`--mode hosted`) with an immutable config resolved once at startup; a missing or invalid config, or a custom check that fails to import, fails startup with a non-zero exit instead of falling back to defaults ([#196])
+- Add MCP auth providers selected by `--auth`: `none`, static `token`, `jwt`, `azure`, `google`, `github`, `keycloak`, `auth0`, `workos` and `aws-gateway`; all secret material comes from `IAM_VALIDATOR_MCP_AUTH_*` environment variables or files they name, never CLI flags. Hosted mode requires an explicit `--auth` choice ([#196])
+- Add per-component scope gating: a caller lacking a tool's, resource's or prompt's scope does not see it listed ([#196])
+- Add MCP request limits `--max-policies`, `--max-policy-bytes`, `--max-request-bytes` and `--request-timeout-s`, enforced before validation, plus `--max-response-bytes`, which degrades `detail` toward `summary` and marks the response `truncated` ([#196])
+- Add `--allowed-regions` and `--analyze-rate-limit` to bound `analyze_policy`'s AWS calls (default: the server's own region, 10 calls/minute per worker) ([#196])
+- Add a structured JSON audit record per hosted-mode tool call on the `iam_validator.mcp.audit` logger, carrying subject, scopes, `config_digest`, policy count, duration, outcome and severity counts — never policy content or finding messages ([#196])
+- Add `config_digest`, a stable SHA-256 over the resolved config and the registry's `(check_id, source, enabled, severity)` tuples, reported by `get_config` and every `validate_policies` response ([#196])
+- Add `iam_validator.mcp.asgi.create_app()`, a production ASGI app with unauthenticated `/health` and `/ready` routes, and a non-root `Dockerfile` with AWS service data baked in ([#196])
+- Add an AWS Lambda entry point (`iam_validator.mcp.awslambda`, `lambda` extra, `docker build --target lambda`) for Function URL or API Gateway deployments ([#196])
+- Add `iam_validator.core.policy_checks.build_registry()`, extracted from `validate_policies()` and exported as `iam_validator.sdk.build_registry`, to build a configured check registry once for reuse ([#196])
+- Add a `registry=` keyword to `validate_policies()` that validates with a prebuilt registry; the default `None` keeps the previous behavior ([#196])
+- Add `source=` to `CheckRegistry.register()` and `CheckRegistry.get_source()`, recording whether a check is built-in, from an entry point, a config module or directory discovery ([#196])
+- Add `iam_validator.core.policy_checks.overlay_registry_config()`, which builds a new registry reusing an existing registry's check instances under a different config ([#196])
+- Add `docs/integrations/mcp-hosting.md` and `docs/integrations/mcp-lambda.md`, and rewrite `docs/integrations/mcp-server.md` for the new surface ([#196])
+
+### Removed
+
+- **Breaking:** Remove the MCP policy-generation surface: the `explain_policy`, `compare_policies`, `fix_policy_issues`, `generate_policy_from_template`, `build_minimal_policy`, `suggest_actions`, `build_arn`, `check_sensitive_actions` and `get_required_conditions` tools, the 15 built-in templates, the `iam://templates` and `iam://workflow-examples` resources, and the `no-generation` profile ([#196])
+- **Breaking:** Remove the `sse` MCP transport; `--transport` accepts `stdio` or `http`, since MCP revision 2026-07-28 defines only stdio and Streamable HTTP ([#196])
+- **Breaking:** Remove `iam-validator mcp`'s `--verbose`/`-v` flag; use the global `--log-level` flag ([#196])
+- **Breaking:** Remove `iam_validator.mcp.session_config` (`SessionConfigManager`, `CustomInstructionsManager`), `iam_validator.mcp.server` (including `apply_profile()`/`set_active_profile()` and the module-level `mcp` instance) and `merge_conditions` from `iam_validator.mcp` ([#196])
+
+### Fixed
+
+- Fix MCP `tools/list` failing with `-32603 "Handler returned an invalid result"` because the `query` tool's output schema lacked a top-level object type; `build_server()` now validates every tool's output schema against each known protocol version ([#196])
+- Fix the MCP check catalog (`iam://checks`, `describe_checks`) reporting stock defaults instead of the active config's check settings ([#196])
+- Fix both MCP entry points printing a raw traceback on a bad `--config`; they now name the problem and exit non-zero ([#196])
+- Fix the AWS service fetcher's HTTP client leaking when startup prewarming fails ([#196])
+- Fail hosted MCP startup when a configured `cache_directory` is not writable, instead of logging a warning on every cache write ([#196])
+- Fix bash completion offering MCP tool profiles for `analyze --profile`, which takes an AWS profile name ([#196])
+- Fix shell completions missing `mcp --auth aws-gateway`, `analyze --config`/`-c` and, in zsh, `validate --allow-config-custom-checks` ([#196])
+
+[#196]: https://github.com/boogy/iam-policy-validator/pull/196
+
 ## [1.29.0] - 2026-09-17
 
 ### Fixed
@@ -1003,6 +1057,7 @@ _First release._
 
 [#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
+[1.30.0]: https://github.com/boogy/iam-policy-validator/compare/v1.29.0...v1.30.0
 [1.29.0]: https://github.com/boogy/iam-policy-validator/compare/v1.28.1...v1.29.0
 [1.28.1]: https://github.com/boogy/iam-policy-validator/compare/v1.28.0...v1.28.1
 [1.28.0]: https://github.com/boogy/iam-policy-validator/compare/v1.27.2...v1.28.0

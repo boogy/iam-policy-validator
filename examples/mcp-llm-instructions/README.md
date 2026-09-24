@@ -1,6 +1,6 @@
 # MCP LLM Instructions for Secure IAM Policy Generation
 
-This directory contains best-in-class LLM instructions for generating secure AWS IAM policies using the IAM Policy Validator MCP server.
+This directory contains best-in-class LLM instructions for generating secure AWS IAM policies with an AI assistant, validated by the IAM Policy Validator MCP server.
 
 ## Files
 
@@ -56,29 +56,27 @@ The system prompt enforces these security principles:
 
 ## Available MCP Tools
 
+The server exposes 6 consolidated tools (`--profile full`, the default). The
+assistant drafts policy JSON itself from AWS knowledge plus `query`, then
+validates the draft — there is no separate policy-generation tool.
+
 ### Validation
 
-- `validate_policy` - Comprehensive validation against 22 checks
-- `quick_validate` - Fast pass/fail check
-- `validate_policies_batch` - Batch validation
-
-### Generation
-
-- `generate_policy_from_template` - 15 secure templates
-- `build_minimal_policy` - Build from actions + resources
-- `suggest_actions` - NLP-based action suggestions
+- `validate_policies` - Validate one or more policies; `detail` (`summary`/`findings`/`full`) controls response size
 
 ### Query
 
-- `query_service_actions` - List actions for a service
-- `expand_wildcard_action` - Expand `s3:Get*` to actual actions
-- `query_arn_formats` - Get correct ARN patterns
+- `query` - Service actions, action details, condition keys, ARN formats, or wildcard expansion, selected via `kind`
+- `describe_checks` - Per-check description, default severity, and resolved config (also carries the guidance a curated per-check example used to)
 
-### Security
+### Organization config (local/stdio mode)
 
-- `check_sensitive_actions` - Identify privilege escalation risks
-- `get_required_conditions` - Get mandatory conditions
-- `set_organization_config` - Enforce org-wide policies
+- `get_config` - Effective config, active profile, and custom instructions (always available)
+- `set_config` - Set/clear session config and custom instructions (local mode only; no effect on a hosted server)
+
+### Analysis
+
+- `analyze_policy` - AWS Access Analyzer validation (requires AWS credentials)
 
 ## Example Usage
 
@@ -88,15 +86,15 @@ Ask your AI assistant:
 
 The AI will:
 
-1. Query the correct actions and ARN formats
-2. Generate a least-privilege policy
-3. Validate it against security checks
+1. Query the correct actions and ARN formats with `query`
+2. Draft a least-privilege policy from that information
+3. Validate it with `validate_policies`
 4. Add appropriate conditions
 5. Explain what the policy allows
 
 ## Security Validation Checks
 
-The MCP server runs 22 built-in checks:
+The MCP server runs the same 23 built-in checks as the CLI, via `describe_checks`:
 
 | Check                          | Severity | Description                          |
 | ------------------------------ | -------- | ------------------------------------ |
@@ -107,7 +105,7 @@ The MCP server runs 22 built-in checks:
 | `sensitive_action`             | medium   | 490+ privilege escalation actions    |
 | `action_condition_enforcement` | high     | Missing conditions on sensitive ops  |
 | `not_action_not_resource`      | high     | Dangerous NotAction/NotResource      |
-| ...                            | ...      | 14 more checks                       |
+| ...                            | ...      | Call `describe_checks` for the rest  |
 
 ## Organization Configuration
 
@@ -139,12 +137,15 @@ sensitive_action:
   severity: high
 ```
 
-Load with:
+Load it (local/stdio mode only):
 
 ```
-Tool: set_organization_config
+Tool: set_config
 Input: {"config": {...}}
 ```
+
+A hosted server's config is fixed at startup by its operator; `set_config` is not
+exposed there — see the [MCP Hosting](https://boogy.github.io/iam-policy-validator/integrations/mcp-hosting/) guide.
 
 ## Contributing
 

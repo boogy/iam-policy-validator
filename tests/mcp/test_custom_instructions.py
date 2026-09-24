@@ -1,11 +1,13 @@
-"""Tests for CustomInstructionsManager."""
+"""Tests for custom-instructions handling: SessionState + startup resolution."""
 
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from iam_validator.mcp.session_config import CustomInstructionsManager
+from iam_validator.core.config.config_loader import ValidatorConfig
+from iam_validator.mcp.context import SessionState, _resolve_startup_instructions
+from iam_validator.mcp.settings import ServerSettings
 
 # Check if fastmcp is available for tests that need it
 try:
@@ -16,139 +18,120 @@ except ImportError:
     HAS_FASTMCP = False
 
 
-class TestCustomInstructionsManager:
-    """Test suite for CustomInstructionsManager."""
+class TestSessionStateInstructions:
+    """Test suite for SessionState's custom-instructions methods."""
 
-    def setup_method(self):
-        """Clear instructions before each test."""
-        CustomInstructionsManager.clear_instructions()
+    @pytest.fixture
+    def session(self):
+        return SessionState()
 
-    def teardown_method(self):
-        """Clear instructions after each test."""
-        CustomInstructionsManager.clear_instructions()
-
-    def test_set_and_get_instructions(self):
+    def test_set_and_get_instructions(self, session):
         """Should set and retrieve custom instructions."""
         instructions = "Always require MFA for sensitive actions"
-        CustomInstructionsManager.set_instructions(instructions, source="test")
+        session.set_instructions(instructions, source="test")
 
-        assert CustomInstructionsManager.has_instructions()
-        assert CustomInstructionsManager.get_instructions() == instructions
-        assert CustomInstructionsManager.get_source() == "test"
+        assert session.has_instructions()
+        assert session.get_instructions() == instructions
+        assert session.get_instructions_source() == "test"
 
-    def test_clear_instructions(self):
+    def test_clear_instructions(self, session):
         """Should clear instructions and return to default state."""
-        CustomInstructionsManager.set_instructions("Some instructions", source="test")
-        assert CustomInstructionsManager.has_instructions()
+        session.set_instructions("Some instructions", source="test")
+        assert session.has_instructions()
 
-        result = CustomInstructionsManager.clear_instructions()
+        result = session.clear_instructions()
 
         assert result is True
-        assert not CustomInstructionsManager.has_instructions()
-        assert CustomInstructionsManager.get_instructions() is None
-        assert CustomInstructionsManager.get_source() == "none"
+        assert not session.has_instructions()
+        assert session.get_instructions() is None
+        assert session.get_instructions_source() == "none"
 
-    def test_clear_when_no_instructions(self):
+    def test_clear_when_no_instructions(self, session):
         """Should return False when clearing without any instructions set."""
-        result = CustomInstructionsManager.clear_instructions()
+        result = session.clear_instructions()
         assert result is False
 
-    def test_set_instructions_strips_whitespace(self):
+    def test_set_instructions_strips_whitespace(self, session):
         """Should strip whitespace from instructions."""
         instructions = "  \n  Some instructions  \n  "
-        CustomInstructionsManager.set_instructions(instructions, source="test")
+        session.set_instructions(instructions, source="test")
 
-        assert CustomInstructionsManager.get_instructions() == "Some instructions"
+        assert session.get_instructions() == "Some instructions"
 
-    def test_set_empty_instructions_clears(self):
+    def test_set_empty_instructions_clears(self, session):
         """Should clear instructions when setting empty string."""
-        CustomInstructionsManager.set_instructions("Some instructions", source="test")
-        CustomInstructionsManager.set_instructions("   ", source="test")
+        session.set_instructions("Some instructions", source="test")
+        session.set_instructions("   ", source="test")
 
-        assert not CustomInstructionsManager.has_instructions()
-        assert CustomInstructionsManager.get_source() == "none"
+        assert not session.has_instructions()
+        assert session.get_instructions_source() == "none"
 
-    def test_load_from_file(self):
-        """Should load instructions from a file."""
+    def test_source_tracking(self, session):
+        """Should track the source of instructions correctly."""
+        session.set_instructions("API instructions", source="api")
+        assert session.get_instructions_source() == "api"
+
+        session.set_instructions("Config instructions", source="config")
+        assert session.get_instructions_source() == "config"
+
+        session.set_instructions("CLI instructions", source="cli")
+        assert session.get_instructions_source() == "cli"
+
+
+class TestResolveStartupInstructions:
+    """Test suite for ``_resolve_startup_instructions`` (settings -> startup text).
+
+    This is where file/env-sourced instructions are now resolved: ServerSettings
+    itself reads IAM_VALIDATOR_MCP_INSTRUCTIONS / _INSTRUCTIONS_FILE from the
+    environment (see test_settings.py), and this function turns the resolved
+    settings into the text appended to BASE_INSTRUCTIONS at lifespan startup.
+    """
+
+    def test_inline_instructions_take_precedence(self):
+        settings = ServerSettings(instructions="Inline text", instructions_file=None)
+        config = ValidatorConfig({"custom_instructions": "Config text"})
+        assert _resolve_startup_instructions(settings, config) == "Inline text"
+
+    def test_loads_from_file(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("## Custom Rules\n- Rule 1\n- Rule 2")
             temp_path = f.name
 
         try:
-            CustomInstructionsManager.load_from_file(temp_path)
-
-            assert CustomInstructionsManager.has_instructions()
-            assert "Custom Rules" in CustomInstructionsManager.get_instructions()
-            assert CustomInstructionsManager.get_source() == "file"
+            settings = ServerSettings(instructions_file=temp_path)
+            config = ValidatorConfig({})
+            result = _resolve_startup_instructions(settings, config)
+            assert result is not None
+            assert "Custom Rules" in result
         finally:
             Path(temp_path).unlink()
 
-    def test_load_from_nonexistent_file_raises(self):
-        """Should raise FileNotFoundError for missing file."""
-        with pytest.raises(FileNotFoundError):
-            CustomInstructionsManager.load_from_file("/nonexistent/path.md")
+    def test_returns_none_when_neither_set(self):
+        settings = ServerSettings()
+        config = ValidatorConfig({})
+        assert _resolve_startup_instructions(settings, config) is None
 
-    def test_load_from_env(self, monkeypatch):
-        """Should load instructions from environment variable."""
-        monkeypatch.setenv("IAM_VALIDATOR_MCP_INSTRUCTIONS", "Env instructions")
-
-        result = CustomInstructionsManager.load_from_env()
-
-        assert result is True
-        assert CustomInstructionsManager.get_instructions() == "Env instructions"
-        assert CustomInstructionsManager.get_source() == "env"
-
-    def test_load_from_env_when_not_set(self, monkeypatch):
-        """Should return False when env var is not set."""
-        monkeypatch.delenv("IAM_VALIDATOR_MCP_INSTRUCTIONS", raising=False)
-
-        result = CustomInstructionsManager.load_from_env()
-
-        assert result is False
-        assert not CustomInstructionsManager.has_instructions()
-
-    def test_source_tracking(self):
-        """Should track the source of instructions correctly."""
-        # API source
-        CustomInstructionsManager.set_instructions("API instructions", source="api")
-        assert CustomInstructionsManager.get_source() == "api"
-
-        # Config source
-        CustomInstructionsManager.set_instructions("Config instructions", source="config")
-        assert CustomInstructionsManager.get_source() == "config"
-
-        # CLI source
-        CustomInstructionsManager.set_instructions("CLI instructions", source="cli")
-        assert CustomInstructionsManager.get_source() == "cli"
+    def test_falls_back_to_config_custom_instructions(self):
+        settings = ServerSettings()
+        config = ValidatorConfig({"custom_instructions": "From config"})
+        assert _resolve_startup_instructions(settings, config) == "From config"
 
 
 @pytest.mark.skipif(not HAS_FASTMCP, reason="MCP tests require 'pip install iam-policy-validator[mcp]'")
 class TestGetInstructions:
-    """Test suite for get_instructions function."""
-
-    def setup_method(self):
-        """Clear instructions before each test."""
-        CustomInstructionsManager.clear_instructions()
-
-    def teardown_method(self):
-        """Clear instructions after each test."""
-        CustomInstructionsManager.clear_instructions()
+    """Test suite for the module-level ``get_instructions`` function."""
 
     def test_returns_base_when_no_custom(self):
-        """Should return base instructions when no custom instructions set."""
-        from iam_validator.mcp.server import BASE_INSTRUCTIONS, get_instructions
+        from iam_validator.mcp.instructions import BASE_INSTRUCTIONS, get_instructions
 
         result = get_instructions()
         assert result == BASE_INSTRUCTIONS
 
     def test_appends_custom_instructions(self):
-        """Should append custom instructions with section header."""
-        from iam_validator.mcp.server import BASE_INSTRUCTIONS, get_instructions
+        from iam_validator.mcp.instructions import BASE_INSTRUCTIONS, get_instructions
 
         custom = "Always require MFA"
-        CustomInstructionsManager.set_instructions(custom, source="test")
-
-        result = get_instructions()
+        result = get_instructions(custom)
 
         assert BASE_INSTRUCTIONS in result
         assert "## ORGANIZATION-SPECIFIC INSTRUCTIONS" in result
@@ -156,26 +139,14 @@ class TestGetInstructions:
 
 
 class TestSessionConfigCustomInstructions:
-    """Test custom_instructions key in YAML config."""
+    """Test custom_instructions key in YAML config, applied to a SessionState."""
 
-    def setup_method(self):
-        """Clear state before each test."""
-        CustomInstructionsManager.clear_instructions()
-        from iam_validator.mcp.session_config import SessionConfigManager
+    @pytest.fixture
+    def session(self):
+        return SessionState()
 
-        SessionConfigManager.clear_config()
-
-    def teardown_method(self):
-        """Clear state after each test."""
-        CustomInstructionsManager.clear_instructions()
-        from iam_validator.mcp.session_config import SessionConfigManager
-
-        SessionConfigManager.clear_config()
-
-    def test_load_custom_instructions_from_yaml(self):
+    def test_load_custom_instructions_from_yaml(self, session):
         """Should extract custom_instructions from YAML config."""
-        from iam_validator.mcp.session_config import SessionConfigManager
-
         yaml_content = """
 settings:
   fail_on_severity: [error, critical]
@@ -189,12 +160,12 @@ wildcard_action:
   enabled: true
 """
 
-        config, warnings = SessionConfigManager.load_from_yaml(yaml_content)
+        config, warnings = session.load_config_from_yaml(yaml_content)
 
-        # Custom instructions should be loaded
-        assert CustomInstructionsManager.has_instructions()
-        assert "Organization Rules" in CustomInstructionsManager.get_instructions()
-        assert CustomInstructionsManager.get_source() == "config"
+        # Custom instructions should be loaded onto the same session
+        assert session.has_instructions()
+        assert "Organization Rules" in session.get_instructions()
+        assert session.get_instructions_source() == "config"
 
         # Warning should be generated
         assert any("custom instructions" in w.lower() for w in warnings)
@@ -202,10 +173,8 @@ wildcard_action:
         # Config should not include custom_instructions key
         assert "custom_instructions" not in config.checks_config
 
-    def test_empty_custom_instructions_ignored(self):
+    def test_empty_custom_instructions_ignored(self, session):
         """Should ignore empty custom_instructions in YAML."""
-        from iam_validator.mcp.session_config import SessionConfigManager
-
         yaml_content = """
 settings:
   fail_on_severity: [error]
@@ -213,6 +182,6 @@ settings:
 custom_instructions: ""
 """
 
-        config, warnings = SessionConfigManager.load_from_yaml(yaml_content)
+        config, warnings = session.load_config_from_yaml(yaml_content)
 
-        assert not CustomInstructionsManager.has_instructions()
+        assert not session.has_instructions()

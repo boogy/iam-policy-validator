@@ -57,7 +57,12 @@ docs = [
   "mkdocs-literate-nav>=0.6.0",
 ]
 mcp = [
-  "fastmcp>=3.2,<5",
+  "fastmcp>=4.0,<5",
+  "uvicorn[standard]>=0.30.0",
+  "mcp-types>=2.2,<3",
+]
+lambda = [
+  "mangum>=0.17,<1",
 ]
 
 [project.scripts]

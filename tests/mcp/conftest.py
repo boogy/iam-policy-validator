@@ -7,12 +7,41 @@ Note: These tests require the optional 'mcp' extra (fastmcp package).
       Tests will be skipped if fastmcp is not installed.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from iam_validator.core.check_registry import CheckConfig
-from iam_validator.core.models import IAMPolicy, Statement, ValidationIssue
+from iam_validator.core.models import (
+    ActionDetail,
+    ConditionKey,
+    IAMPolicy,
+    ResourceType,
+    ServiceDetail,
+    Statement,
+    ValidationIssue,
+)
+
+
+@contextmanager
+def as_caller(*scopes: str, client_id: str = "test-caller") -> Iterator[None]:
+    """Simulate an authenticated request carrying ``scopes``, for direct calls to
+    ``list_tools()``/``get_tool()``/etc. that bypass FastMCP's real transport dispatch
+    (which is the only place that would otherwise populate the access-token context).
+    """
+    from mcp.server.auth.middleware.auth_context import auth_context_var
+    from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+    from mcp.server.auth.provider import AccessToken
+
+    token = auth_context_var.set(
+        AuthenticatedUser(AccessToken(token="test-token", client_id=client_id, scopes=list(scopes)))
+    )
+    try:
+        yield
+    finally:
+        auth_context_var.reset(token)
 
 
 @pytest.fixture
@@ -39,12 +68,17 @@ def mock_fetcher():
 
     fetcher.validate_action = AsyncMock(side_effect=mock_validate_action)
 
+    async def mock_validate_actions_batch(actions: list[str], allow_wildcards: bool = True):
+        return {action: await mock_validate_action(action) for action in actions}
+
+    fetcher.validate_actions_batch = AsyncMock(side_effect=mock_validate_actions_batch)
+
     # Mock expand_wildcard_action
     async def mock_expand_wildcard(pattern: str):
         if pattern == "s3:Get*":
             return ["s3:GetObject", "s3:GetObjectAcl", "s3:GetObjectVersion"]
         elif pattern == "s3:*":
-            return ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
+            return sorted(["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"])
         elif pattern == "iam:*User*":
             return ["iam:CreateUser", "iam:DeleteUser", "iam:GetUser", "iam:UpdateUser"]
         else:
@@ -52,41 +86,97 @@ def mock_fetcher():
 
     fetcher.expand_wildcard_action = AsyncMock(side_effect=mock_expand_wildcard)
 
-    # Mock fetch_service_by_name
-    async def mock_fetch_service(service: str):
+    def _action(name: str, access_flag: str | None, resource_type: str | None = None) -> ActionDetail:
+        """An ``ActionDetail`` carrying the ``Properties`` flag ``_get_access_level`` reads."""
+        return ActionDetail(
+            name=name,
+            annotations={"Properties": {access_flag: True}} if access_flag else None,
+            resources=[{"Name": resource_type}] if resource_type else [],
+        )
+
+    # Mock fetch_service_by_name -- returns real ServiceDetail/ActionDetail/ConditionKey
+    # instances (not bare MagicMocks), so `.actions`/`.condition_keys` are the dicts
+    # production code expects, not the list shape a hand-rolled mock could drift into.
+    async def mock_fetch_service(service: str) -> ServiceDetail:
         if service == "s3":
-            service_mock = MagicMock()
-            service_mock.service_prefix = "s3"
-            service_mock.actions = [
-                {"name": "GetObject", "access_level": "Read"},
-                {"name": "PutObject", "access_level": "Write"},
-                {"name": "ListBucket", "access_level": "List"},
-            ]
-            service_mock.condition_keys = [
-                "s3:prefix",
-                "s3:x-amz-acl",
-                "aws:SecureTransport",
-            ]
-            return service_mock
+            return ServiceDetail(
+                name="Amazon S3",
+                prefix="s3",
+                actions_list=[
+                    _action("GetObject", None, "object"),
+                    _action("PutObject", "IsWrite", "object"),
+                    _action("ListBucket", "IsList", "bucket"),
+                ],
+                resources_list=[
+                    ResourceType(name="object", arn_formats=["arn:${Partition}:s3:::${BucketName}/${ObjectName}"]),
+                    ResourceType(name="bucket", arn_formats=["arn:${Partition}:s3:::${BucketName}"]),
+                ],
+                condition_keys_list=[
+                    ConditionKey(name="s3:prefix"),
+                    ConditionKey(name="s3:x-amz-acl"),
+                    ConditionKey(name="aws:SecureTransport"),
+                ],
+            )
         elif service == "iam":
-            service_mock = MagicMock()
-            service_mock.service_prefix = "iam"
-            service_mock.actions = [
-                {"name": "CreateUser", "access_level": "Write"},
-                {"name": "GetUser", "access_level": "Read"},
-                {"name": "PassRole", "access_level": "Write"},
-            ]
-            service_mock.condition_keys = [
-                "iam:PassedToService",
-                "iam:PolicyARN",
-            ]
-            return service_mock
+            return ServiceDetail(
+                name="AWS Identity and Access Management",
+                prefix="iam",
+                actions_list=[
+                    _action("CreateUser", "IsWrite"),
+                    _action("GetUser", None),
+                    _action("PassRole", "IsWrite"),
+                ],
+                condition_keys_list=[
+                    ConditionKey(name="iam:PassedToService"),
+                    ConditionKey(name="iam:PolicyARN"),
+                ],
+            )
         else:
             raise ValueError(f"Service not found: {service}")
 
     fetcher.fetch_service_by_name = AsyncMock(side_effect=mock_fetch_service)
 
     return fetcher
+
+
+@pytest.fixture(autouse=True)
+def _no_real_aws_fetcher(monkeypatch: pytest.MonkeyPatch, mock_fetcher: MagicMock) -> None:
+    """Redirect ``validate_policies``'s internal fetcher construction (which ignores ``ServerContext.fetcher``) to ``mock_fetcher``."""
+    import iam_validator.core.policy_checks as policy_checks_module
+
+    class _FakeFetcherContext:
+        async def __aenter__(self) -> MagicMock:
+            return mock_fetcher
+
+        async def __aexit__(self, *exc: object) -> bool:
+            return False
+
+    monkeypatch.setattr(policy_checks_module, "AWSServiceFetcher", lambda *a, **k: _FakeFetcherContext())
+
+
+@pytest.fixture(autouse=True)
+def _no_real_aws_fetcher_in_context(monkeypatch: pytest.MonkeyPatch, mock_fetcher: MagicMock) -> None:
+    """Redirect ``build_context()``'s fetcher construction, used by a real server lifespan's ``prewarm()``, to ``mock_fetcher``."""
+    import iam_validator.mcp.context as context_module
+
+    mock_fetcher.__aenter__ = AsyncMock(return_value=mock_fetcher)
+    mock_fetcher.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(context_module, "AWSServiceFetcher", lambda *a, **k: mock_fetcher)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_aws_cache_dir(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Structural backstop: any directly constructed AWSServiceFetcher (bypassing the two fixtures above) gets tmp_path as its cache dir, never ~/Library/Caches."""
+    from iam_validator.core.aws_service.fetcher import AWSServiceFetcher
+
+    original_init = AWSServiceFetcher.__init__
+
+    def _init(self, *args, cache_dir=None, **kwargs):
+        original_init(
+            self, *args, cache_dir=tmp_path / "aws_services_cache" if cache_dir is None else cache_dir, **kwargs
+        )
+
+    monkeypatch.setattr(AWSServiceFetcher, "__init__", _init)
 
 
 @pytest.fixture

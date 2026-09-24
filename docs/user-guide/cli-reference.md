@@ -406,6 +406,14 @@ iam-validator completion bash > ~/.bash_completion.d/iam-validator
 
 Start an MCP (Model Context Protocol) server for AI assistant integration.
 
+`iam-validator-mcp` (a standalone entry point) and `iam-validator mcp` (this
+subcommand) share one argparse layer, so both accept identical flags and resolve
+them to an identical `ServerSettings`. Every flag also has an `IAM_VALIDATOR_MCP_*`
+environment variable equivalent; flags win over env vars, env vars win over
+defaults. This table is checked against the parser by
+`tests/mcp/test_cli_reference_doc.py` — a flag added to `iam_validator/mcp/cli.py`
+without a matching row here fails that test.
+
 ### Usage
 
 ```bash
@@ -414,13 +422,28 @@ iam-validator mcp [OPTIONS]
 
 ### Options
 
-| Option            | Description                           | Default     |
-| ----------------- | ------------------------------------- | ----------- |
-| `--transport`     | Transport protocol (`stdio` or `sse`) | `stdio`     |
-| `--host`          | Host for SSE transport                | `127.0.0.1` |
-| `--port`          | Port for SSE transport                | `8000`      |
-| `--config`        | Path to configuration YAML file       | None        |
-| `--verbose`, `-v` | Enable verbose logging                | `false`     |
+| Option                | Description                                                              | Default        |
+| ---------------------- | ------------------------------------------------------------------------- | -------------- |
+| `--mode`                | Server mode: `local` or `hosted`                                          | `local`        |
+| `--transport`           | Transport: `stdio` or `http` (`sse` was removed, not deprecated)          | `stdio`        |
+| `--host`                | Bind host, used only with `--transport http`                              | `127.0.0.1`    |
+| `--port`                | Bind port, used only with `--transport http`                              | `8000`         |
+| `--config`              | Path to configuration YAML file, loaded at startup                        | None           |
+| `--auth`                | Auth provider: `none`, `token`, `jwt`, or an IdP name (`azure`/`google`/`github`/`keycloak`/`auth0`/`workos`); token/JWT/IdP material is env-var- or file-only, never a flag | `none` |
+| `--profile`             | Limit exposed tools: `full`, `validate-only`, `validate-and-query`, `read-only` | `full`    |
+| `--list-profiles`       | Print the profile → tool taxonomy and exit                                | —              |
+| `--custom-checks-dir`   | Directory of custom `PolicyCheck` modules to auto-discover                | None           |
+| `--aws-services-dir`    | Directory of pre-downloaded AWS service definitions (offline mode)        | None           |
+| `--cache-directory`     | Directory for the AWS service-data disk cache                             | None           |
+| `--instructions`        | Inline custom instructions appended to the default LLM instructions       | None           |
+| `--instructions-file`   | Path to a file with custom instructions (mutually exclusive with `--instructions`) | None   |
+| `--allowed-regions`     | Comma-separated AWS regions `analyze_policy` may target                   | server's own region |
+| `--analyze-rate-limit`  | Max `analyze_policy` calls per minute per worker process; `0` disables    | `10`           |
+| `--max-policies`        | Max policies accepted in one `validate_policies` call                     | `50`           |
+| `--max-policy-bytes`    | Max size of a single policy, in bytes                                     | 1 MiB          |
+| `--max-request-bytes`   | Max total request size, in bytes                                          | 8 MiB          |
+| `--request-timeout-s`   | Per-request timeout, in seconds                                           | `60`           |
+| `--max-response-bytes`  | Max response size before `detail` is degraded and the response marked `truncated` | 4 MiB  |
 
 ### Examples
 
@@ -428,14 +451,19 @@ iam-validator mcp [OPTIONS]
 # Start with stdio transport (for Claude Desktop)
 iam-validator mcp
 
-# Start with SSE transport
-iam-validator mcp --transport sse --host 127.0.0.1 --port 8000
+# Start with Streamable HTTP transport
+iam-validator mcp --transport http --host 127.0.0.1 --port 8000
 
 # Start with config preloaded
 iam-validator mcp --config ./config.yaml
+
+# List the tool taxonomy for each --profile value
+iam-validator mcp --list-profiles
 ```
 
-See the [MCP Server Integration](../integrations/mcp-server.md) guide for detailed setup instructions.
+See the [MCP Server Integration](../integrations/mcp-server.md) guide for the tool
+reference, and [MCP Hosting](../integrations/mcp-hosting.md) for `--mode hosted`
+deployments.
 
 ## Exit Codes
 

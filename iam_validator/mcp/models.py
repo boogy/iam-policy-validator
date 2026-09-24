@@ -4,8 +4,6 @@ This module defines MCP-specific models that extend the core validation models
 for use with the FastMCP server implementation.
 """
 
-from typing import Any
-
 from pydantic import BaseModel, Field
 
 from iam_validator.core.models import ValidationIssue
@@ -24,24 +22,6 @@ class ValidationResult(BaseModel):
         default=None,
         description="The policy type used for validation: 'identity', 'resource', or 'trust'. "
         "Shows auto-detected type when policy_type was not explicitly provided.",
-    )
-
-
-class GenerationResult(BaseModel):
-    """Result of policy generation.
-
-    Returned by all policy generation tools (from description, template, or actions).
-    Always includes validation results and security notes.
-    """
-
-    policy: dict[str, Any] = Field(description="The generated IAM policy document")
-    validation: ValidationResult = Field(description="Validation results for the generated policy")
-    security_notes: list[str] = Field(
-        default_factory=list,
-        description="Security warnings and auto-applied conditions (e.g., 'Auto-added MFA condition')",
-    )
-    template_used: str | None = Field(
-        default=None, description="Name of the template used for generation (if applicable)"
     )
 
 
@@ -82,25 +62,3 @@ class ActionDetails(BaseModel):
         description="Condition keys that can be used with this action",
     )
     description: str | None = Field(default=None, description="Human-readable description of what the action does")
-
-
-class EnforcementResult(BaseModel):
-    """Result of security enforcement on a policy.
-
-    Returned by the security enforcement layer after applying required conditions
-    and validating security constraints.
-    """
-
-    policy: dict[str, Any] = Field(description="The policy after security enforcement (with auto-added conditions)")
-    warnings: list[str] = Field(
-        default_factory=list,
-        description="Security warnings for issues that were auto-fixed (e.g., 'Added MFA condition')",
-    )
-    errors: list[str] = Field(
-        default_factory=list,
-        description="Security errors that could not be auto-fixed (generation should fail)",
-    )
-    conditions_added: list[str] = Field(
-        default_factory=list,
-        description="List of conditions that were automatically added (e.g., 'aws:MultiFactorAuthPresent')",
-    )

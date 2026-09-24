@@ -3,6 +3,10 @@
 import argparse
 import os
 import pathlib
+import re
+import shlex
+import shutil
+import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -285,3 +289,72 @@ class TestCompletionInstall:
         await completion_cmd.execute(argparse.Namespace(shell=shell, install=False))
 
         assert "--install" in capsys.readouterr().out
+
+
+def _parser_flags(command_name: str) -> set[str]:
+    from iam_validator.commands import ALL_COMMANDS
+
+    command = next(c for c in ALL_COMMANDS if c.name == command_name)
+    parser = argparse.ArgumentParser()
+    command.add_arguments(parser)
+    return {s for action in parser._actions for s in action.option_strings} - {"-h", "--help"}
+
+
+def _bash_opts(script: str, command_name: str) -> set[str]:
+    match = re.search(rf'^\s+{re.escape(command_name)}\)\n\s+opts="([^"]*)"', script, re.M)
+    assert match, f"no bash opts block for {command_name}"
+    return set(match.group(1).split())
+
+
+def _zsh_flags(script: str, command_name: str) -> set[str]:
+    match = re.search(rf"^\s+{re.escape(command_name)}\)\n\s+_arguments \\\n(.*?)\n\s+;;", script, re.M | re.S)
+    assert match, f"no zsh _arguments block for {command_name}"
+    return set(re.findall(r"(?<![\w-])--?[A-Za-z][\w-]*(?=[\[,}'])", match.group(1)))
+
+
+def _bash_complete(script: str, words: list[str]) -> list[str]:
+    driver = (
+        f"{script}\n"
+        f"COMP_WORDS=({' '.join(shlex.quote(w) for w in words)})\n"
+        f"COMP_CWORD={len(words) - 1}\n"
+        "_iam_validator_completion\n"
+        'printf "%s\\n" "${COMPREPLY[@]}"\n'
+    )
+    result = subprocess.run(["bash", "-c", driver], capture_output=True, text=True, check=True)
+    return result.stdout.split()
+
+
+COMMANDS_WITH_FLAT_FLAGS = ["validate", "post-to-pr", "analyze", "sync-services", "mcp"]
+
+
+class TestCompletionMatchesParsers:
+    @pytest.mark.parametrize("command_name", COMMANDS_WITH_FLAT_FLAGS)
+    def test_bash_opts_match_parser_flags(self, completion_cmd: CompletionCommand, command_name: str) -> None:
+        assert _bash_opts(completion_cmd._generate_bash_completion(), command_name) == _parser_flags(command_name)
+
+    @pytest.mark.parametrize("command_name", COMMANDS_WITH_FLAT_FLAGS)
+    def test_zsh_flags_match_parser_flags(self, completion_cmd: CompletionCommand, command_name: str) -> None:
+        assert _zsh_flags(completion_cmd._generate_zsh_completion(), command_name) == _parser_flags(command_name)
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not installed")
+    def test_bash_mcp_profile_offers_tool_profiles(self, completion_cmd: CompletionCommand) -> None:
+        script = completion_cmd._generate_bash_completion()
+
+        assert _bash_complete(script, ["iam-validator", "mcp", "--profile", ""]) == [
+            "full",
+            "validate-only",
+            "validate-and-query",
+            "read-only",
+        ]
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not installed")
+    def test_bash_analyze_profile_does_not_offer_mcp_profiles(self, completion_cmd: CompletionCommand) -> None:
+        script = completion_cmd._generate_bash_completion()
+
+        assert _bash_complete(script, ["iam-validator", "analyze", "--profile", ""]) == []
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not installed")
+    def test_bash_mcp_auth_offers_aws_gateway(self, completion_cmd: CompletionCommand) -> None:
+        script = completion_cmd._generate_bash_completion()
+
+        assert "aws-gateway" in _bash_complete(script, ["iam-validator", "mcp", "--auth", ""])

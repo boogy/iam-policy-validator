@@ -9,11 +9,11 @@ IAM Policy Validator ships a [Claude Code](https://docs.claude.com/en/docs/claud
 
 This is the **CLI-based alternative** to the [MCP server](mcp-server.md):
 
-| Use the skill if…                                               | Use the MCP server if…                                      |
-| --------------------------------------------------------------- | ----------------------------------------------------------- |
-| You're using Claude Code (terminal / desktop / IDE extension)   | You're integrating with Claude Desktop or another MCP host  |
-| You want zero-config install via the plugin marketplace         | You want programmatic tool access with 35+ structured tools |
-| You already run `iam-validator` in CI and want the same UX here | You need the MCP's policy-generation templates              |
+| Use the skill if…                                               | Use the MCP server if…                                       |
+| --------------------------------------------------------------- | ------------------------------------------------------------ |
+| You're using Claude Code (terminal / desktop / IDE extension)   | You're integrating with Claude Desktop or another MCP host   |
+| You want zero-config install via the plugin marketplace         | You want programmatic tool access via 6 structured MCP tools |
+| You already run `iam-validator` in CI and want the same UX here | You need a hosted, multi-tenant MCP deployment               |
 
 Both paths can coexist — installing one does not affect the other.
 
@@ -31,6 +31,7 @@ The first command registers the marketplace defined in [`.claude-plugin/marketpl
 After install, restart Claude Code. The skill is now active in every session.
 
 !!! note "Prerequisites"
+
     The skill invokes the `iam-validator` CLI. It will use whichever installation Claude Code has access to — typically one of:
 
     ```bash

@@ -1,13 +1,27 @@
 """Tests for MCP query tools."""
 
-import pytest
+from types import SimpleNamespace
+from unittest.mock import patch
 
+import jsonschema
+import pytest
+from fastmcp.exceptions import ToolError
+
+from iam_validator.core.aws_service import AWSServiceFetcher
+from iam_validator.core.config.config_loader import ConfigLoader
+from iam_validator.core.policy_checks import build_registry
+from iam_validator.core.report import ReportGenerator
+from iam_validator.mcp.context import ServerContext
+from iam_validator.mcp.settings import ServerSettings
 from iam_validator.mcp.tools.query import (
+    _QUERY_INPUT_SCHEMA,
+    _QUERY_OUTPUT_SCHEMA,
     expand_wildcard_action,
     get_condition_requirements,
     get_policy_summary,
     list_checks,
     list_sensitive_actions,
+    query,
     query_action_details,
     query_arn_formats,
     query_condition_keys,
@@ -19,30 +33,30 @@ class TestQueryServiceActions:
     """Tests for query_service_actions function."""
 
     @pytest.mark.asyncio
-    async def test_queries_service_actions(self):
+    async def test_queries_service_actions(self, mock_fetcher):
         """Should return actions list and accept valid access levels."""
-        actions = await query_service_actions("s3")
+        actions = await query_service_actions("s3", fetcher=mock_fetcher)
         assert isinstance(actions, list)
 
         # Test valid access levels
         for level in ["read", "write", "list", "tagging", "permissions-management"]:
-            result = await query_service_actions("s3", access_level=level)
+            result = await query_service_actions("s3", access_level=level, fetcher=mock_fetcher)
             assert isinstance(result, list)
 
     @pytest.mark.asyncio
-    async def test_validates_access_level(self):
+    async def test_validates_access_level(self, mock_fetcher):
         """Should reject invalid access level."""
         with pytest.raises(ValueError, match="Invalid access level"):
-            await query_service_actions("s3", access_level="invalid")
+            await query_service_actions("s3", access_level="invalid", fetcher=mock_fetcher)
 
 
 class TestQueryActionDetails:
     """Tests for query_action_details function."""
 
     @pytest.mark.asyncio
-    async def test_queries_action_details(self):
+    async def test_queries_action_details(self, mock_fetcher):
         """Should return action details with expected attributes."""
-        details = await query_action_details("s3:GetObject")
+        details = await query_action_details("s3:GetObject", fetcher=mock_fetcher)
         if details:
             assert hasattr(details, "action")
             assert hasattr(details, "service")
@@ -70,9 +84,9 @@ class TestExpandWildcardAction:
             ("s3:*", "s3:"),
         ],
     )
-    async def test_expands_wildcard_patterns(self, pattern, expected_prefix):
+    async def test_expands_wildcard_patterns(self, pattern, expected_prefix, mock_fetcher):
         """Should expand wildcard patterns correctly."""
-        actions = await expand_wildcard_action(pattern)
+        actions = await expand_wildcard_action(pattern, fetcher=mock_fetcher)
         assert isinstance(actions, list)
         assert len(actions) > 0
         for action in actions:
@@ -82,19 +96,19 @@ class TestExpandWildcardAction:
             assert actions == sorted(actions)
 
     @pytest.mark.asyncio
-    async def test_handles_invalid_pattern(self):
+    async def test_handles_invalid_pattern(self, mock_fetcher):
         """Should raise error for invalid wildcard pattern."""
         with pytest.raises(ValueError):
-            await expand_wildcard_action("invalid:pattern*")
+            await expand_wildcard_action("invalid:pattern*", fetcher=mock_fetcher)
 
 
 class TestQueryConditionKeys:
     """Tests for query_condition_keys function."""
 
     @pytest.mark.asyncio
-    async def test_queries_condition_keys(self):
+    async def test_queries_condition_keys(self, mock_fetcher):
         """Should return condition keys for service."""
-        keys = await query_condition_keys("s3")
+        keys = await query_condition_keys("s3", fetcher=mock_fetcher)
         assert isinstance(keys, list)
         if keys:
             for key in keys:
@@ -105,9 +119,9 @@ class TestQueryArnFormats:
     """Tests for query_arn_formats function."""
 
     @pytest.mark.asyncio
-    async def test_queries_arn_formats(self):
+    async def test_queries_arn_formats(self, mock_fetcher):
         """Should return ARN formats with proper structure."""
-        arns = await query_arn_formats("s3")
+        arns = await query_arn_formats("s3", fetcher=mock_fetcher)
         assert isinstance(arns, list)
         if arns:
             for arn in arns:
@@ -228,3 +242,93 @@ class TestGetConditionRequirements:
         """Should return requirements dict or None."""
         req = await get_condition_requirements(action)
         assert req is None or isinstance(req, dict)
+
+
+def _fake_ctx(context: ServerContext) -> SimpleNamespace:
+    return SimpleNamespace(request_context=SimpleNamespace(lifespan_context=context))
+
+
+def _build_context(*, fetcher: AWSServiceFetcher | None = None) -> ServerContext:
+    config = ConfigLoader.load_config(allow_missing=True)
+    return ServerContext(
+        config=config,
+        registry=build_registry(config),
+        formatters=ReportGenerator(),
+        fetcher=fetcher,
+        aws_sessions={},
+        settings=ServerSettings(),
+        mutable=None,
+        config_digest="test-digest",
+    )
+
+
+class TestQueryOutputSchema:
+    """Each `kind` branch must validate against the tool's declared oneOf output schema."""
+
+    @pytest.mark.parametrize(
+        "kind,kwargs",
+        [
+            ("service_actions", {"service": "s3"}),
+            ("action_details", {"actions": ["s3:GetObject"]}),
+            ("condition_keys", {"service": "s3"}),
+            ("arn_formats", {"service": "s3"}),
+            ("expand_wildcard", {"patterns": ["s3:Get*"]}),
+        ],
+    )
+    async def test_result_validates_against_output_schema(self, kind, kwargs, mock_fetcher):
+        ctx = _fake_ctx(_build_context(fetcher=mock_fetcher))
+        result = await query(kind=kind, ctx=ctx, **kwargs)
+        assert result["kind"] == kind
+        jsonschema.validate(instance=result, schema=_QUERY_OUTPUT_SCHEMA)
+
+
+class TestQueryInputSchema:
+    """The declared inputSchema rejects a kind/parameter mismatch on its own,
+    independent of query()'s own ToolError check."""
+
+    def test_service_actions_without_service_rejected_by_schema(self):
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(instance={"kind": "service_actions"}, schema=_QUERY_INPUT_SCHEMA)
+
+    async def test_service_actions_without_service_raises_tool_error(self):
+        with pytest.raises(ToolError, match="service"):
+            await query(kind="service_actions", ctx=None)
+
+
+class TestQueryErrors:
+    async def test_invalid_kind_raises_tool_error(self):
+        with pytest.raises(ToolError, match="kind"):
+            await query(kind="bogus", ctx=None)  # type: ignore[arg-type]
+
+    async def test_unknown_service_raises_tool_error(self, mock_fetcher):
+        ctx = _fake_ctx(_build_context(fetcher=mock_fetcher))
+        with pytest.raises(ToolError):
+            await query(kind="service_actions", ctx=ctx, service="not-a-real-service-xyz")
+
+    async def test_unparseable_action_reported_per_entry_not_raised(self, mock_fetcher):
+        ctx = _fake_ctx(_build_context(fetcher=mock_fetcher))
+        result = await query(kind="action_details", ctx=ctx, actions=["not-a-valid-action"])
+        entry = result["results"][0]
+        assert entry["valid"] is False
+        assert entry["error"]
+
+
+class TestActionDetailsBatch:
+    async def test_batch_returns_one_entry_per_action_in_request_order(self, mock_fetcher):
+        actions = ["iam:PassRole", "s3:GetObject", "s3:PutObject"]
+        ctx = _fake_ctx(_build_context(fetcher=mock_fetcher))
+        result = await query(kind="action_details", ctx=ctx, actions=actions)
+        assert [e["action"] for e in result["results"]] == actions
+        assert len(result["results"]) == 3
+
+
+class TestUsesSharedFetcher:
+    async def test_does_not_construct_new_fetcher_when_context_provides_one(self, mock_fetcher):
+        async with AWSServiceFetcher(prefetch_common=False) as fetcher:
+            fetcher.fetch_service_by_name = mock_fetcher.fetch_service_by_name
+            ctx = _fake_ctx(_build_context(fetcher=fetcher))
+            with patch("iam_validator.mcp.tools.query.AWSServiceFetcher") as mock_ctor:
+                result = await query(kind="service_actions", ctx=ctx, service="s3")
+
+        mock_ctor.assert_not_called()
+        assert result["total"] > 0

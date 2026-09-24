@@ -119,6 +119,25 @@ load, so it must layer the check's top-level config section over the registry's 
 replace it — a `custom_checks:` module entry's `severity`, `description` and `config:` exist
 only in that registered config.
 
+`policy_checks.build_registry(config, *, custom_checks_dir=None, allow_config_custom_checks=False)`
+is the registry-construction path above (built-ins, both `apply_config_to_registry` calls,
+both custom-check loading methods), extracted so it can be built once and reused. `validate_policies`
+calls it when no `registry=` is passed; passing `registry=` skips construction, config
+application and both custom-check loading paths entirely — the registry is used as given. A
+long-lived caller (e.g. an MCP server) builds one with `build_registry` and reuses it across
+requests instead of re-importing custom-check modules on every call. Re-exported from the SDK.
+
+`CheckRegistry.register(check, *, source="builtin")` records where a check came from
+(`builtin`/`entry_point`/`config_module`/`discovered`); `get_source(check_id)` reads it
+back. `load_entry_point_checks` registers with `source="entry_point"`,
+`ConfigLoader.load_custom_checks`/`discover_checks_in_directory` with
+`"config_module"`/`"discovered"`. `policy_checks.overlay_registry_config(base_registry,
+config)` builds a new registry that reuses `base_registry`'s check instances (and their
+provenance) under a different `ValidatorConfig`, for a caller that wants to apply a
+one-off or session config override without re-importing custom checks/entry points —
+the MCP server's `set_config`/`validate_policies` session-override paths use this instead
+of rebuilding via `build_registry`.
+
 ---
 
 ## AWS Service Fetcher

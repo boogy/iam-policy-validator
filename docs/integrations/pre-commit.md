@@ -102,4 +102,5 @@ git commit --no-verify -m "WIP: skip validation"
 ```
 
 !!! warning
-Only skip validation for work-in-progress commits. Always validate before merging.
+
+    Only skip validation for work-in-progress commits. Always validate before merging.
