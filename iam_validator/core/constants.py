@@ -35,12 +35,12 @@ ARN_PARTITIONS = (
 ARN_PARTITION_REGEX = rf"({'|'.join(ARN_PARTITIONS)})"
 
 # Lenient ARN format used by `resource_validation` — wildcards allowed in the
-# region and account fields, unlike CompiledPatterns' structural parser.
+# partition, region and account fields (AWS forbids them only in the service).
 # A purely numeric account id must be exactly twelve digits. AWS-owned managed
 # policies use the literal owner "aws" instead of an account id
 # (e.g., arn:aws:iam::aws:policy/ReadOnlyAccess).
 DEFAULT_ARN_VALIDATION_PATTERN = (
-    rf"^arn:{ARN_PARTITION_REGEX}:[a-z0-9\-]+:[a-z0-9\-*?]*:"
+    rf"^arn:(?:{ARN_PARTITION_REGEX}|[a-z0-9\-*?]*[*?][a-z0-9\-*?]*):[a-z0-9\-]+:[a-z0-9\-*?]*:"
     rf"(?:[0-9]{{12}}|[0-9]*[*?][0-9*?]*|aws)?:.+$"
 )
 

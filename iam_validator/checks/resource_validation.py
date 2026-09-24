@@ -136,7 +136,7 @@ class ResourceValidationCheck(PolicyCheck):
         line_number = statement.line_number
 
         # Get ARN pattern from config, or use default
-        # Pattern allows wildcards (*) in region and account fields
+        # Pattern allows wildcards (*) in partition, region and account fields
         arn_pattern_str = config.config.get("arn_pattern", DEFAULT_ARN_VALIDATION_PATTERN)
 
         # Compile pattern

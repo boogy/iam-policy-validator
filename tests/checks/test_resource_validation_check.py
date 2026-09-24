@@ -46,6 +46,12 @@ class TestResourceValidationCheck:
         assert len(issues) == 0
 
     @pytest.mark.asyncio
+    async def test_wildcard_partition_accepted(self, check, fetcher, config):
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:*:s3:::my-bucket/*"])
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
     async def test_wildcard_resource_skipped(self, check, fetcher, config):
         """Test wildcard resource is skipped."""
         statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["*"])

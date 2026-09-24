@@ -320,6 +320,17 @@ class TestARNValidation:
 
     @pytest.mark.parametrize(
         "arn",
+        ["arn:*:s3:::my-bucket/*", "arn:aws*:iam::123456789012:role/App", "arn:aws-?s-gov:s3:::bucket"],
+    )
+    def test_wildcard_partition_accepted(self, arn_pattern, arn):
+        assert arn_pattern.match(arn) is not None
+
+    @pytest.mark.parametrize("arn", ["arn:awz:s3:::bucket", "arn::s3:::bucket", "arn:AWS:s3:::bucket"])
+    def test_unknown_partition_rejected(self, arn_pattern, arn):
+        assert arn_pattern.match(arn) is None
+
+    @pytest.mark.parametrize(
+        "arn",
         [
             "arn:aws:s3:us-east-1:123:bucket",
             "arn:aws:iam::1234567890123:role/App",

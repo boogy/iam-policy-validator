@@ -559,7 +559,7 @@ resource_validation:
 
   # Regex pattern for ARN validation (optional - override default if needed)
   # Default pattern defined in: iam_validator/core/constants.py (DEFAULT_ARN_VALIDATION_PATTERN)
-  # Pattern allows wildcards (*) in region and account fields for flexibility
+  # Pattern allows wildcards (*) in partition, region and account fields for flexibility
   # Only override if you need stricter or more lenient validation
   # arn_pattern: "^arn:(aws|aws-cn|aws-us-gov|aws-eusc|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f):[a-z0-9\\-]+:[a-z0-9\\-*]*:[0-9*]*:.+$"
 
