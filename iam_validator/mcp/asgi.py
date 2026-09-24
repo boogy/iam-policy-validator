@@ -56,17 +56,26 @@ async def _ready(request: Request) -> JSONResponse:
     return JSONResponse(payload, status_code=200 if ready else 503)
 
 
-def create_app(settings: ServerSettings | None = None) -> Starlette:
+def create_app(
+    settings: ServerSettings | None = None,
+    *,
+    json_response: bool = False,
+    allow_aws_gateway: bool = False,
+) -> Starlette:
     """Build the production ASGI app: FastMCP mounted under liveness/readiness routes.
 
-    ``settings`` defaults to ``ServerSettings.from_env()``.
+    ``settings`` defaults to ``ServerSettings.from_env()``. ``json_response`` and
+    ``allow_aws_gateway`` exist so ``iam_validator.mcp.awslambda`` can reuse this
+    factory (keeping ``/health``/``/ready`` registered, if unused, under Lambda)
+    instead of duplicating the app construction; every other caller leaves both
+    at their default.
     """
     if settings is None:
         settings = ServerSettings.from_env()
 
     context = build_context(settings)
-    mcp = build_server(settings, context=context)
-    mcp_app = mcp.http_app(stateless_http=True, host_origin_protection="auto")
+    mcp = build_server(settings, context=context, allow_aws_gateway=allow_aws_gateway)
+    mcp_app = mcp.http_app(stateless_http=True, json_response=json_response, host_origin_protection="auto")
 
     app = Starlette(
         routes=[

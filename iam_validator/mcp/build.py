@@ -91,13 +91,19 @@ def _component_auth(spec: ComponentSpec, auth_provider: AuthProvider | None) -> 
     return restrict_tag(spec.tag, scopes=list(scopes))
 
 
-def build_server(settings: ServerSettings, context: ServerContext | None = None) -> FastMCP:
+def build_server(
+    settings: ServerSettings,
+    context: ServerContext | None = None,
+    *,
+    allow_aws_gateway: bool = False,
+) -> FastMCP:
     """Construct a fresh ``FastMCP`` instance carrying only the specs ``settings`` allow.
 
     Never reuses a module-level singleton: each call returns its own instance.
     ``context``, when given, is used as-is instead of being built by the lifespan
     (see ``server_lifespan``) -- ``mcp/asgi.py`` uses this to share one pre-built
     ``ServerContext`` between MCP tool calls and the ``/health``/``/ready`` routes.
+    ``allow_aws_gateway`` must stay ``False`` except from ``iam_validator.mcp.awslambda``.
     """
     from iam_validator.mcp.context import server_lifespan
 
@@ -106,7 +112,7 @@ def build_server(settings: ServerSettings, context: ServerContext | None = None)
         async with server_lifespan(server, settings, context) as ctx:
             yield ctx
 
-    auth_provider = get_auth_provider(settings)
+    auth_provider = get_auth_provider(settings, allow_aws_gateway=allow_aws_gateway)
     mcp = FastMCP(
         name="IAM Policy Validator",
         lifespan=_lifespan,

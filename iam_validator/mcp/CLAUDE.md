@@ -58,6 +58,8 @@ mcp/
 │                          # tool call, across all five tools (see "Audit logging" below)
 ├── asgi.py                # create_app(settings) -- production ASGI app factory (uvicorn
 │                          # entrypoint); mounts the FastMCP app under outer /health, /ready
+├── awslambda.py           # create_handler(settings) -> Mangum -- AWS Lambda entry point,
+│                          # reuses asgi.py's create_app() with json_response=True
 └── tools/
     ├── validate.py         # TOOLS: validate_policies (mode-gated local/hosted variants,
     │                       # local carries path/glob)
@@ -138,6 +140,62 @@ same as any other hosted-mode deployment. `IAM_VALIDATOR_MCP_CACHE_DIRECTORY` po
 `/tmp/iam-validator-cache`, but the image does not mount a tmpfs there — under a
 read-only container root filesystem, an operator must mount a writable volume or run
 the container with `--tmpfs /tmp`, or startup fails with `HostedStartupError`.
+
+### AWS Lambda
+
+`awslambda.py:create_handler(settings)` wraps `asgi.py:create_app(settings,
+json_response=True, allow_aws_gateway=True)` in `Mangum(app, lifespan="on")`. The
+module-level `handler` attribute is built lazily (`__getattr__`, PEP 562) so
+`import iam_validator.mcp.awslambda` alone has no side effect; the Lambda runtime
+resolves the handler string `iam_validator.mcp.awslambda.handler`.
+
+`json_response=True` is required, not optional: the Python managed runtime can't
+stream `text/event-stream`, and API Gateway buffers the body regardless. This means
+no tool may rely on a mid-call server-initiated message (progress/logging/sampling)
+— `tests/mcp/test_json_response.py` asserts every registered tool completes without
+one. `GET /mcp` (the optional SSE channel) answers 405.
+
+`IAM_VALIDATOR_MCP_CACHE_DIRECTORY` must point under `/tmp`, the only writable path
+in the execution environment; a recycled (cold-started) environment starts with an
+empty `/tmp`, so a cache miss there is expected, not a bug. Set
+`ServerSettings.request_timeout_s` below the function's own configured timeout; an
+HTTP API Gateway integration additionally hard-caps at 30s regardless of the
+function's timeout, so prefer a Lambda Function URL as the front end when a call
+might run longer. AWS SnapStart is deliberately not enabled: a restored snapshot
+would resurrect a cached JWKS set, a live httpx connection pool, and seeded RNG
+state, none of which should survive a restore without hooks that reset them —
+future work, not done here. `ServerSettings.analyze_rate_limit` is a per-process
+in-memory counter, so under Lambda it's a per-execution-environment limit, not a
+real control across concurrent invocations.
+
+`--auth aws-gateway` (`auth.py:AwsGatewayAuthProvider`/`_AwsGatewayBackend`) is
+gated by `allow_aws_gateway=True`, threaded only from this module through
+`asgi.create_app()`/`build.build_server()` — `get_auth_provider()` refuses to build
+it otherwise, so it can never bind to the uvicorn/stdio server. It reads claims
+solely from `scope["aws.event"].requestContext.authorizer` (the `jwt.claims` shape
+for an API Gateway JWT authorizer, or the `iam` shape for a Function URL with
+`AuthType: AWS_IAM`, which carries no OAuth scopes) and never reads a header, since
+by the time Mangum builds the ASGI scope, any `Authorization` header on the request
+is whatever the caller sent, not something this process verified.
+
+FastMCP's `RequireAuthMiddleware` (`fastmcp/server/auth/middleware.py`) separately
+enforces RFC 6750 §3.1 by rejecting any request with no `Authorization` header
+before it ever looks at `scope["user"]` — which would 401 every aws-gateway
+request, since that provider is designed to never send one. `awslambda.py`'s
+`_SatisfyBearerPresenceGate` ASGI wrapper (applied only when `settings.auth ==
+"aws-gateway"`) adds a fixed, non-secret placeholder `Authorization` header when
+the request has none, solely to satisfy that presence check; nothing ever reads
+the header back, and `_AwsGatewayBackend` still authenticates only from
+`requestContext`. `create_handler()` also refuses to start under `--auth
+aws-gateway` if this function's own Function URL has `AuthType: NONE`
+(`_check_function_url_auth_type()`, a best-effort `lambda:GetFunctionUrlConfig`
+check — it logs a warning and starts anyway if it can't determine the AuthType, so
+verifying it is still the operator's responsibility in that case).
+
+Packaging: `docker build --target lambda` builds a container image (the Lambda
+`lambda` extra pulls in Mangum; `mcp` alone does not) from the repo-root
+`Dockerfile`, based on `public.ecr.aws/lambda/python:3.13`. There is no zip-based
+packaging target.
 
 ### Hosted config resolution + config_digest
 
@@ -522,6 +580,17 @@ Test files of note:
   `context.ready` across the lifespan's `prewarm()`, and — with `/mcp` itself as the
   control — that both routes bypass the Origin guard and the hosted auth provider that
   `/mcp` still enforces
+- `test_json_response.py` — every registered tool completes under `json_response=True`,
+  `GET /mcp` (the SSE-only channel) answers 405, and an AST scan of every `iam_validator/mcp/`
+  source file guards that no handler calls a notification-causing `Context` method
+  (`report_progress`/`log`/`info`/`debug`/`warning`/`error`/`send_notification`/`elicit`/
+  `sample`) — such a call would be silently dropped under `json_response`, not delivered
+  or errored, so a runtime assertion on received notifications can't catch the regression
+- `test_lambda_handler.py` — `awslambda.create_handler()` against synthetic Function URL
+  events: a spoofed `Authorization` header with no `requestContext.authorizer` is
+  rejected (401), legitimate JWT-authorizer claims authorize a scoped `tools/call`, and
+  an `AuthType: AWS_IAM` authorizer (no OAuth scopes) authenticates but hides a
+  scope-gated tool from `tools/list`
 
 Mock fetcher / network — no real API or AWS calls. `conftest.py`'s three autouse
 fixtures: `_no_real_aws_fetcher`/`_no_real_aws_fetcher_in_context` redirect

@@ -17,10 +17,20 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NoReturn
 
-from fastmcp.server.auth import AuthProvider
+from fastmcp.server.auth import AccessToken, AuthProvider
+from fastmcp.server.auth.auth import AuthContextMiddleware
 from fastmcp.server.auth.providers.jwt import JWTVerifier, StaticTokenVerifier
+from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+from starlette.authentication import AuthCredentials, AuthenticationBackend
+from starlette.middleware import Middleware
+from starlette.middleware.authentication import AuthenticationMiddleware
+from starlette.requests import HTTPConnection
 
 from iam_validator.mcp.settings import ServerSettings
+
+# The only ServerSettings.auth value gated by allow_aws_gateway; shared with awslambda.py
+# so the two never drift into comparing against different spellings.
+AWS_GATEWAY_AUTH_PROVIDER = "aws-gateway"
 
 # Canonical scope -> ComponentSpec.tag mapping, attached per-tag via restrict_tag(tag,
 # scopes=[...]) elsewhere. No `generation`/`iam:generate` entry -- that surface is gone.
@@ -195,6 +205,80 @@ def _build_workos_provider(settings: ServerSettings) -> AuthProvider:
     )
 
 
+class _AwsGatewayBackend(AuthenticationBackend):
+    """Reads already-verified claims from the Lambda adapter's ``requestContext``.
+
+    Never reads a header: auth terminates upstream of this process (a Function URL
+    with ``AuthType: AWS_IAM``, or an API Gateway JWT authorizer), so a header on the
+    inbound request is attacker-controlled and must never be trusted as identity.
+    """
+
+    def __init__(self, scope_claim: str) -> None:
+        self._scope_claim = scope_claim
+
+    async def authenticate(self, conn: HTTPConnection) -> tuple[AuthCredentials, AuthenticatedUser] | None:
+        event = conn.scope.get("aws.event")
+        if not isinstance(event, dict):
+            return None
+        request_context = event.get("requestContext")
+        if not isinstance(request_context, dict):
+            return None
+        authorizer = request_context.get("authorizer")
+        if not isinstance(authorizer, dict):
+            return None
+
+        jwt_claims = authorizer.get("jwt", {}).get("claims") if isinstance(authorizer.get("jwt"), dict) else None
+        if isinstance(jwt_claims, dict):
+            subject = str(jwt_claims.get("sub", ""))
+            raw_scopes = jwt_claims.get(self._scope_claim, "")
+            scopes = raw_scopes if isinstance(raw_scopes, list) else str(raw_scopes).replace(",", " ").split()
+            claims = dict(jwt_claims)
+        elif isinstance(authorizer.get("iam"), dict):
+            iam = authorizer["iam"]
+            subject = str(iam.get("userArn") or iam.get("userId") or "")
+            # AWS_IAM carries no OAuth scopes; scoped tools stay hidden for this caller.
+            scopes = []
+            claims = dict(iam)
+        else:
+            return None
+
+        access_token = AccessToken(
+            token=AWS_GATEWAY_AUTH_PROVIDER,  # noqa: S106 -- not a secret, a fixed sentinel marking the auth source
+            client_id=subject or AWS_GATEWAY_AUTH_PROVIDER,
+            scopes=list(scopes),
+            subject=subject or None,
+            claims=claims,
+        )
+        return AuthCredentials(list(scopes)), AuthenticatedUser(access_token)
+
+
+class AwsGatewayAuthProvider(AuthProvider):
+    """Trusts claims the Lambda adapter already verified; never verifies a bearer token itself.
+
+    Only ``get_auth_provider(..., allow_aws_gateway=True)`` -- called exclusively from
+    ``iam_validator.mcp.awslambda`` -- may construct this; see that gate below.
+    """
+
+    def __init__(self, *, scope_claim: str) -> None:
+        super().__init__()
+        self._scope_claim = scope_claim
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        # Never called: get_middleware() below replaces the bearer-token backend
+        # entirely, so no code path here ever inspects a header-borne token.
+        return None
+
+    def get_middleware(self) -> list[Middleware]:
+        return [
+            Middleware(AuthenticationMiddleware, backend=_AwsGatewayBackend(self._scope_claim)),
+            Middleware(AuthContextMiddleware),
+        ]
+
+
+def _build_aws_gateway_provider() -> AuthProvider:
+    return AwsGatewayAuthProvider(scope_claim=_env("AWS_GATEWAY_SCOPE_CLAIM") or "scope")
+
+
 # Registered here, not spread across tool code, so adding a new IdP is one entry.
 _IDP_PROVIDERS: dict[str, Callable[[ServerSettings], AuthProvider]] = {
     "azure": _build_azure_provider,
@@ -210,12 +294,15 @@ def get_auth_provider(
     settings: ServerSettings,
     *,
     token_cli_flag: str | None = None,
+    allow_aws_gateway: bool = False,
 ) -> AuthProvider | None:
     """Build the ``AuthProvider`` for ``settings.auth``, or ``None`` for ``"none"``.
 
     ``token_cli_flag`` must always be ``None``; it exists only so a CLI wiring
     mistake that threads a token through a flag is caught here rather than
-    silently accepted (see module docstring).
+    silently accepted (see module docstring). ``allow_aws_gateway`` must stay
+    ``False`` for every caller except ``iam_validator.mcp.awslambda`` -- it is
+    what keeps ``--auth aws-gateway`` from ever binding to a plain uvicorn app.
     """
     if token_cli_flag is not None:
         _fail("a token must never be passed via a command-line flag; use a token file or env var")
@@ -227,6 +314,14 @@ def get_auth_provider(
                 "--auth none explicitly to opt into an unauthenticated hosted server"
             )
         return None
+
+    if settings.auth == AWS_GATEWAY_AUTH_PROVIDER:
+        if not allow_aws_gateway:
+            _fail(
+                "--auth aws-gateway is only valid behind the Lambda adapter "
+                "(iam_validator.mcp.awslambda); it must never be selected for uvicorn/stdio serving"
+            )
+        return _build_aws_gateway_provider()
 
     if settings.auth == "token":
         return _build_token_provider()
@@ -243,4 +338,4 @@ def get_auth_provider(
         _fail(f"--auth {settings.auth} configuration is invalid: {exc}")
 
 
-__all__ = ["get_auth_provider", "SCOPE_TO_TAG", "SCOPE_FREE_TAGS"]
+__all__ = ["get_auth_provider", "SCOPE_TO_TAG", "SCOPE_FREE_TAGS", "AwsGatewayAuthProvider"]

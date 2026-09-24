@@ -60,6 +60,9 @@ mcp = [
   "fastmcp>=4.0,<5",
   "uvicorn[standard]>=0.30.0",
 ]
+lambda = [
+  "mangum>=0.17,<1",
+]
 
 [project.scripts]
 iam-policy-validator = "iam_validator.core.cli:main"  # Alias matching package name

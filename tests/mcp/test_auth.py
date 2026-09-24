@@ -288,6 +288,40 @@ class TestIdpProviders:
         assert get_auth_provider(settings) is not None
 
 
+class TestAwsGatewayProviderGate:
+    def test_default_refuses(self):
+        settings = ServerSettings(auth="aws-gateway")
+        with pytest.raises(SystemExit) as exc_info:
+            get_auth_provider(settings)
+        assert exc_info.value.code != 0
+
+    def test_explicit_false_refuses(self):
+        settings = ServerSettings(auth="aws-gateway")
+        with pytest.raises(SystemExit):
+            get_auth_provider(settings, allow_aws_gateway=False)
+
+    def test_allowed_constructs(self):
+        from iam_validator.mcp.auth import AwsGatewayAuthProvider
+
+        settings = ServerSettings(auth="aws-gateway")
+        provider = get_auth_provider(settings, allow_aws_gateway=True)
+        assert isinstance(provider, AwsGatewayAuthProvider)
+
+    def test_build_server_refuses_without_allow_aws_gateway(self):
+        from iam_validator.mcp.build import build_server
+
+        settings = ServerSettings(auth="aws-gateway")
+        with pytest.raises(SystemExit):
+            build_server(settings)
+
+    def test_create_app_refuses_without_allow_aws_gateway(self):
+        from iam_validator.mcp.asgi import create_app
+
+        settings = ServerSettings(auth="aws-gateway")
+        with pytest.raises(SystemExit):
+            create_app(settings)
+
+
 class TestScopeToTagMapping:
     def test_canonical_mapping(self):
         from iam_validator.mcp.auth import SCOPE_TO_TAG
