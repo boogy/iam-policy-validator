@@ -57,7 +57,7 @@ docs = [
   "mkdocs-literate-nav>=0.6.0",
 ]
 mcp = [
-  "fastmcp>=3.2,<5",
+  "fastmcp>=4.0,<5",
   "uvicorn[standard]>=0.30.0",
 ]
 

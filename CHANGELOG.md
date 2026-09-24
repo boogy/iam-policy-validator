@@ -62,6 +62,7 @@ Breaking changes in this release affect MCP server users only (the MCP tools, re
 - The three `@mcp.prompt` prompts (`generate_secure_policy`, `fix_policy_issues_workflow`, `review_policy_security`) are rewritten to name only tools that still exist — `validate_policies` and `query` — replacing references to tools removed or renamed earlier in this release.
 - `iam-validator-mcp` and `iam-validator mcp` now share one argparse layer instead of maintaining separate, drifting flag sets; both accept the same flags (`--mode`, `--transport`, `--host`, `--port`, `--config`, `--auth`, `--profile`, `--custom-checks-dir`, `--aws-services-dir`, `--cache-directory`, `--instructions`/`--instructions-file`, `--allowed-regions`, `--analyze-rate-limit`, and the five request-limit flags) plus `--list-profiles`.
 - `docs/integrations/mcp-server.md` is rewritten in full to describe the current 6-tool/6-resource/3-prompt MCP surface, replacing stale references to tools removed earlier in this release.
+- The `mcp` extra now requires `fastmcp>=4.0,<5` (was `>=3.2,<5`) — the prior floor resolved to the pre-rename MCP SDK, missing snake_case protocol fields and the `keycloak` auth provider our tests rely on.
 
 ### Fixed
 

@@ -532,4 +532,4 @@ patches `AWSServiceFetcher.__init__` itself, so a test that constructs the real 
 directly (bypassing the two module-scoped patches above by importing the class itself)
 still gets a `tmp_path` cache directory instead of `~/Library/Caches/iam-validator`
 whenever it leaves `cache_dir` unset. Debug interactively via `mise run mcp:inspector`.
-Requires `fastmcp>=3.2,<5` (installed via `uv sync --extra mcp`).
+Requires `fastmcp>=4.0,<5` (installed via `uv sync --extra mcp`).

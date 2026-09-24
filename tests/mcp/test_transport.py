@@ -60,7 +60,7 @@ async def test_resource_templates_listed():
     """Parameterized resources (Task 6g) must register as resource templates."""
     async with Client(mcp) as client:
         templates = await client.list_resource_templates()
-        uris = {str(t.uriTemplate) for t in templates}
+        uris = {str(t.uri_template) for t in templates}
         assert "iam://sensitive-actions/{category}" in uris
         assert "iam://checks/{check_id}" in uris
 
@@ -109,9 +109,9 @@ async def test_tool_annotations_round_trip():
     async with Client(mcp) as client:
         tools = await client.list_tools()
         by_name = {t.name: t for t in tools}
-        assert by_name["validate_policies"].annotations.readOnlyHint is True
-        assert by_name["set_config"].annotations.destructiveHint is False
-        assert by_name["analyze_policy"].annotations.openWorldHint is True
+        assert by_name["validate_policies"].annotations.read_only_hint is True
+        assert by_name["set_config"].annotations.destructive_hint is False
+        assert by_name["analyze_policy"].annotations.open_world_hint is True
 
 
 async def test_demoted_resources_no_longer_registered_as_tools():

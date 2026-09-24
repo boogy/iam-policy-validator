@@ -156,7 +156,7 @@ class TestOpenWorldHint:
 
         server = build_server(ServerSettings(mode="local"))
         tools = await server.list_tools()
-        open_world = [t.name for t in tools if t.annotations and t.annotations.openWorldHint]
+        open_world = [t.name for t in tools if t.annotations and t.annotations.open_world_hint]
         assert open_world == ["analyze_policy"]
 
 
