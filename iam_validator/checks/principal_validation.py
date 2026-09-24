@@ -293,8 +293,12 @@ class PrincipalValidationCheck(PolicyCheck):
                 if not wildcards:
                     continue
                 if not is_operator_supports_wildcards(operator):
-                    # Any other AND-ed condition may still exempt principals.
-                    denies_everyone = len(wildcards) == len(values) and self._condition_key_count(statement) == 1
+                    # Another AND-ed condition, or ForAnyValue on a missing key, may still exempt principals.
+                    denies_everyone = (
+                        len(wildcards) == len(values)
+                        and self._condition_key_count(statement) == 1
+                        and not operator.lower().startswith("foranyvalue:")
+                    )
                     return [
                         ValidationIssue(
                             severity=self.get_severity(config),
@@ -302,7 +306,7 @@ class PrincipalValidationCheck(PolicyCheck):
                             statement_index=statement_idx,
                             issue_type="literal_wildcard_deny_carve_out",
                             message=(
-                                f"`{operator}` compares `*` on `{key}` literally, so it exempts no principal"
+                                f"`{operator}` compares `*` on `{key}` literally, so the `*` value exempts no principal"
                                 + (" and the `Deny` applies to every principal." if denies_everyone else ".")
                             ),
                             suggestion=(

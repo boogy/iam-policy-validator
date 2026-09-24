@@ -899,7 +899,7 @@ class TestInvertedDenyCarveOut:
             ("StringNotEquals", "aws:PrincipalAccount"),
             ("StringNotEqualsIfExists", "aws:PrincipalServiceName"),
             ("StringNotEqualsIgnoreCase", "aws:PrincipalTag/team"),
-            ("ForAnyValue:StringNotEquals", "aws:PrincipalTag/team"),
+            ("ForAllValues:StringNotEquals", "aws:PrincipalTag/team"),
         ],
     )
     async def test_literal_operator_wildcard_carve_out_denies_everyone(self, check, fetcher, config, operator, key):
@@ -936,6 +936,8 @@ class TestInvertedDenyCarveOut:
                 "StringNotEquals": {"aws:PrincipalOrgID": "*"},
             },
             {"StringNotEquals": {"aws:PrincipalOrgID": "*", "aws:PrincipalAccount": "111122223333"}},
+            {"ForAnyValue:StringNotEquals": {"aws:PrincipalTag/team": "*"}},
+            {"foranyvalue:StringNotEquals": {"aws:PrincipalTag/team": "*"}},
         ],
     )
     async def test_literal_wildcard_beside_other_conditions_does_not_claim_everyone(
