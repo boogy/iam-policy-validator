@@ -339,7 +339,6 @@ def translate_type(doc_type: str) -> str:
         # String types
         "String": "String",
         "string": "String",
-        "ArrayOfString": "String",
         # IP Address types
         "IPAddress": "IPAddress",
         "Ip": "IPAddress",
@@ -347,7 +346,8 @@ def translate_type(doc_type: str) -> str:
         "Binary": "Binary",
     }
 
-    return type_map.get(doc_type, doc_type)
+    element_type = doc_type.removeprefix("ArrayOf")
+    return type_map.get(element_type, element_type)
 
 
 def validate_value_for_type(value_type: str, values: list[Any]) -> tuple[bool, str | None]:
