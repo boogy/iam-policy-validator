@@ -49,6 +49,14 @@ Integrate IAM Policy Validator into your CI/CD pipelines, AI assistants, and dev
 
     [:octicons-arrow-right-24: MCP Hosting](mcp-hosting.md)
 
+-   :material-aws:{ .lg .middle } **MCP Lambda**
+
+    ---
+
+    Run the MCP server as an AWS Lambda function
+
+    [:octicons-arrow-right-24: MCP Lambda](mcp-lambda.md)
+
 -   :material-console-line:{ .lg .middle } **Claude Code Skill**
 
     ---

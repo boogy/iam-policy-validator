@@ -9,7 +9,8 @@ description: Deploy the IAM Policy Validator MCP server as a shared, multi-tenan
 launched by an AI assistant over `stdio`, with no authentication. This page covers
 **hosted mode** (`--mode hosted` / `IAM_VALIDATOR_MCP_MODE=hosted`): a shared server
 over HTTP, with authentication, an operator-owned immutable config, audit logging,
-and a production ASGI entry point.
+and a production ASGI entry point. For running that same hosted server on AWS Lambda
+instead of a container, see [MCP Lambda](mcp-lambda.md).
 
 ## Local vs. hosted, at a glance
 

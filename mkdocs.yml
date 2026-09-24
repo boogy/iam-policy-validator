@@ -149,6 +149,7 @@ nav:
       - Pre-commit: integrations/pre-commit.md
       - MCP Server: integrations/mcp-server.md
       - MCP Hosting: integrations/mcp-hosting.md
+      - MCP Lambda: integrations/mcp-lambda.md
       - Claude Code Skill: integrations/claude-code-skill.md
   - Developer Guide:
       - developer-guide/index.md

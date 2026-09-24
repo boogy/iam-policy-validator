@@ -25,7 +25,8 @@ docs/
 ├── changelog.md              # mirrors CHANGELOG.md
 ├── getting-started/          # install + quickstart + first validation
 ├── user-guide/               # CLI ref, configuration, output formats, troubleshooting, checks/
-├── integrations/             # github-actions, gitlab-ci, pre-commit, mcp-server
+├── integrations/             # github-actions, gitlab-ci, pre-commit, mcp-server,
+│                             # mcp-hosting, mcp-lambda
 ├── developer-guide/          # architecture, sdk/, custom-checks/
 ├── api-reference/            # mkdocstrings-generated from docstrings
 ├── contributing/             # dev setup, testing, releasing
