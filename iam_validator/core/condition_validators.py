@@ -139,6 +139,19 @@ ALWAYS_PRESENT_CONDITION_KEYS = frozenset(
     }
 )
 
+# Keys whose conditions narrow neither the principal nor the resource.
+NON_RESTRICTING_CONDITION_KEYS = frozenset({"aws:securetransport", "aws:requestedregion"})
+
+
+def has_restricting_condition(condition: dict[str, Any] | None) -> bool:
+    """True if ``condition`` tests at least one key outside ``NON_RESTRICTING_CONDITION_KEYS``."""
+    for entries in (condition or {}).values():
+        if not isinstance(entries, dict):
+            return True
+        if any(str(key).lower() not in NON_RESTRICTING_CONDITION_KEYS for key in entries):
+            return True
+    return False
+
 
 def is_invalid_null_if_exists(operator: str) -> bool:
     """
