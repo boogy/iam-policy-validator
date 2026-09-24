@@ -642,3 +642,60 @@ class TestHasConditionResolution:
         )
         policy = self._policy({"bool": {"aws:MultiFactorAuthPresent": "true"}})
         assert await check.execute_policy(policy, "test-policy.json", None, config) == []
+
+
+class TestNotActionStatements:
+    @pytest.fixture
+    def check(self):
+        return ActionConditionEnforcementCheck()
+
+    @staticmethod
+    def _config(actions):
+        return CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            severity="error",
+            config={
+                "action_condition_requirements": [
+                    {
+                        "actions": actions,
+                        "required_conditions": [{"condition_key": "iam:PassedToService"}],
+                    }
+                ]
+            },
+        )
+
+    @staticmethod
+    def _policy(not_action):
+        return IAMPolicy(
+            version="2012-10-17",
+            statement=[Statement(sid="Broad", effect="Allow", not_action=not_action, resource="*")],
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("not_action", ["s3:GetObject", ["iam:PassRol", "IAM:CreateUser"], "iam:Get*"])
+    async def test_not_action_that_leaves_required_action_granted_is_checked(self, check, not_action):
+        issues = await check.execute_policy(self._policy(not_action), "p.json", None, self._config(["iam:PassRole"]))
+        assert [i.issue_type for i in issues] == ["missing_required_condition"]
+        assert "iam:PassRole" in issues[0].message
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("not_action", ["iam:PassRole", "IAM:*", ["s3:*", "iam:Pass*"], "*"])
+    async def test_not_action_that_excludes_required_action_is_ignored(self, check, not_action):
+        issues = await check.execute_policy(self._policy(not_action), "p.json", None, self._config(["iam:PassRole"]))
+        assert issues == []
+
+    @pytest.mark.asyncio
+    async def test_glob_requirement_partly_excluded_is_still_checked(self, check):
+        issues = await check.execute_policy(self._policy("iam:PassRole"), "p.json", None, self._config(["iam:Pass*"]))
+        assert [i.issue_type for i in issues] == ["missing_required_condition"]
+
+    @pytest.mark.asyncio
+    async def test_not_action_grants_none_of_forbidden_action(self, check):
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            config={"action_condition_requirements": [{"actions": {"none_of": ["iam:DeleteUser"]}}]},
+        )
+        issues = await check.execute_policy(self._policy("s3:*"), "p.json", None, config)
+        assert [i.issue_type for i in issues] == ["forbidden_action"]

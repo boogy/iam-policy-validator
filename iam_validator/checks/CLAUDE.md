@@ -174,6 +174,14 @@ are case-insensitive. Statement-level checks never receive `policy_file`, so a
 requirement carrying `ignore_patterns` counts as unenforced there and the finding is
 kept rather than wrongly suppressed.
 
+## `NotAction` statements (gotcha)
+
+`get_actions()` is empty for a `NotAction` statement. `action_condition_enforcement`
+treats an `Allow` + `NotAction` statement as granting every requirement action no
+`NotAction` glob covers (`_granted_actions`); regex `action_patterns` cannot be
+enumerated and are not matched there. `sensitive_action` skips it, as it skips
+`Action: "*"`: `not_action_not_resource` owns that finding.
+
 ## Hardcoded severities (gotcha)
 
 A check whose `default_severity` is `error` ("AWS will reject the policy") feeds
