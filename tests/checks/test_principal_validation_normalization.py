@@ -132,6 +132,36 @@ class TestServiceWildcardDoesNotMaskOtherPrincipals:
         assert "unauthorized_principal" in issue_types
         assert "service_principal_wildcard" in issue_types
 
+    @pytest.mark.parametrize("service", ["*", ["*"], ["*", "lambda.amazonaws.com"]])
+    async def test_aws_wildcard_is_blocked_alongside_service_wildcard(self, check, mock_fetcher, service):
+        issues = await check.execute(
+            _statement({"AWS": "*", "Service": service}),
+            0,
+            mock_fetcher,
+            _config(block_wildcard_principal=True),
+        )
+
+        issue_types = [i.issue_type for i in issues]
+        assert "blocked_principal" in issue_types
+        assert "service_principal_wildcard" in issue_types
+
+    async def test_aws_wildcard_is_unauthorized_alongside_service_wildcard(self, check, mock_fetcher):
+        issues = await check.execute(
+            _statement({"AWS": ["*"], "Service": "*"}),
+            0,
+            mock_fetcher,
+            _config(allowed_principals=["arn:aws:iam::123456789012:root"]),
+        )
+
+        assert "unauthorized_principal" in [i.issue_type for i in issues]
+
+    async def test_service_wildcard_alone_is_not_reported_as_blocked(self, check, mock_fetcher):
+        issues = await check.execute(
+            _statement({"Service": "*"}), 0, mock_fetcher, _config(block_wildcard_principal=True)
+        )
+
+        assert "blocked_principal" not in [i.issue_type for i in issues]
+
     async def test_condition_requirements_stay_suppressed_under_service_wildcard(self, check, mock_fetcher):
         statement = _statement({"Service": "*"})
 

@@ -146,14 +146,12 @@ class PrincipalValidationCheck(PolicyCheck):
         # Track blocked principals to skip condition checks for them
         blocked_principal_values: set[str] = set()
 
-        # Check if statement has {"Service": "*"} pattern
-        # If so, we shouldn't also flag the * as a blocked principal
-        has_service_wildcard = self._has_service_principal_wildcard(statement)
+        # {"Service": "*"} is reported by _check_service_principal_wildcards; skip only its own "*" entries
+        service_wildcards = self._service_principal_wildcard_count(statement)
 
         for principal in principals:
-            # Skip blocking check for "*" if it came from {"Service": "*"}
-            # That case is handled by _check_service_principal_wildcards
-            if principal == "*" and has_service_wildcard:
+            if principal == "*" and service_wildcards:
+                service_wildcards -= 1
                 continue
 
             # Check if principal is blocked
@@ -373,20 +371,17 @@ class PrincipalValidationCheck(PolicyCheck):
                 principals.extend(value)
         return principals
 
-    def _has_service_principal_wildcard(self, statement: Statement) -> bool:
-        """Check if statement has {"Service": "*"} pattern.
-
-        This is used to avoid double-flagging - if the statement has a service
-        principal wildcard, we shouldn't also block it as a regular wildcard.
-        """
-        if statement.principal and isinstance(statement.principal, dict):
-            service_principals = statement.principal.get("Service")
-            if service_principals:
-                if isinstance(service_principals, str) and service_principals == "*":
-                    return True
-                if isinstance(service_principals, list) and "*" in service_principals:
-                    return True
-        return False
+    @staticmethod
+    def _service_principal_wildcard_count(statement: Statement) -> int:
+        """Number of ``"*"`` values under ``Principal.Service``."""
+        if not isinstance(statement.principal, dict):
+            return 0
+        service = statement.principal.get("Service")
+        if isinstance(service, str):
+            return int(service == "*")
+        if isinstance(service, list):
+            return service.count("*")
+        return 0
 
     def _check_service_principal_wildcards(
         self,
