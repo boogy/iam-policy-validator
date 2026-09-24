@@ -9,7 +9,9 @@
 1. Create `iam_validator/commands/my_command.py` inheriting from `Command` (see `base.py`):
    implement `name`, `description`, `add_arguments(parser)`, `async execute(args) -> int`.
 2. Append the instance to `ALL_COMMANDS` in `iam_validator/commands/__init__.py`.
-3. Add bash + zsh stubs to `iam_validator/commands/completion.py`.
+3. Add bash + zsh stubs to `iam_validator/commands/completion.py`; add the command to
+   `COMMANDS_WITH_FLAT_FLAGS` in `tests/commands/test_completion_command.py` so the parity
+   test fails when its flags drift from the parser.
 4. Test in `tests/commands/test_my_command.py`.
 
 Inside `execute()`, return `0` on success, non-zero on failure. Use Rich (`rich.console.Console`,

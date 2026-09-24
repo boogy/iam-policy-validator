@@ -90,7 +90,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="PROVIDER",
         help="Auth provider: none, token, jwt, or an IdP name (azure/google/github/"
-        "keycloak/auth0/workos). Selects a provider only -- token/JWT/IdP material is "
+        "keycloak/auth0/workos), or aws-gateway behind the Lambda adapter. Selects a provider only -- token/JWT/IdP material is "
         "read from IAM_VALIDATOR_MCP_AUTH_* env vars or a file, never a flag.",
     )
     parser.add_argument(

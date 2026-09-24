@@ -280,11 +280,14 @@ _iam_validator_completion() {{
             return 0
             ;;
         --profile)
-            COMPREPLY=( $(compgen -W "full validate-only validate-and-query read-only" -- "$cur") )
+            # Context-aware: MCP tool profile for mcp, free-form AWS profile for analyze
+            if [[ "$cmd" == "mcp" ]]; then
+                COMPREPLY=( $(compgen -W "full validate-only validate-and-query read-only" -- "$cur") )
+            fi
             return 0
             ;;
         --auth)
-            COMPREPLY=( $(compgen -W "none token jwt azure google github keycloak auth0 workos" -- "$cur") )
+            COMPREPLY=( $(compgen -W "none token jwt azure google github keycloak auth0 workos aws-gateway" -- "$cur") )
             return 0
             ;;
         --off-diff-comment-mode)
@@ -362,7 +365,7 @@ _iam_validator_completion() {{
             return 0
             ;;
         analyze)
-            opts="--path -p --policy-type -t --region --profile --format -f --output -o --no-recursive --fail-on-warnings --github-comment --github-review --github-summary --run-all-checks --check-access-not-granted --check-access-resources --check-no-new-access --check-no-public-access --public-access-resource-type --off-diff-comment-mode --comment-tag --verbose -v"
+            opts="--path -p --config -c --policy-type -t --region --profile --format -f --output -o --no-recursive --fail-on-warnings --github-comment --github-review --github-summary --run-all-checks --check-access-not-granted --check-access-resources --check-no-new-access --check-no-public-access --public-access-resource-type --off-diff-comment-mode --comment-tag --verbose -v"
             COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
             return 0
             ;;
@@ -502,6 +505,7 @@ _iam_validator() {{
                         '(--verbose -v)'{{--verbose,-v}}'[Enable verbose logging]' \\
                         '(--config -c)'{{--config,-c}}'[Configuration file]:file:_files' \\
                         '--custom-checks-dir[Custom checks directory]:directory:_directories' \\
+                        '--allow-config-custom-checks[Allow custom_checks_dir from the config file]' \\
                         '--aws-services-dir[AWS service definitions directory]:directory:_directories' \\
                         '--stream[Process files one-by-one]' \\
                         '--batch-size[Policies per batch]:number:' \\
@@ -530,6 +534,7 @@ _iam_validator() {{
                         '*--path[Path to policy file or directory]:file:_files' \\
                         '*-p[Path to policy file or directory]:file:_files' \\
                         '(--policy-type -t)'{{--policy-type,-t}}'[Type of IAM policy]:policy type:(IDENTITY_POLICY RESOURCE_POLICY SERVICE_CONTROL_POLICY)' \\
+                        '(--config -c)'{{--config,-c}}'[Configuration file]:file:_files' \\
                         '--region[AWS region]:region:' \\
                         '--profile[AWS profile]:profile:' \\
                         '(--format -f)'{{--format,-f}}'[Output format]:format:(console json markdown)' \\
@@ -588,7 +593,7 @@ _iam_validator() {{
                         '--host[Bind host, used only with --transport http]:host:' \\
                         '--port[Bind port, used only with --transport http]:port:' \\
                         '--config[Path to configuration YAML file]:file:_files' \\
-                        '--auth[Auth provider]:provider:(none token jwt azure google github keycloak auth0 workos)' \\
+                        '--auth[Auth provider]:provider:(none token jwt azure google github keycloak auth0 workos aws-gateway)' \\
                         '--profile[Limit which MCP tools are exposed]:profile:(full validate-only validate-and-query read-only)' \\
                         '--list-profiles[Print the profile -> tool taxonomy and exit]' \\
                         '--custom-checks-dir[Directory of custom PolicyCheck subclasses]:dir:_files -/' \\
