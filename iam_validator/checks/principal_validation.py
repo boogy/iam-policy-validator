@@ -295,7 +295,8 @@ class PrincipalValidationCheck(PolicyCheck):
                 if not wildcards:
                     continue
                 if not is_operator_supports_wildcards(operator):
-                    denies_everyone = len(wildcards) == len(values)
+                    # Any other AND-ed condition may still exempt principals.
+                    denies_everyone = len(wildcards) == len(values) and self._condition_key_count(statement) == 1
                     return [
                         ValidationIssue(
                             severity=self.get_severity(config),
@@ -333,6 +334,11 @@ class PrincipalValidationCheck(PolicyCheck):
                     )
                 ]
         return []
+
+    @staticmethod
+    def _condition_key_count(statement: Statement) -> int:
+        """Number of condition keys tested; a non-dict operator entry counts as one."""
+        return sum(len(e) if isinstance(e, dict) else 1 for e in (statement.condition or {}).values())
 
     def _extract_principals(self, statement: Statement) -> list[str]:
         """Extract all principals from a statement.

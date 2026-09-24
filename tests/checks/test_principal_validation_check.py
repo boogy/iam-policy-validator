@@ -928,6 +928,25 @@ class TestInvertedDenyCarveOut:
         assert "every principal" not in issues[0].message
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "condition",
+        [
+            {
+                "ArnNotEquals": {"aws:PrincipalArn": "arn:aws:iam::111122223333:role/Trusted"},
+                "StringNotEquals": {"aws:PrincipalOrgID": "*"},
+            },
+            {"StringNotEquals": {"aws:PrincipalOrgID": "*", "aws:PrincipalAccount": "111122223333"}},
+        ],
+    )
+    async def test_literal_wildcard_beside_other_conditions_does_not_claim_everyone(
+        self, check, fetcher, config, condition
+    ):
+        statement = Statement(Effect="Deny", Action=["s3:*"], Resource=["*"], Principal="*", Condition=condition)
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert [i.issue_type for i in issues] == ["literal_wildcard_deny_carve_out"]
+        assert "every principal" not in issues[0].message
+
+    @pytest.mark.asyncio
     async def test_wildcard_in_carve_out_list_is_flagged(self, check, fetcher, config):
         """A "*" hidden among specific ARNs still defeats the whole deny."""
         statement = Statement(
