@@ -4,6 +4,16 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.1] - 2026-09-25
+
+_Upgrading: the `v1.31.0` tag and GitHub release were created on the commit before the 1.31.0 changes were merged, so they carry the 1.30.1 code, and 1.31.0 was never published to PyPI. 1.31.1 is the first release that contains the changes listed under [1.31.0] below — upgrade from 1.30.1 straight to 1.31.1 and read the 1.31.0 upgrading notes._
+
+### Fixed
+
+- Fail the release workflow when the tag does not match `__version__` in the tagged code, so a tag on a stale commit can no longer publish a release carrying another version's artifacts ([#203])
+
+[#203]: https://github.com/boogy/iam-policy-validator/pull/203
+
 ## [1.31.0] - 2026-09-25
 
 _Upgrading: a policy file that fails to parse now fails the run (every other file is still validated and reported); a config file with invalid `settings` or an invalid check `severity`/`enabled` now stops the run with an error instead of being misread; `wildcard_action` defaults to `high`. If your config sets `sensitive_action.severity`, it now applies to every category — remove it to keep the built-in per-category severities._
@@ -1115,6 +1125,7 @@ _First release._
 
 [#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
+[1.31.1]: https://github.com/boogy/iam-policy-validator/compare/v1.30.1...v1.31.1
 [1.31.0]: https://github.com/boogy/iam-policy-validator/compare/v1.30.1...v1.31.0
 [1.30.1]: https://github.com/boogy/iam-policy-validator/compare/v1.30.0...v1.30.1
 [1.30.0]: https://github.com/boogy/iam-policy-validator/compare/v1.29.0...v1.30.0

@@ -49,6 +49,21 @@ jobs:
             echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Guard rail #0: the tag must name the version the tagged code declares.
+      # v1.31.0 was once tagged on a commit that still said 1.30.1, producing an
+      # immutable "v1.31.0" release carrying 1.30.1 artifacts and none of its
+      # changes. Fail before anything is built or published.
+      - name: Check tag matches package version
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          CODE_VERSION=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' iam_validator/__version__.py)
+          if [ "$VERSION" != "$CODE_VERSION" ]; then
+            echo "::error::Tag v${VERSION} does not match iam_validator/__version__.py (${CODE_VERSION})."
+            echo "::error::Tag the commit that bumps the version (pull main first), not an older one."
+            exit 1
+          fi
+          echo "OK: tag matches package version ${CODE_VERSION}"
+
       # Guard rail #1: If a PUBLISHED (immutable) release already exists for
       # this tag, abort immediately. PyPI versions cannot be re-published
       # either, so proceeding would leave the project in an inconsistent
