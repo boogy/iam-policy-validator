@@ -295,7 +295,8 @@ class PrincipalValidationCheck(PolicyCheck):
                 if not is_operator_supports_wildcards(operator):
                     # Another AND-ed condition, or ForAnyValue on a missing key, may still exempt principals.
                     denies_everyone = (
-                        len(wildcards) == len(values)
+                        self._names_every_principal(statement)
+                        and len(wildcards) == len(values)
                         and self._condition_key_count(statement) == 1
                         and not operator.lower().startswith("foranyvalue:")
                     )
@@ -341,6 +342,17 @@ class PrincipalValidationCheck(PolicyCheck):
     def _condition_key_count(statement: Statement) -> int:
         """Number of condition keys tested; a non-dict operator entry counts as one."""
         return sum(len(e) if isinstance(e, dict) else 1 for e in (statement.condition or {}).values())
+
+    @staticmethod
+    def _names_every_principal(statement: Statement) -> bool:
+        """True for ``Principal: "*"`` or an ``AWS`` principal of ``"*"``."""
+        principal = statement.principal
+        if principal == "*":
+            return True
+        if not isinstance(principal, dict):
+            return False
+        aws = principal.get("AWS")
+        return aws == "*" or (isinstance(aws, list) and "*" in aws)
 
     def _extract_principals(self, statement: Statement) -> list[str]:
         """Extract all principals from a statement.

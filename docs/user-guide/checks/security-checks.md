@@ -367,7 +367,7 @@ spelling it with a condition instead — `Principal: "*"` plus `ArnNotEquals` on
 carve-out is `*`, since exempting every principal denies nobody. `StringNotEquals` does not
 expand wildcards, so a `*` carve-out there exempts nobody; that is reported as
 `literal_wildcard_deny_carve_out`. The finding says the deny applies to every principal only
-when `*` is the sole value of the only condition key and the operator is not `ForAnyValue:`,
+when the statement's `Principal` (or its `AWS` entry) is `*`, `*` is the sole value of the only condition key and the operator is not `ForAnyValue:`,
 which does not match when the key is missing.
 
 See also [`rcp_best_practices`](advanced-checks.md#rcp_best_practices) and

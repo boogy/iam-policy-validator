@@ -8,7 +8,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Changed
 
-- Report a `Deny` with `Principal: "*"` whose literal-operator carve-out (`StringNotEquals`, `StringNotEqualsIgnoreCase`) is `*` as `literal_wildcard_deny_carve_out` (the `*` exempts nobody) instead of `ineffective_deny_carve_out` (denies nothing); the finding says the `Deny` applies to every principal only when nothing else can exempt one
+- Report a `Deny` with `Principal: "*"` whose literal-operator carve-out (`StringNotEquals`, `StringNotEqualsIgnoreCase`) is `*` as `literal_wildcard_deny_carve_out` (the `*` exempts nobody) instead of `ineffective_deny_carve_out` (denies nothing); the finding says the `Deny` applies to every principal only when the statement's `Principal` (or its `AWS` entry) is `*` and nothing else can exempt one
 - Report an `Allow` with `NotAction: "*"` as `not_action_allow_ineffective` (low: grants nothing) instead of near-administrator access
 
 ### Fixed

@@ -929,6 +929,30 @@ class TestInvertedDenyCarveOut:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
+        ("principal", "claims_everyone"),
+        [
+            ({"AWS": "*"}, True),
+            ({"AWS": ["arn:aws:iam::111122223333:root", "*"]}, True),
+            ({"AWS": "arn:aws:iam::111122223333:role/SpecificRole"}, False),
+            ({"Service": "*"}, False),
+        ],
+    )
+    async def test_literal_wildcard_claims_everyone_only_for_wildcard_principal(
+        self, check, fetcher, config, principal, claims_everyone
+    ):
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["*"],
+            Principal=principal,
+            Condition={"StringNotEquals": {"aws:PrincipalArn": "*"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert [i.issue_type for i in issues] == ["literal_wildcard_deny_carve_out"]
+        assert ("every principal" in issues[0].message) is claims_everyone
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
         "condition",
         [
             {
