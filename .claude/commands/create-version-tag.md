@@ -28,11 +28,24 @@ Optional argument: $ARGUMENTS (can be `patch`, `minor`, or `major` to skip the p
 3. **Verify up to date with remote**:
 
    ```bash
-   git fetch origin main
-   git status -uno
+   git fetch origin main --tags
+   test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" && echo "OK: at origin/main"
    ```
 
-   - If behind remote, ask user to pull first: `git pull origin main`
+   - If HEAD is not `origin/main`, STOP: `git pull origin main` first. Tagging a stale
+     local `main` is how v1.31.0 ended up on the pre-merge commit (1.30.1 code) as an
+     immutable release that had to be superseded by 1.31.1.
+
+4. **Verify the version was bumped on this commit**:
+
+   ```bash
+   git describe --tags --abbrev=0   # last tag
+   grep __version__ iam_validator/__version__.py
+   ```
+
+   - The tag you are about to create MUST equal `__version__` on HEAD (the release
+     workflow also enforces this and fails otherwise). If `__version__` still shows
+     the previous release, the bump PR has not been merged or pulled — STOP.
 
 ## Steps
 
