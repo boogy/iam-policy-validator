@@ -32,6 +32,7 @@ _Upgrading: a policy file that fails to parse now fails the run (every other fil
 - Fix `iam-validator validate --stdin` crashing; stdin is now parsed like a file (size and depth guards, structural checks) and works in streaming/CI mode ([#202])
 - Fix the SDK's `validate_json()` skipping every `policy_structure` check (invalid `Effect`, missing `Version`, unknown fields, `Action` with `NotAction`) because the raw document was not passed on ([#202])
 - Fix the SDK silently dropping files that fail to parse; `validate_file()`, `validate_directory()` and `quick_validate()` now report them as failed results ([#202])
+- Fix the MCP server's `validate_policies` `path`/`glob` input silently skipping files that fail to parse; each is now returned as a failed result with a `policy_parse_error` finding while the other files are still validated ([#202])
 - Fix `ValidationContext` ignoring its shared fetcher and reloading the config and rebuilding the registry on every call; it now loads once, reuses its fetcher, accepts `policy_type`/`recursive`, and renders `json`/`markdown` like the CLI ([#202])
 - Fix `action_condition_enforcement.policy_level_requirements` being ignored whenever `requirements` was set, which the shipped defaults always do ([#202])
 - Fix an explicitly targeted over-size file being skipped silently in streaming mode instead of failing the run as in batch mode ([#202])

@@ -221,6 +221,11 @@ distribution's entry point without it appearing anywhere in the YAML.
 back. The digest is returned by `get_config` and attached to
 every `validate_policies` response as `config_digest`.
 
+Local `path`/`glob` input goes through `_load_path_glob_entries`, which returns the
+loader's `parsing_error_results()` alongside the parsed entries: an unparseable file is a
+failed `policy_parse_error` result entry (as in the CLI), never skipped, and a `path` holding
+only broken files returns those entries rather than a `ToolError`.
+
 `validate.py` registers two `ToolSpec`s under the same name `validate_policies`, one
 per `modes` (`{"local"}` wraps `validate_policies` with `path`/`glob` on its signature;
 `{"hosted"}` wraps `_validate_policies_hosted`, which lacks them) — `build_server()`

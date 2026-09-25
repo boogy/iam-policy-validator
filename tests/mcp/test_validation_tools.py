@@ -302,3 +302,29 @@ class TestPathGlob:
         response = await validate_policies(path=str(tmp_path), glob="*.json")
 
         assert len(response["results"]) == 1
+
+    async def test_unparseable_file_is_flagged_and_others_still_validate(self, tmp_path, simple_policy_dict):
+        """Parity with the CLI: a broken file is a failed result, never silently skipped."""
+        (tmp_path / "good.json").write_text(json.dumps(simple_policy_dict))
+        broken = tmp_path / "broken.json"
+        broken.write_text('{"Version": "2012-10-17", "Statement": [')
+
+        response = await validate_policies(path=str(tmp_path), detail="findings")
+
+        by_name = {entry["name"]: entry for entry in response["results"]}
+        assert set(by_name) == {str(tmp_path / "good.json"), str(broken)}
+        failure = by_name[str(broken)]
+        assert failure["is_valid"] is False
+        assert failure["fails_policy"] is True
+        assert failure["severity_counts"] == {"error": 1}
+        assert [(issue["severity"], issue["check_id"]) for issue in failure["issues"]] == [("error", "policy_parsing")]
+
+    async def test_only_unparseable_files_are_reported_not_rejected(self, tmp_path):
+        (tmp_path / "broken.json").write_text("[]")
+
+        response = await validate_policies(path=str(tmp_path), format="markdown")
+
+        assert [entry["fails_policy"] for entry in response["results"]] == [True]
+        # The rendered report counts it like the CLI: one AWS-invalid policy, one error.
+        assert "**Policies with Errors (AWS-invalid):** 1" in response["report"]
+        assert "| Error | 1 |" in response["report"]
