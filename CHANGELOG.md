@@ -10,9 +10,9 @@ _Upgrading: the `v1.31.0` tag and GitHub release were created on the commit befo
 
 ### Fixed
 
-- Fail the release workflow when the tag does not match `__version__` in the tagged code, so a tag on a stale commit can no longer publish a release carrying another version's artifacts ([#PRNUM])
+- Fail the release workflow when the tag does not match `__version__` in the tagged code, so a tag on a stale commit can no longer publish a release carrying another version's artifacts ([#203])
 
-[#PRNUM]: https://github.com/boogy/iam-policy-validator/pull/PRNUM
+[#203]: https://github.com/boogy/iam-policy-validator/pull/203
 
 ## [1.31.0] - 2026-09-25
 
