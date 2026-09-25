@@ -54,6 +54,8 @@ Validates that condition keys exist and are valid for the actions used.
 - Condition key exists in AWS
 - Key is valid for the specified service
 - Global condition keys (aws:\*) are used correctly
+- A key AWS scopes to certain resource types (e.g. `s3:DataAccessPointAccount` on access
+  points) is rejected when every statement resource is of another type
 
 ### Pass Example
 
@@ -454,3 +456,5 @@ against the pattern. Raise the severity in your config if you want it to fail CI
 
 - Set operators used with multi-valued condition keys
 - Proper syntax for set operations
+- `ForAllValues` in an `Allow` without a `Null: "false"` guard on the same key, since it
+  matches when the key is missing (`Null: "true"` does not count as a guard)

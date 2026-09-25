@@ -262,7 +262,7 @@ DEFAULT_CONFIG = {
     # Validate resource ARN formats
     # Ensures ARNs follow the correct format:
     #   arn:partition:service:region:account-id:resource-type/resource-id
-    # Pattern allows wildcards (*) in region and account fields
+    # Pattern allows wildcards (*) in partition, region and account fields
     "resource_validation": {
         "enabled": True,
         "severity": "error",  # IAM validity error

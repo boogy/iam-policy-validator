@@ -48,6 +48,7 @@ from iam_validator.checks.utils.condition_matching import (
 )
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
+from iam_validator.core.condition_validators import is_operator_supports_wildcards
 from iam_validator.core.config.service_principals import is_aws_service_principal
 from iam_validator.core.constants import ACCOUNT_ID_PATTERN, ARN_PARTITIONS, ROOT_ARN_PATTERN
 from iam_validator.core.models import Statement, ValidationIssue
@@ -145,14 +146,12 @@ class PrincipalValidationCheck(PolicyCheck):
         # Track blocked principals to skip condition checks for them
         blocked_principal_values: set[str] = set()
 
-        # Check if statement has {"Service": "*"} pattern
-        # If so, we shouldn't also flag the * as a blocked principal
-        has_service_wildcard = self._has_service_principal_wildcard(statement)
+        # Skip only the "*" entries of a {"Service": "*"} already reported above
+        service_wildcards = self._service_principal_wildcard_count(statement) if service_wildcard_issues else 0
 
         for principal in principals:
-            # Skip blocking check for "*" if it came from {"Service": "*"}
-            # That case is handled by _check_service_principal_wildcards
-            if principal == "*" and has_service_wildcard:
+            if principal == "*" and service_wildcards:
+                service_wildcards -= 1
                 continue
 
             # Check if principal is blocked
@@ -274,13 +273,11 @@ class PrincipalValidationCheck(PolicyCheck):
         statement_idx: int,
         config: CheckConfig,
     ) -> list[ValidationIssue]:
-        """Flag an inverted Deny whose carve-out matches every principal.
+        """Flag an inverted Deny whose principal carve-out is ``"*"``.
 
-        AWS recommends replacing ``NotPrincipal`` with ``Deny`` + ``Principal: "*"`` and a
-        negated principal condition such as ``ArnNotEquals`` on ``aws:PrincipalArn``. That
-        rewrite exempts the listed principals from the deny, so a carve-out of ``"*"``
-        exempts everyone and the statement denies nothing -- the condition equivalent of
-        ``NotPrincipal: "*"``.
+        A wildcard-capable operator (``ArnNotEquals``, ``StringNotLike``) exempts every
+        principal, so the deny denies nothing. A literal operator (``StringNotEquals``)
+        matches no principal, so the carve-out exempts nobody.
         """
         if not statement.condition:
             return []
@@ -292,8 +289,35 @@ class PrincipalValidationCheck(PolicyCheck):
                 if not self._is_principal_condition_key(key):
                     continue
                 values = value if isinstance(value, list) else [value]
-                if not any(str(v).strip() == "*" for v in values):
+                wildcards = [v for v in values if str(v).strip() == "*"]
+                if not wildcards:
                     continue
+                if not is_operator_supports_wildcards(operator):
+                    # Another AND-ed condition, or ForAnyValue on a missing key, may still exempt principals.
+                    denies_everyone = (
+                        self._names_every_principal(statement)
+                        and len(wildcards) == len(values)
+                        and self._condition_key_count(statement) == 1
+                        and not operator.lower().startswith("foranyvalue:")
+                    )
+                    return [
+                        ValidationIssue(
+                            severity=self.get_severity(config),
+                            statement_sid=statement.sid,
+                            statement_index=statement_idx,
+                            issue_type="literal_wildcard_deny_carve_out",
+                            message=(
+                                f"`{operator}` compares `*` on `{key}` literally, so the `*` value exempts no principal"
+                                + (" and the `Deny` applies to every principal." if denies_everyone else ".")
+                            ),
+                            suggestion=(
+                                "Use a wildcard-capable operator (`StringNotLike`, or `ArnNotLike` for "
+                                "ARNs) if `*` is meant as a pattern, or list the exact values to exempt."
+                            ),
+                            line_number=statement.line_number,
+                            field_name="condition",
+                        )
+                    ]
                 return [
                     ValidationIssue(
                         severity=self.get_severity(config),
@@ -313,6 +337,22 @@ class PrincipalValidationCheck(PolicyCheck):
                     )
                 ]
         return []
+
+    @staticmethod
+    def _condition_key_count(statement: Statement) -> int:
+        """Number of condition keys tested; a non-dict operator entry counts as one."""
+        return sum(len(e) if isinstance(e, dict) else 1 for e in (statement.condition or {}).values())
+
+    @staticmethod
+    def _names_every_principal(statement: Statement) -> bool:
+        """True for ``Principal: "*"`` or an ``AWS`` principal of ``"*"``."""
+        principal = statement.principal
+        if principal == "*":
+            return True
+        if not isinstance(principal, dict):
+            return False
+        aws = principal.get("AWS")
+        return aws == "*" or (isinstance(aws, list) and "*" in aws)
 
     def _extract_principals(self, statement: Statement) -> list[str]:
         """Extract all principals from a statement.
@@ -347,20 +387,17 @@ class PrincipalValidationCheck(PolicyCheck):
                 principals.extend(value)
         return principals
 
-    def _has_service_principal_wildcard(self, statement: Statement) -> bool:
-        """Check if statement has {"Service": "*"} pattern.
-
-        This is used to avoid double-flagging - if the statement has a service
-        principal wildcard, we shouldn't also block it as a regular wildcard.
-        """
-        if statement.principal and isinstance(statement.principal, dict):
-            service_principals = statement.principal.get("Service")
-            if service_principals:
-                if isinstance(service_principals, str) and service_principals == "*":
-                    return True
-                if isinstance(service_principals, list) and "*" in service_principals:
-                    return True
-        return False
+    @staticmethod
+    def _service_principal_wildcard_count(statement: Statement) -> int:
+        """Number of ``"*"`` values under ``Principal.Service``."""
+        if not isinstance(statement.principal, dict):
+            return 0
+        service = statement.principal.get("Service")
+        if isinstance(service, str):
+            return int(service == "*")
+        if isinstance(service, list):
+            return service.count("*")
+        return 0
 
     def _check_service_principal_wildcards(
         self,

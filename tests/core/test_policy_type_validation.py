@@ -538,6 +538,12 @@ class TestRCPSupportedServices:
         assert [i for i in issues if i.issue_type == "unsupported_rcp_service"]
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("action", ["S3:GetObject", "KMS:*", "Sts:AssumeRole", "S3*:GetObject"])
+    async def test_service_prefix_matched_case_insensitively(self, action):
+        issues = await execute_policy(self._rcp_policy(action), "test.json", policy_type="RESOURCE_CONTROL_POLICY")
+        assert not [i for i in issues if i.issue_type == "unsupported_rcp_service"]
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("action", ["cloudfront:GetDistribution", "wafv2:GetWebACL"])
     async def test_2026_09_17_expansion_services_accepted(self, action):
         """Services added to RCP_SUPPORTED_SERVICES in the 26->62 expansion."""

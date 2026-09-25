@@ -22,7 +22,7 @@ import re
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from iam_validator.checks.utils import format_list_with_backticks
-from iam_validator.checks.utils.aws_matching import action_matches
+from iam_validator.checks.utils.aws_matching import action_matches, iam_glob_match
 from iam_validator.checks.utils.condition_matching import has_condition_key
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
@@ -438,7 +438,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             if statement.effect != "Allow":
                 continue
 
-            statement_actions = statement.get_actions()
+            statement_actions = self._granted_actions(statement, [*all_of, *any_of, *none_of])
             policy_wide_actions.update(statement_actions)
 
             # Track which statements grant which actions
@@ -789,7 +789,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             if statement.effect != "Allow":
                 continue
 
-            statement_actions = statement.get_actions()
+            required = requirement.get("actions", [])
+            statement_actions = self._granted_actions(statement, required if isinstance(required, list) else [])
 
             # Check if this statement matches the action requirement
             actions_match, matching_actions = await self._check_action_match(statement_actions, requirement, fetcher)
@@ -857,6 +858,14 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             issues.extend(condition_issues)
 
         return issues
+
+    @staticmethod
+    def _granted_actions(statement: Statement, candidates: list[str]) -> list[str]:
+        """The statement's actions; for ``NotAction``, the ``candidates`` it does not exclude."""
+        if statement.not_action is None:
+            return statement.get_actions()
+        excluded = statement.get_not_actions()
+        return [c for c in candidates if not any(iam_glob_match(n, c) for n in excluded)]
 
     async def _check_action_match(
         self,

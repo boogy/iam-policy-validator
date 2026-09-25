@@ -197,6 +197,36 @@ class TestSetOperatorValidationCheck:
         assert "Null" in issues[0].message
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("null_value", ["true", True, ["true", "false"], "TRUE"])
+    async def test_forallvalues_allow_with_non_protective_null_still_warns(self, check, config, null_value):
+        statement = Statement(
+            effect="Allow",
+            action=["s3:DeleteObjectTagging"],
+            resource=["*"],
+            condition={
+                "ForAllValues:StringEquals": {"aws:TagKeys": ["environment"]},
+                "Null": {"aws:TagKeys": null_value},
+            },
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert [i.issue_type for i in issues] == ["forallvalues_allow_without_null_check"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("null_value", ["false", False, ["false"], "False"])
+    async def test_forallvalues_allow_with_null_false_suppresses_warning(self, check, config, null_value):
+        statement = Statement(
+            effect="Allow",
+            action=["s3:DeleteObjectTagging"],
+            resource=["*"],
+            condition={
+                "ForAllValues:StringEquals": {"aws:TagKeys": ["environment"]},
+                "Null": {"aws:TagKeys": null_value},
+            },
+        )
+        issues = await check.execute(statement, 0, None, config)
+        assert issues == []
+
+    @pytest.mark.asyncio
     async def test_forallvalues_allow_miscased_null_check_suppresses_warning(self, check, config):
         statement = Statement(
             effect="Allow",
@@ -493,28 +523,6 @@ class TestSetOperatorValidationCheck:
         by_type = {issue.issue_type: issue.severity for issue in issues}
         assert by_type["set_operator_on_single_valued_key"] == "error"
         assert by_type["forallvalues_allow_without_null_check"] == "warning"
-
-    @pytest.mark.asyncio
-    async def test_null_check_with_true_value_still_warns(self, check, config):
-        """Test Null check with 'true' value doesn't prevent warning."""
-        statement = Statement(
-            effect="Allow",
-            action=["s3:DeleteObjectTagging"],
-            resource=["*"],
-            condition={
-                "ForAllValues:StringEquals": {
-                    "aws:TagKeys": ["environment"],
-                },
-                "Null": {
-                    "aws:TagKeys": "true",  # Wrong value - should be "false"
-                },
-            },
-        )
-        issues = await check.execute(statement, 0, None, config)
-        # Null check tracks presence of key, not value
-        # Current implementation just checks if Null condition exists for the key
-        # So this should NOT warn (limitation of current implementation)
-        assert all(issue.issue_type != "forallvalues_allow_without_null_check" for issue in issues)
 
     @pytest.mark.asyncio
     async def test_condition_key_in_issue(self, check, config):

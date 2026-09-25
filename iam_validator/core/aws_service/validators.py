@@ -273,7 +273,7 @@ class ServiceValidator:
         action: str,
         condition_key: str,
         service_detail: ServiceDetail,
-        resources: list[str] | None = None,  # pylint: disable=unused-argument - kept for API compatibility
+        resources: list[str] | None = None,
     ) -> ConditionKeyValidationResult:
         """Validate condition key against action and optionally resource types.
 
@@ -311,6 +311,22 @@ class ServiceValidator:
                 # If not a global key, continue to check action/resource-specific keys
                 # Don't return an error yet - aws:RequestTag, aws:ResourceTag are action-specific
 
+            # Resolve actions to check: expand wildcards, or use exact action
+            if self._parser.is_wildcard_action(action_name):
+                available_actions = list(service_detail.actions.keys())
+                has_matches, matched_actions = self._parser.match_wildcard_action(action_name, available_actions)
+                actions_to_check = matched_actions if has_matches else []
+            elif action_name in service_detail.actions:
+                actions_to_check = [action_name]
+            else:
+                actions_to_check = []
+
+            scoped_error = self._resource_type_mismatch(
+                action, condition_key, actions_to_check, service_detail, resources or []
+            )
+            if scoped_error:
+                return scoped_error
+
             # Check service-specific condition keys (with pattern matching for tag keys)
             # IMPORTANT: aws:RequestTag and aws:ResourceTag patterns in service-level keys
             # are NOT universally valid for all actions. Skip them here - they'll be checked
@@ -324,16 +340,6 @@ class ServiceValidator:
                     ):
                         return ConditionKeyValidationResult(is_valid=True)
                     # For RequestTag/ResourceTag, continue to check action/resource level
-
-            # Resolve actions to check: expand wildcards, or use exact action
-            if self._parser.is_wildcard_action(action_name):
-                available_actions = list(service_detail.actions.keys())
-                has_matches, matched_actions = self._parser.match_wildcard_action(action_name, available_actions)
-                actions_to_check = matched_actions if has_matches else []
-            elif action_name in service_detail.actions:
-                actions_to_check = [action_name]
-            else:
-                actions_to_check = []
 
             # Check condition key against all resolved actions
             any_has_condition_keys = False
@@ -407,6 +413,59 @@ class ServiceValidator:
                             return True
 
         return False
+
+    @staticmethod
+    def _resource_type_mismatch(
+        action: str,
+        condition_key: str,
+        action_names: list[str],
+        service_detail: ServiceDetail,
+        resources: list[str],
+    ) -> ConditionKeyValidationResult | None:
+        """Error when every resource is of a type the resource-scoped ``condition_key`` does not apply to."""
+        from iam_validator.sdk.arn_matching import (  # pylint: disable=import-outside-toplevel
+            arn_matches,
+            convert_aws_pattern_to_wildcard,
+        )
+
+        if not resources or not action_names:
+            return None
+        scoped_types = [
+            name
+            for name, resource_type in service_detail.resources.items()
+            if condition_key_in_list(condition_key, resource_type.condition_keys or [])
+        ]
+        details = [service_detail.actions[name] for name in action_names]
+        if not scoped_types or any(
+            condition_key_in_list(condition_key, detail.action_condition_keys or []) for detail in details
+        ):
+            return None
+
+        accepted = {req.get("Name", "") for detail in details for req in detail.resources}
+        for resource in resources:
+            if resource == "*" or "${" in resource:
+                return None
+            matched = [
+                name
+                for name in accepted
+                if name in service_detail.resources
+                and any(
+                    arn_matches(convert_aws_pattern_to_wildcard(fmt), resource, name)
+                    for fmt in service_detail.resources[name].arn_formats or []
+                )
+            ]
+            if not matched or any(name in scoped_types for name in matched):
+                return None
+
+        return ConditionKeyValidationResult(
+            is_valid=False,
+            error_message=(
+                f"Condition key `{condition_key}` only applies to resource type(s) "
+                f"{', '.join(f'`{t}`' for t in sorted(scoped_types))}, which none of the statement's "
+                f"resources are, so it is never present in requests for `{action}`."
+            ),
+            suggestion="Target a resource of the listed type(s), or use a condition key that applies to these resources.",
+        )
 
     @staticmethod
     def _global_key_warning(condition_key: str, action: str) -> str:

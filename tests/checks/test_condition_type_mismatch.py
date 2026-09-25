@@ -355,3 +355,34 @@ class TestUnknownOperatorDetection:
             statement = _make_statement({operator: {"aws:TagKeys": "team"}})
             issues = await check.execute(statement, 0, fetcher, config)
             assert not [i for i in issues if i.issue_type == "invalid_operator"], operator
+
+
+class TestArrayOfTypes:
+    @pytest.mark.parametrize(
+        ("doc_type", "expected"),
+        [("ArrayOfString", "String"), ("ArrayOfARN", "ARN"), ("ArrayOfBool", "Bool"), ("ArrayOfLong", "Numeric")],
+    )
+    def test_translate_type_strips_array_prefix(self, doc_type, expected):
+        from iam_validator.core.condition_validators import translate_type
+
+        assert translate_type(doc_type) == expected
+
+    @pytest.mark.asyncio
+    async def test_arn_operator_on_array_of_arn_key_is_valid(self, check, fetcher, config, monkeypatch):
+        async def key_type(*_args, **_kwargs):
+            return "ArrayOfARN"
+
+        monkeypatch.setattr(check, "_get_condition_key_type", key_type)
+        statement = _make_statement(
+            {"ForAnyValue:ArnLike": {"dynamodb:FisTargetArns": "arn:aws:fis:us-east-1:123456789012:experiment/*"}}
+        )
+        assert await check.execute(statement, 0, fetcher, config) == []
+
+    @pytest.mark.asyncio
+    async def test_bool_operator_on_array_of_bool_key_is_valid(self, check, fetcher, config, monkeypatch):
+        async def key_type(*_args, **_kwargs):
+            return "ArrayOfBool"
+
+        monkeypatch.setattr(check, "_get_condition_key_type", key_type)
+        statement = _make_statement({"ForAllValues:Bool": {"svc:Flags": "true"}})
+        assert await check.execute(statement, 0, fetcher, config) == []

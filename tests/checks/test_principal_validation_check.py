@@ -814,17 +814,12 @@ class TestInvertedDenyCarveOut:
 
     @pytest.mark.asyncio
     async def test_wildcard_org_carve_out_is_flagged(self, check, fetcher, config):
-        """aws:PrincipalOrgID satisfies the any_of rule, so nothing else catches this.
-
-        `Deny` + `StringNotEquals aws:PrincipalOrgID: "*"` exempts every org, denying
-        nobody, and unlike the ARN keys `"*"` is a structurally valid value here.
-        """
         statement = Statement(
             Effect="Deny",
             Action=["s3:*"],
             Resource=["*"],
             Principal="*",
-            Condition={"StringNotEquals": {"aws:PrincipalOrgID": "*"}},
+            Condition={"StringNotLike": {"aws:PrincipalOrgID": "*"}},
         )
         issues = await check.execute(statement, 0, fetcher, config)
         assert len(issues) == 1
@@ -878,14 +873,12 @@ class TestInvertedDenyCarveOut:
         [
             ("ArnNotEquals", "aws:PrincipalArn"),
             ("ArnNotLike", "aws:PrincipalArn"),
-            ("StringNotEquals", "aws:PrincipalAccount"),
-            ("StringNotEqualsIfExists", "aws:PrincipalServiceName"),
+            ("StringNotLikeIfExists", "aws:PrincipalServiceName"),
             ("StringNotLike", "aws:PrincipalOrgPaths"),
-            ("ForAnyValue:StringNotEquals", "aws:PrincipalTag/team"),
+            ("ForAnyValue:StringNotLike", "aws:PrincipalTag/team"),
         ],
     )
     async def test_wildcard_carve_out_is_flagged(self, check, fetcher, config, operator, key):
-        """A carve-out of "*" excludes every principal, so the Deny denies nothing."""
         statement = Statement(
             Effect="Deny",
             Action=["s3:*"],
@@ -897,6 +890,87 @@ class TestInvertedDenyCarveOut:
         assert len(issues) == 1
         assert issues[0].issue_type == "ineffective_deny_carve_out"
         assert issues[0].field_name == "condition"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "operator,key",
+        [
+            ("StringNotEquals", "aws:PrincipalOrgID"),
+            ("StringNotEquals", "aws:PrincipalAccount"),
+            ("StringNotEqualsIfExists", "aws:PrincipalServiceName"),
+            ("StringNotEqualsIgnoreCase", "aws:PrincipalTag/team"),
+            ("ForAllValues:StringNotEquals", "aws:PrincipalTag/team"),
+        ],
+    )
+    async def test_literal_operator_wildcard_carve_out_denies_everyone(self, check, fetcher, config, operator, key):
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["*"],
+            Principal="*",
+            Condition={operator: {key: "*"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert [i.issue_type for i in issues] == ["literal_wildcard_deny_carve_out"]
+        assert "every principal" in issues[0].message
+
+    @pytest.mark.asyncio
+    async def test_literal_wildcard_beside_real_values_keeps_their_carve_out(self, check, fetcher, config):
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["*"],
+            Principal="*",
+            Condition={"StringNotEquals": {"aws:PrincipalOrgID": ["o-abc123", "*"]}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert [i.issue_type for i in issues] == ["literal_wildcard_deny_carve_out"]
+        assert "every principal" not in issues[0].message
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("principal", "claims_everyone"),
+        [
+            ({"AWS": "*"}, True),
+            ({"AWS": ["arn:aws:iam::111122223333:root", "*"]}, True),
+            ({"AWS": "arn:aws:iam::111122223333:role/SpecificRole"}, False),
+            ({"Service": "*"}, False),
+        ],
+    )
+    async def test_literal_wildcard_claims_everyone_only_for_wildcard_principal(
+        self, check, fetcher, config, principal, claims_everyone
+    ):
+        statement = Statement(
+            Effect="Deny",
+            Action=["s3:*"],
+            Resource=["*"],
+            Principal=principal,
+            Condition={"StringNotEquals": {"aws:PrincipalArn": "*"}},
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert [i.issue_type for i in issues] == ["literal_wildcard_deny_carve_out"]
+        assert ("every principal" in issues[0].message) is claims_everyone
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "condition",
+        [
+            {
+                "ArnNotEquals": {"aws:PrincipalArn": "arn:aws:iam::111122223333:role/Trusted"},
+                "StringNotEquals": {"aws:PrincipalOrgID": "*"},
+            },
+            {"StringNotEquals": {"aws:PrincipalOrgID": "*", "aws:PrincipalAccount": "111122223333"}},
+            {"ForAnyValue:StringNotEquals": {"aws:PrincipalTag/team": "*"}},
+            {"foranyvalue:StringNotEquals": {"aws:PrincipalTag/team": "*"}},
+        ],
+    )
+    async def test_literal_wildcard_beside_other_conditions_does_not_claim_everyone(
+        self, check, fetcher, config, condition
+    ):
+        statement = Statement(Effect="Deny", Action=["s3:*"], Resource=["*"], Principal="*", Condition=condition)
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert [i.issue_type for i in issues] == ["literal_wildcard_deny_carve_out"]
+        assert "every principal" not in issues[0].message
 
     @pytest.mark.asyncio
     async def test_wildcard_in_carve_out_list_is_flagged(self, check, fetcher, config):

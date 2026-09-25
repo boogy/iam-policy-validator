@@ -453,8 +453,7 @@ async def execute_policy(
                         else:
                             # Extract service from action (format: service:ActionName)
                             service = action.split(":")[0] if ":" in action else action
-                            # Handle wildcards in service name
-                            service_base = service.rstrip("*")
+                            service_base = service.rstrip("*").lower()
 
                             if service_base and service_base not in rcp_supported_services:
                                 unsupported_actions.append(action)

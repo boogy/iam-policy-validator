@@ -4,6 +4,28 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.30.1] - 2026-09-25
+
+_Upgrading: fixed checks may report new findings, some at error or critical severity (`condition_key_validation`, `sensitive_action`, `action_condition_enforcement`), and two issue types were renamed (`ineffective_deny_carve_out` → `literal_wildcard_deny_carve_out` for literal-operator carve-outs, `not_action_allow_no_condition` → `not_action_allow_ineffective` for `NotAction: "*"`). Review CI results and update suppressions keyed on the old names._
+
+### Changed
+
+- Report a `Deny` with `Principal: "*"` whose literal-operator carve-out (`StringNotEquals`, `StringNotEqualsIgnoreCase`) is `*` as `literal_wildcard_deny_carve_out` (the `*` exempts nobody) instead of `ineffective_deny_carve_out` (denies nothing); the finding says the `Deny` applies to every principal only when the statement's `Principal` (or its `AWS` entry) is `*` and nothing else can exempt one ([#201])
+- Report an `Allow` with `NotAction: "*"` as `not_action_allow_ineffective` (low: grants nothing) instead of near-administrator access ([#201])
+
+### Fixed
+
+- Fix false type-mismatch errors on `ArrayOfARN`, `ArrayOfBool` and other `ArrayOf<T>` condition keys, such as `ArnLike` on `dynamodb:FisTargetArns` ([#201])
+- Fix `sensitive_action` treating a condition only on `aws:SecureTransport` or `aws:RequestedRegion` as restricting the grant ([#201])
+- Fix `policy_type_validation` reporting mixed-case service prefixes such as `S3:GetObject` as unsupported in resource control policies ([#201])
+- Fix `set_operator_validation` accepting `Null: "true"` as the presence guard for a `ForAllValues` condition in an `Allow` ([#201])
+- Fix resource ARNs with a wildcard partition segment, such as `arn:*:s3:::bucket/*`, being reported as invalid ([#201])
+- Fix `action_condition_enforcement` ignoring `NotAction` statements, so e.g. `NotAction: s3:*` granted `iam:PassRole` without its required condition ([#201])
+- Fix `principal_validation` skipping an `AWS: "*"` principal in blocked and allowed-principal checks when the same statement has `Service: "*"`, and skipping `Service: "*"` itself when `block_service_principal_wildcard` is off ([#201])
+- Fix `condition_key_validation` accepting a condition key scoped to certain resource types, such as `s3:DataAccessPointAccount`, on resources of another type; this also newly rejects request keys AWS scopes to resource types, such as `aws:TagKeys` on `s3:GetObject` ([#201])
+
+[#201]: https://github.com/boogy/iam-policy-validator/pull/201
+
 ## [1.30.0] - 2026-09-24
 
 Breaking changes in this release affect MCP server users only (tools, resources, prompts and server flags). `iam-validator validate`/`analyze` and the other CLI commands, the SDK validation API and the GitHub Action are unaffected.
@@ -1057,6 +1079,7 @@ _First release._
 
 [#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
+[1.30.1]: https://github.com/boogy/iam-policy-validator/compare/v1.30.0...v1.30.1
 [1.30.0]: https://github.com/boogy/iam-policy-validator/compare/v1.29.0...v1.30.0
 [1.29.0]: https://github.com/boogy/iam-policy-validator/compare/v1.28.1...v1.29.0
 [1.28.1]: https://github.com/boogy/iam-policy-validator/compare/v1.28.0...v1.28.1

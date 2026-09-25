@@ -12,6 +12,7 @@ from iam_validator.checks.utils.sensitive_action_matcher import (
 from iam_validator.checks.utils.wildcard_expansion import expand_wildcard_actions
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
+from iam_validator.core.condition_validators import has_restricting_condition
 from iam_validator.core.config.sensitive_actions import (
     DEFAULT_PRIVILEGE_ESCALATION_COMBOS,
     get_category_for_action,
@@ -197,7 +198,7 @@ class SensitiveActionCheck(PolicyCheck):
             return issues
 
         actions = statement.get_actions()
-        has_conditions = statement.condition is not None and len(statement.condition) > 0
+        has_conditions = has_restricting_condition(statement.condition)
 
         # Expand wildcards to actual actions using AWS API
         expanded_actions = await expand_wildcard_actions(actions, fetcher)

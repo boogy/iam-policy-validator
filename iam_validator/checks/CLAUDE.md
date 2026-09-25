@@ -92,7 +92,7 @@ Cached: memory LRU + disk TTL (7 days). Tests must mock — never hit the real A
 `invalid_action`, `invalid_resource`, `invalid_condition_key`, `invalid_operator`,
 `invalid_value_format`, `overly_permissive`, `missing_condition`, `privilege_escalation`,
 `invalid_not_principal`, `public_access`, `policy_structure`, `resource_mismatch`,
-`ineffective_deny_carve_out`, `unexpected_resource`,
+`ineffective_deny_carve_out`, `literal_wildcard_deny_carve_out`, `not_action_allow_ineffective`, `unexpected_resource`,
 `check_execution_error` (emitted by the registry when a check raises, never by a check
 itself).
 
@@ -134,7 +134,9 @@ Custom-check examples: `examples/custom_checks/`.
 
 `principal_validation` reports `ineffective_deny_carve_out` for both spellings of a
 `Deny` that exempts everyone: `NotPrincipal: "*"`, and `Principal: "*"` with
-`ArnNotEquals` on `aws:PrincipalArn: "*"`. A `Deny` carrying a `NotPrincipal` still falls
+`ArnNotEquals` on `aws:PrincipalArn: "*"`. The condition form counts only for a
+wildcard-capable operator; `StringNotEquals` on `"*"` exempts nobody and is reported as
+`literal_wildcard_deny_carve_out`. A `Deny` carrying a `NotPrincipal` still falls
 through to the blocked/allowed-principal rules, so both findings can appear on one
 statement; a `Deny` without one is otherwise skipped (a deny grants nothing).
 
@@ -171,6 +173,14 @@ Matching is `action_matches`, not `==`: a requirement may be a glob and IAM acti
 are case-insensitive. Statement-level checks never receive `policy_file`, so a
 requirement carrying `ignore_patterns` counts as unenforced there and the finding is
 kept rather than wrongly suppressed.
+
+## `NotAction` statements (gotcha)
+
+`get_actions()` is empty for a `NotAction` statement. `action_condition_enforcement`
+treats an `Allow` + `NotAction` statement as granting every requirement action no
+`NotAction` glob covers (`_granted_actions`); regex `action_patterns` cannot be
+enumerated and are not matched there. `sensitive_action` skips it, as it skips
+`Action: "*"`: `not_action_not_resource` owns that finding.
 
 ## Hardcoded severities (gotcha)
 
