@@ -6,6 +6,8 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ## [1.30.1] - 2026-09-25
 
+_Upgrading: fixed checks may report new findings, some at error or critical severity (`condition_key_validation`, `sensitive_action`, `action_condition_enforcement`), and two issue types were renamed (`ineffective_deny_carve_out` → `literal_wildcard_deny_carve_out` for literal-operator carve-outs, `not_action_allow_no_condition` → `not_action_allow_ineffective` for `NotAction: "*"`). Review CI results and update suppressions keyed on the old names._
+
 ### Changed
 
 - Report a `Deny` with `Principal: "*"` whose literal-operator carve-out (`StringNotEquals`, `StringNotEqualsIgnoreCase`) is `*` as `literal_wildcard_deny_carve_out` (the `*` exempts nobody) instead of `ineffective_deny_carve_out` (denies nothing); the finding says the `Deny` applies to every principal only when the statement's `Principal` (or its `AWS` entry) is `*` and nothing else can exempt one ([#201])
