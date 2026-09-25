@@ -98,29 +98,68 @@ class SensitiveActionCheck(PolicyCheck):
         {"IDENTITY_POLICY", "RESOURCE_POLICY", "TRUST_POLICY"}
     )
 
-    def _get_severity_for_action(self, action: str, config: CheckConfig) -> str:
+    #: Built-in per-category severities, used only when the user sets neither this
+    #: category in ``category_severities`` nor the check's own ``severity``. They
+    #: live here rather than in the default config so a user's ``severity:`` can win
+    #: over them (a merged config cannot tell a shipped value from a user's).
+    DEFAULT_CATEGORY_SEVERITIES: ClassVar[dict[str, str]] = {
+        "credential_exposure": "critical",
+        "priv_esc": "critical",
+        "data_access": "high",
+        "resource_exposure": "high",
+    }
+
+    #: Ceiling for the built-in category severity when every ``Resource`` in the
+    #: statement is a specific ARN (no ``*``). Reading one named table/secret/parameter
+    #: is the normal least-privilege shape and should not fail the default gate the way
+    #: the same read on ``"*"`` does. Permission-changing categories (priv_esc,
+    #: resource_exposure) are absent: modifying even one role or policy can escalate.
+    #: Override with ``scoped_resource_severities`` (``{}`` disables the ceiling).
+    DEFAULT_SCOPED_RESOURCE_SEVERITIES: ClassVar[dict[str, str]] = {
+        "data_access": "medium",
+        "credential_exposure": "medium",
+    }
+
+    def _get_severity_for_action(self, action: str, config: CheckConfig, resource_scoped: bool = False) -> str:
         """
-        Get severity for a specific action, considering category-based overrides.
+        Get severity for a specific action.
+
+        Precedence: the user's ``category_severities`` entry for the action's category,
+        then the check's configured ``severity``, then ``DEFAULT_CATEGORY_SEVERITIES``
+        (lowered to the ``scoped_resource_severities`` ceiling when ``resource_scoped``),
+        then ``default_severity``. A severity the user set is never lowered.
 
         Args:
             action: The AWS action to check
             config: Check configuration
+            resource_scoped: Every ``Resource`` in the statement is a specific ARN
 
         Returns:
-            Severity level for the action (considers category overrides)
+            Severity level for the action
         """
-        # Check if category severities are configured
-        category_severities = config.config.get("category_severities", {})
-        if not category_severities:
-            return self.get_severity(config)
-
-        # Get the category for this action
         category = get_category_for_action(action)
+        category_severities = config.config.get("category_severities") or {}
         if category and category in category_severities:
             return category_severities[category]
+        if config.severity:
+            return config.severity
+        if not category or category not in self.DEFAULT_CATEGORY_SEVERITIES:
+            return self.default_severity
 
-        # Fall back to default severity
-        return self.get_severity(config)
+        severity = self.DEFAULT_CATEGORY_SEVERITIES[category]
+        if resource_scoped:
+            ceilings = config.config.get("scoped_resource_severities", self.DEFAULT_SCOPED_RESOURCE_SEVERITIES) or {}
+            ceiling = ceilings.get(category)
+            rank = ValidationIssue.SEVERITY_RANK
+            if ceiling and rank.get(ceiling, 0) < rank.get(severity, 0):
+                return ceiling
+        return severity
+
+    @staticmethod
+    def _is_resource_scoped(statement: Statement) -> bool:
+        """True when the statement names only specific resources (no ``*``, no ``NotResource``)."""
+        resources = statement.get_resources()
+        return bool(resources) and not statement.not_resource and all("*" not in r for r in resources)
 
     def _get_actions_covered_by_condition_enforcement(self, config: CheckConfig) -> set[str]:
         """
@@ -241,10 +280,11 @@ class SensitiveActionCheck(PolicyCheck):
             suggestion_text, example = self._get_category_specific_suggestion(matched_actions[0], config)
 
             # Determine severity based on the highest severity action in the list
+            resource_scoped = self._is_resource_scoped(statement)
             severity = self.get_severity(config)  # Default
             if matched_actions:
                 severity = max(
-                    (self._get_severity_for_action(a, config) for a in matched_actions),
+                    (self._get_severity_for_action(a, config, resource_scoped) for a in matched_actions),
                     key=lambda s: ValidationIssue.SEVERITY_RANK.get(s, 0),
                 )
 

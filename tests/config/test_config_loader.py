@@ -473,3 +473,62 @@ def test_settings_schema_defaults_match_shipping_defaults():
         assert schema_defaults[key] == shipping_value, (
             f"{key}: schema default {schema_defaults[key]!r} != {shipping_value!r}"
         )
+
+
+class TestConfigFileValidation:
+    """A config file is validated on load; a misread setting must never pass silently."""
+
+    def _load(self, tmp_path: Path, text: str) -> ValidatorConfig:
+        config_path = tmp_path / "iam-validator.yaml"
+        config_path.write_text(text)
+        return ConfigLoader.load_config(explicit_path=str(config_path))
+
+    def test_scalar_fail_on_severity_becomes_a_list(self, tmp_path):
+        config = self._load(tmp_path, "settings:\n  fail_on_severity: high\n")
+        assert config.get_setting("fail_on_severity") == ["high"]
+
+    def test_scalar_fail_on_severity_still_fails_on_that_severity_only(self, tmp_path):
+        from iam_validator.core.models import ValidationIssue
+        from iam_validator.core.policy_checks import _should_fail_on_issue
+
+        config = self._load(tmp_path, "settings:\n  fail_on_severity: error\n")
+        fail_on = config.get_setting("fail_on_severity")
+        error = ValidationIssue(severity="error", statement_index=0, issue_type="t", message="m")
+        high = ValidationIssue(severity="high", statement_index=0, issue_type="t", message="m")
+        assert _should_fail_on_issue(error, fail_on)
+        assert not _should_fail_on_issue(high, fail_on)
+
+    def test_should_fail_treats_a_bare_string_as_one_severity(self):
+        from iam_validator.core.models import ValidationIssue
+        from iam_validator.core.policy_checks import _should_fail_on_issue
+
+        # "error" in "high" would be a substring test; it must be a membership test.
+        error = ValidationIssue(severity="error", statement_index=0, issue_type="t", message="m")
+        assert not _should_fail_on_issue(error, "high")  # type: ignore[arg-type]
+        assert _should_fail_on_issue(error, "error")  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize(
+        ("text", "fragment"),
+        [
+            ("settings:\n  fail_on_severity: [hihg]\n", "settings.fail_on_severity"),
+            ("settings:\n  off_diff_comment_mode: sometimes\n", "settings.off_diff_comment_mode"),
+            ("settings: [a, b]\n", "settings: expected a mapping"),
+            ("wildcard_action:\n  severity: severe\n", "wildcard_action.severity"),
+            ("checks:\n  wildcard_action:\n    enabled: 'no'\n", "wildcard_action.enabled"),
+            ("- just\n- a list\n", "top level"),
+        ],
+    )
+    def test_invalid_config_is_rejected_naming_the_problem(self, tmp_path, text, fragment):
+        from iam_validator.core.config.config_loader import ConfigValidationError
+
+        with pytest.raises(ConfigValidationError, match="iam-validator.yaml") as excinfo:
+            self._load(tmp_path, text)
+        assert any(fragment in error for error in excinfo.value.errors)
+
+    def test_check_severity_none_is_allowed(self, tmp_path):
+        config = self._load(tmp_path, "wildcard_action:\n  severity: none\n")
+        assert config.get_check_severity("wildcard_action") == "none"
+
+    def test_custom_check_sections_are_not_validated(self, tmp_path):
+        config = self._load(tmp_path, "my_custom_check:\n  severity: whatever-my-check-uses\n")
+        assert config.get_check_config("my_custom") == {"severity": "whatever-my-check-uses"}

@@ -246,6 +246,16 @@ class PolicyCheck(ABC):
             return True
         return policy_type in self.applies_to_policy_types
 
+    def filter_for_policy_type(self, issues: list[ValidationIssue], policy_type: str | None) -> list[ValidationIssue]:
+        """Drop findings that do not hold for ``policy_type`` (default: keep all).
+
+        For a check where only *some* findings are type-specific, so
+        ``applies_to_policy_types`` (all or nothing) is too coarse. Statement-level
+        ``execute()`` is not told the policy type; the registry calls this afterwards.
+        """
+        del policy_type
+        return issues
+
     def __init_subclass__(cls, **kwargs):
         """
         Validate that subclasses override at least one execution method.
@@ -564,21 +574,24 @@ class CheckRegistry:
         check: PolicyCheck,
         config: CheckConfig,
         filepath: str = "",
+        policy_type: str | None = None,
     ) -> list[ValidationIssue]:
         """Inject metadata and filter issues from a check execution.
 
-        Applies check_id injection, documentation enrichment, ignore_patterns
-        filtering, and severity visibility filtering.
+        Applies the check's policy-type filter, check_id injection, documentation
+        enrichment, ignore_patterns filtering, and severity visibility filtering.
 
         Args:
             issues: Raw issues from a check execution
             check: The check that produced the issues
             config: Configuration for the check
             filepath: Path to the policy file (for ignore_patterns)
+            policy_type: Resolved policy type, passed to ``check.filter_for_policy_type``
 
         Returns:
             Filtered issues with check_id and documentation injected
         """
+        issues = check.filter_for_policy_type(issues, policy_type)
         for issue in issues:
             if issue.check_id is None:
                 issue.check_id = check.check_id
@@ -674,7 +687,7 @@ class CheckRegistry:
                 except Exception as exc:  # noqa: BLE001 - a crashed check must not abort the run
                     failures.extend(self._handle_check_error(check.check_id, exc, statement_idx, statement.sid))
                     continue
-                processed = self._process_issues(issues, check, config, filepath)
+                processed = self._process_issues(issues, check, config, filepath, policy_type)
                 if processed:
                     issues_map[check.check_id] = processed
             if self.suppress_superseded:
@@ -704,7 +717,7 @@ class CheckRegistry:
             if isinstance(result, BaseException):
                 failures.extend(self._handle_check_error(check_id, result, statement_idx, statement.sid))
             elif isinstance(result, list):
-                processed = self._process_issues(result, task_checks[idx], configs[idx], filepath)
+                processed = self._process_issues(result, task_checks[idx], configs[idx], filepath, policy_type)
                 if processed:
                     issues_map[check_id] = processed
 
@@ -750,7 +763,7 @@ class CheckRegistry:
             except Exception as exc:  # noqa: BLE001 - a crashed check must not abort the run
                 failures.extend(self._handle_check_error(check.check_id, exc, statement_idx, statement.sid))
                 continue
-            processed = self._process_issues(issues, check, config, filepath)
+            processed = self._process_issues(issues, check, config, filepath, policy_type)
             if processed:
                 issues_map[check.check_id] = processed
 
@@ -810,7 +823,7 @@ class CheckRegistry:
                 except Exception as exc:  # noqa: BLE001 - a crashed check must not abort the run
                     all_issues.extend(self._handle_check_error(check.check_id, exc, 0))
                     continue
-                all_issues.extend(self._process_issues(issues, check, config, policy_file))
+                all_issues.extend(self._process_issues(issues, check, config, policy_file, policy_type))
             return all_issues
 
         # Execute all policy-level checks in parallel
@@ -833,7 +846,7 @@ class CheckRegistry:
                 all_issues.extend(self._handle_check_error(check.check_id, result, 0))
             elif isinstance(result, list):
                 config = configs[idx]
-                all_issues.extend(self._process_issues(result, check, config, policy_file))
+                all_issues.extend(self._process_issues(result, check, config, policy_file, policy_type))
 
         return all_issues
 

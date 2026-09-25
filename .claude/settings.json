@@ -12,11 +12,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [[ \"$CLAUDE_TOOL_INPUT\" =~ (rm[[:space:]]+-rf[[:space:]]+[/~]|git[[:space:]]+push[[:space:]]+--force|git[[:space:]]+push[[:space:]]+-f|git[[:space:]]+reset[[:space:]]+--hard) ]]; then echo 'BLOCKED: Dangerous command detected. Use with caution.' && exit 1; fi"
+            "command": "if grep -Eq '(rm[[:space:]]+-rf[[:space:]]+[/~]|git[[:space:]]+push[[:space:]]+(--force([^-]|$)|-f)|git[[:space:]]+reset[[:space:]]+--hard)'; then echo 'BLOCKED: Dangerous command detected. Use with caution.' >&2; exit 2; fi"
           },
           {
             "type": "command",
-            "command": "if [[ \"$CLAUDE_TOOL_INPUT\" =~ git[[:space:]]+push && $(git rev-parse --abbrev-ref HEAD 2>/dev/null) =~ ^(main|master)$ ]]; then echo 'WARNING: Pushing directly to main/master branch. Create a PR instead.' && exit 2; fi"
+            "command": "if grep -Eq 'git[[:space:]]+push' && git rev-parse --abbrev-ref HEAD 2>/dev/null | grep -Eqx 'main|master'; then echo 'WARNING: Pushing directly to main/master branch. Create a PR instead.' >&2; exit 2; fi"
           }
         ]
       },

@@ -274,7 +274,8 @@ DEFAULT_CONFIG = {
     # ========================================================================
     # Validates Principal elements in resource-based policies
     # Applies to: S3 buckets, SNS topics, SQS queues, Lambda functions, etc.
-    # Only runs when: --policy-type RESOURCE_POLICY
+    # Runs on every statement that has a Principal/NotPrincipal, in every policy
+    # type except RESOURCE_CONTROL_POLICY (where Principal "*" is required syntax)
     #
     # Control mechanisms:
     #   1. block_wildcard_principal - Simple toggle for wildcard principal handling
@@ -429,7 +430,8 @@ DEFAULT_CONFIG = {
     # Flags statements that allow all actions
     "wildcard_action": {
         "enabled": True,
-        "severity": "medium",  # Security issue
+        # Security issue; never below service_wildcard (`*` is a superset of `s3:*`)
+        "severity": "high",
         "description": "Checks for wildcard actions (*)",
         "message": "Statement allows all actions (*)",
         "suggestion": "Replace wildcard with specific actions needed for your use case",
@@ -475,7 +477,8 @@ DEFAULT_CONFIG = {
         # Allowed wildcard patterns for actions that can be used with Resource: "*"
         # Supports BOTH literal matching and pattern expansion via AWS API
         #
-        # Default: 25 read-only patterns (Describe*, List*, Get*)
+        # Default: 24 metadata-read patterns (Describe*, List*, some Get*) — none that
+        # read resource contents (those are sensitive_action's data_access category)
         # See: iam_validator/core/config/wildcards.py
         #
         # Examples:
@@ -575,12 +578,14 @@ DEFAULT_CONFIG = {
     #   # Get multiple categories
     #   critical = get_sensitive_actions(['credential_exposure', 'priv_esc'])
     #
-    # Avoiding Duplicate Alerts:
-    #   If you configure specific actions in action_condition_enforcement,
-    #   use ignore_patterns to prevent duplicate alerts from sensitive_action:
+    # Duplicate alerts are avoided automatically: an action that
+    # action_condition_enforcement will actually enforce (after its merge_strategy,
+    # enabled flag and ignore_patterns) is not reported again here.
     #
-    #   ignore_patterns:
-    #     - action_matches: "^(iam:PassRole|iam:CreateUser|s3:PutObject)$"
+    # Severity: a statement whose every Resource is a specific ARN (no "*") gets at
+    # most `medium` for data_access / credential_exposure actions (reading one named
+    # resource is the least-privilege shape). Override with
+    #   scoped_resource_severities: {data_access: high}   # or {} to disable
     #
     # Template placeholders supported:
     # - message_single uses {action}: Single action name (e.g., "iam:CreateRole")
@@ -588,7 +593,11 @@ DEFAULT_CONFIG = {
     # - suggestion and example support both {action} and {actions}
     "sensitive_action": {
         "enabled": True,
-        "severity": "medium",  # Security issue (can be overridden per-category)
+        # No "severity" here on purpose. Without one, each action takes its category's
+        # built-in severity (SensitiveActionCheck.DEFAULT_CATEGORY_SEVERITIES:
+        # credential_exposure/priv_esc -> critical, data_access/resource_exposure -> high).
+        # Setting `severity:` applies it to every category; `category_severities:`
+        # overrides individual categories and wins over both.
         "description": "Checks for sensitive actions without conditions",
         # Categories to check (default: all categories enabled)
         # Set to specific categories to limit scope:
@@ -601,14 +610,8 @@ DEFAULT_CONFIG = {
             "priv_esc",  # Critical: Privilege escalation (27 actions)
             "resource_exposure",  # High: Resource policy modifications (321 actions)
         ],
-        # Per-category severity overrides (optional)
-        # If not specified, uses the default severity above
-        "category_severities": {
-            "credential_exposure": "critical",  # Override: credential exposure is critical
-            "priv_esc": "critical",  # Override: privilege escalation is critical
-            "data_access": "high",  # Override: data access is high
-            "resource_exposure": "high",  # Override: resource exposure is high
-        },
+        # Per-category severity overrides (optional, user-only), e.g.
+        #   category_severities: {data_access: medium}
         # Category-specific ABAC suggestions and examples
         # These provide tailored guidance for each security risk category
         # See: iam_validator/core/config/category_suggestions.py

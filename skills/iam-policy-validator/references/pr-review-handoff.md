@@ -37,6 +37,10 @@ Top level:
 | `parsing_errors`                | array | `[file_path, error_message]` pairs                    |
 | `policies_with_errors`          | int   | Structurally AWS-invalid policies (computed)          |
 | `policies_with_findings`        | int   | Policies with any non-error finding (computed)        |
+| `severity_counts`               | dict  | Findings per severity, every level keyed (computed)   |
+
+Each file in `parsing_errors` also appears in `results` as a failed entry with one
+`policy_parse_error` finding.
 
 Each `results[]` entry:
 

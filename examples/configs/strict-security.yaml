@@ -22,7 +22,7 @@ settings:
 # Wildcard action check - elevated severity
 wildcard_action:
   enabled: true
-  severity: high # Elevated from default medium
+  severity: high # Same as the default (never below service_wildcard)
 
 # Wildcard resource check - elevated severity, minimal allowed wildcards
 wildcard_resource:
@@ -36,7 +36,6 @@ wildcard_resource:
     - iam:Get*
     - iam:List*
     - logs:Describe*
-    - logs:Get*
     - s3:List*
 
 # Full wildcard check - both Action and Resource are "*"
@@ -52,10 +51,12 @@ service_wildcard:
     - logs
     - cloudwatch
 
-# Sensitive action check - elevated severity
+# Sensitive action check - keep the built-in per-category severities (critical for
+# credential_exposure/priv_esc, high otherwise) even on statements scoped to one
+# resource. A `severity:` here would apply one severity to every category.
 sensitive_action:
   enabled: true
-  severity: high # Elevated from default medium
+  scoped_resource_severities: {}
 
 # Action condition enforcement - strict requirements
 action_condition_enforcement:

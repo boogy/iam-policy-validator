@@ -110,11 +110,15 @@ print(f"High: {counts['high']}")
 The result object contains:
 
 ```python
-result.is_valid      # bool - Overall validity
-result.file_path     # str - Source file path
+result.is_valid      # bool - Overall validity (per settings.fail_on_severity)
+result.policy_file   # str - Source file path (or the name given to validate_json)
+result.policy_type   # str - Resolved policy type
 result.issues        # list[ValidationIssue] - All issues found
-result.policy        # IAMPolicy - Parsed policy object
 ```
+
+A file that cannot be parsed is returned as a result with `is_valid=False` and a
+single `policy_parse_error` finding — the same way `iam-validator validate` reports
+it — rather than being skipped.
 
 ## ValidationIssue
 

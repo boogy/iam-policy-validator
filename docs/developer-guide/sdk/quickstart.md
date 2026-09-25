@@ -81,7 +81,7 @@ results = await validate_directory("./policies/")
 
 for result in results:
     status = "PASS" if result.is_valid else "FAIL"
-    print(f"{result.file_path}: {status}")
+    print(f"{result.policy_file}: {status}")
 ```
 
 ### Validate a Dict

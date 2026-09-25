@@ -118,12 +118,12 @@ itself).
 | `trust_policy_validation.py`      | `trust_policy_validation`      | high     | + confused deputy                                             |
 | `not_principal_validation.py`     | `not_principal_validation`     | warning  | NotPrincipal usage                                            |
 | `action_resource_matching.py`     | `action_resource_matching`     | medium   | actions ↔ resource types                                      |
-| `wildcard_action.py`              | `wildcard_action`              | medium   | `Action: "*"`                                                 |
+| `wildcard_action.py`              | `wildcard_action`              | high     | `Action: "*"`; never below `service_wildcard`                 |
 | `wildcard_resource.py`            | `wildcard_resource`            | medium   | `Resource: "*"`                                               |
 | `full_wildcard.py`                | `full_wildcard`                | critical | Action+Resource `*`                                           |
 | `service_wildcard.py`             | `service_wildcard`             | high     | `s3:*`                                                        |
-| `sensitive_action.py`             | `sensitive_action`             | medium   | 490+ privesc actions; dedups against ACE's enforced actions   |
-| `not_action_not_resource.py`      | `not_action_not_resource`      | high     |                                                               |
+| `sensitive_action.py`             | `sensitive_action`             | category | 490+ privesc actions; dedups against ACE's enforced actions   |
+| `not_action_not_resource.py`      | `not_action_not_resource`      | high     | Allow-grant findings dropped in SCP/RCP                       |
 | `action_condition_enforcement.py` | `action_condition_enforcement` | high     | sensitive actions need conds                                  |
 
 Custom-check examples: `examples/custom_checks/`.
@@ -173,6 +173,25 @@ Matching is `action_matches`, not `==`: a requirement may be a glob and IAM acti
 are case-insensitive. Statement-level checks never receive `policy_file`, so a
 requirement carrying `ignore_patterns` counts as unenforced there and the finding is
 kept rather than wrongly suppressed.
+
+## `sensitive_action` severity (gotcha)
+
+Precedence: the user's `category_severities` entry → the check's `severity` →
+`SensitiveActionCheck.DEFAULT_CATEGORY_SEVERITIES` → `default_severity`. The built-in
+category map lives on the class, **not** in `defaults.py`, and `defaults.py` sets no
+`severity` for this check: a merged config cannot tell a shipped value from a user's, so
+either one there would silently beat (or be beaten by) what the user wrote. The built-in
+category severity (only) is lowered to `scoped_resource_severities`
+(`DEFAULT_SCOPED_RESOURCE_SEVERITIES`: `data_access`/`credential_exposure` → medium)
+when every `Resource` is a specific ARN; a severity the user set is never lowered.
+
+## Partly type-specific findings (gotcha)
+
+`applies_to_policy_types` is all-or-nothing. When only some of a check's findings are
+wrong for a type, override `filter_for_policy_type(issues, policy_type)` — the registry
+calls it in `_process_issues` (statement-level `execute()` never sees the type).
+`not_action_not_resource` uses it to drop its `GRANT_ISSUE_TYPES` in SCPs/RCPs while
+keeping its `Deny` findings.
 
 ## `NotAction` statements (gotcha)
 

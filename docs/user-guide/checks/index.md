@@ -58,11 +58,11 @@ IAM Policy Validator includes 23 built-in checks across three categories.
 
 | Check ID                    | Severity | Description                              |
 | --------------------------- | -------- | ---------------------------------------- |
-| `wildcard_action`           | medium   | `Action: "*"` detection                  |
+| `wildcard_action`           | high     | `Action: "*"` detection                  |
 | `wildcard_resource`         | medium   | `Resource: "*"` detection                |
 | `full_wildcard`             | critical | Both Action and Resource wildcards       |
 | `service_wildcard`          | high     | `s3:*` style wildcards                   |
-| `sensitive_action`          | medium   | Privilege escalation actions             |
+| `sensitive_action`          | high     | Sensitive actions, severity by category  |
 | `not_action_not_resource`   | high     | Dangerous NotAction/NotResource patterns |
 | `principal_validation`      | high     | Principal format validation              |
 | `mfa_condition_antipattern` | warning  | MFA anti-patterns                        |

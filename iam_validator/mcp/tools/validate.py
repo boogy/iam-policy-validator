@@ -280,7 +280,15 @@ async def _attach_summaries(entries: list[PolicyResultEntry], raw_dicts: list[di
         entry.summary = summary.model_dump()
 
 
-def _load_path_glob_entries(path: str, glob: str | None) -> list[tuple[dict[str, Any], str, None]]:
+def _load_path_glob_entries(
+    path: str, glob: str | None
+) -> tuple[list[tuple[dict[str, Any], str, None]], list[PolicyValidationResult]]:
+    """Load every policy file under ``path``; unparseable files come back as failed results.
+
+    Mirrors the CLI: a file that cannot be parsed is not skipped, it is reported as a
+    ``policy_parse_error`` result (``PolicyLoader.parsing_error_results``) while the
+    other files are still validated.
+    """
     from pathlib import Path as _Path
 
     loader = PolicyLoader()
@@ -297,7 +305,7 @@ def _load_path_glob_entries(path: str, glob: str | None) -> list[tuple[dict[str,
             continue
         _iam_policy, raw_dict = loaded
         entries.append((raw_dict, str(file_path), None))
-    return entries
+    return entries, loader.parsing_error_results()
 
 
 async def _validate_policies_impl(
@@ -324,10 +332,12 @@ async def _validate_policies_impl(
         for idx, entry in enumerate(policies):
             raw_dict, name, entry_type = _split_policy_input(entry, label=f"policies[{idx}]")
             raw_entries.append((raw_dict, name, entry_type))
+    parse_failures: list[PolicyValidationResult] = []
     if path is not None:
-        raw_entries.extend(_load_path_glob_entries(path, glob))
+        path_entries, parse_failures = _load_path_glob_entries(path, glob)
+        raw_entries.extend(path_entries)
 
-    if not raw_entries:
+    if not raw_entries and not parse_failures:
         raise ToolError("policies: at least one policy is required (or path in local mode)")
 
     if len(raw_entries) > run.settings.max_policies:
@@ -379,6 +389,13 @@ async def _validate_policies_impl(
             for i, result in enumerate(sdk_results)
         ]
         await _attach_summaries(entries, [parsed[i][0] for i in range(len(parsed))], detail)
+
+        # Files under `path` that could not be parsed: flagged as failed results, after the rest.
+        sdk_results.extend(parse_failures)
+        entries.extend(
+            _build_entry_response(failure, {}, failure.policy_file, failure.policy_type, "default", detail)
+            for failure in parse_failures
+        )
 
         response: dict[str, Any] = {
             "results": [e.model_dump() for e in entries],

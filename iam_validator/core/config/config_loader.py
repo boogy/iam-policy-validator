@@ -339,6 +339,74 @@ def validate_config(config_dict: dict[str, Any]) -> tuple[bool, list[str]]:
     return len(errors) == 0, errors
 
 
+# Severity-list settings that also accept a single scalar (``fail_on_severity: high``).
+_SEVERITY_LIST_SETTINGS = ("fail_on_severity", "hide_severities")
+
+# A check's own severity may also be "none" (suppress its findings entirely).
+CHECK_SEVERITY_LEVELS = SEVERITY_LEVELS | {"none"}
+
+
+def normalize_settings(settings: dict[str, Any]) -> None:
+    """Wrap a scalar severity-list setting in a list, in place.
+
+    Without this, ``fail_on_severity: high`` stays a string and the membership test
+    ``severity in fail_on_severities`` becomes a substring match that never matches
+    ``error``, so AWS-invalid policies stop failing the run.
+    """
+    for key in _SEVERITY_LIST_SETTINGS:
+        if isinstance(settings.get(key), str):
+            settings[key] = [settings[key]]
+
+
+def _check_sections(config_dict: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """(check_id, section) for every built-in check configured in ``config_dict``."""
+    nested = config_dict.get("checks")
+    source = nested if isinstance(nested, dict) else config_dict
+    sections = []
+    for key, value in source.items():
+        check_id = key.removesuffix("_check")
+        if isinstance(value, dict) and check_id in KNOWN_CHECK_IDS:
+            sections.append((check_id, value))
+    return sections
+
+
+def config_file_errors(config_dict: Any) -> list[str]:
+    """Problems in a user config file that would otherwise be silently misread.
+
+    Validates ``settings`` against ``SettingsSchema`` (after ``normalize_settings``)
+    and each built-in check's ``enabled``/``severity``. Check-specific options,
+    custom checks and ``policy_types`` keep their own, more lenient handling.
+    """
+    if not isinstance(config_dict, dict):
+        return [f"top level: expected a mapping of settings and checks, got {type(config_dict).__name__}"]
+
+    errors: list[str] = []
+    settings = config_dict.get("settings")
+    if settings is not None:
+        if not isinstance(settings, dict):
+            errors.append(f"settings: expected a mapping, got {type(settings).__name__}")
+        else:
+            normalize_settings(settings)
+            try:
+                SettingsSchema.model_validate(settings)
+            except PydanticValidationError as e:
+                for err in e.errors():
+                    loc = ".".join(str(x) for x in ("settings", *err.get("loc", ())))
+                    errors.append(f"{loc}: {err.get('msg')}")
+
+    for check_id, section in _check_sections(config_dict):
+        severity = section.get("severity")
+        if severity is not None and severity not in CHECK_SEVERITY_LEVELS:
+            errors.append(
+                f"{check_id}.severity: invalid severity {severity!r}. Must be one of: {sorted(CHECK_SEVERITY_LEVELS)}"
+            )
+        enabled = section.get("enabled")
+        if enabled is not None and not isinstance(enabled, bool):
+            errors.append(f"{check_id}.enabled: expected true or false, got {enabled!r}")
+
+    return errors
+
+
 def deep_merge(base: dict, override: dict) -> dict:
     """
     Deep merge two dictionaries, with override taking precedence.
@@ -379,6 +447,9 @@ class ValidatorConfig:
             use_defaults: Whether to load default configuration. Set to False for testing
                          or when you want an empty configuration.
         """
+        if config_dict and isinstance(config_dict.get("settings"), dict):
+            normalize_settings(config_dict["settings"])
+
         # Start with default configuration if requested
         if use_defaults:
             default_config = get_default_config()
@@ -639,6 +710,9 @@ class ConfigLoader:
             )
 
         config_dict = ConfigLoader.load_yaml(config_file)
+        errors = config_file_errors(config_dict)
+        if errors:
+            raise ConfigValidationError([f"{config_file}: {error}" for error in errors])
         return ValidatorConfig(config_dict)
 
     @staticmethod

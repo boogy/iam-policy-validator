@@ -4,6 +4,42 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.0] - 2026-09-25
+
+_Upgrading: a policy file that fails to parse now fails the run (every other file is still validated and reported); a config file with invalid `settings` or an invalid check `severity`/`enabled` now stops the run with an error instead of being misread; `wildcard_action` defaults to `high`. If your config sets `sensitive_action.severity`, it now applies to every category — remove it to keep the built-in per-category severities._
+
+### Changed
+
+- **Breaking:** Fail the run when a policy file cannot be parsed, reporting each such file as a failed result with one `policy_parse_error` finding (severity `error`) in every output format, the PR summary and review, and the job summary, while still validating every other file; previously parse errors never affected the exit code, and streaming mode (on under `CI`, including the GitHub Action) dropped them from the report ([#202])
+- **Breaking:** Validate `settings` and each built-in check's `severity`/`enabled` when loading a config file, stopping with an error that names the problem; accept a scalar `fail_on_severity`/`hide_severities` as a one-item list (a bare string made the fail test a substring match, so `error` findings stopped failing the run) ([#202])
+- **Breaking:** Let `sensitive_action.severity` override the built-in per-category severities, with precedence `category_severities` entry → `severity` → built-in category severity; previously the shipped `category_severities` always won ([#202])
+- Cap the built-in `sensitive_action` severity at `medium` for `data_access` and `credential_exposure` actions when every `Resource` is a specific ARN, so a least-privilege read such as `dynamodb:GetItem` on one table no longer fails the default gate; configure with `scoped_resource_severities` (`{}` disables) ([#202])
+- Raise the `wildcard_action` default severity from `medium` to `high`, so granting every action never ranks below `service_wildcard`'s `s3:*` ([#202])
+- Remove `dynamodb:Get*`, `lambda:Get*`, `logs:Get*` and `logs:Filter*` from the default `wildcard_resource.allowed_wildcards`, since they read resource contents that `sensitive_action` flags as data access ([#202])
+- Stop `not_action_not_resource` reporting an `Allow` with `NotAction`/`NotResource` as a grant in SCPs and RCPs, where an `Allow` never grants access; its `Deny` findings still apply ([#202])
+- Show every severity on its own row in the PR summary's Issue Breakdown (Error, Critical, High, Warning, Medium, Low, Info, most severe first, with the inline review comments' emoji) instead of merging `medium` into Warnings and `low` into Info; list every severity in the `markdown` format too ([#202])
+- Report a config file error as a plain CLI error instead of an "Unexpected error" traceback ([#202])
+
+### Added
+
+- Add `severity_counts` to the JSON report: the number of findings per severity, every level present (0 when absent), most severe first — the same numbers the PR summary shows ([#202])
+- Add the CLI's options to the SDK: `validate_file`, `validate_directory`, `validate_json`, `validator()` and `validator_from_config()` accept `config`, `custom_checks_dir`, `aws_services_dir` and `allow_config_custom_checks`, and `validator_from_config()` also takes a loaded `ValidatorConfig` ([#202])
+- Add `validate_policies(..., fetcher=...)` to reuse an open `AWSServiceFetcher` ([#202])
+- Add the `PolicyCheck.filter_for_policy_type()` hook for checks whose findings are only partly type-specific ([#202])
+
+### Fixed
+
+- Fix `iam-validator validate --stdin` crashing; stdin is now parsed like a file (size and depth guards, structural checks) and works in streaming/CI mode ([#202])
+- Fix the SDK's `validate_json()` skipping every `policy_structure` check (invalid `Effect`, missing `Version`, unknown fields, `Action` with `NotAction`) because the raw document was not passed on ([#202])
+- Fix the SDK silently dropping files that fail to parse; `validate_file()`, `validate_directory()` and `quick_validate()` now report them as failed results ([#202])
+- Fix the MCP server's `validate_policies` `path`/`glob` input silently skipping files that fail to parse; each is now returned as a failed result with a `policy_parse_error` finding while the other files are still validated ([#202])
+- Fix `ValidationContext` ignoring its shared fetcher and reloading the config and rebuilding the registry on every call; it now loads once, reuses its fetcher, accepts `policy_type`/`recursive`, and renders `json`/`markdown` like the CLI ([#202])
+- Fix `action_condition_enforcement.policy_level_requirements` being ignored whenever `requirements` was set, which the shipped defaults always do ([#202])
+- Fix an explicitly targeted over-size file being skipped silently in streaming mode instead of failing the run as in batch mode ([#202])
+- Fix the README's SCP size limit (10,240 bytes), its SDK examples, and trust-policy validation being described as opt-in ([#202])
+
+[#202]: https://github.com/boogy/iam-policy-validator/pull/202
+
 ## [1.30.1] - 2026-09-25
 
 _Upgrading: fixed checks may report new findings, some at error or critical severity (`condition_key_validation`, `sensitive_action`, `action_condition_enforcement`), and two issue types were renamed (`ineffective_deny_carve_out` → `literal_wildcard_deny_carve_out` for literal-operator carve-outs, `not_action_allow_no_condition` → `not_action_allow_ineffective` for `NotAction: "*"`). Review CI results and update suppressions keyed on the old names._
@@ -1079,6 +1115,7 @@ _First release._
 
 [#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
+[1.31.0]: https://github.com/boogy/iam-policy-validator/compare/v1.30.1...v1.31.0
 [1.30.1]: https://github.com/boogy/iam-policy-validator/compare/v1.30.0...v1.30.1
 [1.30.0]: https://github.com/boogy/iam-policy-validator/compare/v1.29.0...v1.30.0
 [1.29.0]: https://github.com/boogy/iam-policy-validator/compare/v1.28.1...v1.29.0

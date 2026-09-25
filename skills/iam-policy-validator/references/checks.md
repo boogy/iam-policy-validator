@@ -29,10 +29,10 @@ Authoritative per-check docs (risk, examples, remediation): https://boogy.github
 | Check ID                       | Severity | What it catches                                          |
 | ------------------------------ | -------- | -------------------------------------------------------- |
 | `full_wildcard`                | critical | `Action: "*"` combined with `Resource: "*"`              |
-| `wildcard_action`              | medium   | `Action: "*"`                                            |
+| `wildcard_action`              | high     | `Action: "*"`                                            |
 | `wildcard_resource`            | medium   | `Resource: "*"`                                          |
 | `service_wildcard`             | high     | Service-wide wildcards like `s3:*`                       |
-| `sensitive_action`             | medium   | 490+ privilege-escalation actions across 20+ categories  |
+| `sensitive_action`             | high     | 490+ sensitive actions; severity set per category        |
 | `not_action_not_resource`      | high     | Dangerous `NotAction` / `NotResource` patterns           |
 | `action_condition_enforcement` | high     | Sensitive actions missing required conditions (e.g. MFA) |
 

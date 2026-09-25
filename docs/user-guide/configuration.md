@@ -501,11 +501,11 @@ All 22 built-in checks with their default settings:
 
 | Check ID                       | Default Severity | Description                             |
 | ------------------------------ | ---------------- | --------------------------------------- |
-| `wildcard_action`              | medium           | `Action: "*"` detection                 |
+| `wildcard_action`              | high             | `Action: "*"` detection                 |
 | `wildcard_resource`            | medium           | `Resource: "*"` detection               |
 | `full_wildcard`                | critical         | `Action + Resource: "*"` (admin access) |
 | `service_wildcard`             | high             | `s3:*` style wildcards                  |
-| `sensitive_action`             | medium           | 490+ privilege escalation actions       |
+| `sensitive_action`             | per category     | 490+ privilege escalation actions       |
 | `action_condition_enforcement` | high             | Sensitive actions require conditions    |
 | `not_action_not_resource`      | high             | Dangerous NotAction/NotResource         |
 
@@ -543,18 +543,27 @@ service_wildcard:
 ```yaml
 sensitive_action:
   enabled: true
-  severity: medium
   # Filter by category
   categories:
     - credential_exposure
     - priv_esc
     - data_access
     - resource_exposure
-  # Category-specific severities
+  # Category-specific severities (win over `severity`)
   category_severities:
     credential_exposure: high
     priv_esc: critical
+  # Ceiling for built-in severities when every Resource is a specific ARN
+  # (default: data_access and credential_exposure -> medium; {} disables)
+  scoped_resource_severities:
+    data_access: medium
 ```
+
+Severity precedence: a `category_severities` entry, then `severity` (applies to
+every category), then the built-in category severities (`credential_exposure` and
+`priv_esc` critical, `data_access` and `resource_exposure` high) lowered by
+`scoped_resource_severities` for fully scoped statements. A severity you set is
+never lowered.
 
 #### action_condition_enforcement
 

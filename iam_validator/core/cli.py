@@ -8,6 +8,7 @@ import sys
 
 from iam_validator.__version__ import __version__
 from iam_validator.commands import ALL_COMMANDS
+from iam_validator.core.config.config_loader import ConfigValidationError
 
 
 def setup_logging(log_level: str | None = None, verbose: bool = False) -> None:
@@ -128,6 +129,10 @@ def main() -> int:
         return 1
     except PermissionError as e:
         logging.error(f"Permission denied: {e}")
+        return 1
+    except ConfigValidationError as e:
+        # A mistake in the user's config file, not a crash: no traceback.
+        logging.error(str(e))
         return 1
     except Exception as e:
         logging.error(f"Unexpected error: {e}", exc_info=True)

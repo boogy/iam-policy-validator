@@ -3,34 +3,86 @@ Convenience functions for common validation scenarios.
 
 This module provides high-level, easy-to-use functions for common IAM policy
 validation tasks without requiring deep knowledge of the internal API.
+
+Every function here validates exactly the way ``iam-validator validate`` does:
+the same config resolution, the same checks (including the document-level
+structure checks, which need the raw policy dict), and the same treatment of a
+file that cannot be parsed — it is returned as a failed result carrying a
+``policy_parse_error`` finding instead of being silently skipped.
 """
 
 import json
 from pathlib import Path
 
-from iam_validator.core.models import PolicyType, PolicyValidationResult, ValidationIssue
+from iam_validator.core.config.config_loader import ValidatorConfig
+from iam_validator.core.models import IAMPolicy, PolicyType, PolicyValidationResult, ValidationIssue
 from iam_validator.core.policy_checks import validate_policies
 from iam_validator.core.policy_loader import PolicyLoader
+
+
+async def _validate_loaded(
+    loader: PolicyLoader,
+    policies: list[tuple[str, IAMPolicy]],
+    source: str | Path,
+    *,
+    config_path: str | None,
+    policy_type: PolicyType | None,
+    config: ValidatorConfig | None,
+    custom_checks_dir: str | None,
+    aws_services_dir: str | None,
+    allow_config_custom_checks: bool,
+) -> list[PolicyValidationResult]:
+    """Validate what ``loader`` loaded and append a failed result per unparseable file."""
+    if not policies and not loader.parsing_errors:
+        raise ValueError(f"No IAM policies found in {source}")
+
+    results: list[PolicyValidationResult] = []
+    if policies:
+        results = await validate_policies(
+            policies,
+            config_path=config_path,
+            custom_checks_dir=custom_checks_dir,
+            policy_type=policy_type,
+            aws_services_dir=aws_services_dir,
+            allow_config_custom_checks=allow_config_custom_checks,
+            config=config,
+        )
+    return [*results, *loader.parsing_error_results()]
 
 
 async def validate_file(
     file_path: str | Path,
     config_path: str | None = None,
     policy_type: PolicyType | None = None,
+    *,
+    config: ValidatorConfig | None = None,
+    custom_checks_dir: str | None = None,
+    aws_services_dir: str | None = None,
+    allow_config_custom_checks: bool = False,
 ) -> PolicyValidationResult:
     """
     Validate a single IAM policy file.
 
     Args:
         file_path: Path to the policy file (JSON or YAML)
-        config_path: Optional path to configuration file
-        policy_type: Explicit policy type. When ``None`` (default), the
-            orchestrator resolves the type per-file via the config
+        config_path: Optional path to configuration file (``--config``)
+        policy_type: Explicit policy type (``--policy-type``). When ``None`` (default),
+            the orchestrator resolves the type per-file via the config
             ``policy_types:`` glob list, then content auto-detection, then a
             fallback to ``IDENTITY_POLICY``.
+        config: Already-loaded configuration; ``config_path`` is ignored when given.
+        custom_checks_dir: Directory of custom checks to load (``--custom-checks-dir``)
+        aws_services_dir: Pre-downloaded AWS service definitions (``--aws-services-dir``)
+        allow_config_custom_checks: Honour a ``custom_checks_dir`` set only in the
+            config file (``--allow-config-custom-checks``)
 
     Returns:
-        PolicyValidationResult for the policy
+        PolicyValidationResult for the policy. A file that exists but cannot be
+        parsed yields ``is_valid=False`` with a ``policy_parse_error`` finding.
+
+    Raises:
+        ValueError: If the path is not a loadable policy file (missing, or an
+            unsupported extension).
 
     Example:
         >>> result = await validate_file("policy.json")
@@ -42,16 +94,17 @@ async def validate_file(
     """
     loader = PolicyLoader()
     policies = loader.load_from_path(str(file_path))
-
-    if not policies:
-        raise ValueError(f"No IAM policies found in {file_path}")
-
-    results = await validate_policies(
+    results = await _validate_loaded(
+        loader,
         policies,
+        file_path,
         config_path=config_path,
         policy_type=policy_type,
+        config=config,
+        custom_checks_dir=custom_checks_dir,
+        aws_services_dir=aws_services_dir,
+        allow_config_custom_checks=allow_config_custom_checks,
     )
-
     return (
         results[0]
         if results
@@ -68,6 +121,11 @@ async def validate_directory(
     config_path: str | None = None,
     recursive: bool = True,
     policy_type: PolicyType | None = None,
+    *,
+    config: ValidatorConfig | None = None,
+    custom_checks_dir: str | None = None,
+    aws_services_dir: str | None = None,
+    allow_config_custom_checks: bool = False,
 ) -> list[PolicyValidationResult]:
     """
     Validate all IAM policies in a directory.
@@ -79,9 +137,14 @@ async def validate_directory(
         policy_type: Explicit policy type applied to *every* policy in the
             directory. When ``None`` (default), each policy's type is
             resolved per-file (config glob → content auto-detect → default).
+        config: Already-loaded configuration; ``config_path`` is ignored when given.
+        custom_checks_dir: Directory of custom checks to load
+        aws_services_dir: Pre-downloaded AWS service definitions (offline mode)
+        allow_config_custom_checks: Honour a ``custom_checks_dir`` set only in the config file
 
     Returns:
-        List of PolicyValidationResults for all policies found
+        List of PolicyValidationResults for all policies found, including one
+        failed result (``policy_parse_error``) per file that could not be parsed.
 
     Example:
         >>> results = await validate_directory("./policies")
@@ -90,15 +153,37 @@ async def validate_directory(
     """
     loader = PolicyLoader()
     policies = loader.load_from_path(str(dir_path), recursive=recursive)
-
-    if not policies:
-        raise ValueError(f"No IAM policies found in {dir_path}")
-
-    return await validate_policies(
+    return await _validate_loaded(
+        loader,
         policies,
+        dir_path,
         config_path=config_path,
         policy_type=policy_type,
+        config=config,
+        custom_checks_dir=custom_checks_dir,
+        aws_services_dir=aws_services_dir,
+        allow_config_custom_checks=allow_config_custom_checks,
     )
+
+
+def _policy_from_json(policy_json: dict | str) -> tuple[IAMPolicy, dict]:
+    """Parse ``policy_json`` into ``(IAMPolicy, raw_dict)``.
+
+    Raises:
+        json.JSONDecodeError: A string that is not valid JSON.
+        TypeError: Input that is not a dict, or JSON that is not an object.
+        pydantic.ValidationError: A dict that is not a policy document.
+    """
+    if isinstance(policy_json, str):
+        parsed = json.loads(policy_json.lstrip("\ufeff"))
+        if not isinstance(parsed, dict):
+            msg = f"Expected JSON object, got {type(parsed).__name__}"
+            raise TypeError(msg)
+        policy_json = parsed
+    if not isinstance(policy_json, dict):
+        msg = f"Expected a dict or JSON string, got {type(policy_json).__name__}"
+        raise TypeError(msg)
+    return IAMPolicy.model_validate(policy_json), policy_json
 
 
 async def validate_json(
@@ -106,14 +191,29 @@ async def validate_json(
     policy_name: str = "inline-policy",
     config_path: str | None = None,
     policy_type: PolicyType | None = None,
+    *,
+    config: ValidatorConfig | None = None,
+    custom_checks_dir: str | None = None,
+    aws_services_dir: str | None = None,
+    allow_config_custom_checks: bool = False,
 ) -> PolicyValidationResult:
     """
     Validate an IAM policy from a Python dictionary or JSON string.
 
+    The raw document is validated too, so structural problems (a misspelled
+    ``Effect``, a missing ``Version``, unknown fields, ``Action`` with
+    ``NotAction``) are reported exactly as they are for a file.
+
     Args:
         policy_json: IAM policy as a Python dict or JSON string
-        policy_name: Name to identify this policy in results
+        policy_name: Name to identify this policy in results (also matched
+            against the config's ``policy_types:`` globs)
         config_path: Optional path to configuration file
+        policy_type: Explicit policy type; ``None`` auto-detects
+        config: Already-loaded configuration; ``config_path`` is ignored when given.
+        custom_checks_dir: Directory of custom checks to load
+        aws_services_dir: Pre-downloaded AWS service definitions (offline mode)
+        allow_config_custom_checks: Honour a ``custom_checks_dir`` set only in the config file
 
     Returns:
         PolicyValidationResult for the policy
@@ -121,6 +221,7 @@ async def validate_json(
     Raises:
         json.JSONDecodeError: If a string is provided that is not valid JSON
         TypeError: If policy_json is not a dict or str
+        pydantic.ValidationError: If the document is not an IAM policy object
 
     Example:
         >>> policy = {
@@ -137,23 +238,16 @@ async def validate_json(
         >>> # Also accepts JSON strings:
         >>> result = await validate_json('{"Version": "2012-10-17", ...}')
     """
-    from iam_validator.core.models import IAMPolicy
-
-    # Parse string input to dict
-    if isinstance(policy_json, str):
-        parsed = json.loads(policy_json)
-        if not isinstance(parsed, dict):
-            msg = f"Expected JSON object, got {type(parsed).__name__}"
-            raise TypeError(msg)
-        policy_json = parsed
-
-    # Parse the dict into an IAMPolicy
-    policy = IAMPolicy(**policy_json)
+    policy, raw = _policy_from_json(policy_json)
 
     results = await validate_policies(
-        [(policy_name, policy)],
+        [(policy_name, policy, raw)],
         config_path=config_path,
+        custom_checks_dir=custom_checks_dir,
         policy_type=policy_type,
+        aws_services_dir=aws_services_dir,
+        allow_config_custom_checks=allow_config_custom_checks,
+        config=config,
     )
 
     return (
@@ -184,7 +278,8 @@ async def quick_validate(
             orchestrator auto-detects (config glob → content → default).
 
     Returns:
-        True if all policies are valid, False otherwise
+        True if all policies are valid, False otherwise (including when any
+        file in the path could not be parsed)
 
     Example:
         >>> if await quick_validate("policy.json"):
@@ -223,7 +318,8 @@ async def get_issues(
 
     Args:
         policy: File path, directory path, or policy dict
-        min_severity: Minimum severity to include (critical, high, medium, low, info)
+        min_severity: Minimum severity to include (error, critical, high, warning,
+            medium, low, info — ranked by ``ValidationIssue.SEVERITY_RANK``)
         config_path: Optional path to configuration file
 
     Returns:

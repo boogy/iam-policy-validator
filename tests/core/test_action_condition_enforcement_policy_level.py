@@ -316,3 +316,35 @@ class TestPolicyLevelEnforcement:
         assert len(issues) == 1
         assert "aws:SourceIp" in issues[0].message
         # Removed: POLICY-LEVEL no longer used
+
+    @pytest.mark.asyncio
+    async def test_policy_level_requirements_apply_alongside_default_requirements(self, check, fetcher):
+        """The shipped defaults always set `requirements`; user policy_level_requirements must still run."""
+        from iam_validator.core.check_registry import create_default_registry
+        from iam_validator.core.config.config_loader import ConfigLoader, ValidatorConfig
+
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[Statement(effect="Allow", action=["iam:DeleteUser"], resource=["*"], sid="S1")],
+        )
+        config = ValidatorConfig(
+            {
+                "action_condition_enforcement": {
+                    "policy_level_requirements": [
+                        {
+                            "actions": {"any_of": ["iam:DeleteUser"]},
+                            "required_conditions": [{"condition_key": "aws:MultiFactorAuthPresent"}],
+                        }
+                    ]
+                }
+            }
+        )
+        registry = create_default_registry()
+        ConfigLoader.apply_config_to_registry(config, registry)
+        check_config = registry.get_config("action_condition_enforcement")
+        assert check_config is not None
+        assert check_config.config["requirements"], "defaults should still ship `requirements`"
+
+        issues = await check.execute_policy(policy, "test-policy.json", fetcher, check_config)
+
+        assert any("aws:MultiFactorAuthPresent" in issue.message for issue in issues)

@@ -429,6 +429,30 @@ class PolicyValidationResult(BaseModel):
     condition_keys_checked: int = 0
     resources_checked: int = 0
 
+    @classmethod
+    def from_parsing_error(cls, policy_file: str, message: str) -> "PolicyValidationResult":
+        """Build the failed result for a policy file that could not be loaded.
+
+        The file is reported like any AWS-invalid policy (one ``error`` finding,
+        ``is_valid=False``) so it shows up in every output and fails the run,
+        while the other files in the run are still validated.
+        """
+        return cls(
+            policy_file=policy_file,
+            is_valid=False,
+            issues=[
+                ValidationIssue(
+                    severity="error",
+                    statement_index=-1,
+                    issue_type=constants.PARSE_ERROR_ISSUE_TYPE,
+                    check_id=constants.PARSE_ERROR_CHECK_ID,
+                    message=f"Policy file could not be loaded, so it was not validated: {message}",
+                    suggestion="Fix the file so it parses as a JSON/YAML IAM policy document, then re-run.",
+                    line_number=1,
+                )
+            ],
+        )
+
 
 class ValidationReport(BaseModel):
     """Complete validation report for all policies."""
@@ -472,6 +496,22 @@ class ValidationReport(BaseModel):
         error- and finding-severity issues is counted in both properties.
         """
         return sum(1 for r in self.results if any(i.severity != "error" for i in r.issues))
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity_counts(self) -> dict[str, int]:
+        """Issue count per severity, one key per level in ``SEVERITY_DISPLAY_ORDER``.
+
+        Every level is always present (0 when absent), most severe first, so JSON
+        consumers get a stable shape and each severity is counted on its own rather
+        than merged into warning/info buckets.
+        """
+        counts = dict.fromkeys(constants.SEVERITY_DISPLAY_ORDER, 0)
+        for result in self.results:
+            for issue in result.issues:
+                if issue.severity in counts:
+                    counts[issue.severity] += 1
+        return counts
 
     def get_summary(self) -> str:
         """Generate a human-readable summary."""

@@ -76,6 +76,38 @@ them). An unavailable diff keeps the unfiltered fallback (`in_pr_diff=True`).
 
 ---
 
+## Unparseable files fail the run, the rest still validate (gotcha)
+
+`PolicyLoader` records every load failure in `parsing_errors` (explicit over-size
+files included, in batch and streaming). `ReportGenerator.generate_report(results,
+parsing_errors=...)` turns each into `PolicyValidationResult.from_parsing_error`: a
+failed result with one `error` finding (`constants.PARSE_ERROR_ISSUE_TYPE` /
+`PARSE_ERROR_CHECK_ID`, `statement_index=-1`, `line_number=1`). Being an ordinary
+result, it reaches every formatter, the PR summary and review, the job summary,
+`invalid_policies` and the exit code with no per-output code. It is built outside the
+registry, so no `ignore_patterns`/`hide_severities` can hide it. Both CLI modes and the
+SDK must go through this path — streaming appends `loader.parsing_error_results()` to
+its results before the final PR cleanup so the files get review comments too.
+
+## Severity breakdown (gotcha)
+
+`ValidationReport.severity_counts` (computed, so it is in the JSON) counts every
+severity separately, keyed in `constants.SEVERITY_DISPLAY_ORDER` with zeros kept. The
+PR summary's Issue Breakdown (`ReportGenerator._severity_breakdown_lines`, shared by the
+single- and multi-part comment paths) renders one row per non-zero severity from it,
+using `SEVERITY_CONFIG` emojis. Never re-bucket severities (e.g. medium into warnings)
+in a new renderer — read `severity_counts`.
+
+## Config files are validated on load (gotcha)
+
+`ConfigLoader.load_config` runs `config_file_errors()` and raises
+`ConfigValidationError` (fails the CLI) for invalid `settings` (checked against
+`SettingsSchema`) or an invalid built-in check `severity`/`enabled`. `normalize_settings`
+first wraps a scalar `fail_on_severity`/`hide_severities` in a list — a bare string made
+`severity in fail_on_severities` a substring test. Only files are validated; a dict
+passed to `ValidatorConfig` directly is normalized but not rejected (tests and the MCP
+server rely on that). `policy_types` and custom checks keep their own warn-and-drop handling.
+
 ## `hide_severities` means gone (gotcha)
 
 A hidden severity is removed from the run, not muted: `_process_issues` drops it before
@@ -185,7 +217,9 @@ A check's options sit directly under its id (`CheckConfig.config` is that dict).
 `apply_config_to_registry` warns once per `ValidatorConfig` for a registered check with a
 nested `config:` key; `custom_checks:` module entries are the exception and keep `config:`.
 `validate_policies(config=...)` takes a loaded config so callers that already read it
-(`analyze`) don't load it twice.
+(`analyze`) don't load it twice, and `fetcher=` an already-open `AWSServiceFetcher`
+(the SDK's `ValidationContext` reuses one). Build a fetcher from a config with
+`policy_checks.fetcher_kwargs(config, aws_services_dir)` so cache settings match the CLI.
 
 - `sensitive_actions.py` — 490+ entries by risk category
 - `condition_requirements.py` — action → required conditions
