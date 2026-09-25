@@ -399,16 +399,16 @@ Examples:
         loader = PolicyLoader()
         policies = loader.load_from_paths(args.paths, recursive=not args.no_recursive)
 
-        if not policies:
+        if not policies and not loader.parsing_errors:
             logging.error(f"No valid IAM policies found in: {', '.join(args.paths)}")
             return 1
 
         # Run full validation
-        results = await validate_policies(policies, config=config)
+        results = await validate_policies(policies, config=config) if policies else []
 
-        # Generate report
+        # Generate report; each file that failed to parse becomes a failed result in it
         generator = ReportGenerator()
-        validation_report = generator.generate_report(results)
+        validation_report = generator.generate_report(results, parsing_errors=loader.parsing_errors)
 
         # Output results
         if args.format == "console":

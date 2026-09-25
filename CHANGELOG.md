@@ -4,6 +4,38 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+_Upgrading: a policy file that fails to parse now fails the run (every other file is still validated and reported); a config file with invalid `settings` or an invalid check `severity`/`enabled` now stops the run with an error instead of being misread; `wildcard_action` defaults to `high`. If your config sets `sensitive_action.severity`, it now applies to every category — remove it to keep the built-in per-category severities._
+
+### Changed
+
+- **Breaking:** Fail the run when a policy file cannot be parsed. Each such file is reported as a failed result with one `policy_parse_error` finding (severity `error`) in every output format, the PR summary and review, and the job summary, while the remaining files are still validated. Previously parse errors never affected the exit code, and in streaming mode (on by default under `CI`, including the GitHub Action) they were dropped from the report entirely
+- **Breaking:** Validate `settings` and each built-in check's `severity`/`enabled` when loading a config file, and stop with an error naming the problem. A scalar `fail_on_severity`/`hide_severities` (`fail_on_severity: high`) is accepted as a one-item list; before, it was a string, so `error` findings stopped failing the run
+- **Breaking:** Let `sensitive_action.severity` override the built-in per-category severities; before, the shipped `category_severities` always won and a user's `severity:` had no effect. Precedence is now: `category_severities` entry, `severity`, built-in category severity
+- Cap the built-in `sensitive_action` severity at `medium` for `data_access` and `credential_exposure` actions when every `Resource` in the statement is a specific ARN, so a least-privilege read such as `dynamodb:GetItem` on one table no longer fails the default gate; configurable with `scoped_resource_severities` (`{}` disables)
+- Raise the `wildcard_action` default severity from `medium` to `high`, so granting every action is never ranked below `service_wildcard`'s `s3:*`
+- Remove `dynamodb:Get*`, `lambda:Get*`, `logs:Get*` and `logs:Filter*` from the default `wildcard_resource.allowed_wildcards`: they read resource contents, which `sensitive_action` flags as data access
+- Stop `not_action_not_resource` reporting an `Allow` with `NotAction`/`NotResource` as a grant in SCPs and RCPs, where an `Allow` never grants access; its `Deny` findings still apply there
+- Show every severity on its own row in the PR summary's Issue Breakdown (Error, Critical, High, Warning, Medium, Low, Info, most severe first, with the same emoji as the inline review comments) instead of merging `medium` into Warnings and `low` into Info; the `markdown` format lists every severity too
+
+### Added
+
+- `severity_counts` in the JSON report: the number of findings for each severity, with every level present (0 when absent) in most-severe-first order — the same numbers the PR summary shows
+- SDK parity with the CLI: `validate_file`, `validate_directory` and `validate_json` accept `config`, `custom_checks_dir`, `aws_services_dir` and `allow_config_custom_checks`; `validator()`/`validator_from_config()` accept the same options, and `validator_from_config()` also takes a loaded `ValidatorConfig`
+- `validate_policies(..., fetcher=...)` to reuse an open `AWSServiceFetcher`
+- `PolicyCheck.filter_for_policy_type()` hook for checks whose findings are only partly type-specific
+
+### Fixed
+
+- Fix `iam-validator validate --stdin` crashing: stdin is now parsed like a file (size and depth guards, structural checks) and works in streaming/CI mode
+- Fix the SDK's `validate_json()` skipping all `policy_structure` checks (invalid `Effect`, missing `Version`, unknown fields, `Action` with `NotAction`) because the raw document was not passed on
+- Fix the SDK silently dropping files that fail to parse; `validate_directory()`/`quick_validate()` now report them as failed results
+- Fix `ValidationContext` ignoring its shared fetcher and reloading the config and rebuilding the registry on every call; it now loads once, reuses its fetcher, accepts `policy_type`/`recursive`, and renders `json`/`markdown` reports exactly as the CLI does
+- Fix `action_condition_enforcement.policy_level_requirements` being ignored whenever `requirements` was set, which the shipped defaults always do; the two lists now both apply
+- Fix an explicitly targeted over-size file being skipped silently in streaming mode instead of failing the run as in batch mode
+- Fix README examples (`quick_validate` returns a bool, results use `policy_file`), the SCP size limit (10,240 bytes) and trust-policy validation being described as opt-in
+
 ## [1.30.1] - 2026-09-25
 
 _Upgrading: fixed checks may report new findings, some at error or critical severity (`condition_key_validation`, `sensitive_action`, `action_condition_enforcement`), and two issue types were renamed (`ineffective_deny_carve_out` → `literal_wildcard_deny_carve_out` for literal-operator carve-outs, `not_action_allow_no_condition` → `not_action_allow_ineffective` for `NotAction: "*"`). Review CI results and update suppressions keyed on the old names._

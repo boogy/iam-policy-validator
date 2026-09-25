@@ -11,6 +11,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable
 from pathlib import Path
+from typing import Any
 
 from iam_validator.core import constants
 from iam_validator.core.aws_service import AWSServiceFetcher
@@ -144,6 +145,9 @@ def _should_fail_on_issue(issue: ValidationIssue, fail_on_severities: list[str] 
     """
     if not fail_on_severities:
         fail_on_severities = ["error"]  # Default: only fail on errors
+    elif isinstance(fail_on_severities, str):
+        # A bare string would turn `in` into a substring test ("error" in "high" is False).
+        fail_on_severities = [fail_on_severities]
 
     # Check if issue severity is in the fail list
     return issue.severity in fail_on_severities
@@ -164,6 +168,22 @@ def _resolve_max_concurrency(max_concurrency: int | None, config: ValidatorConfi
     if resolved < 1:
         logger.warning("Ignoring invalid %s=%r; clamping to 1", source, resolved)
     return max(1, resolved)
+
+
+def fetcher_kwargs(config: ValidatorConfig, aws_services_dir: str | None = None) -> dict[str, Any]:
+    """``AWSServiceFetcher`` constructor arguments for ``config`` (cache + offline dir).
+
+    Shared by ``validate_policies`` and the SDK's ``validator()`` so a fetcher built
+    by either honours the same settings; an explicit ``aws_services_dir`` wins over
+    the config setting, as the CLI flag does.
+    """
+    cache_ttl_hours = config.get_setting("cache_ttl_hours", constants.DEFAULT_CACHE_TTL_HOURS)
+    return {
+        "enable_cache": config.get_setting("cache_enabled", True),
+        "cache_ttl": cache_ttl_hours * constants.SECONDS_PER_HOUR,
+        "cache_dir": config.get_setting("cache_directory", None),
+        "aws_services_dir": aws_services_dir or config.get_setting("aws_services_dir", None),
+    }
 
 
 def build_registry(
@@ -287,6 +307,7 @@ async def validate_policies(
     max_concurrency: int | None = None,
     config: ValidatorConfig | None = None,
     registry: CheckRegistry | None = None,
+    fetcher: AWSServiceFetcher | None = None,
 ) -> list[PolicyValidationResult]:
     """Validate multiple policies concurrently.
 
@@ -316,6 +337,9 @@ async def validate_policies(
             the registry is used exactly as provided. A long-lived caller (e.g. an
             MCP server) builds this once with `build_registry` and reuses it across
             requests instead of re-importing custom-check modules every call.
+        fetcher: Already-open ``AWSServiceFetcher`` to reuse (its lifecycle stays with
+            the caller). When omitted, one is built from the config's cache settings
+            and ``aws_services_dir``, and closed before returning.
 
     Returns:
         List of validation results
@@ -330,55 +354,53 @@ async def validate_policies(
             allow_config_custom_checks=allow_config_custom_checks,
         )
 
-    # Get fail_on_severity setting from config
+    if fetcher is None:
+        async with AWSServiceFetcher(**fetcher_kwargs(config, aws_services_dir)) as owned_fetcher:
+            return await _validate_with_fetcher(policies, config, registry, owned_fetcher, policy_type, max_concurrency)
+    return await _validate_with_fetcher(policies, config, registry, fetcher, policy_type, max_concurrency)
+
+
+async def _validate_with_fetcher(
+    policies: list[tuple[str, IAMPolicy]] | list[tuple[str, IAMPolicy, dict]],
+    config: ValidatorConfig,
+    registry: CheckRegistry,
+    fetcher: AWSServiceFetcher,
+    policy_type: PolicyType | None,
+    max_concurrency: int | None,
+) -> list[PolicyValidationResult]:
+    """Resolve each policy's type and validate them concurrently with ``fetcher``."""
     fail_on_severities = config.get_setting("fail_on_severity", list(constants.HIGH_SEVERITY_LEVELS))
-
-    # Get cache settings from config
-    cache_enabled = config.get_setting("cache_enabled", True)
-    cache_ttl_hours = config.get_setting("cache_ttl_hours", constants.DEFAULT_CACHE_TTL_HOURS)
-    cache_directory = config.get_setting("cache_directory", None)
-    # CLI argument takes precedence over config file
-    services_dir = aws_services_dir or config.get_setting("aws_services_dir", None)
     resolved_max_concurrency = _resolve_max_concurrency(max_concurrency, config)
-    cache_ttl_seconds = cache_ttl_hours * constants.SECONDS_PER_HOUR
 
-    # Validate policies using registry
-    async with AWSServiceFetcher(
-        enable_cache=cache_enabled,
-        cache_ttl=cache_ttl_seconds,
-        cache_dir=cache_directory,
-        aws_services_dir=services_dir,
-    ) as fetcher:
-        tasks = []
-        for item in policies:
-            policy_file = item[0]
-            policy_obj = item[1]
-            raw_dict = item[2] if len(item) == 3 else None
+    tasks = []
+    for item in policies:
+        policy_file = item[0]
+        policy_obj = item[1]
+        raw_dict = item[2] if len(item) == 3 else None
 
-            resolved_type, source, matched_pattern = _resolve_policy_type(policy_obj, policy_file, policy_type, config)
-            _log_resolved_policy_type(policy_file, resolved_type, source, matched_pattern)
+        resolved_type, source, matched_pattern = _resolve_policy_type(policy_obj, policy_file, policy_type, config)
+        _log_resolved_policy_type(policy_file, resolved_type, source, matched_pattern)
 
-            tasks.append(
-                _validate_policy_with_registry(
-                    policy_obj,
-                    policy_file,
-                    registry,
-                    fetcher,
-                    fail_on_severities,
-                    resolved_type,
-                    raw_dict,
-                    policy_type_source=source,
-                )
+        tasks.append(
+            _validate_policy_with_registry(
+                policy_obj,
+                policy_file,
+                registry,
+                fetcher,
+                fail_on_severities,
+                resolved_type,
+                raw_dict,
+                policy_type_source=source,
             )
+        )
 
-        semaphore = asyncio.Semaphore(resolved_max_concurrency)
+    semaphore = asyncio.Semaphore(resolved_max_concurrency)
 
-        async def _bounded(coro: Awaitable[PolicyValidationResult]) -> PolicyValidationResult:
-            async with semaphore:
-                return await coro
+    async def _bounded(coro: Awaitable[PolicyValidationResult]) -> PolicyValidationResult:
+        async with semaphore:
+            return await coro
 
-        results = await asyncio.gather(*(_bounded(t) for t in tasks))
-
+    results = await asyncio.gather(*(_bounded(t) for t in tasks))
     return list(results)
 
 

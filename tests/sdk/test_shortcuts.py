@@ -1,7 +1,7 @@
 """Tests for SDK shortcut functions."""
 
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -312,3 +312,81 @@ class TestCountIssuesBySeverity:
         ):
             counts = await count_issues_by_severity(valid_policy_dict)
             assert counts == {}
+
+
+# ---------------------------------------------------------------------------
+# CLI parity
+# ---------------------------------------------------------------------------
+
+
+def _patched_fetcher(mock_fetcher):
+    """Patch the fetcher validate_policies opens so no real AWS call is made."""
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=mock_fetcher)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    return patch("iam_validator.core.policy_checks.AWSServiceFetcher", return_value=cm)
+
+
+class TestCliParity:
+    """The SDK must report what `iam-validator validate` reports for the same input."""
+
+    async def test_validate_json_runs_structural_checks(self, mock_fetcher):
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Alow", "Action": "s3:GetObject", "Resource": "*"}],
+        }
+        with _patched_fetcher(mock_fetcher):
+            result = await validate_json(policy)
+
+        assert "invalid_effect" in {i.issue_type for i in result.issues}
+        assert result.is_valid is False
+
+    async def test_validate_json_forwards_raw_dict(self, valid_policy_dict):
+        with patch(
+            "iam_validator.sdk.shortcuts.validate_policies",
+            new_callable=AsyncMock,
+            return_value=[_make_result()],
+        ) as spy:
+            await validate_json(valid_policy_dict)
+
+        [(_name, _policy, raw)] = spy.await_args.args[0]
+        assert raw == valid_policy_dict
+
+    async def test_unparseable_file_is_a_failed_result(self, tmp_path):
+        broken = tmp_path / "broken.json"
+        broken.write_text('{"Statement": [')
+        result = await validate_file(broken)
+
+        assert result.is_valid is False
+        assert result.issues[0].issue_type == "policy_parse_error"
+
+    async def test_directory_with_broken_file_is_not_valid(self, tmp_policy_dir):
+        (tmp_policy_dir / "broken.json").write_text("{")
+        with patch(
+            "iam_validator.sdk.shortcuts.validate_policies",
+            new_callable=AsyncMock,
+            return_value=[_make_result(policy_file="p1.json"), _make_result(policy_file="p2.json")],
+        ):
+            results = await validate_directory(tmp_policy_dir)
+            assert await quick_validate(str(tmp_policy_dir)) is False
+
+        assert len(results) == 3
+        assert [r.is_valid for r in results] == [True, True, False]
+
+    async def test_cli_options_are_forwarded(self, tmp_policy_file, tmp_path):
+        with patch(
+            "iam_validator.sdk.shortcuts.validate_policies",
+            new_callable=AsyncMock,
+            return_value=[_make_result()],
+        ) as spy:
+            await validate_file(
+                tmp_policy_file,
+                aws_services_dir=str(tmp_path),
+                custom_checks_dir=str(tmp_path),
+                allow_config_custom_checks=True,
+            )
+
+        kwargs = spy.await_args.kwargs
+        assert kwargs["aws_services_dir"] == str(tmp_path)
+        assert kwargs["custom_checks_dir"] == str(tmp_path)
+        assert kwargs["allow_config_custom_checks"] is True

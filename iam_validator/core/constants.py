@@ -219,6 +219,13 @@ MEDIUM_SEVERITY_LEVELS = ("warning", "medium")
 # Low severity issues (informational)
 LOW_SEVERITY_LEVELS = ("info", "low")
 
+# A policy file that could not be loaded (bad JSON/YAML, wrong shape, too deep,
+# too large) is reported as a failed result carrying one finding with these ids,
+# so every formatter, count, PR comment and exit code sees it. It is built outside
+# the check registry, so no check's ignore_patterns/hide_severities can hide it.
+PARSE_ERROR_ISSUE_TYPE = "policy_parse_error"
+PARSE_ERROR_CHECK_ID = "policy_parsing"
+
 # Severity configuration with emoji and action guidance for PR comments
 SEVERITY_CONFIG = {
     "critical": {"emoji": "🔴", "action": "Block deployment"},
@@ -229,6 +236,11 @@ SEVERITY_CONFIG = {
     "warning": {"emoji": "⚠️", "action": "Review"},
     "info": {"emoji": "ℹ️", "action": "Optional"},
 }
+
+# Every reportable severity, most to least severe (matches ValidationIssue.SEVERITY_RANK).
+# Drives the per-severity breakdown in PR summaries and `ValidationReport.severity_counts`,
+# so each severity gets its own row/key instead of being merged into a bucket.
+SEVERITY_DISPLAY_ORDER = ("error", "critical", "high", "warning", "medium", "low", "info")
 
 # ============================================================================
 # GitHub Integration

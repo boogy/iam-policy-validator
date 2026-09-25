@@ -885,7 +885,7 @@ action_resource_matching:
 # Flags statements that allow all actions
 wildcard_action:
   enabled: true
-  severity: medium # Security issue: medium severity
+  severity: high # Never below service_wildcard: "*" is a superset of "s3:*"
   description: "Checks for wildcard actions (*)"
   message: "Statement allows all actions (*)"
   suggestion: "Replace wildcard with specific actions needed for your use case"
@@ -1071,16 +1071,25 @@ service_wildcard:
 # Python API: get_sensitive_actions(['credential_exposure', 'data_access'])
 sensitive_action:
   enabled: true
-  severity: medium # Security issue: medium severity
+  # No `severity:` by default: each action takes its category's built-in severity
+  # (credential_exposure / priv_esc -> critical, data_access / resource_exposure -> high).
+  # Setting `severity:` applies that one severity to EVERY category.
+  # severity: high
   description: "Checks for sensitive actions without conditions"
 
-  # Category-based severity overrides (optional)
-  # Assign different severities to different categories
+  # Category-based severity overrides (optional; win over `severity:`)
   # category_severities:
   #   credential_exposure: high      # Credentials are critical
   #   data_access: medium            # Data access is important
   #   priv_esc: critical             # Privilege escalation is critical
   #   resource_exposure: high        # Resource exposure is high risk
+
+  # Ceiling for the built-in severity when every Resource in the statement is a
+  # specific ARN (no "*"). Default: {data_access: medium, credential_exposure: medium}.
+  # Set to {} to keep the full built-in severity on scoped statements.
+  # scoped_resource_severities:
+  #   data_access: medium
+  #   credential_exposure: medium
 
   # Category-specific suggestions (optional)
   # Override default ABAC-focused suggestions with custom guidance
@@ -1219,8 +1228,8 @@ action_condition_enforcement:
   #                                   check too, so actions covered here are not
   #                                   double-reported as "sensitive without
   #                                   conditions". Prefer this key.
-  #   policy_level_requirements:      Fallback used only when `requirements` is
-  #                                   absent. Same list shape.
+  #   policy_level_requirements:      Added to `requirements` (same list shape,
+  #                                   same default layer). Empty by default.
   #   action_condition_requirements:  Treated as the USER layer that
   #                                   merge_strategy combines with the two keys
   #                                   above. Use it when you want to add to the

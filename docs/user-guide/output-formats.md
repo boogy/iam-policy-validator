@@ -190,10 +190,27 @@ _Invalid = structurally broken (AWS would reject). Findings = security or best-p
 **Total Issues:** 2
 **Validity Issues:** 0 (error/warning/info)
 **Security Issues:** 2 (critical/high/medium/low)
+
+## Issues by Severity
+
+| Severity | Count |
+| -------- | ----: |
+| Error    |     0 |
+| Critical |     0 |
+| High     |     1 |
+| Warning  |     0 |
+| Medium   |     1 |
+| Low      |     0 |
+| Info     |     0 |
 ```
 
 !!! note "Errors vs. Findings"
+
     The summary separates **errors** (structurally invalid — AWS would reject the policy) from **findings** (security or best-practice issues on an otherwise valid policy). A policy can appear in both counts when it has issues of both kinds. The legacy `invalid_policies` and `policies_with_security_issues` fields remain on the `ValidationReport` JSON output for backward compatibility; new consumers should prefer `policies_with_errors` and `policies_with_findings`.
+
+!!! note "Per-severity counts"
+
+    The JSON report carries `severity_counts`, one key per severity (`error`, `critical`, `high`, `warning`, `medium`, `low`, `info`, most severe first, `0` when absent). The PR summary comment's **Issue Breakdown** table shows the same numbers, one row per severity present.
 
 **Use Cases:**
 

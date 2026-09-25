@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from iam_validator.core import constants
 from iam_validator.core.models import (
     ActionDetail,
     ConditionKey,
@@ -434,6 +435,41 @@ class TestValidationReport:
         assert "policies_with_findings" in dumped
         assert dumped["policies_with_errors"] == 1
         assert dumped["policies_with_findings"] == 1
+
+    def test_severity_counts_keeps_every_severity_separate(self):
+        """medium is not merged into warning, nor low into info; every level is keyed, most severe first."""
+        results = [
+            self._make_result("a.json", ["error", "critical", "high", "high"]),
+            self._make_result("b.json", ["medium", "warning", "low", "info", "medium"]),
+        ]
+        report = ValidationReport(
+            total_policies=2, valid_policies=0, invalid_policies=2, total_issues=9, results=results
+        )
+        assert report.severity_counts == {
+            "error": 1,
+            "critical": 1,
+            "high": 2,
+            "warning": 1,
+            "medium": 2,
+            "low": 1,
+            "info": 1,
+        }
+        assert list(report.severity_counts) == list(constants.SEVERITY_DISPLAY_ORDER)
+
+    def test_severity_counts_in_json_output_includes_zeros(self):
+        import json
+
+        report = ValidationReport(
+            total_policies=1,
+            valid_policies=1,
+            invalid_policies=0,
+            total_issues=1,
+            results=[self._make_result("a.json", ["low"])],
+        )
+        counts = json.loads(report.model_dump_json())["severity_counts"]
+        assert counts["low"] == 1
+        assert counts["critical"] == 0
+        assert set(counts) == set(constants.SEVERITY_DISPLAY_ORDER)
 
     def test_get_summary_with_both_errors_and_findings(self):
         """Summary reports both counts when policies have both kinds of issues."""

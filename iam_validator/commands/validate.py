@@ -7,7 +7,7 @@ from typing import cast
 
 from iam_validator.commands.base import Command
 from iam_validator.core import constants
-from iam_validator.core.models import PolicyType, ValidationReport
+from iam_validator.core.models import IAMPolicy, PolicyType, ValidationReport
 from iam_validator.core.policy_checks import validate_policies
 from iam_validator.core.policy_loader import PolicyLoader
 from iam_validator.core.report import ReportGenerator
@@ -316,9 +316,8 @@ Examples:
         # Load policies from all specified paths or stdin
         loader = PolicyLoader()
 
+        policies: list[tuple[str, IAMPolicy]] | list[tuple[str, IAMPolicy, dict]]
         if args.stdin:
-            # Read from stdin
-            import json
             import sys
 
             stdin_content = sys.stdin.read().lstrip("\ufeff")
@@ -326,23 +325,22 @@ Examples:
                 logging.error("No policy data provided on stdin")
                 return 1
 
-            try:
-                policy_data = json.loads(stdin_content)
-                # Create a synthetic policy entry
-                policies = [("stdin", policy_data)]
-                logging.info("Loaded policy from stdin")
-            except json.JSONDecodeError as e:
-                logging.error(f"Invalid JSON from stdin: {e}")
-                return 1
+            # Parsed like a file (size/depth guards, structural validation via the raw
+            # dict); a parse failure is reported as a failed result, not a crash.
+            loaded = loader.load_from_string(stdin_content, source="stdin")
+            policies = [("stdin", loaded[0], loaded[1])] if loaded else []
         else:
             # Load from paths
             policies = loader.load_from_paths(args.paths, recursive=not args.no_recursive)
 
-            if not policies:
+            # A file that fails to parse is flagged in the report; the rest still validate.
+            if not policies and not loader.parsing_errors:
                 logging.error(f"No valid IAM policies found in: {', '.join(args.paths)}")
                 return 1
 
             logging.info(f"Loaded {len(policies)} policies from {len(args.paths)} path(s)")
+            if loader.parsing_errors:
+                logging.warning(f"{len(loader.parsing_errors)} file(s) could not be parsed and will be flagged")
 
         # Validate policies
         config_path = getattr(args, "config", None)
@@ -351,16 +349,20 @@ Examples:
         # Cast only when the user actually supplied --policy-type; None means per-file resolution.
         policy_type_arg = getattr(args, "policy_type", None)
         policy_type: PolicyType | None = cast(PolicyType, policy_type_arg) if policy_type_arg else None
-        results = await validate_policies(
-            policies,
-            config_path=config_path,
-            custom_checks_dir=custom_checks_dir,
-            policy_type=policy_type,
-            aws_services_dir=aws_services_dir,
-            allow_config_custom_checks=getattr(args, "allow_config_custom_checks", False),
+        results = (
+            await validate_policies(
+                policies,
+                config_path=config_path,
+                custom_checks_dir=custom_checks_dir,
+                policy_type=policy_type,
+                aws_services_dir=aws_services_dir,
+                allow_config_custom_checks=getattr(args, "allow_config_custom_checks", False),
+            )
+            if policies
+            else []
         )
 
-        # Generate report (include parsing errors if any)
+        # Generate report; each file that failed to parse becomes a failed result in it
         generator = ReportGenerator()
         report = generator.generate_report(results, parsing_errors=loader.parsing_errors)
 
@@ -459,6 +461,10 @@ Examples:
         - Partial results if errors occur
         - Better for CI/CD pipelines
         """
+        # stdin is a single document: nothing to stream.
+        if getattr(args, "stdin", False):
+            return await self._execute_batch(args)
+
         loader = PolicyLoader()
         generator = ReportGenerator()
         config_path = getattr(args, "config", None)
@@ -513,11 +519,21 @@ Examples:
                 if getattr(args, "github_review", False):
                     await self._post_file_review(result, args)
 
-        if total_processed == 0:
+        if total_processed == 0 and not loader.parsing_errors:
             logging.error(f"No valid IAM policies found in: {', '.join(args.paths)}")
             return 1
 
         logging.info(f"\nCompleted validation of {total_processed} policies")
+
+        # Files that failed to parse did not stop the run; flag each as a failed result
+        # so it reaches the report, the PR review, the job summary and the exit code.
+        if loader.parsing_errors:
+            logging.warning(f"{len(loader.parsing_errors)} file(s) could not be parsed and will be flagged")
+            for parse_result in loader.parsing_error_results():
+                all_results.append(parse_result)
+                relative_path = self._make_relative_path(parse_result.policy_file)
+                if relative_path:
+                    all_validated_files.add(relative_path)
 
         # Run final cleanup after all files are processed
         # This uses the full report to know all current findings and deletes stale comments
@@ -525,7 +541,7 @@ Examples:
             await self._run_final_review_cleanup(args, all_results, all_validated_files)
 
         # Generate final summary report
-        report = generator.generate_report(all_results)
+        report = generator.generate_report(all_results, parsing_errors=loader.parsing_errors)
 
         # Handle --ci flag: show enhanced output in console, write JSON to file
         ci_mode = getattr(args, "ci", False)

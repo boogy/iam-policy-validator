@@ -122,8 +122,20 @@ class ReportGenerator:
             parsing_errors: Optional list of (file_path, error_message) for files that failed to parse
 
         Returns:
-            ValidationReport
+            ValidationReport. Each parsing error becomes a failed result with one
+            ``policy_parse_error`` finding (unless ``results`` already carries one for
+            that file), so it is counted, rendered by every formatter and fails the run.
         """
+        if parsing_errors:
+            parse_error = constants.PARSE_ERROR_ISSUE_TYPE
+            already_reported = {r.policy_file for r in results if any(i.issue_type == parse_error for i in r.issues)}
+            new_failures = [
+                PolicyValidationResult.from_parsing_error(path, message)
+                for path, message in parsing_errors
+                if path not in already_reported
+            ]
+            results = [*results, *new_failures]
+
         valid_count = sum(1 for r in results if r.is_valid)
         invalid_count = len(results) - valid_count
         total_issues = sum(len(r.issues) for r in results)
@@ -519,29 +531,7 @@ class ReportGenerator:
         lines.append("")
 
         # Issue breakdown
-        if report.total_issues > 0:
-            # Count issues - separate validity errors from security findings
-            validity_errors = sum(1 for r in report.results for i in r.issues if i.severity == "error")
-            critical_findings = sum(1 for r in report.results for i in r.issues if i.severity == "critical")
-            high_findings = sum(1 for r in report.results for i in r.issues if i.severity == "high")
-            warnings = sum(1 for r in report.results for i in r.issues if i.severity in ("warning", "medium"))
-            infos = sum(1 for r in report.results for i in r.issues if i.severity in ("info", "low"))
-
-            lines.append("### 🔍 Issue Breakdown")
-            lines.append("")
-            lines.append("| Severity | Count |")
-            lines.append("|----------|------:|")
-            if validity_errors > 0:
-                lines.append(f"| 🔴 **Errors** | {validity_errors} |")
-            if critical_findings > 0:
-                lines.append(f"| 🟣 **Critical** | {critical_findings} |")
-            if high_findings > 0:
-                lines.append(f"| 🔶 **High** | {high_findings} |")
-            if warnings > 0:
-                lines.append(f"| 🟡 **Warnings** | {warnings} |")
-            if infos > 0:
-                lines.append(f"| 🔵 **Info** | {infos} |")
-            lines.append("")
+        lines.extend(self._severity_breakdown_lines(report))
 
         # Ignored findings section
         if ignored_findings:
@@ -551,6 +541,25 @@ class ReportGenerator:
         if context_issues:
             lines.extend(self._generate_context_issues_section(context_issues))
 
+        return lines
+
+    @staticmethod
+    def _severity_breakdown_lines(report: ValidationReport) -> list[str]:
+        """The PR summary's "Issue Breakdown" table: one row per severity present.
+
+        Each severity keeps its own row (Error, Critical, High, Warning, Medium, Low,
+        Info — most severe first) with the emoji the inline review comments use, so the
+        real severity mix is visible at a glance. Counts come from
+        ``report.severity_counts``, the same numbers the JSON output carries.
+        """
+        present = [(severity, count) for severity, count in report.severity_counts.items() if count > 0]
+        if not present:
+            return []
+        lines = ["### 🔍 Issue Breakdown", "", "| Severity | Count |", "|----------|------:|"]
+        for severity, count in present:
+            emoji = constants.SEVERITY_CONFIG.get(severity, {}).get("emoji", "•")
+            lines.append(f"| {emoji} **{severity.capitalize()}** | {count} |")
+        lines.append("")
         return lines
 
     def _generate_ignored_findings_section(self, ignored_findings: list[IgnoredFindingInfo]) -> list[str]:
@@ -803,29 +812,7 @@ class ReportGenerator:
         lines.append("")
 
         # Issue breakdown
-        if report.total_issues > 0:
-            # Count issues - separate validity errors from security findings
-            validity_errors_count = sum(1 for r in report.results for i in r.issues if i.severity == "error")
-            critical_findings_count = sum(1 for r in report.results for i in r.issues if i.severity == "critical")
-            high_findings_count = sum(1 for r in report.results for i in r.issues if i.severity == "high")
-            warnings_count = sum(1 for r in report.results for i in r.issues if i.severity in ("warning", "medium"))
-            infos_count = sum(1 for r in report.results for i in r.issues if i.severity in ("info", "low"))
-
-            lines.append("### 🔍 Issue Breakdown")
-            lines.append("")
-            lines.append("| Severity | Count |")
-            lines.append("|----------|------:|")
-            if validity_errors_count > 0:
-                lines.append(f"| 🔴 **Errors** | {validity_errors_count} |")
-            if critical_findings_count > 0:
-                lines.append(f"| 🟣 **Critical** | {critical_findings_count} |")
-            if high_findings_count > 0:
-                lines.append(f"| 🔶 **High** | {high_findings_count} |")
-            if warnings_count > 0:
-                lines.append(f"| 🟡 **Warnings** | {warnings_count} |")
-            if infos_count > 0:
-                lines.append(f"| 🔵 **Info** | {infos_count} |")
-            lines.append("")
+        lines.extend(self._severity_breakdown_lines(report))
 
         # Ignored findings section
         if ignored_findings:
@@ -835,23 +822,13 @@ class ReportGenerator:
         if context_issues:
             lines.extend(self._generate_context_issues_section(context_issues))
 
-        # Parsing errors section (if any)
+        # Parsing errors are listed with each file's findings below (policy_parse_error);
+        # this only calls out that the files were not validated at all.
         if report.parsing_errors:
-            lines.append("### ⚠️ Parsing Errors")
-            lines.append("")
-            lines.append(f"**{len(report.parsing_errors)} file(s) failed to parse** and were excluded from validation:")
-            lines.append("")
-            for file_path, error_msg in report.parsing_errors:
-                # Extract just the filename for cleaner display
-                from pathlib import Path
-
-                filename = Path(file_path).name
-                lines.append(f"- **`{filename}`**")
-                lines.append("  ```")
-                lines.append(f"  {error_msg}")
-                lines.append("  ```")
-            lines.append("")
-            lines.append("> **Note:** Fix these parsing errors first before validation can proceed on these files.")
+            lines.append(
+                f"> ⚠️ **{len(report.parsing_errors)} file(s) could not be parsed** and were not validated; "
+                "see the `policy_parse_error` findings below. All other files were validated."
+            )
             lines.append("")
 
         # Store header for later (we always include this)

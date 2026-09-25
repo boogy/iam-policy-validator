@@ -100,9 +100,9 @@ The MCP server runs the same 23 built-in checks as the CLI, via `describe_checks
 | ------------------------------ | -------- | ------------------------------------ |
 | `full_wildcard`                | critical | Detects `Action: "*", Resource: "*"` |
 | `service_wildcard`             | high     | Detects `s3:*` style wildcards       |
-| `wildcard_action`              | medium   | Detects `Action: "*"`                |
+| `wildcard_action`              | high     | Detects `Action: "*"`                |
 | `wildcard_resource`            | medium   | Detects `Resource: "*"`              |
-| `sensitive_action`             | medium   | 490+ privilege escalation actions    |
+| `sensitive_action`             | high     | 490+ sensitive actions, per category |
 | `action_condition_enforcement` | high     | Missing conditions on sensitive ops  |
 | `not_action_not_resource`      | high     | Dangerous NotAction/NotResource      |
 | ...                            | ...      | Call `describe_checks` for the rest  |

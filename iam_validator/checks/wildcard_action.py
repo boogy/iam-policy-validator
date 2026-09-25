@@ -12,7 +12,9 @@ class WildcardActionCheck(PolicyCheck):
 
     check_id: ClassVar[str] = "wildcard_action"
     description: ClassVar[str] = "Checks for wildcard actions (*)"
-    default_severity: ClassVar[str] = "medium"
+    # At least as severe as service_wildcard: `Action: "*"` grants every action of every
+    # service on the resource, a strict superset of `s3:*`.
+    default_severity: ClassVar[str] = "high"
     # In a boundary policy (SCP/RCP) an Allow declines to restrict; it never grants access.
     applies_to_policy_types: ClassVar[frozenset[str] | None] = frozenset(
         {"IDENTITY_POLICY", "RESOURCE_POLICY", "TRUST_POLICY"}

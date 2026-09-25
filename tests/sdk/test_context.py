@@ -172,15 +172,31 @@ class TestValidatorContextManager:
                 assert isinstance(ctx, ValidationContext)
                 assert ctx.fetcher is mock_instance
 
-    async def test_config_path_passed(self):
+    async def test_config_path_passed(self, tmp_path):
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("settings:\n  cache_enabled: false\n")
         with patch("iam_validator.sdk.context.AWSServiceFetcher") as mock_cls:
             mock_instance = MagicMock()
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
             mock_instance.__aexit__ = AsyncMock(return_value=False)
             mock_cls.return_value = mock_instance
 
-            async with validator(config_path="/tmp/config.yaml") as ctx:
-                assert ctx.config_path == "/tmp/config.yaml"
+            async with validator(config_path=str(config_file)) as ctx:
+                assert ctx.config_path == str(config_file)
+                assert ctx.config.get_setting("cache_enabled") is False
+            # The fetcher honours the config's cache settings, as the CLI's does.
+            assert mock_cls.call_args.kwargs["enable_cache"] is False
+
+    async def test_aws_services_dir_reaches_the_fetcher(self, tmp_path):
+        with patch("iam_validator.sdk.context.AWSServiceFetcher") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
+            mock_instance.__aexit__ = AsyncMock(return_value=False)
+            mock_cls.return_value = mock_instance
+
+            async with validator(aws_services_dir=str(tmp_path)):
+                pass
+            assert mock_cls.call_args.kwargs["aws_services_dir"] == str(tmp_path)
 
     async def test_fetcher_lifecycle(self):
         with patch("iam_validator.sdk.context.AWSServiceFetcher") as mock_cls:
@@ -205,12 +221,79 @@ class TestValidatorContextManager:
 class TestValidatorFromConfig:
     """Tests for the validator_from_config() async context manager."""
 
-    async def test_passes_config_path(self):
+    async def test_passes_config_path(self, tmp_path):
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("settings:\n  fail_on_severity: critical\n")
         with patch("iam_validator.sdk.context.AWSServiceFetcher") as mock_cls:
             mock_instance = MagicMock()
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
             mock_instance.__aexit__ = AsyncMock(return_value=False)
             mock_cls.return_value = mock_instance
 
-            async with validator_from_config("/path/to/config.yaml") as ctx:
-                assert ctx.config_path == "/path/to/config.yaml"
+            async with validator_from_config(str(config_file)) as ctx:
+                assert ctx.config_path == str(config_file)
+                assert ctx.config.get_setting("fail_on_severity") == ["critical"]
+
+    async def test_accepts_loaded_config(self):
+        from iam_validator.core.config.config_loader import ValidatorConfig
+
+        config = ValidatorConfig({"settings": {"fail_on_severity": ["error"]}})
+        with patch("iam_validator.sdk.context.AWSServiceFetcher") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
+            mock_instance.__aexit__ = AsyncMock(return_value=False)
+            mock_cls.return_value = mock_instance
+
+            async with validator_from_config(config) as ctx:
+                assert ctx.config is config
+
+
+# ---------------------------------------------------------------------------
+# CLI parity
+# ---------------------------------------------------------------------------
+
+
+class TestContextParity:
+    """The context validates the way the CLI does and reuses what it built."""
+
+    async def test_validate_json_forwards_raw_dict_and_shared_resources(self, mock_fetcher, valid_policy_dict):
+        ctx = ValidationContext(mock_fetcher)
+        with patch(
+            "iam_validator.sdk.context.validate_policies",
+            new_callable=AsyncMock,
+            return_value=[PolicyValidationResult(policy_file="inline-policy", is_valid=True)],
+        ) as spy:
+            await ctx.validate_json(valid_policy_dict)
+            await ctx.validate_json(json.dumps(valid_policy_dict))
+
+        for call in spy.await_args_list:
+            [(name, _policy, raw)] = call.args[0]
+            assert name == "inline-policy"
+            assert raw == valid_policy_dict
+            assert call.kwargs["fetcher"] is mock_fetcher
+        # Registry built once and reused, not rebuilt per call.
+        assert spy.await_args_list[0].kwargs["registry"] is spy.await_args_list[1].kwargs["registry"]
+
+    async def test_unparseable_file_is_a_failed_result(self, mock_fetcher, tmp_path):
+        (tmp_path / "good.json").write_text(json.dumps({"Version": "2012-10-17", "Statement": []}))
+        (tmp_path / "broken.json").write_text("{")
+        ctx = ValidationContext(mock_fetcher)
+        with patch(
+            "iam_validator.sdk.context.validate_policies",
+            new_callable=AsyncMock,
+            return_value=[PolicyValidationResult(policy_file=str(tmp_path / "good.json"), is_valid=True)],
+        ):
+            results = await ctx.validate_directory(tmp_path)
+
+        broken = [r for r in results if r.policy_file.endswith("broken.json")]
+        assert len(results) == 2
+        assert broken and broken[0].is_valid is False
+        assert broken[0].issues[0].issue_type == "policy_parse_error"
+
+    def test_markdown_report_matches_cli(self, mock_fetcher):
+        from iam_validator.core.report import ReportGenerator
+
+        results = [PolicyValidationResult(policy_file="p.json", is_valid=True)]
+        generator = ReportGenerator()
+        expected = generator.generate_github_comment(generator.generate_report(results))
+        assert ValidationContext(mock_fetcher).generate_report(results, format="markdown") == expected

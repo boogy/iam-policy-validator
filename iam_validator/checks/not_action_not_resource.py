@@ -80,6 +80,26 @@ class NotActionNotResourceCheck(PolicyCheck):
     description: ClassVar[str] = "Checks for dangerous NotAction/NotResource patterns"
     default_severity: ClassVar[str] = "high"
 
+    #: Findings that describe an Allow *granting* access. In an SCP or RCP an Allow
+    #: only declines to restrict (and SCP Allow statements may use NotAction and
+    #: NotResource since the 2025-09-19 full-IAM-language launch), so these do not
+    #: hold there. The Deny-side findings (e.g. a NotResource "*" deny that denies
+    #: nothing) are kept: they matter most in exactly those policies.
+    GRANT_ISSUE_TYPES: ClassVar[frozenset[str]] = frozenset(
+        {
+            "not_action_allow",
+            "not_action_allow_no_condition",
+            "not_resource_broad",
+            "combined_not_action_not_resource",
+        }
+    )
+
+    def filter_for_policy_type(self, issues: list[ValidationIssue], policy_type: str | None) -> list[ValidationIssue]:
+        """Drop grant-shaped Allow findings in boundary policies (SCP/RCP)."""
+        if policy_type not in {"SERVICE_CONTROL_POLICY", "RESOURCE_CONTROL_POLICY"}:
+            return issues
+        return [issue for issue in issues if issue.issue_type not in self.GRANT_ISSUE_TYPES]
+
     async def execute(
         self,
         statement: Statement,

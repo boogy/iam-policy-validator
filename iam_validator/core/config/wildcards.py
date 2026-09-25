@@ -16,8 +16,11 @@ from typing import Final
 # ============================================================================
 # Allowed Wildcards for Resource: "*"
 # ============================================================================
-# These action patterns are considered safe to use with wildcard resources
-# They are typically read-only operations that need broad resource access
+# These action patterns are considered safe to use with wildcard resources.
+# They read resource *metadata*, not resource *contents*: patterns that also match
+# data reads (dynamodb:Get* -> GetItem, lambda:Get* -> GetFunction with code and
+# environment variables, logs:Get*/Filter* -> log events) are deliberately absent,
+# since sensitive_action flags those same actions as data access.
 
 DEFAULT_ALLOWED_WILDCARDS: Final[tuple[str, ...]] = (
     # Auto Scaling
@@ -26,9 +29,8 @@ DEFAULT_ALLOWED_WILDCARDS: Final[tuple[str, ...]] = (
     "cloudwatch:Describe*",
     "cloudwatch:Get*",
     "cloudwatch:List*",
-    # DynamoDB
+    # DynamoDB (metadata only)
     "dynamodb:Describe*",
-    "dynamodb:Get*",
     "dynamodb:List*",
     # EC2
     "ec2:Describe*",
@@ -40,13 +42,10 @@ DEFAULT_ALLOWED_WILDCARDS: Final[tuple[str, ...]] = (
     "iam:List*",
     # KMS
     "kms:Describe*",
-    # Lambda
-    "lambda:Get*",
+    # Lambda (metadata only)
     "lambda:List*",
-    # CloudWatch Logs
+    # CloudWatch Logs (metadata only)
     "logs:Describe*",
-    "logs:Filter*",
-    "logs:Get*",
     # RDS
     "rds:Describe*",
     # Route53

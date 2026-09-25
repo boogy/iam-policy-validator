@@ -181,8 +181,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         Supports multiple merge strategies to control how user requirements
         interact with default requirements:
-        - "per_action_override": User requirements replace defaults for matching actions (default)
-        - "append": User requirements added to defaults (both apply)
+        - "append": User requirements added to defaults (both apply) (default)
+        - "per_action_override": User requirements replace defaults for matching actions
         - "replace_all": User requirements completely replace ALL defaults
         - "defaults_only": Ignore user requirements, use only defaults
         - "user_only": Ignore defaults, use only user requirements
@@ -194,11 +194,14 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         Returns:
             Merged list of requirements based on strategy
         """
-        # Get default and user requirements
-        default_requirements = config.config.get(
-            "requirements",
-            config.config.get("policy_level_requirements", []),
-        )
+        # The default layer is `requirements` plus `policy_level_requirements`. The
+        # latter used to be read only when `requirements` was absent, but the shipped
+        # defaults always set `requirements`, so entries a user added there were
+        # silently ignored.
+        default_requirements = [
+            *(config.config.get("requirements") or []),
+            *(config.config.get("policy_level_requirements") or []),
+        ]
         user_requirements = config.config.get("action_condition_requirements")
 
         # Get merge strategy (default: append - both defaults and user requirements apply)

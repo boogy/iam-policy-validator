@@ -31,13 +31,13 @@ import re
 from collections.abc import Generator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, overload
+from typing import Any, Literal, overload
 
 import yaml
 from pydantic import ValidationError
 
 from iam_validator.core import constants
-from iam_validator.core.models import IAMPolicy
+from iam_validator.core.models import IAMPolicy, PolicyValidationResult
 
 
 @dataclass
@@ -514,24 +514,7 @@ class PolicyLoader:
             self.parsing_errors.append((file_path, error_msg))
             return None
         except ValidationError as e:
-            # Handle Pydantic validation errors with helpful messages
-            error_messages = []
-            for error in e.errors():
-                loc = ".".join(str(x) for x in error["loc"])
-                error_type = error["type"]
-
-                # Provide user-friendly messages for common errors
-                if error_type == "extra_forbidden":
-                    # Extract the field name that has a typo
-                    field_name = error["loc"][-1] if error["loc"] else "unknown"
-                    error_messages.append(
-                        f"Unknown field '{field_name}' at {loc}. "
-                        f"This might be a typo. Did you mean 'Condition', 'Action', or 'Resource'?"
-                    )
-                else:
-                    error_messages.append(f"{loc}: {error['msg']}")
-
-            error_summary = "\n  ".join(error_messages)
+            error_summary = self._describe_validation_error(e)
             logger.error(
                 "Policy validation failed for %s:\n  %s",
                 file_path,
@@ -671,8 +654,10 @@ class PolicyLoader:
         Yields:
             Tuples of (file_path, policy) for each successfully loaded policy
         """
+        # Same rule as load_from_path: an explicitly targeted over-size file fails the run.
+        explicit_file = Path(path).is_file()
         for file_path in self._get_policy_files(path, recursive):
-            policy = self.load_from_file(str(file_path))
+            policy = self.load_from_file(str(file_path), record_size_error=explicit_file)
             if policy:
                 yield (str(file_path), policy)
 
@@ -755,25 +740,70 @@ class PolicyLoader:
             logger.error("Invalid JSON: %s", e)
             return None
         except ValidationError as e:
-            # Handle Pydantic validation errors with helpful messages
-            error_messages = []
-            for error in e.errors():
-                loc = ".".join(str(x) for x in error["loc"])
-                error_type = error["type"]
-
-                # Provide user-friendly messages for common errors
-                if error_type == "extra_forbidden":
-                    # Extract the field name that has a typo
-                    field_name = error["loc"][-1] if error["loc"] else "unknown"
-                    error_messages.append(
-                        f"Unknown field '{field_name}' at {loc}. "
-                        f"This might be a typo. Did you mean 'Condition', 'Action', or 'Resource'?"
-                    )
-                else:
-                    error_messages.append(f"{loc}: {error['msg']}")
-
-            logger.error("Policy validation failed:\n  %s", "\n  ".join(error_messages))
+            logger.error("Policy validation failed:\n  %s", PolicyLoader._describe_validation_error(e))
             return None
         except Exception as e:
             logger.error("Failed to parse policy string: %s", e)
             return None
+
+    @staticmethod
+    def _describe_validation_error(error: ValidationError) -> str:
+        """Render a Pydantic validation error as one user-facing line per problem."""
+        error_messages = []
+        for err in error.errors():
+            loc = ".".join(str(x) for x in err["loc"])
+            if err["type"] == "extra_forbidden":
+                field_name = err["loc"][-1] if err["loc"] else "unknown"
+                error_messages.append(
+                    f"Unknown field '{field_name}' at {loc}. "
+                    f"This might be a typo. Did you mean 'Condition', 'Action', or 'Resource'?"
+                )
+            elif err["type"] == "model_type" and not err["loc"]:
+                error_messages.append("Policy document must be a JSON/YAML object with a `Statement` element")
+            else:
+                error_messages.append(f"{loc}: {err['msg']}")
+        return "\n  ".join(error_messages)
+
+    def load_from_string(self, content: str, source: str = "stdin") -> tuple[IAMPolicy, dict[str, Any]] | None:
+        """Parse a JSON policy document from a string, recording failures like a file load.
+
+        Applies the same size and nesting-depth guards as ``load_from_file``. A
+        failure is appended to ``parsing_errors`` under ``source`` (so it fails the
+        run and appears in every report) and ``None`` is returned.
+
+        Args:
+            content: Raw JSON text (a leading UTF-8 BOM is ignored).
+            source: Name the policy is reported under.
+
+        Returns:
+            ``(policy, raw_dict)`` on success, otherwise ``None``.
+        """
+        content = content.lstrip("\ufeff")
+        if len(content.encode("utf-8")) > self.max_file_size_bytes:
+            limit_mb = self.max_file_size_bytes / 1024 / 1024
+            self.parsing_errors.append((source, f"Input exceeds the maximum size limit ({limit_mb:.0f} MB)."))
+            return None
+
+        depth_error = self._check_nesting_depth(content)
+        if depth_error:
+            self.parsing_errors.append((source, depth_error))
+            return None
+
+        try:
+            data = json.loads(content)
+            policy = IAMPolicy.model_validate(data)
+        except json.JSONDecodeError as e:
+            self.parsing_errors.append((source, f"Invalid JSON: {e}"))
+            return None
+        except ValidationError as e:
+            self.parsing_errors.append((source, self._describe_validation_error(e)))
+            return None
+
+        for idx, line_number in enumerate(self._find_statement_line_numbers(content)):
+            if idx < len(policy.statement or []):
+                (policy.statement or [])[idx].line_number = line_number
+        return policy, data
+
+    def parsing_error_results(self) -> list[PolicyValidationResult]:
+        """One failed ``PolicyValidationResult`` per file recorded in ``parsing_errors``."""
+        return [PolicyValidationResult.from_parsing_error(path, message) for path, message in self.parsing_errors]

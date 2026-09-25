@@ -349,7 +349,7 @@ Validates against official AWS IAM requirements:
 | **Resource ARNs**            | Correct ARN format and patterns                                                            |
 | **Principal Validation**     | Valid principals in resource/trust policies                                                |
 | **NotPrincipal Validation**  | Detects unsupported `NotPrincipal`+`Allow` and deprecated `NotPrincipal` usage patterns    |
-| **Policy Size**              | AWS limits (6144 bytes managed, 10240 inline, 20480 resource, 5120 SCP)                    |
+| **Policy Size**              | AWS limits (6144 bytes managed, 10240 inline role, 20480 resource, 10240 SCP, 5120 RCP)    |
 | **SID Uniqueness**           | Statement IDs unique within policy                                                         |
 | **Set Operators**            | Correct `ForAllValues`/`ForAnyValue` usage with arrays                                     |
 | **MFA Conditions**           | Detect insecure MFA patterns (`!= false` instead of `== true`)                             |
@@ -375,7 +375,7 @@ Identifies overly permissive configurations:
 - `all_of`: **Policy-wide** detection (e.g., `iam:CreateUser` in statement 0 + `iam:AttachUserPolicy` in statement 2)
 - `any_of`: **Per-statement** detection (e.g., any statement with `iam:PutUserPolicy`)
 
-### Trust Policy Validation (opt-in)
+### Trust Policy Validation (enabled by default)
 
 Specialized checks for role assumption:
 
@@ -421,15 +421,20 @@ result = await validate_file("policy.json")
 for issue in result.issues:
     print(f"{issue.severity}: {issue.message} at line {issue.line_number}")
 
-# Validate a directory
+# Validate a directory (a file that fails to parse comes back as a failed
+# result with a `policy_parse_error` finding, exactly as the CLI reports it)
 results = await validate_directory("./policies")
 for result in results:
     if not result.is_valid:
-        print(f"{result.file_path}: {len(result.issues)} issues")
+        print(f"{result.policy_file}: {len(result.issues)} issues")
 
 # Quick one-liner validation
-issues = await quick_validate("policy.json")
+is_valid = await quick_validate("policy.json")
 ```
+
+The SDK accepts the same options as the CLI (`config_path`, `policy_type`,
+`aws_services_dir`, `custom_checks_dir`, `allow_config_custom_checks`) and
+produces the same findings.
 
 See the [Python Library Guide](https://boogy.github.io/iam-policy-validator/developer-guide/sdk/) for the full SDK reference.
 
@@ -440,7 +445,9 @@ All checks are customizable via `.iam-validator.yaml`:
 ```yaml
 settings:
   enable_builtin_checks: true
-  fail_on_severity: high
+  # Exact severities that fail the run (not a threshold) — keep `error` so
+  # AWS-invalid policies fail too
+  fail_on_severity: [error, critical, high]
 
 # Detect cross-statement privilege escalation
 sensitive_action:
