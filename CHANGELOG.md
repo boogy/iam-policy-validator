@@ -20,7 +20,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Fix resource ARNs with a wildcard partition segment, such as `arn:*:s3:::bucket/*`, being reported as invalid ([#201])
 - Fix `action_condition_enforcement` ignoring `NotAction` statements, so e.g. `NotAction: s3:*` granted `iam:PassRole` without its required condition ([#201])
 - Fix `principal_validation` skipping an `AWS: "*"` principal in blocked and allowed-principal checks when the same statement has `Service: "*"`, and skipping `Service: "*"` itself when `block_service_principal_wildcard` is off ([#201])
-- Fix `condition_key_validation` accepting a condition key scoped to certain resource types, such as `s3:DataAccessPointAccount`, on resources of another type ([#201])
+- Fix `condition_key_validation` accepting a condition key scoped to certain resource types, such as `s3:DataAccessPointAccount`, on resources of another type; this also newly rejects request keys AWS scopes to resource types, such as `aws:TagKeys` on `s3:GetObject` ([#201])
 
 [#201]: https://github.com/boogy/iam-policy-validator/pull/201
 
