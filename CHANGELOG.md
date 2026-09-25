@@ -8,19 +8,21 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Changed
 
-- Report a `Deny` with `Principal: "*"` whose literal-operator carve-out (`StringNotEquals`, `StringNotEqualsIgnoreCase`) is `*` as `literal_wildcard_deny_carve_out` (the `*` exempts nobody) instead of `ineffective_deny_carve_out` (denies nothing); the finding says the `Deny` applies to every principal only when the statement's `Principal` (or its `AWS` entry) is `*` and nothing else can exempt one
-- Report an `Allow` with `NotAction: "*"` as `not_action_allow_ineffective` (low: grants nothing) instead of near-administrator access
+- Report a `Deny` with `Principal: "*"` whose literal-operator carve-out (`StringNotEquals`, `StringNotEqualsIgnoreCase`) is `*` as `literal_wildcard_deny_carve_out` (the `*` exempts nobody) instead of `ineffective_deny_carve_out` (denies nothing); the finding says the `Deny` applies to every principal only when the statement's `Principal` (or its `AWS` entry) is `*` and nothing else can exempt one ([#201])
+- Report an `Allow` with `NotAction: "*"` as `not_action_allow_ineffective` (low: grants nothing) instead of near-administrator access ([#201])
 
 ### Fixed
 
-- Fix false type-mismatch errors on `ArrayOfARN`, `ArrayOfBool` and other `ArrayOf<T>` condition keys, such as `ArnLike` on `dynamodb:FisTargetArns`
-- Fix `sensitive_action` treating a condition only on `aws:SecureTransport` or `aws:RequestedRegion` as restricting the grant
-- Fix `policy_type_validation` reporting mixed-case service prefixes such as `S3:GetObject` as unsupported in resource control policies
-- Fix `set_operator_validation` accepting `Null: "true"` as the presence guard for a `ForAllValues` condition in an `Allow`
-- Fix resource ARNs with a wildcard partition segment, such as `arn:*:s3:::bucket/*`, being reported as invalid
-- Fix `action_condition_enforcement` ignoring `NotAction` statements, so e.g. `NotAction: s3:*` granted `iam:PassRole` without its required condition
-- Fix `principal_validation` skipping an `AWS: "*"` principal in blocked and allowed-principal checks when the same statement has `Service: "*"`, and skipping `Service: "*"` itself when `block_service_principal_wildcard` is off
-- Fix `condition_key_validation` accepting a condition key scoped to certain resource types, such as `s3:DataAccessPointAccount`, on resources of another type
+- Fix false type-mismatch errors on `ArrayOfARN`, `ArrayOfBool` and other `ArrayOf<T>` condition keys, such as `ArnLike` on `dynamodb:FisTargetArns` ([#201])
+- Fix `sensitive_action` treating a condition only on `aws:SecureTransport` or `aws:RequestedRegion` as restricting the grant ([#201])
+- Fix `policy_type_validation` reporting mixed-case service prefixes such as `S3:GetObject` as unsupported in resource control policies ([#201])
+- Fix `set_operator_validation` accepting `Null: "true"` as the presence guard for a `ForAllValues` condition in an `Allow` ([#201])
+- Fix resource ARNs with a wildcard partition segment, such as `arn:*:s3:::bucket/*`, being reported as invalid ([#201])
+- Fix `action_condition_enforcement` ignoring `NotAction` statements, so e.g. `NotAction: s3:*` granted `iam:PassRole` without its required condition ([#201])
+- Fix `principal_validation` skipping an `AWS: "*"` principal in blocked and allowed-principal checks when the same statement has `Service: "*"`, and skipping `Service: "*"` itself when `block_service_principal_wildcard` is off ([#201])
+- Fix `condition_key_validation` accepting a condition key scoped to certain resource types, such as `s3:DataAccessPointAccount`, on resources of another type ([#201])
+
+[#201]: https://github.com/boogy/iam-policy-validator/pull/201
 
 ## [1.30.0] - 2026-09-24
 
