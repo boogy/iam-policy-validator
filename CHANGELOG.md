@@ -4,6 +4,14 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.2] - 2026-10-13
+
+### Changed
+
+- Update boto3 and botocore to 1.43.113 and Pydantic to 2.14.1, raising their minimum supported versions.
+- Update the optional MCP stack to FastMCP 4.1.0, MCP types 2.3.0 and Uvicorn 0.54.0, preserving the existing major-version bounds.
+- Refresh locked transitive dependencies across all optional extras while retaining Python 3.10 compatibility.
+
 ## [1.31.1] - 2026-09-25
 
 _Upgrading: the `v1.31.0` tag and GitHub release were created on the commit before the 1.31.0 changes were merged, so they carry the 1.30.1 code, and 1.31.0 was never published to PyPI. 1.31.1 is the first release that contains the changes listed under [1.31.0] below — upgrade from 1.30.1 straight to 1.31.1 and read the 1.31.0 upgrading notes._
@@ -1125,6 +1133,7 @@ _First release._
 
 [#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
+[1.31.2]: https://github.com/boogy/iam-policy-validator/compare/v1.31.1...v1.31.2
 [1.31.1]: https://github.com/boogy/iam-policy-validator/compare/v1.30.1...v1.31.1
 [1.31.0]: https://github.com/boogy/iam-policy-validator/compare/v1.30.1...v1.31.0
 [1.30.1]: https://github.com/boogy/iam-policy-validator/compare/v1.30.0...v1.30.1
