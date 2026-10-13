@@ -410,7 +410,7 @@ async def _validate_policies_impl(
 
     try:
         response = await asyncio.wait_for(_do_validate(), timeout=run.settings.request_timeout_s)
-    except TimeoutError as e:
+    except asyncio.TimeoutError as e:
         raise ToolError(
             f"request_timeout_s limit is {run.settings.request_timeout_s}s; validation did not complete in time"
         ) from e

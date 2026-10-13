@@ -12,6 +12,10 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Update the optional MCP stack to FastMCP 4.1.0, MCP types 2.3.0 and Uvicorn 0.54.0, preserving the existing major-version bounds.
 - Refresh locked transitive dependencies across all optional extras while retaining Python 3.10 compatibility.
 
+### Fixed
+
+- Report MCP validation request timeouts as tool errors on Python 3.10.
+
 ## [1.31.1] - 2026-09-25
 
 _Upgrading: the `v1.31.0` tag and GitHub release were created on the commit before the 1.31.0 changes were merged, so they carry the 1.30.1 code, and 1.31.0 was never published to PyPI. 1.31.1 is the first release that contains the changes listed under [1.31.0] below — upgrade from 1.30.1 straight to 1.31.1 and read the 1.31.0 upgrading notes._
