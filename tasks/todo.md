@@ -17,7 +17,7 @@ Plan: `.claude/plans/dependency-refresh-2026-10-13.md`
 - [x] Refresh the Python lockfile and runtime dependency minimums.
 - [x] Prepare version 1.31.2 and its changelog.
 - [x] Finish verification and create signed local commits.
-- [ ] Push the branch and create the pull request.
+- [x] Push the branch and create [PR #209](https://github.com/boogy/iam-policy-validator/pull/209).
 
 Python 3.10 and 3.13: 2,889 passed, one skipped on each. Fix the existing MCP timeout
 exception mismatch exposed on Python 3.10. Lint, formatting, lock consistency,

@@ -8,13 +8,15 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Changed
 
-- Update boto3 and botocore to 1.43.113 and Pydantic to 2.14.1, raising their minimum supported versions.
-- Update the optional MCP stack to FastMCP 4.1.0, MCP types 2.3.0 and Uvicorn 0.54.0, preserving the existing major-version bounds.
-- Refresh locked transitive dependencies across all optional extras while retaining Python 3.10 compatibility.
+- Update boto3 and botocore to 1.43.113 and Pydantic to 2.14.1, raising their minimum supported versions. ([#209])
+- Update the optional MCP stack to FastMCP 4.1.0, MCP types 2.3.0 and Uvicorn 0.54.0, preserving the existing major-version bounds. ([#209])
+- Refresh locked transitive dependencies across all optional extras while retaining Python 3.10 compatibility. ([#209])
 
 ### Fixed
 
-- Report MCP validation request timeouts as tool errors on Python 3.10.
+- Report MCP validation request timeouts as tool errors on Python 3.10. ([#209])
+
+[#209]: https://github.com/boogy/iam-policy-validator/pull/209
 
 ## [1.31.1] - 2026-09-25
 
