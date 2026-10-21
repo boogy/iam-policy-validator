@@ -4,6 +4,16 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.3] - 2026-10-21
+
+### Changed
+
+- Update boto3 and botocore to 1.43.116, raising their minimum supported versions. ([#221])
+- Update the optional MCP stack to FastMCP 4.1.3, raising its minimum supported version. ([#221])
+- Refresh locked transitive dependencies across all optional extras while retaining Python 3.10 compatibility. ([#221])
+
+[#221]: https://github.com/boogy/iam-policy-validator/pull/221
+
 ## [1.31.2] - 2026-10-13
 
 ### Changed
