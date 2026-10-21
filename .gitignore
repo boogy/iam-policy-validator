@@ -89,3 +89,6 @@ aws_services/
 .mcp.json
 .serena
 agent-sync/
+
+# Local agent task notes
+tasks/
