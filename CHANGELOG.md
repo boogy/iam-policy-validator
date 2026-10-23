@@ -4,13 +4,13 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.31.4] - 2026-10-23
 
 ### Fixed
 
-- Clarify the `condition_type_mismatch` finding for a non-boolean `Null` value: it now names the condition key, the operator and each invalid value, and points to a `String*` operator, so the key is no longer read as boolean. ([#222])
+- Clarify the `condition_type_mismatch` finding for a non-boolean `Null` value: it now names the condition key, the operator and each invalid value, and points to a `String*` operator, so the key is no longer read as boolean. ([#223])
 
-[#222]: https://github.com/boogy/iam-policy-validator/issues/222
+[#223]: https://github.com/boogy/iam-policy-validator/pull/223
 
 ## [1.31.3] - 2026-10-21
 
@@ -1157,6 +1157,8 @@ _First release._
 
 [#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
+[1.31.4]: https://github.com/boogy/iam-policy-validator/compare/v1.31.3...v1.31.4
+[1.31.3]: https://github.com/boogy/iam-policy-validator/compare/v1.31.2...v1.31.3
 [1.31.2]: https://github.com/boogy/iam-policy-validator/compare/v1.31.1...v1.31.2
 [1.31.1]: https://github.com/boogy/iam-policy-validator/compare/v1.30.1...v1.31.1
 [1.31.0]: https://github.com/boogy/iam-policy-validator/compare/v1.30.1...v1.31.0
