@@ -4,6 +4,14 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Clarify the `condition_type_mismatch` finding for a non-boolean `Null` value: it now names the condition key, the operator and each invalid value, and points to a `String*` operator, so the key is no longer read as boolean. ([#222])
+
+[#222]: https://github.com/boogy/iam-policy-validator/issues/222
+
 ## [1.31.3] - 2026-10-21
 
 ### Changed
