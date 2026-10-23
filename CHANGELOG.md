@@ -6,10 +6,15 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ## [1.31.4] - 2026-10-23
 
+### Changed
+
+- Refresh locked dependencies, including boto3 and botocore 1.43.118 and ruff 0.17.2; minimum supported versions are unchanged. ([#224])
+
 ### Fixed
 
 - Clarify the `condition_type_mismatch` finding for a non-boolean `Null` value: it now names the condition key, the operator and each invalid value, and points to a `String*` operator, so the key is no longer read as boolean. ([#223])
 
+[#224]: https://github.com/boogy/iam-policy-validator/pull/224
 [#223]: https://github.com/boogy/iam-policy-validator/pull/223
 
 ## [1.31.3] - 2026-10-21
