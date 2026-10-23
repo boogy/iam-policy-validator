@@ -324,6 +324,17 @@ class TestNullOperatorValueValidation:
         assert issues[0].condition_key == "aws:SourceIp"
 
     @pytest.mark.asyncio
+    async def test_malformed_value_message_names_key_operator_and_bad_values(self, check, fetcher, config):
+        statement = _make_statement({"Null": {"acm:DomainNames": ["*.example.com", "false", "a.example.com"]}})
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert len(issues) == 1
+        message = issues[0].message
+        assert "`acm:DomainNames`" in message
+        assert "operator `Null`" in message
+        assert "got `*.example.com`, `a.example.com`." in message
+        assert "Expected Bool" not in message
+
+    @pytest.mark.asyncio
     async def test_malformed_value_flagged_regardless_of_check_severity_config(self, check, fetcher):
         """The Null-value warning is hardcoded, not `get_severity(config)` — the check's
         own severity (here `error`) must not escalate it."""

@@ -112,12 +112,21 @@ class ConditionTypeMismatchCheck(PolicyCheck):
             if base_operator == "Null":
                 for condition_key, condition_values in conditions.items():
                     values = condition_values if isinstance(condition_values, list) else [condition_values]
-                    is_valid, error_msg = validate_value_for_type(CONDITION_OPERATORS["Null"], values)
-                    if not is_valid:
+                    invalid = [
+                        str(v) for v in values if not isinstance(v, bool) and str(v).lower() not in ("true", "false")
+                    ]
+                    if invalid:
+                        got = ", ".join(f"`{v}`" for v in invalid)
                         issues.append(
                             ValidationIssue(
                                 severity="warning",
-                                message=(f"Invalid value format for condition key `{condition_key}`: {error_msg}"),
+                                message=(
+                                    f"Invalid value for condition key `{condition_key}` under operator "
+                                    f"`{operator}`: got {got}. `Null` only accepts `true` (key is absent) "
+                                    f"or `false` (key is present) and does not compare the key's values. "
+                                    f"To match values of `{condition_key}`, use a `String*` operator such "
+                                    f"as `StringLike`."
+                                ),
                                 statement_sid=statement_sid,
                                 statement_index=statement_idx,
                                 issue_type="invalid_value_format",
