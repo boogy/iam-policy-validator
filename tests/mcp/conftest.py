@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from iam_validator.core.check_registry import CheckConfig
+from iam_validator.core.config.aws_global_conditions import get_global_conditions
 from iam_validator.core.models import (
     ActionDetail,
     ConditionKey,
@@ -67,6 +68,7 @@ def mock_fetcher():
             return True, None, False
 
     fetcher.validate_action = AsyncMock(side_effect=mock_validate_action)
+    fetcher.get_global_conditions = AsyncMock(return_value=get_global_conditions())
 
     async def mock_validate_actions_batch(actions: list[str], allow_wildcards: bool = True):
         return {action: await mock_validate_action(action) for action in actions}

@@ -142,12 +142,10 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                 # Normalize values to a list
                 values = condition_values if isinstance(condition_values, list) else [condition_values]
 
-                # Get the expected type for this condition key
-                key_type = await self._get_condition_key_type(fetcher, condition_key, actions, resources)
+                key_types = await self._get_condition_key_types(fetcher, condition_key, actions, resources)
+                key_type = self._select_key_type(key_types, translate_type(operator_type)) if key_types else None
 
                 if key_type is not None:
-                    # Normalize the key type
-                    key_type = translate_type(key_type)
                     translated_type = translate_type(operator_type)
 
                     # Special case: String operators with ARN types (usable but not recommended)
@@ -219,15 +217,26 @@ class ConditionTypeMismatchCheck(PolicyCheck):
 
         return issues
 
-    async def _get_condition_key_type(
+    @staticmethod
+    def _select_key_type(key_types: list[str], operator_type: str) -> str:
+        """Pick the key type to check against: the operator's own type when the key lists it.
+
+        String on an ARN-typed key keeps the primary type so the ARN-operator advisory still fires.
+        """
+        translated = [translate_type(t) for t in key_types]
+        if operator_type in translated and not (operator_type == "String" and "ARN" in translated):
+            return operator_type
+        return translated[0]
+
+    async def _get_condition_key_types(
         self,
         fetcher: AWSServiceFetcher,
         condition_key: str,
         actions: list[str],
         resources: list[str],
-    ) -> str | None:
+    ) -> list[str]:
         """
-        Get the expected type for a condition key by checking global keys and service definitions.
+        Get the types AWS lists for a condition key from global keys and service definitions.
 
         Args:
             fetcher: AWS service fetcher
@@ -236,17 +245,12 @@ class ConditionTypeMismatchCheck(PolicyCheck):
             resources: List of resources from the statement
 
         Returns:
-            Type string or None if not found
+            Type strings, primary first; empty if not found
         """
-        from iam_validator.core.config.aws_global_conditions import (  # pylint: disable=import-outside-toplevel
-            get_global_conditions,
-        )
-
-        # Check if it's a global condition key
-        global_conditions = get_global_conditions()
-        key_type = global_conditions.get_key_type(condition_key)
-        if key_type:
-            return key_type
+        global_conditions = await fetcher.get_global_conditions()
+        key_types = global_conditions.get_key_types(condition_key)
+        if key_types:
+            return key_types
 
         # Check service-specific and action-specific condition keys
         for action in actions:
@@ -262,7 +266,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                 if matched_key:
                     condition_key_obj = service_detail.condition_keys[matched_key]
                     if condition_key_obj.types:
-                        return condition_key_obj.types[0]
+                        return list(condition_key_obj.types)
 
                 # Check action-level condition keys
                 if action_name in service_detail.actions:
@@ -276,7 +280,7 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                         if matched_key:
                             condition_key_obj = service_detail.condition_keys[matched_key]
                             if condition_key_obj.types:
-                                return condition_key_obj.types[0]
+                                return list(condition_key_obj.types)
 
                     # Check resource-specific condition keys
                     if resources and action_detail.resources:
@@ -295,13 +299,13 @@ class ConditionTypeMismatchCheck(PolicyCheck):
                                     if matched_key:
                                         condition_key_obj = service_detail.condition_keys[matched_key]
                                         if condition_key_obj.types:
-                                            return condition_key_obj.types[0]
+                                            return list(condition_key_obj.types)
 
             except Exception:  # pylint: disable=broad-exception-caught
                 # If we can't look up the action, skip it
                 continue
 
-        return None
+        return []
 
     def _validate_operator_value_format(
         self,

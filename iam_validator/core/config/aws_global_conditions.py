@@ -2,19 +2,29 @@
 AWS Global Condition Keys Management.
 
 Provides access to the list of valid AWS global condition keys
-that can be used across all AWS services.
+that can be used across all AWS services. The live list comes from the AWS Service
+Reference (`v1/global-condition-keys.json`, loaded by `AWSServiceFetcher`); the bundled
+list below is the offline fallback.
 
 Reference: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-keys.html
-Last updated: 2025-01-17
+Last updated: 2026-10-29
 """
 
+import logging
 import re
 import threading
+from dataclasses import dataclass
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from iam_validator.core.constants import AWS_TAG_KEY_ALLOWED_CHARS
 
-# AWS Global Condition Keys with Type Information
+logger = logging.getLogger(__name__)
+
+AWS_DOCS_BASE_URL = "https://docs.aws.amazon.com"
+
+# Bundled AWS Global Condition Keys with Type Information (offline fallback)
 # These condition keys are available for use in IAM policies across all AWS services
 # Format: {key: type} where type is one of: String, ArrayOfString, ARN, Bool, Date,
 # IPAddress, Numeric. The seven keys AWS documents as "Value type - Multivalued" carry
@@ -60,8 +70,7 @@ AWS_GLOBAL_CONDITION_KEYS = {
     # Request Properties
     "aws:CurrentTime": "Date",  # Current date and time
     "aws:EpochTime": "Date",  # Request timestamp in epoch format (also accepts Numeric)
-    "aws:referer": "String",  # HTTP referer header value (note: lowercase 'r')
-    "aws:Referer": "String",  # HTTP referer header value (alternate capitalization)
+    "aws:Referer": "String",  # HTTP referer header value
     "aws:RequestedRegion": "String",  # AWS Region for the request
     "aws:TagKeys": "ArrayOfString",  # Tag keys present in request (multivalued)
     "aws:SecureTransport": "Bool",  # Whether HTTPS was used
@@ -93,29 +102,141 @@ GLOBAL_RESOURCE_SCOPING_CONDITION_KEYS = frozenset(
     }
 )
 
-# Patterns that should be recognized (wildcards and tag-based keys)
-# IMPORTANT: aws:RequestTag and aws:ResourceTag are NOT global condition keys!
-# They are action-specific or resource-specific and must be explicitly listed in
-# the action's ActionConditionKeys or the resource's ConditionKeys.
-# Only aws:PrincipalTag is a true global condition key.
-#
-# Uses centralized tag key character class from constants
-AWS_CONDITION_KEY_PATTERNS = [
+# Keys accepted globally that the AWS global-condition-keys file does not list; merged
+# into the API-sourced set too.
+SUPPLEMENTAL_GLOBAL_CONDITION_KEYS = frozenset({"aws:ViaCustomerDomain", "ec2:RoleDelivery"})
+
+# Tag-based global keys (AWS lists them as `aws:<Kind>Tag/${TagKey}`)
+AWS_CONDITION_KEY_PATTERNS: list[dict[str, Any]] = [
     {
         "pattern": rf"^aws:PrincipalTag/[{AWS_TAG_KEY_ALLOWED_CHARS}]+$",
         "description": "Tags attached to the principal making the request",
+        "types": ("String",),
+    },
+    {
+        "pattern": rf"^aws:RequestTag/[{AWS_TAG_KEY_ALLOWED_CHARS}]+$",
+        "description": "Tag key-value pairs passed in the request",
+        "types": ("String", "Numeric"),
+    },
+    {
+        "pattern": rf"^aws:ResourceTag/[{AWS_TAG_KEY_ALLOWED_CHARS}]+$",
+        "description": "Tags attached to the resource being acted upon",
+        "types": ("String",),
     },
 ]
+
+_TEMPLATED_NAME_RE = re.compile(r"^(?P<prefix>[A-Za-z0-9-]+:[A-Za-z0-9]+)/\$\{[A-Za-z0-9]+\}$")
+
+
+@dataclass(frozen=True)
+class GlobalConditionKeyInfo:
+    """A global condition key: its name (templated for tag keys), types and docs."""
+
+    name: str
+    types: tuple[str, ...]
+    description: str | None = None
+    doc_url: str | None = None
+
+
+class _GlobalConditionKeyEntry(BaseModel):
+    """One entry of the AWS `global-condition-keys.json` file."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str = Field(alias="Name", min_length=1)
+    types: list[str] = Field(default_factory=list, alias="Types")
+    description: str | None = Field(default=None, alias="Description")
+    doc_page: str | None = Field(default=None, alias="DocPage")
+
+
+def _tag_pattern(prefix: str) -> str:
+    return rf"^{re.escape(prefix)}/[{AWS_TAG_KEY_ALLOWED_CHARS}]+$"
 
 
 class AWSGlobalConditions:
     """Manages AWS global condition keys."""
 
-    def __init__(self) -> None:
-        """Initialize with global condition keys."""
-        self._global_keys: dict[str, str] = AWS_GLOBAL_CONDITION_KEYS.copy()
-        self._patterns: list[dict[str, Any]] = AWS_CONDITION_KEY_PATTERNS.copy()
-        self._global_keys_lower: dict[str, str] = {k.lower(): k for k in self._global_keys}
+    def __init__(
+        self,
+        keys: list[GlobalConditionKeyInfo] | None = None,
+        source: str = "bundled",
+    ) -> None:
+        """Initialize with explicit keys (templated names become patterns), or the bundled list.
+
+        Args:
+            keys: Key definitions; None uses the bundled list
+            source: Where the keys came from (`bundled` or `aws-api`)
+        """
+        if keys is None:
+            keys = [GlobalConditionKeyInfo(name, (key_type,)) for name, key_type in AWS_GLOBAL_CONDITION_KEYS.items()]
+            keys += [
+                GlobalConditionKeyInfo(
+                    name=pattern_config["pattern"][1:].split("/", 1)[0] + "/${TagKey}",
+                    types=pattern_config["types"],
+                    description=pattern_config["description"],
+                )
+                for pattern_config in AWS_CONDITION_KEY_PATTERNS
+            ]
+
+        self.source = source
+        self._keys: dict[str, GlobalConditionKeyInfo] = {}
+        self._patterns: list[tuple[re.Pattern[str], GlobalConditionKeyInfo]] = []
+        for info in keys:
+            match = _TEMPLATED_NAME_RE.match(info.name)
+            if match:
+                self._patterns.append((re.compile(_tag_pattern(match["prefix"]), re.IGNORECASE), info))
+            else:
+                self._keys[info.name] = info
+        self._keys_lower: dict[str, str] = {k.lower(): k for k in self._keys}
+
+    @classmethod
+    def from_api(cls, data: Any) -> "AWSGlobalConditions | None":
+        """Build from the AWS `global-condition-keys.json` payload.
+
+        Malformed entries are skipped; returns None when nothing valid remains.
+        Supplemental keys missing from the payload are added from the bundled list.
+        """
+        if not isinstance(data, list):
+            return None
+
+        keys: list[GlobalConditionKeyInfo] = []
+        for item in data:
+            try:
+                entry = _GlobalConditionKeyEntry.model_validate(item)
+            except ValidationError:
+                logger.debug(f"Skipping malformed global condition key entry: {item!r}")
+                continue
+            doc_url = entry.doc_page
+            if doc_url and doc_url.startswith("/"):
+                doc_url = AWS_DOCS_BASE_URL + doc_url
+            keys.append(
+                GlobalConditionKeyInfo(
+                    name=entry.name,
+                    types=tuple(entry.types) or ("String",),
+                    description=entry.description,
+                    doc_url=doc_url,
+                )
+            )
+        if not keys:
+            return None
+
+        names_lower = {info.name.lower() for info in keys}
+        keys += [
+            GlobalConditionKeyInfo(name, (AWS_GLOBAL_CONDITION_KEYS[name],))
+            for name in sorted(SUPPLEMENTAL_GLOBAL_CONDITION_KEYS)
+            if name.lower() not in names_lower
+        ]
+        return cls(keys, source="aws-api")
+
+    def get_key_info(self, condition_key: str) -> GlobalConditionKeyInfo | None:
+        """Get the definition matching a condition key (explicit name or tag pattern)."""
+        resolved = self._resolve_key(condition_key)
+        if resolved is not None:
+            return self._keys[resolved]
+        for pattern, info in self._patterns:
+            if pattern.match(condition_key):
+                return info
+        return None
 
     def is_valid_global_key(self, condition_key: str) -> bool:
         """
@@ -129,24 +250,22 @@ class AWSGlobalConditions:
         Returns:
             True if valid global condition key, False otherwise
         """
-        if self._resolve_key(condition_key) is not None:
-            return True
-
-        for pattern_config in self._patterns:
-            if re.match(pattern_config["pattern"], condition_key, re.IGNORECASE):
-                return True
-
-        return False
+        return self.get_key_info(condition_key) is not None
 
     def _resolve_key(self, condition_key: str) -> str | None:
         """Resolve a condition key to its canonically cased name, or None."""
-        if condition_key in self._global_keys:
+        if condition_key in self._keys:
             return condition_key
-        return self._global_keys_lower.get(condition_key.lower())
+        return self._keys_lower.get(condition_key.lower())
+
+    def get_key_types(self, condition_key: str) -> list[str]:
+        """Get every type AWS lists for a global condition key; empty when unknown."""
+        info = self.get_key_info(condition_key)
+        return list(info.types) if info else []
 
     def get_key_type(self, condition_key: str) -> str | None:
         """
-        Get the expected type for a global condition key.
+        Get the primary (first listed) type for a global condition key.
 
         Args:
             condition_key: The condition key (e.g., "aws:SourceIp")
@@ -155,24 +274,20 @@ class AWSGlobalConditions:
             Type string (String, ArrayOfString, ARN, Bool, Date, IPAddress, Numeric)
             or None if not found
         """
-        resolved = self._resolve_key(condition_key)
-        if resolved is not None:
-            return self._global_keys[resolved]
+        types = self.get_key_types(condition_key)
+        return types[0] if types else None
 
-        # Check patterns - all tag-based keys are String type
-        for pattern_config in self._patterns:
-            if re.match(pattern_config["pattern"], condition_key, re.IGNORECASE):
-                return "String"
-
-        return None
+    def list_keys(self) -> list[GlobalConditionKeyInfo]:
+        """All key definitions, tag patterns included under their templated names."""
+        return sorted([*self._keys.values(), *(info for _, info in self._patterns)], key=lambda i: i.name.lower())
 
     def get_all_keys(self) -> dict[str, str]:
-        """Get all explicit global condition keys with their types."""
-        return self._global_keys.copy()
+        """Get all explicit global condition keys with their primary types."""
+        return {name: info.types[0] for name, info in self._keys.items()}
 
     def get_patterns(self) -> list[dict[str, Any]]:
         """Get all condition key patterns."""
-        return self._patterns.copy()
+        return [{"pattern": pattern.pattern, "description": info.description} for pattern, info in self._patterns]
 
 
 # Singleton instance
@@ -181,7 +296,7 @@ _global_conditions_lock = threading.Lock()
 
 
 def get_global_conditions() -> AWSGlobalConditions:
-    """Get singleton instance of AWSGlobalConditions."""
+    """Get the singleton built from the bundled list (use `AWSServiceFetcher.get_global_conditions()` for live data)."""
     global _global_conditions_instance  # pylint: disable=global-statement
 
     if _global_conditions_instance is None:

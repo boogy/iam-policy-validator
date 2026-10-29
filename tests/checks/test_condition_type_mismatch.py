@@ -1,12 +1,13 @@
 """Tests for condition type mismatch check."""
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from iam_validator.checks.condition_type_mismatch import ConditionTypeMismatchCheck
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig
+from iam_validator.core.config.aws_global_conditions import get_global_conditions
 from iam_validator.core.models import Statement
 
 
@@ -17,7 +18,9 @@ def check():
 
 @pytest.fixture
 def fetcher():
-    return MagicMock(spec=AWSServiceFetcher)
+    fetcher = MagicMock(spec=AWSServiceFetcher)
+    fetcher.get_global_conditions = AsyncMock(return_value=get_global_conditions())
+    return fetcher
 
 
 @pytest.fixture
@@ -381,9 +384,9 @@ class TestArrayOfTypes:
     @pytest.mark.asyncio
     async def test_arn_operator_on_array_of_arn_key_is_valid(self, check, fetcher, config, monkeypatch):
         async def key_type(*_args, **_kwargs):
-            return "ArrayOfARN"
+            return ["ArrayOfARN"]
 
-        monkeypatch.setattr(check, "_get_condition_key_type", key_type)
+        monkeypatch.setattr(check, "_get_condition_key_types", key_type)
         statement = _make_statement(
             {"ForAnyValue:ArnLike": {"dynamodb:FisTargetArns": "arn:aws:fis:us-east-1:123456789012:experiment/*"}}
         )
@@ -392,8 +395,60 @@ class TestArrayOfTypes:
     @pytest.mark.asyncio
     async def test_bool_operator_on_array_of_bool_key_is_valid(self, check, fetcher, config, monkeypatch):
         async def key_type(*_args, **_kwargs):
-            return "ArrayOfBool"
+            return ["ArrayOfBool"]
 
-        monkeypatch.setattr(check, "_get_condition_key_type", key_type)
+        monkeypatch.setattr(check, "_get_condition_key_types", key_type)
         statement = _make_statement({"ForAllValues:Bool": {"svc:Flags": "true"}})
         assert await check.execute(statement, 0, fetcher, config) == []
+
+
+class TestMultiTypeGlobalKeys:
+    @pytest.fixture
+    def api_fetcher(self):
+        from iam_validator.core.config.aws_global_conditions import AWSGlobalConditions
+
+        keys = AWSGlobalConditions.from_api(
+            [
+                {"Name": "aws:EpochTime", "Types": ["Numeric", "Date"]},
+                {"Name": "aws:PrincipalArn", "Types": ["ARN", "String"]},
+                {"Name": "aws:SourceIp", "Types": ["IpAddress"]},
+                {"Name": "aws:RequestTag/${TagKey}", "Types": ["String", "Numeric"]},
+                {"Name": "aws:ResourceTag/${TagKey}", "Types": ["String"]},
+            ]
+        )
+        fetcher = MagicMock(spec=AWSServiceFetcher)
+        fetcher.get_global_conditions = AsyncMock(return_value=keys)
+        return fetcher
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "condition",
+        [
+            {"NumericLessThan": {"aws:EpochTime": "1792604720"}},
+            {"DateLessThan": {"aws:EpochTime": "2026-12-31T00:00:00Z"}},
+            {"NumericEquals": {"aws:RequestTag/size": "3"}},
+            {"StringEquals": {"aws:RequestTag/team": "dev"}},
+            {"IpAddress": {"aws:SourceIp": "203.0.113.0/24"}},
+            {"ArnLike": {"aws:PrincipalArn": "arn:aws:iam::123456789012:role/*"}},
+        ],
+    )
+    async def test_operator_matching_any_listed_type_is_clean(self, check, api_fetcher, config, condition):
+        assert await check.execute(_make_statement(condition), 0, api_fetcher, config) == []
+
+    @pytest.mark.asyncio
+    async def test_string_operator_on_arn_and_string_key_keeps_advisory(self, check, api_fetcher, config):
+        statement = _make_statement({"StringEquals": {"aws:PrincipalArn": "arn:aws:iam::123456789012:role/App"}})
+        issues = await check.execute(statement, 0, api_fetcher, config)
+        assert [i.issue_type for i in issues] == ["type_mismatch_usable"]
+
+    @pytest.mark.asyncio
+    async def test_operator_matching_no_listed_type_is_reported(self, check, api_fetcher, config):
+        statement = _make_statement({"NumericEquals": {"aws:ResourceTag/size": "3"}})
+        issues = await check.execute(statement, 0, api_fetcher, config)
+        assert [i.issue_type for i in issues] == ["type_mismatch"]
+
+    @pytest.mark.asyncio
+    async def test_value_is_validated_against_the_selected_type(self, check, api_fetcher, config):
+        statement = _make_statement({"DateLessThan": {"aws:EpochTime": "not-a-date"}})
+        issues = await check.execute(statement, 0, api_fetcher, config)
+        assert issues

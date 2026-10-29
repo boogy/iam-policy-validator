@@ -354,6 +354,7 @@ def translate_type(doc_type: str) -> str:
         "string": "String",
         # IP Address types
         "IPAddress": "IPAddress",
+        "IpAddress": "IPAddress",
         "Ip": "IPAddress",
         # Binary types
         "Binary": "Binary",

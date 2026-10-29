@@ -9,6 +9,7 @@ import pytest
 from iam_validator.checks.policy_structure import detect_policy_type
 from iam_validator.core.aws_service.validators import ConditionKeyValidationResult
 from iam_validator.core.check_registry import create_default_registry
+from iam_validator.core.config.aws_global_conditions import get_global_conditions
 from iam_validator.core.config.config_loader import ConfigLoader, ValidatorConfig
 from iam_validator.core.models import IAMPolicy, ServiceDetail
 from iam_validator.core.policy_checks import _resolve_policy_type, _validate_policy_with_registry
@@ -38,6 +39,7 @@ def offline_fetcher():
     fetcher = MagicMock()
     fetcher.validate_action = AsyncMock(return_value=(True, None, False))
     fetcher.expand_wildcard_action = AsyncMock(return_value=[])
+    fetcher.get_global_conditions = AsyncMock(return_value=get_global_conditions())
     fetcher.fetch_service_by_name = AsyncMock(side_effect=lambda service: ServiceDetail(name=service, prefix=service))
     fetcher.validate_actions_batch = AsyncMock(return_value={})
     fetcher.validate_condition_key = AsyncMock(return_value=ConditionKeyValidationResult(is_valid=True))

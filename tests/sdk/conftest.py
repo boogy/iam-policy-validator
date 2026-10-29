@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from iam_validator.core.check_registry import CheckConfig
+from iam_validator.core.config.aws_global_conditions import get_global_conditions
 from iam_validator.core.models import (
     ActionDetail,
     ConditionKey,
@@ -273,6 +274,7 @@ def mock_fetcher(mock_service_detail):
     fetcher = MagicMock()
     fetcher.validate_action = AsyncMock(return_value=(True, None, False))
     fetcher.expand_wildcard_action = AsyncMock(return_value=["s3:GetObject", "s3:PutObject"])
+    fetcher.get_global_conditions = AsyncMock(return_value=get_global_conditions())
     fetcher.fetch_service_by_name = AsyncMock(return_value=mock_service_detail)
     # Support async context manager
     fetcher.__aenter__ = AsyncMock(return_value=fetcher)

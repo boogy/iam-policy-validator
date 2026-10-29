@@ -12,8 +12,9 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeRemainingColumn
 
 from iam_validator.commands.base import Command
-from iam_validator.core.aws_service.storage import service_filename
+from iam_validator.core.aws_service.storage import GLOBAL_CONDITION_KEYS_FILENAME, service_filename
 from iam_validator.core.config import AWS_SERVICE_REFERENCE_BASE_URL
+from iam_validator.core.config.aws_api import AWS_GLOBAL_CONDITION_KEYS_URL
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -53,6 +54,7 @@ Directory structure:
   aws_services/
       _manifest.json         # Metadata about the download
       _services.json         # List of all services
+      _global_condition_keys.json  # aws: global condition keys
       s3.json                # Individual service definitions
       ec2.json
       iam.json
@@ -115,6 +117,25 @@ This command is useful for:
             logger.error(f"Failed to fetch services list: {e}")
             raise
 
+    async def _download_global_condition_keys(self, client: httpx.AsyncClient, output_dir: Path) -> bool:
+        """Save the global condition keys list; offline runs fall back to the bundled list without it."""
+        try:
+            response = await client.get(AWS_GLOBAL_CONDITION_KEYS_URL, timeout=30.0)
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                raise ValueError("Expected a list of global condition keys")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error(f"Failed to fetch global condition keys: {e}")
+            console.print("[yellow]Warning:[/yellow] Could not download global condition keys")
+            return False
+
+        keys_file = output_dir / GLOBAL_CONDITION_KEYS_FILENAME
+        with open(keys_file, "w") as f:
+            json.dump(data, f, indent=2)
+        console.print(f"[green]✓[/green] Saved {len(data)} global condition keys to {keys_file}")
+        return True
+
     async def _download_service_detail(
         self,
         client: httpx.AsyncClient,
@@ -174,7 +195,10 @@ This command is useful for:
             services_file = output_dir / "_services.json"
             with open(services_file, "w") as f:
                 json.dump(services, f, indent=2)
-            console.print(f"[green]✓[/green] Saved services list to {services_file}\n")
+            console.print(f"[green]✓[/green] Saved services list to {services_file}")
+
+            global_keys_saved = await self._download_global_condition_keys(client, output_dir)
+            console.print()
 
             # Download all service details with rate limiting and progress bar
             semaphore = asyncio.Semaphore(max_concurrent)
@@ -236,6 +260,7 @@ This command is useful for:
                 "total_services": len(services),
                 "successful_downloads": successful,
                 "failed_downloads": failed,
+                "global_condition_keys": global_keys_saved,
                 "base_url": BASE_URL,
             }
 
