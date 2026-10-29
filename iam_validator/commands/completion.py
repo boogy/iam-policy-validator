@@ -232,6 +232,10 @@ _iam_validator_completion() {{
             COMPREPLY=( $(compgen -W "read write list tagging permissions-management" -- "$cur") )
             return 0
             ;;
+        --type)
+            COMPREPLY=( $(compgen -W "String ArrayOfString Numeric Date Bool ARN IPAddress" -- "$cur") )
+            return 0
+            ;;
         --log-level)
             COMPREPLY=( $(compgen -W "debug info warning error critical" -- "$cur") )
             return 0
@@ -308,7 +312,7 @@ _iam_validator_completion() {{
             # Check if we need to complete the query subcommand
             local query_subcmd=""
             for ((i=2; i<COMP_CWORD; i++)); do
-                if [[ ${{COMP_WORDS[i]}} =~ ^(action|arn|condition)$ ]]; then
+                if [[ ${{COMP_WORDS[i]}} =~ ^(action|arn|condition|global-condition|examples)$ ]]; then
                     query_subcmd=${{COMP_WORDS[i]}}
                     break
                 fi
@@ -316,7 +320,7 @@ _iam_validator_completion() {{
 
             if [[ -z "$query_subcmd" ]]; then
                 # Complete query subcommand
-                COMPREPLY=( $(compgen -W "action arn condition" -- "$cur") )
+                COMPREPLY=( $(compgen -W "action arn condition global-condition examples" -- "$cur") )
                 return 0
             fi
 
@@ -326,13 +330,20 @@ _iam_validator_completion() {{
             local opts=""
             case "$query_subcmd" in
                 action)
-                    opts="--service --name --access-level --resource-type --has-condition-key --condition --output --show-condition-keys --show-resource-types --show-access-level"
+                    opts="--service --name --access-level --resource-type --has-condition-key --condition --data-plane --control-plane --output --show-condition-keys --show-resource-types --show-access-level --show-data-plane --show-service-name"
                     ;;
                 arn)
                     opts="--service --name --has-condition-key --list-arn-types --output --show-condition-keys --show-arn-format --show-resource-type"
                     ;;
                 condition)
-                    opts="--service --name --output"
+                    opts="--service --name --output --show-types"
+                    ;;
+                global-condition)
+                    opts="--name --type --output --show-types --show-description --show-doc-url"
+                    ;;
+                examples)
+                    COMPREPLY=( $(compgen -W "action arn condition global-condition output" -- "$cur") )
+                    return 0
                     ;;
             esac
 
@@ -463,10 +474,14 @@ _iam_validator() {{
                                         '--resource-type[Filter by resource type]:resource type:' \\
                                         '--has-condition-key[Filter actions that support a specific condition key]:condition key:' \\
                                         '--condition[Filter by condition key (alias for --has-condition-key)]:condition key:' \\
+                                        '(--control-plane)--data-plane[Only data-plane actions]' \\
+                                        '(--data-plane)--control-plane[Only control-plane actions]' \\
                                         '--output[Output format]:format:(json yaml text)' \\
                                         '--show-condition-keys[Show only condition keys for each action]' \\
                                         '--show-resource-types[Show only resource types for each action]' \\
-                                        '--show-access-level[Show only access level for each action]'
+                                        '--show-access-level[Show only access level for each action]' \\
+                                        '--show-data-plane[Show only data-plane classification]' \\
+                                        '--show-service-name[Show only AWS service name]'
                                     ;;
                                 arn)
                                     _arguments \\
@@ -483,7 +498,20 @@ _iam_validator() {{
                                     _arguments \\
                                         '--service[AWS service (optional if --name has prefix)]:service:($aws_services)' \\
                                         '--name[Condition key (e.g., prefix or s3:prefix)]:condition key:' \\
-                                        '--output[Output format]:format:(json yaml text)'
+                                        '--output[Output format]:format:(json yaml text)' \\
+                                        '--show-types[Show only value types]'
+                                    ;;
+                                global-condition)
+                                    _arguments \\
+                                        '--name[Global condition key (e.g., aws:SourceIp)]:condition key:' \\
+                                        '--type[Filter by value type]:type:(String ArrayOfString Numeric Date Bool ARN IPAddress)' \\
+                                        '--output[Output format]:format:(json yaml text)' \\
+                                        '--show-types[Show only value types]' \\
+                                        '--show-description[Show only description]' \\
+                                        '--show-doc-url[Show only documentation link]'
+                                    ;;
+                                examples)
+                                    _arguments '1:topic:(action arn condition global-condition output)'
                                     ;;
                             esac
                             ;;
@@ -622,7 +650,7 @@ _iam_validator_commands() {{
         'analyze:Analyze IAM policies using AWS IAM Access Analyzer'
         'cache:Manage AWS service definition cache'
         'sync-services:Sync/download all AWS service definitions for offline use'
-        'query:Query AWS service definitions (actions, ARNs, condition keys)'
+        'query:Query AWS service definitions (actions, ARNs, condition keys, global condition keys)'
         'completion:Generate shell completion scripts (bash or zsh)'
         'mcp:Start MCP server for AI assistant integration'
     )
@@ -635,6 +663,8 @@ _iam_validator_query_subcommands() {{
         'action:Query IAM actions'
         'arn:Query ARN formats'
         'condition:Query condition keys'
+        'global-condition:Query global condition keys'
+        'examples:Show usage examples'
     )
     _describe 'query subcommand' subcommands
 }}

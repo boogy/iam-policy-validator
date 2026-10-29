@@ -141,6 +141,22 @@ The `--service` option is **optional** when `--name` includes the service prefix
 | `--show-data-plane`     | Show only the data-plane classification for each action                                    |
 | `--data-plane`          | `query action`: only data-plane actions (AWS `IsDataPlane: true`)                          |
 | `--control-plane`       | `query action`: only control-plane actions (`IsDataPlane: false`); unclassified excluded   |
+| `--show-service-name`   | `query action`: show only the AWS service name for each action                             |
+| `--show-types`          | `query condition` / `global-condition`: show only each key's value types                   |
+| `--show-description`    | `query global-condition`: show only each key's description                                 |
+| `--show-doc-url`        | `query global-condition`: show only each key's documentation URL                           |
+
+`--access-level`, `--resource-type`, `--has-condition-key`, `--data-plane` and `--control-plane`
+apply to every `query action` mode: listing a service, exact names and wildcards.
+
+### Examples
+
+`query -h` lists options only. Print grouped usage examples with:
+
+```bash
+iam-validator query examples            # all topics
+iam-validator query examples action     # action, arn, condition, global-condition, output
+```
 
 ### Subcommands
 
@@ -249,6 +265,19 @@ iam-validator query action --name s3:GetObject --show-condition-keys --show-reso
 
 These filters work with all query modes (single action, multiple actions, wildcards) and all output formats.
 
+##### Data-plane filters
+
+```bash
+# Data-plane actions (e.g. s3:GetObject)
+iam-validator query action --service s3 --data-plane --output text
+
+# Control-plane write actions
+iam-validator query action --service s3 --control-plane --access-level write
+```
+
+AWS annotates actions with `IsDataPlane`. Actions without the annotation match neither
+flag; some services (e.g. `kms`, `iam`) currently have no data-plane actions.
+
 #### query arn
 
 ```bash
@@ -263,19 +292,6 @@ iam-validator query arn --name s3:bucket
 iam-validator query arn --name iam:role
 ```
 
-##### Data-plane filters
-
-```bash
-# Data-plane actions (e.g. s3:GetObject)
-iam-validator query action --service s3 --data-plane --output text
-
-# Control-plane write actions
-iam-validator query action --service s3 --control-plane --access-level write
-```
-
-AWS annotates actions with `IsDataPlane`. Actions without the annotation match neither
-flag; some services (e.g. `kms`, `iam`) currently have no data-plane actions.
-
 #### query condition
 
 ```bash
@@ -285,6 +301,9 @@ iam-validator query condition --service s3
 # Query specific condition key (two equivalent forms)
 iam-validator query condition --service s3 --name prefix
 iam-validator query condition --name s3:prefix
+
+# Only key names and value types
+iam-validator query condition --service s3 --show-types --output text
 ```
 
 #### query global-condition
@@ -302,6 +321,9 @@ iam-validator query global-condition --type IPAddress
 # One key; concrete tag keys resolve to their template
 iam-validator query global-condition --name aws:SourceIp
 iam-validator query global-condition --name aws:ResourceTag/team
+
+# Only selected fields
+iam-validator query global-condition --type Bool --show-description --show-doc-url --output text
 ```
 
 ## cache

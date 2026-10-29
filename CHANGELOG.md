@@ -12,6 +12,8 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Treat `aws:RequestTag/*` and `aws:ResourceTag/*` as global condition keys, as AWS lists them. Using one on an action that does not document it is now reported with the global-key warning instead of an error.
 - Accept every type AWS lists for a condition key in `condition_type_mismatch` (e.g. `aws:EpochTime` as `Numeric` or `Date`), instead of the first type only.
 - Reuse a cached service definition past its TTL while the service's `modified` timestamp in the AWS Service Reference shows it unchanged.
+- Apply `--access-level` and `--resource-type` to `iam-validator query action --name` exact and wildcard queries; they were ignored unless listing a whole service.
+- Move usage examples out of `iam-validator query -h` into `iam-validator query examples`.
 
 ### Added
 
@@ -20,6 +22,9 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Show the AWS `ServiceName` and data-plane classification in `query` output, the SDK (`query_actions`, `query_action_details`) and the MCP `query` tool.
 - Add SDK functions `query_global_condition_keys()` and `query_global_condition_key()`, and a `data_plane` filter on `query_actions()`.
 - Add the `global_condition_keys` kind, plus `data_plane` and `key_type` parameters, to the MCP `query` tool.
+- Add `iam-validator query examples [TOPIC]` to print grouped usage examples.
+- Add output field filters: `--show-service-name` on `query action`, `--show-types` on `query condition`, and `--show-types`, `--show-description` and `--show-doc-url` on `query global-condition`.
+- Complete the new `query` subcommands and options in the bash and zsh completion scripts.
 
 ## [1.31.4] - 2026-10-23
 

@@ -11,7 +11,8 @@
 2. Append the instance to `ALL_COMMANDS` in `iam_validator/commands/__init__.py`.
 3. Add bash + zsh stubs to `iam_validator/commands/completion.py`; add the command to
    `COMMANDS_WITH_FLAT_FLAGS` in `tests/commands/test_completion_command.py` so the parity
-   test fails when its flags drift from the parser.
+   test fails when its flags drift from the parser. New `query` subcommands with flags go in
+   `QUERY_SUBCOMMANDS_WITH_FLAGS`; new query examples go in `QUERY_EXAMPLES`.
 4. Test in `tests/commands/test_my_command.py`.
 
 Inside `execute()`, return `0` on success, non-zero on failure. Use Rich (`rich.console.Console`,
@@ -28,7 +29,7 @@ Inside `execute()`, return `0` on success, non-zero on failure. Use Rich (`rich.
 | `post-to-pr`    | `post_to_pr.py`        | post a saved report to a PR                                         |
 | `cache`         | `cache.py`             | manage AWS service-data cache                                       |
 | `sync-services` | `download_services.py` | offline AWS definitions download                                    |
-| `query`         | `query.py`             | query service definitions + global keys; `--data-plane` filters     |
+| `query`         | `query.py`             | service definitions + global keys; examples in `QUERY_EXAMPLES`     |
 | `completion`    | `completion.py`        | bash / zsh completions, `--install` writes them to the XDG data dir |
 | `mcp`           | `mcp.py`               | launch the MCP server                                               |
 

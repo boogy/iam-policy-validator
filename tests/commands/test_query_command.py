@@ -1246,3 +1246,119 @@ class TestGlobalConditionQuery:
     async def test_unknown_key_fails(self, query_cmd, plane_fetcher) -> None:
         rc, _ = await _run_query(query_cmd, ["global-condition", "--name", "aws:Nope"], plane_fetcher)
         assert rc == 1
+
+
+class TestFiltersApplyToNamedQueries:
+    async def test_access_level_filters_wildcard_query(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["action", "--name", "test:*", "--access-level", "write", "--output", "text"], plane_fetcher
+        )
+        assert rc == 0
+        assert out == ["test:CreateThing", "test:Unclassified"]
+
+    async def test_access_level_filters_exact_query(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["action", "--name", "test:CreateThing", "--access-level", "read"], plane_fetcher
+        )
+        assert rc == 0
+        assert json.loads(out[0]) == []
+
+    @pytest.mark.parametrize("resource_type,expected", [("*", {"test:ReadData"}), ("thing", {"test:CreateThing"})])
+    async def test_resource_type_filters_wildcard_query(
+        self, query_cmd, plane_fetcher, resource_type, expected
+    ) -> None:
+        service = _plane_service()
+        service.actions["CreateThing"].resources = [{"Name": "thing"}]
+        plane_fetcher.fetch_service_by_name = AsyncMock(return_value=service)
+        plane_fetcher.expand_wildcard_action = AsyncMock(return_value=["test:ReadData", "test:CreateThing"])
+        rc, out = await _run_query(
+            query_cmd,
+            ["action", "--name", "test:*", "--resource-type", resource_type, "--output", "text"],
+            plane_fetcher,
+        )
+        assert rc == 0
+        assert set(out) == expected
+
+
+class TestShowFieldFilters:
+    @pytest.fixture
+    def api_fetcher(self, plane_fetcher) -> AsyncMock:
+        from iam_validator.core.config.aws_global_conditions import AWSGlobalConditions
+
+        plane_fetcher.get_global_conditions = AsyncMock(
+            return_value=AWSGlobalConditions.from_api(
+                [
+                    {
+                        "Name": "aws:EpochTime",
+                        "Description": "Request time",
+                        "DocPage": "/IAM/latest/UserGuide/reference_policies_condition-keys.html#epochtime",
+                        "Types": ["Numeric", "Date"],
+                    }
+                ]
+            )
+        )
+        return plane_fetcher
+
+    async def test_show_service_name(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["action", "--name", "test:ReadData", "--show-service-name", "--output", "text"], plane_fetcher
+        )
+        assert rc == 0
+        assert out == ["test:ReadData", "  Service name: Test Service"]
+
+    async def test_condition_show_types(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(query_cmd, ["condition", "--service", "test", "--show-types"], plane_fetcher)
+        assert rc == 0
+        assert json.loads(out[0]) == [{"condition_key": "test:key", "types": ["String"]}]
+
+    async def test_global_show_types_only(self, query_cmd, api_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["global-condition", "--name", "aws:EpochTime", "--show-types"], api_fetcher
+        )
+        assert rc == 0
+        assert json.loads(out[0]) == {"condition_key": "aws:EpochTime", "types": ["Numeric", "Date"]}
+
+    async def test_global_show_description_and_doc_url_text(self, query_cmd, api_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd,
+            ["global-condition", "--show-description", "--show-doc-url", "--output", "text"],
+            api_fetcher,
+        )
+        assert rc == 0
+        assert out[out.index("aws:EpochTime") + 1] == "  Description: Request time"
+        assert out[out.index("aws:EpochTime") + 2].startswith("  Documentation: https://docs.aws.amazon.com/")
+
+
+class TestQueryExamples:
+    async def test_all_topics_without_fetcher(self, query_cmd, capsys) -> None:
+        from iam_validator.commands.query import QUERY_EXAMPLES
+
+        parser = argparse.ArgumentParser()
+        query_cmd.add_arguments(parser)
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
+            rc = await query_cmd.execute(parser.parse_args(["examples"]))
+        assert rc == 0
+        mock_fetcher_class.assert_not_called()
+        out = capsys.readouterr().out
+        assert all(f"\n{topic}\n" in f"\n{out}" for topic in QUERY_EXAMPLES)
+
+    async def test_single_topic(self, query_cmd, capsys) -> None:
+        parser = argparse.ArgumentParser()
+        query_cmd.add_arguments(parser)
+        assert await query_cmd.execute(parser.parse_args(["examples", "global-condition"])) == 0
+        out = capsys.readouterr().out
+        assert "query global-condition" in out
+        assert "query arn" not in out
+
+    def test_unknown_topic_rejected(self, query_cmd) -> None:
+        parser = argparse.ArgumentParser()
+        query_cmd.add_arguments(parser)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["examples", "nope"])
+
+    def test_query_help_points_to_examples(self, query_cmd) -> None:
+        parser = argparse.ArgumentParser(epilog=query_cmd.epilog)
+        query_cmd.add_arguments(parser)
+        help_text = parser.format_help()
+        assert "iam-validator query examples" in help_text
+        assert "$ " not in help_text
