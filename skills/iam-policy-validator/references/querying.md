@@ -2,13 +2,15 @@
 
 `iam-validator query` answers AWS IAM metadata questions without a policy file: which actions exist, which ARN formats a resource type uses, which condition keys a service exposes, and **which actions support a given condition key**. Use it to author least-privilege policies and to _verify_ validation findings before acting on them.
 
-Three subcommands: `action`, `arn`, `condition`. All accept `--output json|yaml|text` (default `text`); use `--output json` when you need to parse the result.
+Four subcommands: `action`, `arn`, `condition`, `global-condition`. All accept `--output json|yaml|text` (default `json`); use `--output text` for a plain list of names.
 
-> Always confirm a flag with `iam-validator query <sub> --help` before relying on it.
+> Always confirm a flag with `iam-validator query <sub> --help` before relying on it. `iam-validator query examples [action|arn|condition|global-condition]` (or `query --examples`) prints worked examples.
 
 ## query action
 
-Flags: `--service <prefix>`, `--name <name|pattern>` (service prefix optional; supports wildcards), `--access-level read|write|list|tagging|permissions-management`, `--resource-type <type>` (`*` = wildcard-only actions), `--has-condition-key <key>` (alias `--condition`), `--show-condition-keys`, `--show-resource-types`, `--show-access-level`, `--output`.
+Flags: `--service <prefix>`, `--name <name|pattern> [...]` (service prefix optional; supports wildcards and several names), `--access-level read|write|list|tagging|permissions-management`, `--resource-type <type>` (`*` = wildcard-only actions), `--has-condition-key <key>` (alias `--condition`), `--data-plane` / `--control-plane`, `--show-condition-keys`, `--show-resource-types`, `--show-access-level`, `--show-data-plane`, `--show-service-name`, `--output`.
+
+The filters (`--access-level`, `--resource-type`, `--has-condition-key`, `--data-plane`/`--control-plane`) apply to `--name` and wildcard queries as well as the list-all path. The `action` field is always `service:Action` (e.g. `s3:GetObject`). `description` appears only when AWS provides one.
 
 ```bash
 # Every action in a service
@@ -29,7 +31,13 @@ iam-validator query action --service s3 --resource-type "*"
 
 # Show each action's access level / supported condition keys
 iam-validator query action --service s3 --name "Get*" --show-access-level --show-condition-keys
+
+# Data-plane (object/data access) vs control-plane (configuration) actions
+iam-validator query action --service s3 --data-plane --access-level write --output text
+iam-validator query action --name s3:GetObject --show-data-plane
 ```
+
+`--data-plane` / `--control-plane` use AWS's `IsDataPlane` annotation. It is independent of access level (S3 data-plane actions span all five levels). `--control-plane` excludes actions AWS has not classified.
 
 ## query arn
 
@@ -51,7 +59,7 @@ iam-validator query arn --service s3 --has-condition-key "s3:ResourceAccount"
 
 ## query condition
 
-Flags: `--service <prefix>`, `--name <key>` (e.g. `prefix` or `s3:prefix`), `--output`.
+Flags: `--service <prefix>`, `--name <key>` (e.g. `prefix` or `s3:prefix`), `--show-types`, `--output`.
 
 ```bash
 # All condition keys a service exposes
@@ -59,6 +67,32 @@ iam-validator query condition --service s3
 
 # Detail for one condition key
 iam-validator query condition --service s3 --name "s3:prefix"
+
+# Only the value types (String, ARN, Bool, ...)
+iam-validator query condition --name s3:prefix --show-types
+```
+
+## query global-condition
+
+Global keys (`aws:*`, plus a few such as `ec2:RoleDelivery`) come from AWS's published global-condition-key list, not from any one service.
+
+Flags: `--name <key|pattern>`, `--type <String|ArrayOfString|Bool|ARN|Date|Numeric|IPAddress>`, `--show-types`, `--show-description`, `--show-doc-url`, `--output`.
+
+```bash
+# All global condition keys
+iam-validator query global-condition --output text
+
+# One key, with types, description, and AWS docs link
+iam-validator query global-condition --name aws:SourceIp
+
+# Tag keys resolve with or without the template suffix
+iam-validator query global-condition --name aws:ResourceTag   # -> aws:ResourceTag/${TagKey}
+
+# Wildcards (case-insensitive; quote them in the shell)
+iam-validator query global-condition --name 'aws:Re*' --show-types
+
+# Keys of one type
+iam-validator query global-condition --type Bool --output text
 ```
 
 ## Which action supports which condition (the intersection)
@@ -79,7 +113,7 @@ iam-validator query action --service ec2 --has-condition-key "aws:SourceVpc"
 iam-validator query action --service s3 --has-condition-key "s3:ResourceAccount" --output json
 ```
 
-Condition keys are either **service-scoped** (`s3:ResourceAccount`, `kms:ViaService`) or **global** (`aws:SourceVpc`, `aws:PrincipalOrgID`, `aws:SourceArn`). Both work with `--has-condition-key`. A key that a target action does not support cannot constrain it — verify support before recommending a condition.
+Condition keys are either **service-scoped** (`s3:ResourceAccount`, `kms:ViaService`) or **global** (`aws:SourceVpc`, `aws:PrincipalOrgID`, `aws:SourceArn`). Both work with `--has-condition-key`. Use `query global-condition` to confirm a global key exists and check its type. A key that a target action does not support cannot constrain it — verify support before recommending a condition.
 
 ## Using queries to verify a finding
 
@@ -88,4 +122,5 @@ Before acting on a validation issue, confirm its premises with `query`. The full
 - **"Action does not exist"** → `iam-validator query action --name <svc:Action>`
 - **"Add condition X"** → `iam-validator query action --name <svc:Action> --has-condition-key <X>`
 - **"Resource ARN is malformed"** → `iam-validator query arn --service <svc> --name <resource-type>`
+- **Condition operator / type mismatch** → `iam-validator query global-condition --name <aws:Key> --show-types` or `iam-validator query condition --name <svc:key> --show-types`
 - **Wildcard scope** → `iam-validator query action --name "<svc:Prefix*>"`

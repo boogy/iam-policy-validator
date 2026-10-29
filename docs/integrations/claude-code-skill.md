@@ -51,6 +51,7 @@ When loaded, the skill triggers automatically on prompts like:
 - "Audit this trust policy for confused deputy"
 - "Run AWS Access Analyzer on this policy"
 - "Which S3 actions exist / what condition keys does `kms` have?"
+- "Which global condition keys start with `aws:Re`?" / "Which S3 write actions are data-plane?"
 - "Post IAM findings to this PR"
 
 Claude will pick the right subcommand (`validate`, `analyze`, `query`, `post-to-pr`, `sync-services`, `cache`) and choose sensible flags (e.g. `--policy-type TRUST_POLICY` for role trust docs, `--format sarif` when you ask for CI output).

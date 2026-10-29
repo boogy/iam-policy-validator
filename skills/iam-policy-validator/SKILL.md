@@ -6,7 +6,7 @@ argument-hint: "[validate|query|analyze] <policy-path|dir> [--config <file>] [--
 
 # IAM Policy Validator (CLI)
 
-Validate AWS IAM policies against 22 built-in checks and query AWS service definitions. Self-contained: needs only the CLI (`uvx`, no install) plus Python 3.10+.
+Validate AWS IAM policies against 23 built-in checks and query AWS service definitions. Self-contained: needs only the CLI (`uvx`, no install) plus Python 3.10+.
 
 Home: https://github.com/boogy/iam-policy-validator · Docs: https://boogy.github.io/iam-policy-validator/
 
@@ -17,6 +17,7 @@ Home: https://github.com/boogy/iam-policy-validator · Docs: https://boogy.githu
 | Validate a policy file or directory | `iam-validator validate --path <path>`                         |
 | Validate and post findings to a PR  | `validate --format json` -> verify -> `post-to-pr` (see below) |
 | Query AWS actions, ARNs, conditions | `iam-validator query action\|arn\|condition --service <svc>`   |
+| Query global condition keys         | `iam-validator query global-condition --name '<aws:Key*>'`     |
 | Run AWS IAM Access Analyzer         | `iam-validator analyze --path <path>`                          |
 | Manage the AWS service cache        | `iam-validator cache info\|clear\|refresh\|prefetch`           |
 | Pre-download for offline/CI         | `iam-validator sync-services --output-dir ./aws_services/`     |
@@ -104,7 +105,7 @@ Read stderr and findings before drawing conclusions. A non-zero exit does not ne
 ## References
 
 - [checks.md](references/checks.md) — the 22 checks with IDs and severities
-- [querying.md](references/querying.md) — query actions / ARNs / condition keys
+- [querying.md](references/querying.md) — query actions / ARNs / service and global condition keys, data-plane filters
 - [configuration.md](references/configuration.md) — YAML config, ignore patterns, severity overrides
 - [output-formats.md](references/output-formats.md) — console / json / sarif / markdown / html / csv / enhanced
 - [ci-integration.md](references/ci-integration.md) — `--ci`, `post-to-pr`, `--github-*`, `--comment-tag`, PR workflows

@@ -31,6 +31,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Add `iam-validator query examples [TOPIC]` to print query examples for one topic. ([#232])
 - Add output field filters: `--show-service-name` on `query action`, `--show-types` on `query condition`, and `--show-types`, `--show-description` and `--show-doc-url` on `query global-condition`. ([#232])
 - Complete the new `query` subcommands and options in the bash and zsh completion scripts. ([#232])
+- Document `query global-condition`, the data-plane filters, `--show-*` field filters and `query examples` in the Claude Code skill, and bump the plugin version to 1.32.0 so installs pick it up. ([#232])
 
 [#232]: https://github.com/boogy/iam-policy-validator/pull/232
 
