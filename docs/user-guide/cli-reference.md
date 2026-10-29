@@ -166,6 +166,9 @@ iam-validator query examples action     # action, arn, condition, global-conditi
 
 #### query action
 
+`.action` is always the full `service:action` name. `description` appears only when the AWS
+Service Reference provides one.
+
 ```bash
 # List all S3 actions
 iam-validator query action --service s3

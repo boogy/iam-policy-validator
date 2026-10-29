@@ -967,18 +967,21 @@ with a bundled fallback).
 async def query_global_condition_keys(
     fetcher: AWSServiceFetcher,
     key_type: str | None = None,
+    pattern: str | None = None,
 ) -> list[GlobalConditionKeyDetails]
 ```
 
 `key_type` filters case-insensitively on any listed type (e.g. `"ArrayOfString"`,
-`"IPAddress"`). Templated keys keep AWS's name, e.g. `aws:RequestTag/${TagKey}`.
+`"IPAddress"`). `pattern` is a case-insensitive wildcard on the key name (e.g. `"aws:Re*"`).
+Templated keys keep AWS's name, e.g. `aws:RequestTag/${TagKey}`.
 
 ---
 
 ### query_global_condition_key
 
-Get details for one global condition key. A concrete tag key such as
-`aws:RequestTag/env` resolves to its `aws:RequestTag/${TagKey}` template.
+Get details for one global condition key. A tag key resolves to its
+`aws:RequestTag/${TagKey}` template from the bare prefix (`aws:RequestTag`), the template
+name, or a concrete key such as `aws:RequestTag/env`.
 
 ```python
 async def query_global_condition_key(

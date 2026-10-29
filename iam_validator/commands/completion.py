@@ -503,7 +503,7 @@ _iam_validator() {{
                                     ;;
                                 global-condition)
                                     _arguments \\
-                                        '--name[Global condition key (e.g., aws:SourceIp)]:condition key:' \\
+                                        '--name[Global condition key or wildcard (e.g., aws:SourceIp, aws:Re*)]:condition key:' \\
                                         '--type[Filter by value type]:type:(String ArrayOfString Numeric Date Bool ARN IPAddress)' \\
                                         '--output[Output format]:format:(json yaml text)' \\
                                         '--show-types[Show only value types]' \\
