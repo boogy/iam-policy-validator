@@ -113,6 +113,7 @@ from iam_validator.sdk import (
     query_actions,
     query_arn_formats,
     query_condition_keys,
+    query_global_condition_keys,
     get_actions_by_access_level,
 )
 
@@ -125,6 +126,10 @@ async with AWSServiceFetcher() as fetcher:
 
     # Get condition keys
     conditions = await query_condition_keys(fetcher, "s3")
+
+    # Get data-plane actions and global condition keys
+    data_actions = await query_actions(fetcher, "s3", data_plane=True)
+    global_keys = await query_global_condition_keys(fetcher)
 
     # Get high-privilege actions
     high_priv = await get_actions_by_access_level(

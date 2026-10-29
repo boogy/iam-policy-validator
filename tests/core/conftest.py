@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from iam_validator.core.check_registry import CheckConfig
+from iam_validator.core.config.aws_global_conditions import get_global_conditions
 from iam_validator.core.models import IAMPolicy, ServiceDetail, Statement
 
 
@@ -14,6 +15,7 @@ def mock_fetcher():
     fetcher = MagicMock()
     fetcher.validate_action = AsyncMock(return_value=(True, None, False))
     fetcher.expand_wildcard_action = AsyncMock(return_value=[])
+    fetcher.get_global_conditions = AsyncMock(return_value=get_global_conditions())
 
     async def _fetch_service_by_name(service: str) -> ServiceDetail:
         """A real (empty) ServiceDetail, not a MagicMock whose every attribute auto-creates."""

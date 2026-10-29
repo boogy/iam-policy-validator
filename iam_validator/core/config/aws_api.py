@@ -9,6 +9,9 @@ used throughout the IAM Policy Validator.
 # This is the official AWS service reference that provides action, resource, and condition key metadata
 AWS_SERVICE_REFERENCE_BASE_URL = "https://servicereference.us-east-1.amazonaws.com/"
 
+# Consolidated list of `aws:` global condition keys (name, types, description, doc page)
+AWS_GLOBAL_CONDITION_KEYS_URL = f"{AWS_SERVICE_REFERENCE_BASE_URL}v1/global-condition-keys.json"
+
 # Alternative endpoints for different regions (currently not used, but available for future expansion)
 AWS_SERVICE_REFERENCE_ENDPOINTS = {
     "us-east-1": "https://servicereference.us-east-1.amazonaws.com/",

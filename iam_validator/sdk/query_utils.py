@@ -19,11 +19,18 @@ Example:
     >>> async with AWSServiceFetcher() as fetcher:
     ...     keys = await query_condition_keys(fetcher, "s3")
     ...     prefix_key = await query_condition_key(fetcher, "s3", "s3:prefix")
+    ...
+    Query global condition keys:
+    >>> async with AWSServiceFetcher() as fetcher:
+    ...     keys = await query_global_condition_keys(fetcher, key_type="Bool")
+    ...     tag_key = await query_global_condition_key(fetcher, "aws:ResourceTag")
 """
 
-from typing import Any, Literal, TypedDict
+import fnmatch
+from typing import Literal, TypedDict
 
 from iam_validator.core.aws_service.fetcher import AWSServiceFetcher
+from iam_validator.core.config.aws_global_conditions import GlobalConditionKeyInfo
 
 AccessLevel = Literal["read", "write", "list", "tagging", "permissions-management"]
 
@@ -36,6 +43,7 @@ class ActionInfo(TypedDict):
 
     action: str
     access_level: str
+    data_plane: bool | None
     description: str
 
 
@@ -46,9 +54,11 @@ class ActionDetails(TypedDict):
     """
 
     service: str
+    service_name: str | None
     action: str
     description: str
     access_level: str
+    data_plane: bool | None
     resource_types: list[str]
     condition_keys: list[str]
 
@@ -76,6 +86,18 @@ class ConditionKeyDetails(TypedDict):
     types: list[str]
 
 
+class GlobalConditionKeyDetails(TypedDict):
+    """Type information for global condition key query results.
+
+    Returned by :func:`query_global_condition_keys` and :func:`query_global_condition_key`.
+    """
+
+    condition_key: str
+    types: list[str]
+    description: str
+    doc_url: str | None
+
+
 class ArnTypeInfo(TypedDict):
     """Type information for ARN resource type query results.
 
@@ -98,45 +120,13 @@ class ArnFormatDetails(TypedDict):
     condition_keys: list[str]
 
 
-def _get_access_level(action_detail: Any) -> str:
-    """Derive access level from action annotations.
-
-    AWS API provides Properties dict with boolean flags instead of AccessLevel string.
-    We derive the access level from these flags.
-
-    Args:
-        action_detail: Action detail object with annotations
-
-    Returns:
-        Access level string: "permissions-management", "tagging", "write", "list", or "read"
-    """
-    if not action_detail.annotations:
-        return "Unknown"
-
-    props = action_detail.annotations.get("Properties", {})
-    if not props:
-        return "Unknown"
-
-    # Check flags in priority order
-    if props.get("IsPermissionManagement"):
-        return "permissions-management"
-    if props.get("IsTaggingOnly"):
-        return "tagging"
-    if props.get("IsWrite"):
-        return "write"
-    if props.get("IsList"):
-        return "list"
-
-    # Default to read if none of the above
-    return "read"
-
-
 async def query_actions(
     fetcher: AWSServiceFetcher,
     service: str,
     access_level: AccessLevel | None = None,
     resource_type: str | None = None,
     condition: str | None = None,
+    data_plane: bool | None = None,
 ) -> list[ActionInfo]:
     """Query IAM actions for a service with optional filtering.
 
@@ -146,9 +136,11 @@ async def query_actions(
         access_level: Optional filter by access level
         resource_type: Optional filter by resource type. Use "*" for wildcard-only actions
         condition: Optional filter by condition key support
+        data_plane: True keeps data-plane actions, False keeps only actions AWS
+            explicitly marks as control-plane (unclassified actions are dropped)
 
     Returns:
-        List of action dictionaries with keys: action, access_level, description
+        List of action dictionaries with keys: action, access_level, data_plane, description
 
     Example:
         >>> async with AWSServiceFetcher() as fetcher:
@@ -168,7 +160,7 @@ async def query_actions(
 
     filtered_actions: list[ActionInfo] = []
     for action_name, action_detail in service_detail.actions.items():
-        access_lv = _get_access_level(action_detail)
+        access_lv = action_detail.access_level
 
         # Apply filters
         if access_level and access_lv.lower() != access_level.lower():
@@ -193,12 +185,16 @@ async def query_actions(
             if condition not in condition_keys:
                 continue
 
+        if data_plane is not None and action_detail.is_data_plane is not data_plane:
+            continue
+
         description = action_detail.annotations.get("Description", "N/A") if action_detail.annotations else "N/A"
 
         filtered_actions.append(
             {
                 "action": f"{service}:{action_name}",
                 "access_level": access_lv,
+                "data_plane": action_detail.is_data_plane,
                 "description": description,
             }
         )
@@ -242,14 +238,15 @@ async def query_action_details(
     if not action_detail:
         raise ValueError(f"Action '{action_name}' not found in service '{service}'")
 
-    access_level = _get_access_level(action_detail)
     description = action_detail.annotations.get("Description", "N/A") if action_detail.annotations else "N/A"
 
     return {
         "service": service,
+        "service_name": service_detail.service_name,
         "action": action_detail.name,
         "description": description,
-        "access_level": access_level,
+        "access_level": action_detail.access_level,
+        "data_plane": action_detail.is_data_plane,
         "resource_types": [r.get("Name", "*") for r in (action_detail.resources or [])],
         "condition_keys": action_detail.action_condition_keys or [],
     }
@@ -429,6 +426,81 @@ async def query_condition_key(
     }
 
 
+def _find_tag_template(keys: list[GlobalConditionKeyInfo], name: str) -> GlobalConditionKeyInfo | None:
+    """Find a ``${TagKey}`` template by its prefix, e.g. ``aws:ResourceTag`` or ``aws:ResourceTag/${TagKey}``."""
+    suffix = "/${tagkey}"
+    prefix = name.lower().removesuffix(suffix).rstrip("/")
+    return next((i for i in keys if i.name.lower().endswith(suffix) and i.name.lower()[: -len(suffix)] == prefix), None)
+
+
+def _global_key_details(info: GlobalConditionKeyInfo) -> GlobalConditionKeyDetails:
+    return {
+        "condition_key": info.name,
+        "types": list(info.types),
+        "description": info.description or "N/A",
+        "doc_url": info.doc_url,
+    }
+
+
+async def query_global_condition_keys(
+    fetcher: AWSServiceFetcher,
+    key_type: str | None = None,
+    pattern: str | None = None,
+) -> list[GlobalConditionKeyDetails]:
+    """Query the global condition keys (AWS Service Reference, bundled list as fallback).
+
+    Args:
+        fetcher: AWSServiceFetcher instance
+        key_type: Optional case-insensitive filter on any listed type (e.g., "Bool", "ARN")
+        pattern: Optional case-insensitive wildcard on the key name (e.g., "aws:Re*")
+
+    Returns:
+        Keys sorted by name; tag keys appear under their templated name
+        (e.g., ``aws:ResourceTag/${TagKey}``)
+
+    Example:
+        >>> async with AWSServiceFetcher() as fetcher:
+        ...     bool_keys = await query_global_condition_keys(fetcher, key_type="Bool")
+        ...     re_keys = await query_global_condition_keys(fetcher, pattern="aws:Re*")
+    """
+    global_conditions = await fetcher.get_global_conditions()
+    wanted = key_type.lower() if key_type else None
+    name_pattern = pattern.lower() if pattern else None
+    return [
+        _global_key_details(info)
+        for info in global_conditions.list_keys()
+        if (wanted is None or wanted in (t.lower() for t in info.types))
+        and (name_pattern is None or fnmatch.fnmatchcase(info.name.lower(), name_pattern))
+    ]
+
+
+async def query_global_condition_key(
+    fetcher: AWSServiceFetcher,
+    condition_key_name: str,
+) -> GlobalConditionKeyDetails:
+    """Get details for one global condition key; tag keys resolve to their ``${TagKey}`` template.
+
+    Args:
+        fetcher: AWSServiceFetcher instance
+        condition_key_name: Condition key (e.g., "aws:SourceIp", "aws:ResourceTag",
+            "aws:ResourceTag/${TagKey}", or a concrete tag key such as "aws:ResourceTag/team")
+
+    Raises:
+        ValueError: If the key is not a global condition key
+
+    Example:
+        >>> async with AWSServiceFetcher() as fetcher:
+        ...     details = await query_global_condition_key(fetcher, "aws:SourceIp")
+    """
+    global_conditions = await fetcher.get_global_conditions()
+    info = global_conditions.get_key_info(condition_key_name) or _find_tag_template(
+        global_conditions.list_keys(), condition_key_name
+    )
+    if info is None:
+        raise ValueError(f"'{condition_key_name}' is not a global condition key")
+    return _global_key_details(info)
+
+
 async def get_actions_by_access_level(
     fetcher: AWSServiceFetcher,
     service: str,
@@ -508,6 +580,7 @@ __all__ = [
     "ActionDetails",
     "ConditionKeyInfo",
     "ConditionKeyDetails",
+    "GlobalConditionKeyDetails",
     "ArnTypeInfo",
     "ArnFormatDetails",
     # Query functions
@@ -518,6 +591,8 @@ __all__ = [
     "query_arn_format",
     "query_condition_keys",
     "query_condition_key",
+    "query_global_condition_keys",
+    "query_global_condition_key",
     "get_actions_by_access_level",
     "get_wildcard_only_actions",
     "get_actions_supporting_condition",

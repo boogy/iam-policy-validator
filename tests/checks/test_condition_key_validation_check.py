@@ -10,6 +10,7 @@ from iam_validator.core.aws_service import (
     ConditionKeyValidationResult,
 )
 from iam_validator.core.check_registry import CheckConfig
+from iam_validator.core.config.aws_global_conditions import get_global_conditions
 from iam_validator.core.models import Statement
 
 
@@ -23,6 +24,7 @@ class TestConditionKeyValidationCheck:
     @pytest.fixture
     def fetcher(self):
         mock = MagicMock(spec=AWSServiceFetcher)
+        mock.get_global_conditions = AsyncMock(return_value=get_global_conditions())
         mock.validate_condition_key = AsyncMock()
         # Default: all actions exist. Override in specific tests for non-existent actions.
         mock.validate_actions_batch = AsyncMock(
@@ -261,17 +263,10 @@ class TestTagKeyValidation:
         assert not _is_valid_tag_key("a" * 129)
 
     @pytest.mark.asyncio
-    async def test_request_tag_not_supported_by_action(self):
-        """Test that aws:RequestTag is rejected for actions that don't support it.
-
-        This tests the fix for the issue where aws:RequestTag was incorrectly accepted
-        for all IAM actions because it appears in service-level condition keys.
-        Only actions that create/modify tagged resources should support aws:RequestTag.
-        """
+    async def test_request_tag_on_unsupported_action_warns_as_global_key(self):
         check = ConditionKeyValidationCheck()
         config = CheckConfig(check_id="condition_key_validation")
 
-        # Test with iam:SetDefaultPolicyVersion which does NOT support aws:RequestTag
         statement = Statement(
             Sid="SetDefaultOnly",
             Effect="Allow",
@@ -283,11 +278,10 @@ class TestTagKeyValidation:
         async with AWSServiceFetcher() as fetcher:
             issues = await check.execute(statement, 0, fetcher, config)
 
-        # Should detect that aws:RequestTag is not supported
         assert len(issues) == 1
-        assert issues[0].issue_type == "invalid_condition_key"
+        assert issues[0].issue_type == "global_condition_key_with_action_specific"
+        assert issues[0].severity == "warning"
         assert "aws:RequestTag/owner" in issues[0].message
-        assert "not supported" in issues[0].message.lower()
 
     @pytest.mark.asyncio
     async def test_request_tag_supported_by_action(self):
@@ -325,6 +319,7 @@ class TestIfExistsFalsePositiveSuppression:
     @pytest.fixture
     def fetcher(self):
         mock = MagicMock(spec=AWSServiceFetcher)
+        mock.get_global_conditions = AsyncMock(return_value=get_global_conditions())
         mock.validate_condition_key = AsyncMock()
         # Default: all actions exist. Override in specific tests for non-existent actions.
         mock.validate_actions_batch = AsyncMock(
@@ -442,6 +437,7 @@ class TestConditionKeyIssueAggregation:
     @pytest.fixture
     def fetcher(self):
         mock = MagicMock(spec=AWSServiceFetcher)
+        mock.get_global_conditions = AsyncMock(return_value=get_global_conditions())
         mock.validate_condition_key = AsyncMock()
         # Default: all actions exist. Override in specific tests for non-existent actions.
         mock.validate_actions_batch = AsyncMock(

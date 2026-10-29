@@ -1,6 +1,9 @@
 [tools]
-python = "3.13"
+python = "3.15"
 uv = "latest"
+
+[env]
+UV_PYTHON = { value = "{{ tools.python.path }}", tools = true }
 
 # ---------------------------------------------------------------------------
 # Installation
@@ -20,10 +23,7 @@ run = "uv sync --all-extras"
 
 [tasks.update]
 description = "Upgrade all packages in uv.lock and sync the environment with all extras"
-run = [
-    "uv lock --upgrade",
-    "uv sync --all-extras",
-]
+run = ["uv lock --upgrade", "uv sync --all-extras"]
 
 [tasks."update:package"]
 description = "Upgrade a single package (usage: mise run update:package -- <name>)"
@@ -60,7 +60,7 @@ description = "Run linting checks (ruff + format check + prettier on markdown)"
 run = [
     "uv run --extra dev ruff check .",
     "uv run --extra dev ruff format --check .",
-    'prettier --write "**/*.md"', # proseWrap driven by .prettierrc.json (CHANGELOG.md -> never; docs -> preserve)
+    'prettier --write "**/*.md"',               # proseWrap driven by .prettierrc.json (CHANGELOG.md -> never; docs -> preserve)
 ]
 
 [tasks.format]

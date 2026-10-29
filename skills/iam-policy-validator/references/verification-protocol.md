@@ -78,3 +78,4 @@ This evidence should accompany the finding when handing off for PR review.
 | Malformed ARN            | `query arn --service <svc> --name <resource-type>`                     |
 | Wildcard blast radius    | `query action --name "<svc:Prefix*>"`                                  |
 | Condition key scope      | `query action --service <svc> --has-condition-key <key> --output json` |
+| Global key type          | `query global-condition --name <aws:Key> --show-types`                 |

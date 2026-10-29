@@ -296,7 +296,7 @@ def _parser_flags(command_name: str) -> set[str]:
 
     command = next(c for c in ALL_COMMANDS if c.name == command_name)
     parser = argparse.ArgumentParser()
-    command.add_arguments(parser)
+    command.configure_parser(parser)
     return {s for action in parser._actions for s in action.option_strings} - {"-h", "--help"}
 
 
@@ -325,6 +325,21 @@ def _bash_complete(script: str, words: list[str]) -> list[str]:
 
 
 COMMANDS_WITH_FLAT_FLAGS = ["validate", "post-to-pr", "analyze", "sync-services", "mcp"]
+QUERY_SUBCOMMANDS_WITH_FLAGS = ["action", "arn", "condition", "global-condition"]
+
+
+def _query_subparsers() -> dict[str, argparse.ArgumentParser]:
+    from iam_validator.commands.query import QueryCommand
+
+    parser = argparse.ArgumentParser()
+    QueryCommand().add_arguments(parser)
+    subparsers = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    return dict(subparsers.choices)
+
+
+def _query_subcommand_flags(subcommand: str) -> set[str]:
+    parser = _query_subparsers()[subcommand]
+    return {s for action in parser._actions for s in action.option_strings} - {"-h", "--help"}
 
 
 class TestCompletionMatchesParsers:
@@ -335,6 +350,37 @@ class TestCompletionMatchesParsers:
     @pytest.mark.parametrize("command_name", COMMANDS_WITH_FLAT_FLAGS)
     def test_zsh_flags_match_parser_flags(self, completion_cmd: CompletionCommand, command_name: str) -> None:
         assert _zsh_flags(completion_cmd._generate_zsh_completion(), command_name) == _parser_flags(command_name)
+
+    @pytest.mark.parametrize("subcommand", QUERY_SUBCOMMANDS_WITH_FLAGS)
+    def test_bash_query_opts_match_parser_flags(self, completion_cmd: CompletionCommand, subcommand: str) -> None:
+        assert _bash_opts(completion_cmd._generate_bash_completion(), subcommand) == _query_subcommand_flags(subcommand)
+
+    @pytest.mark.parametrize("subcommand", QUERY_SUBCOMMANDS_WITH_FLAGS)
+    def test_zsh_query_flags_match_parser_flags(self, completion_cmd: CompletionCommand, subcommand: str) -> None:
+        assert _zsh_flags(completion_cmd._generate_zsh_completion(), subcommand) == _query_subcommand_flags(subcommand)
+
+    def test_query_subcommands_listed_in_both_shells(self, completion_cmd: CompletionCommand) -> None:
+        bash = completion_cmd._generate_bash_completion()
+        zsh = completion_cmd._generate_zsh_completion()
+        for subcommand in _query_subparsers():
+            assert f"{subcommand})" in bash
+            assert f"'{subcommand}:" in zsh
+
+    @pytest.mark.parametrize("command_name", ["query", "cache", "completion"])
+    def test_examples_flag_offered_for_commands_with_subcommands(
+        self, completion_cmd: CompletionCommand, command_name: str
+    ) -> None:
+        bash_block = completion_cmd._generate_bash_completion().split(f"\n        {command_name})\n", 1)[1]
+        zsh_block = completion_cmd._generate_zsh_completion().split(f"\n                {command_name})\n", 1)[1]
+        assert "--examples" in bash_block.split("\n            ;;", 1)[0]
+        assert "--examples[" in zsh_block.split("\n                    ;;", 1)[0]
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not installed")
+    def test_bash_query_examples_offers_topics(self, completion_cmd: CompletionCommand) -> None:
+        from iam_validator.commands.query import QUERY_EXAMPLES
+
+        words = ["iam-validator", "query", "examples", ""]
+        assert set(_bash_complete(completion_cmd._generate_bash_completion(), words)) == set(QUERY_EXAMPLES)
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not installed")
     def test_bash_mcp_profile_offers_tool_profiles(self, completion_cmd: CompletionCommand) -> None:

@@ -6,6 +6,7 @@ import os
 from typing import cast
 
 from iam_validator.commands.base import Command
+from iam_validator.commands.examples import ExampleSections
 from iam_validator.core import constants
 from iam_validator.core.models import IAMPolicy, PolicyType, ValidationReport
 from iam_validator.core.policy_checks import validate_policies
@@ -53,50 +54,52 @@ class ValidateCommand(Command):
         return "Validate IAM policies"
 
     @property
-    def epilog(self) -> str:
-        return """
-Examples:
-  # Validate a single policy file
-  iam-validator validate --path policy.json
-
-  # Validate all policies in a directory
-  iam-validator validate --path ./policies/
-
-  # Validate multiple paths (files and directories)
-  iam-validator validate --path policy1.json --path ./policies/ --path ./more-policies/
-
-  # Read policy from stdin
-  cat policy.json | iam-validator validate --stdin
-  echo '{"Version":"2012-10-17","Statement":[...]}' | iam-validator validate --stdin
-
-  # Use custom checks from a directory
-  iam-validator validate --path ./policies/ --custom-checks-dir ./my-checks
-
-  # Use offline mode with pre-downloaded AWS service definitions
-  iam-validator validate --path ./policies/ --aws-services-dir ./aws_services
-
-  # Generate JSON output
-  iam-validator validate --path ./policies/ --format json --output report.json
-
-  # Validate resource policies (S3 bucket policies, SNS topics, etc.)
-  iam-validator validate --path ./bucket-policies/ --policy-type RESOURCE_POLICY
-
-  # GitHub integration - all options (PR comment + review comments + job summary)
-  iam-validator validate --path ./policies/ --github-comment --github-review --github-summary
-
-  # Only line-specific review comments (clean, minimal)
-  iam-validator validate --path ./policies/ --github-review
-
-  # Only PR summary comment
-  iam-validator validate --path ./policies/ --github-comment
-
-  # Only GitHub Actions job summary
-  iam-validator validate --path ./policies/ --github-summary
-
-  # CI mode: show enhanced output in logs, save JSON to file
-  iam-validator validate --path ./policies/ --ci --github-review
-  iam-validator validate --path ./policies/ --ci --ci-output results.json
-        """
+    def examples(self) -> ExampleSections:
+        return [
+            ("Validate a single policy file", ["iam-validator validate --path policy.json"]),
+            ("Validate all policies in a directory", ["iam-validator validate --path ./policies/"]),
+            (
+                "Validate multiple paths (files and directories)",
+                ["iam-validator validate --path policy1.json --path ./policies/ --path ./more-policies/"],
+            ),
+            (
+                "Read policy from stdin",
+                [
+                    "cat policy.json | iam-validator validate --stdin",
+                    'echo \'{"Version":"2012-10-17","Statement":[...]}\' | iam-validator validate --stdin',
+                ],
+            ),
+            (
+                "Use custom checks from a directory",
+                ["iam-validator validate --path ./policies/ --custom-checks-dir ./my-checks"],
+            ),
+            (
+                "Use offline mode with pre-downloaded AWS service definitions",
+                ["iam-validator validate --path ./policies/ --aws-services-dir ./aws_services"],
+            ),
+            ("Generate JSON output", ["iam-validator validate --path ./policies/ --format json --output report.json"]),
+            (
+                "Validate resource policies (S3 bucket policies, SNS topics, etc.)",
+                ["iam-validator validate --path ./bucket-policies/ --policy-type RESOURCE_POLICY"],
+            ),
+            (
+                "GitHub integration - all options (PR comment + review comments + job summary)",
+                ["iam-validator validate --path ./policies/ --github-comment --github-review --github-summary"],
+            ),
+            (
+                "Only line-specific review comments (clean, minimal)",
+                ["iam-validator validate --path ./policies/ --github-review"],
+            ),
+            ("Only PR summary comment", ["iam-validator validate --path ./policies/ --github-comment"]),
+            ("Only GitHub Actions job summary", ["iam-validator validate --path ./policies/ --github-summary"]),
+            (
+                "CI mode: show enhanced output in logs, save JSON to file",
+                [
+                    "iam-validator validate --path ./policies/ --ci --github-review",
+                    "iam-validator validate --path ./policies/ --ci --ci-output results.json",
+                ],
+            ),
+        ]
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         """Add validate command arguments."""

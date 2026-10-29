@@ -162,70 +162,6 @@ class TestQueryCommand:
         assert args.service == "ec2"
         assert args.output == "yaml"
 
-    def test_get_access_level_read(self, query_cmd: QueryCommand) -> None:
-        """Test access level detection for read actions."""
-        action = ActionDetail(
-            Name="GetItem",
-            Annotations={
-                "Properties": {
-                    "IsList": False,
-                    "IsPermissionManagement": False,
-                    "IsTaggingOnly": False,
-                    "IsWrite": False,
-                }
-            },
-        )
-        assert query_cmd._get_access_level(action) == "read"
-
-    def test_get_access_level_write(self, query_cmd: QueryCommand) -> None:
-        """Test access level detection for write actions."""
-        action = ActionDetail(
-            Name="PutItem",
-            Annotations={
-                "Properties": {
-                    "IsList": False,
-                    "IsPermissionManagement": False,
-                    "IsTaggingOnly": False,
-                    "IsWrite": True,
-                }
-            },
-        )
-        assert query_cmd._get_access_level(action) == "write"
-
-    def test_get_access_level_list(self, query_cmd: QueryCommand) -> None:
-        """Test access level detection for list actions."""
-        action = ActionDetail(
-            Name="ListBuckets",
-            Annotations={"Properties": {"IsList": True, "IsWrite": False}},
-        )
-        assert query_cmd._get_access_level(action) == "list"
-
-    def test_get_access_level_permissions_management(self, query_cmd: QueryCommand) -> None:
-        """Test access level detection for permissions management actions."""
-        action = ActionDetail(
-            Name="AttachPolicy",
-            Annotations={"Properties": {"IsPermissionManagement": True}},
-        )
-        assert query_cmd._get_access_level(action) == "permissions-management"
-
-    def test_get_access_level_tagging(self, query_cmd: QueryCommand) -> None:
-        """Test access level detection for tagging actions."""
-        action = ActionDetail(
-            Name="TagResource",
-            Annotations={
-                "Properties": {
-                    "IsTaggingOnly": True,
-                    "IsWrite": True,  # Write flag also set, but tagging takes priority
-                }
-            },
-        )
-        assert query_cmd._get_access_level(action) == "tagging"
-
-    def test_get_access_level_no_annotations(self, query_cmd: QueryCommand) -> None:
-        """Test access level detection with no annotations."""
-        action = ActionDetail(Name="SomeAction")
-        assert query_cmd._get_access_level(action) == "Unknown"
-
     @pytest.mark.asyncio
     async def test_query_action_table_all_actions(
         self, query_cmd: QueryCommand, mock_service_detail: ServiceDetail
@@ -279,7 +215,8 @@ class TestQueryCommand:
                 # Verify the printed output
                 printed_output = mock_print.call_args[0][0]
                 result_dict = json.loads(printed_output)
-                assert result_dict["action"] == "GetItem"
+                assert result_dict["action"] == "test:GetItem"
+                assert "description" not in result_dict
                 assert result_dict["access_level"] == "read"
                 assert "table" in result_dict["resource_types"]
                 assert "test:condition1" in result_dict["condition_keys"]
@@ -1190,3 +1127,296 @@ class TestQueryCommand:
         assert args.show_condition_keys is True
         assert args.show_arn_format is True
         assert args.show_resource_type is True
+
+
+def _plane_service() -> ServiceDetail:
+    return ServiceDetail(
+        Name="test",
+        ServiceName="Test Service",
+        Actions=[
+            ActionDetail(Name="ReadData", Annotations={"Properties": {"IsDataPlane": True}}),
+            ActionDetail(Name="CreateThing", Annotations={"Properties": {"IsWrite": True, "IsDataPlane": False}}),
+            ActionDetail(Name="Unclassified", Annotations={"Properties": {"IsWrite": True}}),
+        ],
+        ConditionKeys=[ConditionKey(Name="test:key", Types=["String"])],
+    )
+
+
+async def _run_query(query_cmd: QueryCommand, argv: list[str], fetcher: AsyncMock) -> tuple[int, list[str]]:
+    parser = argparse.ArgumentParser()
+    query_cmd.add_arguments(parser)
+    args = parser.parse_args(argv)
+    with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
+        mock_fetcher_class.return_value.__aenter__ = AsyncMock(return_value=fetcher)
+        mock_fetcher_class.return_value.__aexit__ = AsyncMock(return_value=None)
+        with patch("builtins.print") as mock_print:
+            rc = await query_cmd.execute(args)
+    return rc, [str(call.args[0]) for call in mock_print.call_args_list]
+
+
+@pytest.fixture
+def plane_fetcher() -> AsyncMock:
+    from iam_validator.core.config.aws_global_conditions import get_global_conditions
+
+    fetcher = AsyncMock()
+    fetcher.fetch_service_by_name = AsyncMock(return_value=_plane_service())
+    fetcher.expand_wildcard_action = AsyncMock(return_value=["test:ReadData", "test:CreateThing", "test:Unclassified"])
+    fetcher.get_global_conditions = AsyncMock(return_value=get_global_conditions())
+    return fetcher
+
+
+class TestDataPlaneFilters:
+    @pytest.mark.parametrize(
+        "flag,expected",
+        [
+            ("--data-plane", ["test:ReadData"]),
+            ("--control-plane", ["test:CreateThing"]),
+        ],
+    )
+    async def test_list_all_filters_by_plane(self, query_cmd, plane_fetcher, flag, expected) -> None:
+        rc, out = await _run_query(query_cmd, ["action", "--service", "test", flag, "--output", "text"], plane_fetcher)
+        assert rc == 0
+        assert out == expected
+
+    async def test_wildcard_query_filters_by_plane(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["action", "--name", "test:*", "--control-plane", "--output", "json"], plane_fetcher
+        )
+        assert rc == 0
+        assert json.loads(out[0])["action"] == "test:CreateThing"
+
+    async def test_exact_query_filtered_out_by_plane(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(query_cmd, ["action", "--name", "test:Unclassified", "--data-plane"], plane_fetcher)
+        assert rc == 0
+        assert json.loads(out[0]) == []
+
+    def test_plane_flags_are_mutually_exclusive(self, query_cmd) -> None:
+        parser = argparse.ArgumentParser()
+        query_cmd.add_arguments(parser)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["action", "--service", "s3", "--data-plane", "--control-plane"])
+
+    async def test_full_output_includes_service_name_and_data_plane(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(query_cmd, ["action", "--name", "test:ReadData"], plane_fetcher)
+        assert rc == 0
+        result = json.loads(out[0])
+        assert result["service_name"] == "Test Service"
+        assert result["data_plane"] is True
+
+    async def test_show_data_plane_text_reports_unclassified(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["action", "--service", "test", "--show-data-plane", "--output", "text"], plane_fetcher
+        )
+        assert rc == 0
+        assert out == [
+            "test:ReadData",
+            "  Plane: data",
+            "test:CreateThing",
+            "  Plane: control",
+            "test:Unclassified",
+            "  Plane: unclassified",
+        ]
+
+    async def test_condition_and_arn_details_include_service_name(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(query_cmd, ["condition", "--name", "test:key"], plane_fetcher)
+        assert rc == 0
+        assert json.loads(out[0])["service_name"] == "Test Service"
+
+
+class TestGlobalConditionQuery:
+    async def test_lists_all_global_keys(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(query_cmd, ["global-condition"], plane_fetcher)
+        assert rc == 0
+        keys = {k["condition_key"] for k in json.loads(out[0])}
+        assert {"aws:SourceIp", "aws:ResourceTag/${TagKey}", "ec2:RoleDelivery"} <= keys
+
+    async def test_type_filter_is_case_insensitive(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(query_cmd, ["global-condition", "--type", "bool"], plane_fetcher)
+        assert rc == 0
+        result = json.loads(out[0])
+        assert result
+        assert all("Bool" in k["types"] for k in result)
+
+    async def test_concrete_tag_key_resolves_to_template(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["global-condition", "--name", "aws:PrincipalTag/team", "--output", "text"], plane_fetcher
+        )
+        assert rc == 0
+        assert out[0] == "aws:PrincipalTag/${TagKey}"
+
+    async def test_unknown_key_fails(self, query_cmd, plane_fetcher) -> None:
+        rc, _ = await _run_query(query_cmd, ["global-condition", "--name", "aws:Nope"], plane_fetcher)
+        assert rc == 1
+
+    async def test_wildcard_name_lists_matching_keys(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["global-condition", "--name", "aws:Re*", "--output", "text"], plane_fetcher
+        )
+        assert rc == 0
+        names = [line for line in "\n".join(out).splitlines() if line and not line.startswith(" ")]
+        assert "aws:ResourceTag/${TagKey}" in names
+        assert all(n.startswith("aws:Re") for n in names)
+
+    async def test_wildcard_name_without_matches_fails(self, query_cmd, plane_fetcher) -> None:
+        rc, _ = await _run_query(query_cmd, ["global-condition", "--name", "aws:Zzz*"], plane_fetcher)
+        assert rc == 1
+
+
+class TestFiltersApplyToNamedQueries:
+    async def test_access_level_filters_wildcard_query(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["action", "--name", "test:*", "--access-level", "write", "--output", "text"], plane_fetcher
+        )
+        assert rc == 0
+        assert out == ["test:CreateThing", "test:Unclassified"]
+
+    async def test_access_level_filters_exact_query(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["action", "--name", "test:CreateThing", "--access-level", "read"], plane_fetcher
+        )
+        assert rc == 0
+        assert json.loads(out[0]) == []
+
+    @pytest.mark.parametrize("resource_type,expected", [("*", {"test:ReadData"}), ("thing", {"test:CreateThing"})])
+    async def test_resource_type_filters_wildcard_query(
+        self, query_cmd, plane_fetcher, resource_type, expected
+    ) -> None:
+        service = _plane_service()
+        service.actions["CreateThing"].resources = [{"Name": "thing"}]
+        plane_fetcher.fetch_service_by_name = AsyncMock(return_value=service)
+        plane_fetcher.expand_wildcard_action = AsyncMock(return_value=["test:ReadData", "test:CreateThing"])
+        rc, out = await _run_query(
+            query_cmd,
+            ["action", "--name", "test:*", "--resource-type", resource_type, "--output", "text"],
+            plane_fetcher,
+        )
+        assert rc == 0
+        assert set(out) == expected
+
+
+class TestShowFieldFilters:
+    @pytest.fixture
+    def api_fetcher(self, plane_fetcher) -> AsyncMock:
+        from iam_validator.core.config.aws_global_conditions import AWSGlobalConditions
+
+        plane_fetcher.get_global_conditions = AsyncMock(
+            return_value=AWSGlobalConditions.from_api(
+                [
+                    {
+                        "Name": "aws:EpochTime",
+                        "Description": "Request time",
+                        "DocPage": "/IAM/latest/UserGuide/reference_policies_condition-keys.html#epochtime",
+                        "Types": ["Numeric", "Date"],
+                    }
+                ]
+            )
+        )
+        return plane_fetcher
+
+    async def test_show_service_name(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["action", "--name", "test:ReadData", "--show-service-name", "--output", "text"], plane_fetcher
+        )
+        assert rc == 0
+        assert out == ["test:ReadData", "  Service name: Test Service"]
+
+    async def test_condition_show_types(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(query_cmd, ["condition", "--service", "test", "--show-types"], plane_fetcher)
+        assert rc == 0
+        assert json.loads(out[0]) == [{"condition_key": "test:key", "types": ["String"]}]
+
+    async def test_global_show_types_only(self, query_cmd, api_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["global-condition", "--name", "aws:EpochTime", "--show-types"], api_fetcher
+        )
+        assert rc == 0
+        assert json.loads(out[0]) == {"condition_key": "aws:EpochTime", "types": ["Numeric", "Date"]}
+
+    async def test_global_show_description_and_doc_url_text(self, query_cmd, api_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd,
+            ["global-condition", "--show-description", "--show-doc-url", "--output", "text"],
+            api_fetcher,
+        )
+        assert rc == 0
+        assert out[out.index("aws:EpochTime") + 1] == "  Description: Request time"
+        assert out[out.index("aws:EpochTime") + 2].startswith("  Documentation: https://docs.aws.amazon.com/")
+
+
+class TestQueryExamples:
+    async def test_all_topics_without_fetcher(self, query_cmd, capsys) -> None:
+        from iam_validator.commands.query import QUERY_EXAMPLES
+
+        parser = argparse.ArgumentParser()
+        query_cmd.add_arguments(parser)
+        with patch("iam_validator.commands.query.AWSServiceFetcher") as mock_fetcher_class:
+            rc = await query_cmd.execute(parser.parse_args(["examples"]))
+        assert rc == 0
+        mock_fetcher_class.assert_not_called()
+        out = capsys.readouterr().out
+        assert all(f"\n{topic}\n" in f"\n{out}" for topic in QUERY_EXAMPLES)
+
+    async def test_single_topic(self, query_cmd, capsys) -> None:
+        parser = argparse.ArgumentParser()
+        query_cmd.add_arguments(parser)
+        assert await query_cmd.execute(parser.parse_args(["examples", "global-condition"])) == 0
+        out = capsys.readouterr().out
+        assert "query global-condition" in out
+        assert "query arn" not in out
+
+    def test_unknown_topic_rejected(self, query_cmd) -> None:
+        parser = argparse.ArgumentParser()
+        query_cmd.add_arguments(parser)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["examples", "nope"])
+
+    def test_query_help_points_to_examples(self, query_cmd) -> None:
+        parser = argparse.ArgumentParser(epilog=query_cmd.epilog)
+        query_cmd.add_arguments(parser)
+        help_text = parser.format_help()
+        assert "iam-validator query examples" in help_text
+        assert "$ " not in help_text
+
+
+class TestDescriptionShownOnlyWhenPresent:
+    @pytest.fixture
+    def described_fetcher(self) -> AsyncMock:
+        fetcher = AsyncMock()
+        fetcher.fetch_service_by_name = AsyncMock(
+            return_value=ServiceDetail(
+                Name="demo",
+                Actions=[
+                    ActionDetail(Name="Described", Annotations={"Description": "Does a thing"}),
+                    ActionDetail(Name="Bare"),
+                ],
+                ConditionKeys=[
+                    ConditionKey(Name="demo:described", Description="A key", Types=["String"]),
+                    ConditionKey(Name="demo:bare", Types=["String"]),
+                ],
+            )
+        )
+        return fetcher
+
+    async def test_action_description_included_when_present(self, query_cmd, described_fetcher) -> None:
+        rc, out = await _run_query(query_cmd, ["action", "--name", "demo:Described"], described_fetcher)
+        assert rc == 0
+        assert json.loads(out[0])["description"] == "Does a thing"
+
+    async def test_action_description_omitted_when_empty(self, query_cmd, described_fetcher) -> None:
+        rc, out = await _run_query(query_cmd, ["action", "--name", "demo:Bare"], described_fetcher)
+        assert rc == 0
+        assert "description" not in json.loads(out[0])
+
+    async def test_action_description_in_text_output(self, query_cmd, described_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["action", "--name", "demo:Described", "--output", "text"], described_fetcher
+        )
+        assert rc == 0
+        assert "  Description: Does a thing" in out
+
+    async def test_condition_description_only_on_keys_that_have_one(self, query_cmd, described_fetcher) -> None:
+        rc, out = await _run_query(query_cmd, ["condition", "--service", "demo"], described_fetcher)
+        assert rc == 0
+        by_name = {k["condition_key"]: k for k in json.loads(out[0])}
+        assert by_name["demo:described"]["description"] == "A key"
+        assert "description" not in by_name["demo:bare"]

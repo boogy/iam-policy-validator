@@ -27,6 +27,7 @@ from iam_validator.core.condition_validators import (
     is_multivalued_context_key,
     normalize_operator,
 )
+from iam_validator.core.config.aws_global_conditions import get_global_conditions
 from iam_validator.core.models import ConditionKey
 
 # =============================================================================
@@ -263,10 +264,10 @@ class TestConditionTypeMismatchPatternMatching:
 
         check = ConditionTypeMismatchCheck()
         async with AWSServiceFetcher() as fetcher:
-            key_type = await check._get_condition_key_type(
+            key_types = await check._get_condition_key_types(
                 fetcher, "aws:ResourceTag/owner", ["events:DeleteEventBus"], ["*"]
             )
-        assert key_type == "String"
+        assert key_types == ["String"]
 
     @pytest.mark.asyncio
     async def test_compound_tag_key_type_resolved(self):
@@ -275,10 +276,10 @@ class TestConditionTypeMismatchPatternMatching:
 
         check = ConditionTypeMismatchCheck()
         async with AWSServiceFetcher() as fetcher:
-            key_type = await check._get_condition_key_type(
+            key_types = await check._get_condition_key_types(
                 fetcher, "aws:ResourceTag/team/owner", ["events:DeleteEventBus"], ["*"]
             )
-        assert key_type == "String"
+        assert key_types == ["String"]
 
     @pytest.mark.asyncio
     async def test_request_tag_compound_key_type_resolved(self):
@@ -287,23 +288,23 @@ class TestConditionTypeMismatchPatternMatching:
 
         check = ConditionTypeMismatchCheck()
         async with AWSServiceFetcher() as fetcher:
-            key_type = await check._get_condition_key_type(
+            key_types = await check._get_condition_key_types(
                 fetcher, "aws:RequestTag/dept/env", ["iam:CreateRole"], ["*"]
             )
-        assert key_type == "String"
+        assert key_types[0] == "String"
 
     @pytest.mark.asyncio
     async def test_unsupported_tag_key_returns_none(self):
-        """A condition key with no matching pattern in any service should return None."""
+        """A condition key with no matching pattern in any service should return no types."""
         from iam_validator.checks.condition_type_mismatch import ConditionTypeMismatchCheck
 
         check = ConditionTypeMismatchCheck()
         async with AWSServiceFetcher() as fetcher:
             # Use a completely fabricated condition key that no service defines
-            key_type = await check._get_condition_key_type(
+            key_types = await check._get_condition_key_types(
                 fetcher, "custom:NonExistentTag/team/owner", ["sts:GetCallerIdentity"], ["*"]
             )
-        assert key_type is None
+        assert key_types == []
 
     @pytest.mark.asyncio
     async def test_type_resolution_with_mock_service_detail(self):
@@ -313,6 +314,7 @@ class TestConditionTypeMismatchPatternMatching:
         check = ConditionTypeMismatchCheck()
 
         fetcher = MagicMock()
+        fetcher.get_global_conditions = AsyncMock(return_value=get_global_conditions())
         fetcher.parse_action = MagicMock(return_value=("events", "DeleteEventBus"))
 
         action_detail = MagicMock()
@@ -330,10 +332,10 @@ class TestConditionTypeMismatchPatternMatching:
         service_detail.resources = {"event-bus": resource_type}
         fetcher.fetch_service_by_name = AsyncMock(return_value=service_detail)
 
-        key_type = await check._get_condition_key_type(
+        key_types = await check._get_condition_key_types(
             fetcher, "aws:ResourceTag/team/owner", ["events:DeleteEventBus"], ["*"]
         )
-        assert key_type == "String"
+        assert key_types == ["String"]
 
 
 # =============================================================================
@@ -352,6 +354,7 @@ class TestSetOperatorValidationPatternMatching:
         check = SetOperatorValidationCheck()
 
         fetcher = MagicMock()
+        fetcher.get_global_conditions = AsyncMock(return_value=get_global_conditions())
         fetcher.parse_action = MagicMock(return_value=("svc", "DoThing"))
         service_detail = MagicMock()
         service_detail.condition_keys = {
@@ -370,6 +373,7 @@ class TestSetOperatorValidationPatternMatching:
         check = SetOperatorValidationCheck()
 
         fetcher = MagicMock()
+        fetcher.get_global_conditions = AsyncMock(return_value=get_global_conditions())
         fetcher.parse_action = MagicMock(return_value=("events", "DeleteEventBus"))
         service_detail = MagicMock()
         service_detail.condition_keys = {
@@ -387,6 +391,7 @@ class TestSetOperatorValidationPatternMatching:
         check = SetOperatorValidationCheck()
 
         fetcher = MagicMock()
+        fetcher.get_global_conditions = AsyncMock(return_value=get_global_conditions())
         fetcher.parse_action = MagicMock(return_value=("s3", "PutObject"))
         service_detail = MagicMock()
         service_detail.condition_keys = {

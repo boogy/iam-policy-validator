@@ -24,6 +24,30 @@ logger = logging.getLogger(__name__)
 # separators or traversal sequences into a write/read path.
 _SERVICE_NAME_UNSAFE_RE = re.compile(r"[^a-z0-9._-]")
 
+GLOBAL_CONDITION_KEYS_FILENAME = "_global_condition_keys.json"
+
+
+def parse_services_list(data: Any) -> list[ServiceInfo]:
+    """Parse the Service Reference root listing into ServiceInfo objects, skipping bad entries."""
+    if not isinstance(data, list):
+        raise ValueError("Expected list of services")
+
+    services: list[ServiceInfo] = []
+    for item in data:
+        if isinstance(item, dict):
+            service = item.get("service")
+            url = item.get("url")
+            if service and url:
+                modified = item.get("modified")
+                services.append(
+                    ServiceInfo(
+                        service=str(service),
+                        url=str(url),
+                        modified=modified if isinstance(modified, int) and not isinstance(modified, bool) else None,
+                    )
+                )
+    return services
+
 
 def service_filename(service_name: str) -> str:
     """Map an AWS service name to a safe local filename (basename only).
@@ -183,13 +207,17 @@ class ServiceFileStorage:
 
         return self._cache_dir / filename
 
-    def read_from_cache(self, url: str, base_url: str, allow_stale: bool = False) -> Any | None:
+    def read_from_cache(
+        self, url: str, base_url: str, allow_stale: bool = False, modified: int | None = None
+    ) -> Any | None:
         """Read from disk cache with TTL checking.
 
         Args:
             url: URL to read from cache
             base_url: Base URL for service reference API
             allow_stale: If True, return stale cache data even if expired
+            modified: AWS's last-modified epoch for this file; a cache file written at or
+                after it stays valid past the TTL
 
         Returns:
             Cached data if valid (or if allow_stale and data exists), None otherwise
@@ -206,6 +234,9 @@ class ServiceFileStorage:
             # Check file modification time for TTL
             mtime = cache_path.stat().st_mtime
             is_expired = time.time() - mtime > self.cache_ttl
+            if is_expired and modified is not None and mtime >= modified:
+                logger.debug(f"Cache past TTL but unchanged upstream for {url}")
+                is_expired = False
 
             if is_expired and not allow_stale:
                 # Cache expired - don't delete the file, just return None
@@ -279,13 +310,7 @@ class ServiceFileStorage:
             if not isinstance(data, list):
                 raise ValueError("Expected list of services from _services.json")
 
-            services: list[ServiceInfo] = []
-            for item in data:
-                if isinstance(item, dict):
-                    service = item.get("service")
-                    url = item.get("url")
-                    if service and url:
-                        services.append(ServiceInfo(service=str(service), url=str(url)))
+            services = parse_services_list(data)
 
             logger.info(f"Loaded {len(services)} services from local file: {services_file}")
             return services
@@ -326,6 +351,21 @@ class ServiceFileStorage:
 
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in {service_file}: {e}") from e
+
+    def load_global_condition_keys_from_file(self) -> Any | None:
+        """Load the raw global condition keys list from the offline directory, or None if absent."""
+        if not self.aws_services_dir:
+            raise ValueError("aws_services_dir is not set")
+
+        keys_file = self.aws_services_dir / GLOBAL_CONDITION_KEYS_FILENAME
+        if not keys_file.exists():
+            return None
+
+        try:
+            with open(keys_file, encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in {keys_file}: {e}") from e
 
     def clear_disk_cache(self) -> None:
         """Remove all cached files from disk."""

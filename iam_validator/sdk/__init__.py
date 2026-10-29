@@ -121,6 +121,7 @@ from iam_validator.sdk.query_utils import (
     ArnTypeInfo,
     ConditionKeyDetails,
     ConditionKeyInfo,
+    GlobalConditionKeyDetails,
     get_actions_by_access_level,
     get_actions_supporting_condition,
     get_wildcard_only_actions,
@@ -131,6 +132,8 @@ from iam_validator.sdk.query_utils import (
     query_arn_types,
     query_condition_key,
     query_condition_keys,
+    query_global_condition_key,
+    query_global_condition_keys,
 )
 from iam_validator.sdk.shortcuts import (
     count_issues_by_severity,
@@ -183,6 +186,8 @@ __all__ = [
     "query_arn_format",
     "query_condition_keys",
     "query_condition_key",
+    "query_global_condition_keys",
+    "query_global_condition_key",
     "get_actions_by_access_level",
     "get_wildcard_only_actions",
     "get_actions_supporting_condition",
@@ -191,6 +196,7 @@ __all__ = [
     "ActionDetails",
     "ConditionKeyInfo",
     "ConditionKeyDetails",
+    "GlobalConditionKeyDetails",
     "ArnTypeInfo",
     "ArnFormatDetails",
     # === ARN utilities ===

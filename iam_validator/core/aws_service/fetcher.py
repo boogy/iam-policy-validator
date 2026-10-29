@@ -13,12 +13,14 @@ from iam_validator.core import constants
 from iam_validator.core.aws_service.cache import ServiceCacheManager
 from iam_validator.core.aws_service.client import AWSServiceClient
 from iam_validator.core.aws_service.parsers import ServiceParser
-from iam_validator.core.aws_service.storage import ServiceFileStorage
+from iam_validator.core.aws_service.storage import ServiceFileStorage, parse_services_list
 from iam_validator.core.aws_service.validators import (
     ConditionKeyValidationResult,
     ServiceValidator,
 )
 from iam_validator.core.config import AWS_SERVICE_REFERENCE_BASE_URL
+from iam_validator.core.config.aws_api import AWS_GLOBAL_CONDITION_KEYS_URL
+from iam_validator.core.config.aws_global_conditions import AWSGlobalConditions, get_global_conditions
 from iam_validator.core.models import ServiceDetail, ServiceInfo
 
 logger = logging.getLogger(__name__)
@@ -139,6 +141,8 @@ class AWSServiceFetcher:
         self.prefetch_common = prefetch_common
         self.aws_services_dir = Path(aws_services_dir) if aws_services_dir else None
         self._prefetched_services: set[str] = set()
+        self._global_conditions: AWSGlobalConditions | None = None
+        self._global_conditions_lock = asyncio.Lock()
         # Semaphore for limiting concurrent requests
         self._request_semaphore = asyncio.Semaphore(max_concurrent_requests)
 
@@ -257,13 +261,7 @@ class AWSServiceFetcher:
         if not isinstance(data, list):
             raise ValueError("Expected list of services from root endpoint")
 
-        services: list[ServiceInfo] = []
-        for item in data:
-            if isinstance(item, dict):
-                service = item.get("service")
-                url = item.get("url")
-                if service and url:
-                    services.append(ServiceInfo(service=str(service), url=str(url)))
+        services = parse_services_list(data)
 
         # Cache the parsed services list (memory only)
         await self._cache.set(services_cache_key, services)
@@ -329,7 +327,9 @@ class AWSServiceFetcher:
         for service in services:
             if service.service.lower() == service_name_lower:
                 # Check disk cache first, then fetch from API
-                data = await self._cache.get(f"raw:{service.url}", url=service.url, base_url=self.BASE_URL)
+                data = await self._cache.get(
+                    f"raw:{service.url}", url=service.url, base_url=self.BASE_URL, modified=service.modified
+                )
                 if data is None:
                     try:
                         # Fetch service detail from API
@@ -355,6 +355,49 @@ class AWSServiceFetcher:
                 return service_detail
 
         raise ValueError(f"Service `{service_name}` not found")
+
+    async def get_global_conditions(self) -> AWSGlobalConditions:
+        """Get global condition keys from the AWS Service Reference, loaded once per fetcher.
+
+        Source order: offline directory file, disk cache, API, stale cache. Falls back to
+        the bundled list when none yields usable data.
+
+        Example:
+            >>> async with AWSServiceFetcher() as fetcher:
+            ...     keys = await fetcher.get_global_conditions()
+            ...     keys.get_key_types("aws:EpochTime")
+            ['Numeric', 'Date']
+        """
+        if self._global_conditions is None:
+            async with self._global_conditions_lock:
+                if self._global_conditions is None:
+                    self._global_conditions = await self._load_global_conditions()
+        return self._global_conditions
+
+    async def _load_global_conditions(self) -> AWSGlobalConditions:
+        url = AWS_GLOBAL_CONDITION_KEYS_URL
+        try:
+            if self.aws_services_dir:
+                data = self._storage.load_global_condition_keys_from_file()
+            else:
+                data = await self._cache.get(f"raw:{url}", url=url, base_url=self.BASE_URL)
+                if data is None:
+                    try:
+                        data = await self._client.fetch(url)
+                        await self._cache.set(f"raw:{url}", data, url=url, base_url=self.BASE_URL)
+                    except Exception as e:  # pylint: disable=broad-exception-caught
+                        logger.warning(f"API fetch failed for global condition keys: {e}")
+                        data = await self._cache.get_stale(url=url, base_url=self.BASE_URL)
+            loaded = AWSGlobalConditions.from_api(data)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning(f"Failed to load global condition keys: {e}")
+            loaded = None
+
+        if loaded is None:
+            logger.info("Using bundled global condition keys")
+            return get_global_conditions()
+        logger.debug(f"Loaded {len(loaded.list_keys())} global condition keys from AWS Service Reference")
+        return loaded
 
     async def fetch_multiple_services(
         self,
@@ -552,7 +595,9 @@ class AWSServiceFetcher:
             return ConditionKeyValidationResult(is_valid=True)
 
         service_detail = await self.fetch_service_by_name(service_prefix)
-        return await self._validator.validate_condition_key(action, condition_key, service_detail, resources)
+        return await self._validator.validate_condition_key(
+            action, condition_key, service_detail, resources, global_conditions=await self.get_global_conditions()
+        )
 
     async def is_condition_key_supported(
         self,

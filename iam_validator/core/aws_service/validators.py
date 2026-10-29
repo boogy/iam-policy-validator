@@ -12,6 +12,7 @@ from typing import Any
 
 from iam_validator.core.aws_service.parsers import ServiceParser
 from iam_validator.core.condition_validators import ALWAYS_PRESENT_CONDITION_KEYS
+from iam_validator.core.config.aws_global_conditions import AWSGlobalConditions, get_global_conditions
 from iam_validator.core.constants import (
     AWS_TAG_KEY_ALLOWED_CHARS,
     AWS_TAG_KEY_MAX_LENGTH,
@@ -274,6 +275,7 @@ class ServiceValidator:
         condition_key: str,
         service_detail: ServiceDetail,
         resources: list[str] | None = None,
+        global_conditions: AWSGlobalConditions | None = None,
     ) -> ConditionKeyValidationResult:
         """Validate condition key against action and optionally resource types.
 
@@ -282,6 +284,7 @@ class ServiceValidator:
             condition_key: Condition key to validate (e.g., "s3:prefix")
             service_detail: Service definition containing actions and resources
             resources: Optional list of resource ARNs to validate against
+            global_conditions: Global key set to accept (default: bundled list)
 
         Returns:
             ConditionKeyValidationResult with validation details
@@ -294,22 +297,13 @@ class ServiceValidator:
             ... )
         """
         try:
-            from iam_validator.core.config.aws_global_conditions import (  # pylint: disable=import-outside-toplevel
-                get_global_conditions,
-            )
-
             service_prefix, action_name = self._parser.parse_action(action)
 
-            # Check if it's a global condition key
-            # Note: Some aws: prefixed keys like aws:RequestTag/* and aws:ResourceTag/* are NOT
-            # global keys - they're action-specific or resource-specific. We'll check those later.
             is_global_key = False
             if condition_key.startswith("aws:"):
-                global_conditions = get_global_conditions()
-                if global_conditions.is_valid_global_key(condition_key):
-                    is_global_key = True
-                # If not a global key, continue to check action/resource-specific keys
-                # Don't return an error yet - aws:RequestTag, aws:ResourceTag are action-specific
+                if global_conditions is None:
+                    global_conditions = get_global_conditions()
+                is_global_key = global_conditions.is_valid_global_key(condition_key)
 
             # Resolve actions to check: expand wildcards, or use exact action
             if self._parser.is_wildcard_action(action_name):

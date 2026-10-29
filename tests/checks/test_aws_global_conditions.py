@@ -18,11 +18,9 @@ class TestAWSGlobalConditions:
         return AWSGlobalConditions()
 
     def test_initialization(self, conditions):
-        """Test that the class initializes correctly."""
-        assert conditions._global_keys is not None
-        assert len(conditions._global_keys) > 0
-        assert conditions._patterns is not None
-        assert len(conditions._patterns) > 0
+        assert conditions.source == "bundled"
+        assert len(conditions.get_all_keys()) > 0
+        assert len(conditions.get_patterns()) == 3
 
     def test_valid_explicit_global_key(self, conditions):
         """Test validation of explicit global condition keys."""
@@ -40,21 +38,19 @@ class TestAWSGlobalConditions:
         assert conditions.is_valid_global_key("") is False
 
     def test_request_tag_pattern(self, conditions):
-        """Test that aws:RequestTag/* are NOT global keys (they're action-specific)."""
-        # aws:RequestTag is NOT a global key - it's only supported by specific actions
-        assert conditions.is_valid_global_key("aws:RequestTag/Environment") is False
-        assert conditions.is_valid_global_key("aws:RequestTag/Owner") is False
-        assert conditions.is_valid_global_key("aws:RequestTag/CostCenter") is False
-        assert conditions.is_valid_global_key("aws:RequestTag/Team-Name") is False
-        assert conditions.is_valid_global_key("aws:RequestTag/app.example.com/role") is False
+        """aws:RequestTag/* is global (AWS lists it in global-condition-keys.json)."""
+        assert conditions.is_valid_global_key("aws:RequestTag/Environment") is True
+        assert conditions.is_valid_global_key("aws:RequestTag/Owner") is True
+        assert conditions.is_valid_global_key("aws:RequestTag/CostCenter") is True
+        assert conditions.is_valid_global_key("aws:RequestTag/Team-Name") is True
+        assert conditions.is_valid_global_key("aws:RequestTag/app.example.com/role") is True
 
     def test_resource_tag_pattern(self, conditions):
-        """Test that aws:ResourceTag/* are NOT global keys (they're resource-specific)."""
-        # aws:ResourceTag is NOT a global key - it's only supported by resources that have tags
-        assert conditions.is_valid_global_key("aws:ResourceTag/Environment") is False
-        assert conditions.is_valid_global_key("aws:ResourceTag/Owner") is False
-        assert conditions.is_valid_global_key("aws:ResourceTag/Project") is False
-        assert conditions.is_valid_global_key("aws:ResourceTag/app:component") is False
+        """aws:ResourceTag/* is global (AWS lists it in global-condition-keys.json)."""
+        assert conditions.is_valid_global_key("aws:ResourceTag/Environment") is True
+        assert conditions.is_valid_global_key("aws:ResourceTag/Owner") is True
+        assert conditions.is_valid_global_key("aws:ResourceTag/Project") is True
+        assert conditions.is_valid_global_key("aws:ResourceTag/app:component") is True
 
     def test_principal_tag_pattern(self, conditions):
         """Test validation of aws:PrincipalTag/* patterns."""
@@ -83,9 +79,8 @@ class TestAWSGlobalConditions:
         # Check that types are present
         assert keys["aws:SourceIp"] == "IPAddress"
         assert keys["aws:PrincipalArn"] == "ARN"
-        # Ensure it's a copy, not the original
         keys["test:key"] = "String"
-        assert "test:key" not in conditions._global_keys
+        assert "test:key" not in conditions.get_all_keys()
 
     def test_get_key_type(self, conditions):
         """Test getting the type for a global condition key."""
@@ -97,12 +92,10 @@ class TestAWSGlobalConditions:
         assert conditions.get_key_type("aws:MultiFactorAuthAge") == "Numeric"
         assert conditions.get_key_type("aws:username") == "String"
 
-        # Pattern matches (only PrincipalTag is global) - all tag keys are String type
         assert conditions.get_key_type("aws:PrincipalTag/Department") == "String"
-
-        # RequestTag and ResourceTag are NOT global
-        assert conditions.get_key_type("aws:RequestTag/Environment") is None
-        assert conditions.get_key_type("aws:ResourceTag/Name") is None
+        assert conditions.get_key_type("aws:RequestTag/Environment") == "String"
+        assert conditions.get_key_type("aws:ResourceTag/Name") == "String"
+        assert conditions.get_key_types("aws:RequestTag/Environment") == ["String", "Numeric"]
 
         # Invalid keys
         assert conditions.get_key_type("invalid:key") is None
@@ -112,16 +105,15 @@ class TestAWSGlobalConditions:
         """Test getting all condition key patterns."""
         patterns = conditions.get_patterns()
         assert isinstance(patterns, list)
-        assert len(patterns) == 1  # Only PrincipalTag (RequestTag and ResourceTag are NOT global)
+        assert len(patterns) == 3
 
         # Verify pattern structure
         for pattern_config in patterns:
             assert "pattern" in pattern_config
             assert "description" in pattern_config
 
-        # Ensure it's a copy, not the original
         patterns.append({"pattern": "test", "description": "test"})
-        assert len(conditions._patterns) == 1
+        assert len(conditions.get_patterns()) == 3
 
     def test_singleton_get_global_conditions(self):
         """Test the singleton factory function."""
@@ -187,8 +179,6 @@ class TestAWSGlobalConditions:
 
     def test_tag_with_special_characters(self, conditions):
         """Test tag patterns with allowed special characters."""
-        # According to the pattern: [a-zA-Z0-9+\-=._:/@]+
-        # Only PrincipalTag is global, so test with it
         assert conditions.is_valid_global_key("aws:PrincipalTag/my-tag") is True
         assert conditions.is_valid_global_key("aws:PrincipalTag/my_tag") is True
         assert conditions.is_valid_global_key("aws:PrincipalTag/my.tag") is True
@@ -197,9 +187,7 @@ class TestAWSGlobalConditions:
         assert conditions.is_valid_global_key("aws:PrincipalTag/my@tag") is True
         assert conditions.is_valid_global_key("aws:PrincipalTag/my+tag") is True
         assert conditions.is_valid_global_key("aws:PrincipalTag/my=tag") is True
-
-        # RequestTag is NOT global
-        assert conditions.is_valid_global_key("aws:RequestTag/my-tag") is False
+        assert conditions.is_valid_global_key("aws:RequestTag/my-tag") is True
 
     def test_known_service_specific_keys_are_invalid(self, conditions):
         """Test that service-specific condition keys are not treated as global."""
@@ -213,3 +201,63 @@ class TestAWSGlobalConditions:
 
         # IAM-specific keys
         assert conditions.is_valid_global_key("iam:PassedToService") is False
+
+
+class TestFromApi:
+    PAYLOAD = [
+        {
+            "Name": "aws:EpochTime",
+            "Description": "Request time",
+            "DocPage": "/IAM/latest/UserGuide/reference_policies_condition-keys.html#condition-keys-epochtime",
+            "Types": ["Numeric", "Date"],
+        },
+        {"Name": "aws:SourceIp", "Types": ["IpAddress"]},
+        {"Name": "aws:RequestTag/${TagKey}", "Types": ["String", "Numeric"]},
+        {"Name": "aws:Unknown", "Types": [], "Extra": "ignored"},
+        {"Types": ["String"]},
+        "not-an-object",
+    ]
+
+    @pytest.fixture
+    def conditions(self):
+        result = AWSGlobalConditions.from_api(self.PAYLOAD)
+        assert result is not None
+        return result
+
+    def test_source_is_aws_api(self, conditions):
+        assert conditions.source == "aws-api"
+
+    def test_multi_types_are_kept_in_order(self, conditions):
+        assert conditions.get_key_types("aws:EpochTime") == ["Numeric", "Date"]
+        assert conditions.get_key_type("aws:EpochTime") == "Numeric"
+
+    def test_doc_page_becomes_absolute_url(self, conditions):
+        info = conditions.get_key_info("aws:EpochTime")
+        assert info is not None
+        assert info.doc_url.startswith("https://docs.aws.amazon.com/IAM/latest/UserGuide/")
+        assert info.description == "Request time"
+
+    def test_templated_name_becomes_pattern(self, conditions):
+        assert conditions.is_valid_global_key("aws:RequestTag/team/owner") is True
+        assert conditions.is_valid_global_key("aws:RequestTag/") is False
+        assert conditions.get_key_types("aws:requesttag/team") == ["String", "Numeric"]
+        assert conditions.is_valid_global_key("aws:PrincipalTag/team") is False
+
+    def test_entry_without_types_defaults_to_string(self, conditions):
+        assert conditions.get_key_types("aws:Unknown") == ["String"]
+
+    def test_malformed_entries_are_skipped(self, conditions):
+        names = {info.name for info in conditions.list_keys()}
+        assert "aws:EpochTime" in names
+        assert all(isinstance(name, str) and name for name in names)
+
+    def test_supplemental_keys_are_merged(self, conditions):
+        assert conditions.is_valid_global_key("ec2:RoleDelivery") is True
+        assert conditions.is_valid_global_key("aws:ViaCustomerDomain") is True
+
+    @pytest.mark.parametrize("data", [None, {}, [], [{"Types": ["String"]}], "text"])
+    def test_unusable_payload_returns_none(self, data):
+        assert AWSGlobalConditions.from_api(data) is None
+
+    def test_lookups_are_case_insensitive(self, conditions):
+        assert conditions.get_key_types("AWS:EPOCHTIME") == ["Numeric", "Date"]

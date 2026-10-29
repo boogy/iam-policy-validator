@@ -20,6 +20,9 @@ Complete documentation for the `iam-validator` command-line interface.
 | `completion`        | Generate shell completion scripts             |
 | `mcp`               | Start MCP server for AI assistant integration |
 
+`<command> -h` lists options only. Every command prints its usage examples with
+`--examples`, e.g. `iam-validator validate --examples`; required arguments are not needed.
+
 ## validate
 
 Validate IAM policies for correctness and security issues.
@@ -118,7 +121,7 @@ iam-validator validate --path trust-policy.json --policy-type TRUST_POLICY
 
 ## query
 
-Query AWS service definitions for actions, ARNs, and condition keys.
+Query AWS service definitions for actions, ARNs, condition keys, and global condition keys.
 
 ### Usage
 
@@ -138,10 +141,33 @@ The `--service` option is **optional** when `--name` includes the service prefix
 | `--show-condition-keys` | Show only condition keys for each action                                                   |
 | `--show-resource-types` | Show only resource types for each action                                                   |
 | `--show-access-level`   | Show only access level for each action                                                     |
+| `--show-data-plane`     | Show only the data-plane classification for each action                                    |
+| `--data-plane`          | `query action`: only data-plane actions (AWS `IsDataPlane: true`)                          |
+| `--control-plane`       | `query action`: only control-plane actions (`IsDataPlane: false`); unclassified excluded   |
+| `--show-service-name`   | `query action`: show only the AWS service name for each action                             |
+| `--show-types`          | `query condition` / `global-condition`: show only each key's value types                   |
+| `--show-description`    | `query global-condition`: show only each key's description                                 |
+| `--show-doc-url`        | `query global-condition`: show only each key's documentation URL                           |
+
+`--access-level`, `--resource-type`, `--has-condition-key`, `--data-plane` and `--control-plane`
+apply to every `query action` mode: listing a service, exact names and wildcards.
+
+### Examples
+
+`query -h` lists options only. Print grouped usage examples with:
+
+```bash
+iam-validator query --examples          # all topics
+iam-validator query examples            # all topics
+iam-validator query examples action     # action, arn, condition, global-condition, output
+```
 
 ### Subcommands
 
 #### query action
+
+`.action` is always the full `service:action` name. `description` appears only when the AWS
+Service Reference provides one.
 
 ```bash
 # List all S3 actions
@@ -246,6 +272,19 @@ iam-validator query action --name s3:GetObject --show-condition-keys --show-reso
 
 These filters work with all query modes (single action, multiple actions, wildcards) and all output formats.
 
+##### Data-plane filters
+
+```bash
+# Data-plane actions (e.g. s3:GetObject)
+iam-validator query action --service s3 --data-plane --output text
+
+# Control-plane write actions
+iam-validator query action --service s3 --control-plane --access-level write
+```
+
+AWS annotates actions with `IsDataPlane`. Actions without the annotation match neither
+flag; some services (e.g. `kms`, `iam`) currently have no data-plane actions.
+
 #### query arn
 
 ```bash
@@ -269,6 +308,32 @@ iam-validator query condition --service s3
 # Query specific condition key (two equivalent forms)
 iam-validator query condition --service s3 --name prefix
 iam-validator query condition --name s3:prefix
+
+# Only key names and value types
+iam-validator query condition --service s3 --show-types --output text
+```
+
+#### query global-condition
+
+Global condition keys come from the AWS Service Reference
+(`global-condition-keys.json`), with a bundled fallback when offline.
+
+```bash
+# List all global condition keys
+iam-validator query global-condition --output text
+
+# Filter by value type (case-insensitive)
+iam-validator query global-condition --type IPAddress
+
+# One key; tag keys resolve to their ${TagKey} template
+iam-validator query global-condition --name aws:SourceIp
+iam-validator query global-condition --name aws:ResourceTag
+
+# Keys matching a wildcard (case-insensitive)
+iam-validator query global-condition --name 'aws:Re*' --output text
+
+# Only selected fields
+iam-validator query global-condition --type Bool --show-description --show-doc-url --output text
 ```
 
 ## cache

@@ -1,6 +1,6 @@
 {
   "name": "iam-policy-validator",
-  "version": "1.19.0",
+  "version": "1.32.0",
   "description": "AWS IAM policy validation, analysis, and security auditing via the iam-policy-validator CLI (CLI-based alternative to the MCP server).",
   "author": {
     "name": "boogy"

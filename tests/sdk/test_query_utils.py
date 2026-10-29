@@ -1,7 +1,10 @@
 """Tests for SDK query utilities."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 
+from iam_validator.core.models import ActionDetail, ServiceDetail
 from iam_validator.sdk.query_utils import (
     get_actions_by_access_level,
     get_actions_supporting_condition,
@@ -13,6 +16,8 @@ from iam_validator.sdk.query_utils import (
     query_arn_types,
     query_condition_key,
     query_condition_keys,
+    query_global_condition_key,
+    query_global_condition_keys,
 )
 
 # ---------------------------------------------------------------------------
@@ -228,3 +233,93 @@ class TestGetActionsSupportingCondition:
     async def test_no_matching_condition(self, mock_fetcher):
         actions = await get_actions_supporting_condition(mock_fetcher, "s3", "nonexistent:key")
         assert actions == []
+
+
+class TestDataPlane:
+    @pytest.fixture
+    def plane_fetcher(self, mock_fetcher):
+        mock_fetcher.fetch_service_by_name = AsyncMock(
+            return_value=ServiceDetail(
+                Name="test",
+                ServiceName="Test Service",
+                Actions=[
+                    ActionDetail(Name="ReadData", Annotations={"Properties": {"IsDataPlane": True}}),
+                    ActionDetail(
+                        Name="CreateThing", Annotations={"Properties": {"IsWrite": True, "IsDataPlane": False}}
+                    ),
+                    ActionDetail(Name="Unclassified", Annotations={"Properties": {"IsWrite": True}}),
+                ],
+            )
+        )
+        return mock_fetcher
+
+    @pytest.mark.parametrize(
+        "data_plane,expected",
+        [
+            (None, ["test:ReadData", "test:CreateThing", "test:Unclassified"]),
+            (True, ["test:ReadData"]),
+            (False, ["test:CreateThing"]),
+        ],
+    )
+    async def test_query_actions_plane_filter(self, plane_fetcher, data_plane, expected):
+        actions = await query_actions(plane_fetcher, "test", data_plane=data_plane)
+        assert [a["action"] for a in actions] == expected
+
+    async def test_query_actions_reports_unclassified_as_none(self, plane_fetcher):
+        actions = await query_actions(plane_fetcher, "test")
+        assert [a["data_plane"] for a in actions] == [True, False, None]
+
+    async def test_action_details_carry_service_name_and_plane(self, plane_fetcher):
+        details = await query_action_details(plane_fetcher, "test", "creatething")
+        assert details["service_name"] == "Test Service"
+        assert details["data_plane"] is False
+        assert details["access_level"] == "write"
+
+
+class TestGlobalConditionKeys:
+    async def test_lists_keys_sorted_with_templates(self, mock_fetcher):
+        keys = await query_global_condition_keys(mock_fetcher)
+        names = [k["condition_key"] for k in keys]
+        assert names == sorted(names, key=str.lower)
+        assert "aws:RequestTag/${TagKey}" in names
+
+    async def test_type_filter(self, mock_fetcher):
+        keys = await query_global_condition_keys(mock_fetcher, key_type="arrayofstring")
+        assert keys
+        assert all("ArrayOfString" in k["types"] for k in keys)
+
+    async def test_name_pattern_is_case_insensitive_wildcard(self, mock_fetcher):
+        keys = await query_global_condition_keys(mock_fetcher, pattern="AWS:re*")
+        names = {k["condition_key"] for k in keys}
+        assert {"aws:RequestTag/${TagKey}", "aws:ResourceTag/${TagKey}", "aws:RequestedRegion"} <= names
+        assert all(n.lower().startswith("aws:re") for n in names)
+
+    async def test_name_pattern_combines_with_type_filter(self, mock_fetcher):
+        keys = await query_global_condition_keys(mock_fetcher, key_type="Bool", pattern="aws:Via*")
+        assert keys
+        assert all("Bool" in k["types"] and k["condition_key"].startswith("aws:Via") for k in keys)
+
+    async def test_single_key_resolves_tag_template(self, mock_fetcher):
+        details = await query_global_condition_key(mock_fetcher, "aws:RequestTag/env")
+        assert details["condition_key"] == "aws:RequestTag/${TagKey}"
+
+    @pytest.mark.parametrize(
+        "name", ["aws:RequestTag", "aws:requesttag/", "aws:RequestTag/${TagKey}", "aws:RequestTag/team/owner"]
+    )
+    async def test_tag_template_found_by_prefix_or_template_name(self, mock_fetcher, name):
+        details = await query_global_condition_key(mock_fetcher, name)
+        assert details["condition_key"] == "aws:RequestTag/${TagKey}"
+
+    @pytest.mark.parametrize("name", ["aws:RequestTag", "aws:RequestTag/${TagKey}"])
+    async def test_tag_template_lookup_does_not_loosen_validation(self, mock_fetcher, name):
+        global_conditions = await mock_fetcher.get_global_conditions()
+        assert not global_conditions.is_valid_global_key(name)
+
+    @pytest.mark.parametrize("name", ["aws:RequestTa", "aws:SourceIp/${TagKey}", "aws:Request"])
+    async def test_partial_names_do_not_match_tag_template(self, mock_fetcher, name):
+        with pytest.raises(ValueError, match="not a global condition key"):
+            await query_global_condition_key(mock_fetcher, name)
+
+    async def test_single_key_unknown_raises(self, mock_fetcher):
+        with pytest.raises(ValueError, match="not a global condition key"):
+            await query_global_condition_key(mock_fetcher, "s3:prefix")

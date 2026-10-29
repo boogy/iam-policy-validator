@@ -57,6 +57,40 @@ class TestActionDetail:
         assert action2.resources == []  # Default
 
 
+class TestActionDetailProperties:
+    """Access level and data-plane flags derived from `Annotations.Properties`."""
+
+    @pytest.mark.parametrize(
+        "properties,expected",
+        [
+            ({"IsList": False, "IsPermissionManagement": False, "IsTaggingOnly": False, "IsWrite": False}, "read"),
+            ({"IsWrite": True}, "write"),
+            ({"IsList": True, "IsWrite": False}, "list"),
+            ({"IsPermissionManagement": True, "IsWrite": True}, "permissions-management"),
+            ({"IsTaggingOnly": True, "IsWrite": True}, "tagging"),
+        ],
+    )
+    def test_access_level(self, properties, expected):
+        assert ActionDetail(Name="X", Annotations={"Properties": properties}).access_level == expected
+
+    def test_access_level_unknown_without_annotations(self):
+        assert ActionDetail(Name="X").access_level == "Unknown"
+
+    @pytest.mark.parametrize(
+        "annotations,expected",
+        [
+            ({"Properties": {"IsDataPlane": True}}, True),
+            ({"Properties": {"IsDataPlane": False}}, False),
+            ({"Properties": {"IsWrite": True}}, None),
+            ({"Properties": {"IsDataPlane": "yes"}}, None),
+            ({"Properties": "not-a-dict"}, None),
+            (None, None),
+        ],
+    )
+    def test_is_data_plane(self, annotations, expected):
+        assert ActionDetail(Name="X", Annotations=annotations).is_data_plane is expected
+
+
 class TestResourceType:
     """Test the ResourceType model."""
 

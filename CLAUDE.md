@@ -1,6 +1,6 @@
 # IAM Policy Validator - Claude Code Instructions
 
-Python 3.10–3.14 CLI + GitHub Action + Python SDK + MCP server for validating AWS IAM
+Python 3.10–3.15 CLI + GitHub Action + Python SDK + MCP server for validating AWS IAM
 policies. Plugin-based check system with async parallel execution. uv, Pydantic v2,
 httpx (HTTP/2), boto3, Rich, FastMCP.
 
@@ -206,5 +206,5 @@ commands → `iam_validator/commands/CLAUDE.md`, formatters / config →
 Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`).
 Branches: `feature/`, `fix/<issue>-`, `docs/`.
 
-CI workflows in `.github/workflows/`: `ci.yml` (lint/test 3.10-3.14), `release.yml`
+CI workflows in `.github/workflows/`: `ci.yml` (lint/test 3.10-3.15), `release.yml`
 (tag → PyPI via trusted publishing), `docs.yml`, `codeql.yml`, `scorecard.yml`.

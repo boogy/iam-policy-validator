@@ -4,6 +4,37 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.0] - 2026-10-29
+
+### Changed
+
+- **Breaking:** `query action --name` with one exact action now outputs the prefixed name in `.action` (`s3:GetObject`, was `GetObject`), like every other query mode. ([#232])
+- `query action` and `query condition` output include `description` only when the AWS data has one, instead of always printing `N/A`. ([#232])
+- Load AWS global condition keys from the AWS Service Reference (`global-condition-keys.json`) instead of a hardcoded list. Lookup order is offline directory, disk cache, API, stale cache, then the bundled list; `sync-services` also downloads the file. ([#232])
+- Treat `aws:RequestTag/*` and `aws:ResourceTag/*` as global condition keys, as AWS lists them. Using one on an action that does not document it is now reported with the global-key warning instead of an error. ([#232])
+- Accept every type AWS lists for a condition key in `condition_type_mismatch` (e.g. `aws:EpochTime` as `Numeric` or `Date`), instead of the first type only. ([#232])
+- Reuse a cached service definition past its TTL while the service's `modified` timestamp in the AWS Service Reference shows it unchanged. ([#232])
+- Apply `--access-level` and `--resource-type` to `iam-validator query action --name` exact and wildcard queries; they were ignored unless listing a whole service. ([#232])
+- Move usage examples out of every command's `-h` output into `--examples`; `-h` now ends with a one-line pointer. ([#232])
+- Run the GitHub Action on Python 3.15 (was 3.13). ([#232])
+- Refresh locked dependencies, including boto3 and botocore 1.43.122, Pydantic 2.14.2, FastMCP 4.1.4 and ruff 0.17.3; minimum supported versions are unchanged. ([#232])
+
+### Added
+
+- Support Python 3.15, now tested in CI. ([#232])
+- Add `iam-validator query global-condition` to list global condition keys, filter them by `--type`, or look one up by `--name`. Tag keys resolve to their `${TagKey}` template from the bare prefix (`aws:ResourceTag`), the template name, or a concrete key (`aws:ResourceTag/team`). A `--name` with `*` or `?` lists every matching key, case-insensitively (`--name 'aws:Re*'`); the SDK takes it as `query_global_condition_keys(pattern=...)`. ([#232])
+- Add `--data-plane` and `--control-plane` filters and the `--show-data-plane` field to `iam-validator query action`, based on AWS's `IsDataPlane` annotation. Unclassified actions match neither filter. ([#232])
+- Show the AWS `ServiceName` and data-plane classification in `query` output, the SDK (`query_actions`, `query_action_details`) and the MCP `query` tool. ([#232])
+- Add SDK functions `query_global_condition_keys()` and `query_global_condition_key()`, and a `data_plane` filter on `query_actions()`. ([#232])
+- Add the `global_condition_keys` kind, plus `data_plane` and `key_type` parameters, to the MCP `query` tool. ([#232])
+- Add `--examples` to every command to print its usage examples and exit, without requiring the command's other arguments (e.g. `iam-validator validate --examples`). ([#232])
+- Add `iam-validator query examples [TOPIC]` to print query examples for one topic. ([#232])
+- Add output field filters: `--show-service-name` on `query action`, `--show-types` on `query condition`, and `--show-types`, `--show-description` and `--show-doc-url` on `query global-condition`. ([#232])
+- Complete the new `query` subcommands and options in the bash and zsh completion scripts. ([#232])
+- Document `query global-condition`, the data-plane filters, `--show-*` field filters and `query examples` in the Claude Code skill, and bump the plugin version to 1.32.0 so installs pick it up. ([#232])
+
+[#232]: https://github.com/boogy/iam-policy-validator/pull/232
+
 ## [1.31.4] - 2026-10-23
 
 ### Changed
@@ -1162,6 +1193,7 @@ _First release._
 
 [#164]: https://github.com/boogy/iam-policy-validator/pull/164
 [#162]: https://github.com/boogy/iam-policy-validator/issues/162
+[1.32.0]: https://github.com/boogy/iam-policy-validator/compare/v1.31.4...v1.32.0
 [1.31.4]: https://github.com/boogy/iam-policy-validator/compare/v1.31.3...v1.31.4
 [1.31.3]: https://github.com/boogy/iam-policy-validator/compare/v1.31.2...v1.31.3
 [1.31.2]: https://github.com/boogy/iam-policy-validator/compare/v1.31.1...v1.31.2

@@ -26,6 +26,7 @@ class ServiceInfo(BaseModel):
 
     service: str
     url: str
+    modified: int | None = None  # epoch seconds of AWS's last change to the service file
 
 
 class ActionDetail(BaseModel):
@@ -38,6 +39,34 @@ class ActionDetail(BaseModel):
     resources: list[dict[str, Any]] = Field(default_factory=list, alias="Resources")
     annotations: dict[str, Any] | None = Field(default=None, alias="Annotations")
     supported_by: dict[str, Any] | None = Field(default=None, alias="SupportedBy")
+
+    @property
+    def properties(self) -> dict[str, Any]:
+        """The action's `Annotations.Properties` flags (`IsWrite`, `IsDataPlane`, ...)."""
+        props = (self.annotations or {}).get("Properties")
+        return props if isinstance(props, dict) else {}
+
+    @property
+    def access_level(self) -> str:
+        """Access level derived from the property flags, or `Unknown` when unannotated."""
+        props = self.properties
+        if not props:
+            return "Unknown"
+        if props.get("IsPermissionManagement"):
+            return "permissions-management"
+        if props.get("IsTaggingOnly"):
+            return "tagging"
+        if props.get("IsWrite"):
+            return "write"
+        if props.get("IsList"):
+            return "list"
+        return "read"
+
+    @property
+    def is_data_plane(self) -> bool | None:
+        """`IsDataPlane` flag; None when AWS has not classified the action."""
+        value = self.properties.get("IsDataPlane")
+        return value if isinstance(value, bool) else None
 
 
 class ResourceType(BaseModel):
@@ -79,6 +108,7 @@ class ServiceDetail(BaseModel):
     model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
 
     name: str = Field(alias="Name")
+    service_name: str | None = Field(default=None, alias="ServiceName")
     prefix: str | None = None  # Not always present in API response
     actions: dict[str, ActionDetail] = Field(default_factory=dict)
     resources: dict[str, ResourceType] = Field(default_factory=dict)

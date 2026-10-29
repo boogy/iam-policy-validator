@@ -1,70 +1,7 @@
-"""Query AWS service definitions - actions, ARNs, and condition keys.
+"""Query AWS service definitions - actions, ARNs, condition keys, and global condition keys.
 
-This command allows querying AWS IAM service metadata similar to policy_sentry.
 Implementation inspired by: https://github.com/salesforce/policy_sentry
-
-Examples:
-    # Query all actions for a service
-    iam-validator query action --service s3
-
-    # Query write-level actions
-    iam-validator query action --service s3 --access-level write
-
-    # Query actions that support wildcard resource
-    iam-validator query action --service s3 --resource-type "*"
-
-    # Query action details (two equivalent forms)
-    iam-validator query action --service s3 --name GetObject
-    iam-validator query action --name s3:GetObject
-
-    # Query multiple actions at once
-    iam-validator query action --name dynamodb:Query dynamodb:Scan s3:GetObject
-    iam-validator query action --service dynamodb --name Query Scan GetItem
-
-    # Query with service prefix in --name (--service not required)
-    iam-validator query action --name iam:CreateRole
-    iam-validator query arn --name s3:bucket
-    iam-validator query condition --name s3:prefix
-
-    # Expand wildcard patterns to matching actions
-    iam-validator query action --name "iam:Get*" --output text
-    iam-validator query action --name "s3:*Object*" --output json
-
-    # Mix exact actions and wildcards
-    iam-validator query action --name dynamodb:Query dynamodb:Create* --output yaml
-
-    # Filter output to specific fields
-    iam-validator query action --name dynamodb:Query dynamodb:Scan --show-condition-keys
-    iam-validator query action --name "s3:Get*" --show-resource-types --output text
-    iam-validator query action --name iam:CreateRole --show-access-level --show-condition-keys
-
-    # Filter by condition key support
-    iam-validator query action --name "s3:GetO*" --has-condition-key "s3:ResourceAccount"
-    iam-validator query action --service s3 --has-condition-key "s3:ResourceAccount"
-
-    # Query ARN formats for a service
-    iam-validator query arn --service s3
-
-    # Filter ARN types by condition key
-    iam-validator query arn --service s3 --has-condition-key "s3:ResourceAccount"
-
-    # Filter ARN output to specific fields
-    iam-validator query arn --service s3 --show-condition-keys
-    iam-validator query arn --service s3 --show-arn-format --show-condition-keys
-    iam-validator query arn --service s3 --has-condition-key "s3:BucketTag" --show-condition-keys
-
-    # Query specific ARN type
-    iam-validator query arn --service s3 --name bucket
-
-    # Query condition keys
-    iam-validator query condition --service s3
-
-    # Query specific condition key
-    iam-validator query condition --service s3 --name s3:prefix
-
-    # Text format for simple output (great for piping)
-    iam-validator query action --service s3 --output text | grep Delete
-    iam-validator query action --service iam --access-level write --output text
+Run ``iam-validator query examples`` for usage examples.
 """
 
 import argparse
@@ -78,9 +15,125 @@ from typing import Any
 import yaml
 
 from iam_validator.commands.base import Command
+from iam_validator.commands.examples import ExampleSections, print_examples
 from iam_validator.core.aws_service.fetcher import AWSServiceFetcher
+from iam_validator.sdk.query_utils import query_global_condition_key, query_global_condition_keys
 
 logger = logging.getLogger(__name__)
+
+QUERY_EXAMPLES: dict[str, ExampleSections] = {
+    "action": [
+        ("All actions for a service", ["iam-validator query action --service s3"]),
+        (
+            "Filter by access level, resource type, or condition key",
+            [
+                "iam-validator query action --service s3 --access-level write",
+                'iam-validator query action --service s3 --resource-type "*"',
+                "iam-validator query action --service s3 --has-condition-key s3:ResourceAccount",
+            ],
+        ),
+        (
+            "Data-plane / control-plane actions (AWS IsDataPlane)",
+            [
+                "iam-validator query action --service s3 --data-plane --output text",
+                "iam-validator query action --service s3 --control-plane --access-level write",
+            ],
+        ),
+        (
+            "Action details (two equivalent forms)",
+            [
+                "iam-validator query action --service s3 --name GetObject",
+                "iam-validator query action --name s3:GetObject",
+            ],
+        ),
+        (
+            "Several actions and wildcards in one query",
+            [
+                "iam-validator query action --name dynamodb:Query dynamodb:Scan s3:GetObject",
+                'iam-validator query action --name "iam:Get*" --output text',
+                'iam-validator query action --name dynamodb:Query "dynamodb:Create*" --output yaml',
+            ],
+        ),
+        (
+            "Show only selected fields",
+            [
+                "iam-validator query action --name dynamodb:Query --show-condition-keys",
+                'iam-validator query action --name "s3:Get*" --show-resource-types --output text',
+                "iam-validator query action --name iam:CreateRole --show-access-level --show-data-plane",
+                "iam-validator query action --service s3 --show-service-name --output text",
+            ],
+        ),
+    ],
+    "arn": [
+        ("ARN formats for a service", ["iam-validator query arn --service s3"]),
+        (
+            "One resource type (two equivalent forms)",
+            ["iam-validator query arn --service s3 --name bucket", "iam-validator query arn --name s3:bucket"],
+        ),
+        (
+            "Filter and select fields",
+            [
+                "iam-validator query arn --service s3 --has-condition-key s3:ResourceAccount",
+                "iam-validator query arn --service s3 --show-arn-format --show-condition-keys",
+            ],
+        ),
+    ],
+    "condition": [
+        ("Condition keys for a service", ["iam-validator query condition --service s3"]),
+        (
+            "One condition key (two equivalent forms)",
+            [
+                "iam-validator query condition --service s3 --name prefix",
+                "iam-validator query condition --name s3:prefix",
+            ],
+        ),
+        ("Show only selected fields", ["iam-validator query condition --service s3 --show-types --output text"]),
+    ],
+    "global-condition": [
+        ("All global condition keys", ["iam-validator query global-condition --output text"]),
+        ("Filter by value type", ["iam-validator query global-condition --type IPAddress"]),
+        (
+            "One key (tag keys resolve to their ${TagKey} template)",
+            [
+                "iam-validator query global-condition --name aws:SourceIp",
+                "iam-validator query global-condition --name aws:ResourceTag",
+            ],
+        ),
+        (
+            "Keys matching a wildcard (case-insensitive; quote it for the shell)",
+            [
+                "iam-validator query global-condition --name 'aws:Re*' --output text",
+                "iam-validator query global-condition --name 'aws:*Tag*' --show-types --output text",
+            ],
+        ),
+        ("Show only selected fields", ["iam-validator query global-condition --show-types --output text"]),
+    ],
+    "output": [
+        (
+            "Text output for piping",
+            [
+                "iam-validator query action --service s3 --output text | grep Delete",
+                "iam-validator query action --service iam --access-level write --output text",
+            ],
+        ),
+        (
+            "JSON piped to jq",
+            [
+                "iam-validator query action --service s3 --data-plane | jq -r '.[].action'",
+                "iam-validator query action --service s3 | jq 'group_by(.access_level) | map({(.[0].access_level): length}) | add'",
+                "iam-validator query action --service s3 | jq -r '.[] | select(.condition_keys | index(\"s3:TlsVersion\")) | .action'",
+                "iam-validator query global-condition --type Bool | jq -r '.[] | \"\\(.condition_key)\\t\\(.doc_url)\"'",
+            ],
+        ),
+        (
+            "YAML piped to yq",
+            [
+                "iam-validator query action --service iam --access-level permissions-management --output yaml | yq '.[].action'",
+                "iam-validator query condition --service s3 --output yaml | yq '.[] | select(.types | contains([\"Numeric\"])) | .condition_key'",
+            ],
+        ),
+    ],
+}
 
 
 class QueryCommand(Command):
@@ -94,81 +147,19 @@ class QueryCommand(Command):
     @property
     def help(self) -> str:
         """Command help text."""
-        return "Query AWS service definitions (actions, ARNs, condition keys)"
+        return "Query AWS service definitions (actions, ARNs, condition keys, global condition keys)"
 
     @property
     def epilog(self) -> str:
-        """Command epilog with examples."""
-        return """
-examples:
-  # Query all actions for a service
-  iam-validator query action --service s3
+        """Command epilog pointing at the examples."""
+        return "Run 'iam-validator query --examples' or 'iam-validator query examples [TOPIC]' for usage examples."
 
-  # Query write-level actions
-  iam-validator query action --service s3 --access-level write
+    @property
+    def examples(self) -> ExampleSections:
+        return [section for sections in QUERY_EXAMPLES.values() for section in sections]
 
-  # Query actions that support wildcard resource
-  iam-validator query action --service s3 --resource-type "*"
-
-  # Query action details (two equivalent forms)
-  iam-validator query action --service s3 --name GetObject
-  iam-validator query action --name s3:GetObject
-
-  # Query multiple actions at once
-  iam-validator query action --name dynamodb:Query dynamodb:Scan s3:GetObject
-  iam-validator query action --service dynamodb --name Query Scan GetItem
-
-  # Query with service prefix in --name (--service not required)
-  iam-validator query action --name iam:CreateRole
-  iam-validator query arn --name s3:bucket
-  iam-validator query condition --name s3:prefix
-
-  # Expand wildcard patterns to matching actions
-  iam-validator query action --name "iam:Get*" --output text
-  iam-validator query action --name "s3:*Object*" --output json
-  iam-validator query action --service ec2 --name "Describe*" --output text
-
-  # Mix exact actions and wildcards in one query
-  iam-validator query action --name dynamodb:Query dynamodb:Create* --output yaml
-  iam-validator query action --name s3:GetObject "s3:Put*" iam:GetRole --output json
-
-  # Filter output to specific fields
-  iam-validator query action --name dynamodb:Query dynamodb:Scan --show-condition-keys
-  iam-validator query action --name "s3:Get*" --show-resource-types --output text
-  iam-validator query action --name iam:CreateRole --show-access-level --show-condition-keys
-
-  # Filter by condition key support
-  iam-validator query action --name "s3:GetO*" --has-condition-key "s3:ResourceAccount"
-  iam-validator query action --service s3 --has-condition-key "s3:ResourceAccount"
-
-  # Query ARN formats for a service
-  iam-validator query arn --service s3
-
-  # Filter ARN types by condition key
-  iam-validator query arn --service s3 --has-condition-key "s3:ResourceAccount"
-
-  # Filter ARN output to specific fields
-  iam-validator query arn --service s3 --show-condition-keys
-  iam-validator query arn --service s3 --show-arn-format --show-condition-keys
-  iam-validator query arn --service s3 --has-condition-key "s3:BucketTag" --show-condition-keys
-
-  # Query specific ARN type
-  iam-validator query arn --service s3 --name bucket
-
-  # Query condition keys
-  iam-validator query condition --service s3
-
-  # Query specific condition key
-  iam-validator query condition --service s3 --name s3:prefix
-
-  # Text format for simple output (great for piping)
-  iam-validator query action --service s3 --output text | grep Delete
-  iam-validator query action --service iam --access-level write --output text
-
-note:
-  This feature is inspired by policy_sentry's query functionality.
-  See: https://github.com/salesforce/policy_sentry
-"""
+    def print_examples(self) -> None:
+        self._print_examples(None)
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         """Add query command arguments."""
@@ -183,7 +174,7 @@ note:
         action_parser = subparsers.add_parser(
             "action",
             help="Query IAM actions",
-            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="Run 'iam-validator query examples action' for usage examples.",
         )
         action_parser.add_argument(
             "--service",
@@ -210,6 +201,22 @@ note:
             dest="has_condition_key",
             help="Filter actions that support a specific condition key (e.g., s3:ResourceAccount)",
         )
+        plane_group = action_parser.add_mutually_exclusive_group()
+        plane_group.add_argument(
+            "--data-plane",
+            dest="data_plane",
+            action="store_const",
+            const=True,
+            default=None,
+            help="Only actions AWS classifies as data-plane (IsDataPlane)",
+        )
+        plane_group.add_argument(
+            "--control-plane",
+            dest="data_plane",
+            action="store_const",
+            const=False,
+            help="Only actions AWS explicitly classifies as control-plane (unclassified actions excluded)",
+        )
         action_parser.add_argument(
             "--output",
             choices=["json", "yaml", "text"],
@@ -233,12 +240,22 @@ note:
             action="store_true",
             help="Show only access level for each action",
         )
+        action_parser.add_argument(
+            "--show-data-plane",
+            action="store_true",
+            help="Show only the data-plane classification for each action",
+        )
+        action_parser.add_argument(
+            "--show-service-name",
+            action="store_true",
+            help="Show only the AWS service name (ServiceName) for each action",
+        )
 
         # ARN query
         arn_parser = subparsers.add_parser(
             "arn",
             help="Query ARN formats",
-            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="Run 'iam-validator query examples arn' for usage examples.",
         )
         arn_parser.add_argument(
             "--service",
@@ -285,7 +302,7 @@ note:
         condition_parser = subparsers.add_parser(
             "condition",
             help="Query condition keys",
-            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog="Run 'iam-validator query examples condition' for usage examples.",
         )
         condition_parser.add_argument(
             "--service",
@@ -301,6 +318,57 @@ note:
             default="json",
             help="Output format (default: json)",
         )
+        condition_parser.add_argument(
+            "--show-types", action="store_true", help="Show only the value types for each key"
+        )
+
+        # Global condition key query
+        global_condition_parser = subparsers.add_parser(
+            "global-condition",
+            help="Query global condition keys (aws:SourceIp, aws:PrincipalTag/${TagKey}, ...)",
+            epilog="Run 'iam-validator query examples global-condition' for usage examples.",
+        )
+        global_condition_parser.add_argument(
+            "--name",
+            help="Global condition key or wildcard (e.g., aws:SourceIp, aws:ResourceTag, 'aws:Re*')",
+        )
+        global_condition_parser.add_argument(
+            "--type",
+            dest="key_type",
+            help="Filter by condition key type (e.g., String, ArrayOfString, Bool, ARN, Date, Numeric, IPAddress)",
+        )
+        global_condition_parser.add_argument(
+            "--output",
+            choices=["json", "yaml", "text"],
+            default="json",
+            help="Output format (default: json)",
+        )
+        global_condition_parser.add_argument(
+            "--show-types", action="store_true", help="Show only the value types for each key"
+        )
+        global_condition_parser.add_argument(
+            "--show-description", action="store_true", help="Show only the description for each key"
+        )
+        global_condition_parser.add_argument(
+            "--show-doc-url",
+            action="store_true",
+            help="Show only the AWS documentation link for each key",
+        )
+
+        examples_parser = subparsers.add_parser("examples", help="Show usage examples")
+        examples_parser.add_argument(
+            "topic",
+            nargs="?",
+            choices=list(QUERY_EXAMPLES),
+            help="Only show examples for this topic",
+        )
+
+    @staticmethod
+    def _print_examples(topic: str | None) -> None:
+        """Print usage examples, optionally for one topic."""
+        for name, sections in QUERY_EXAMPLES.items():
+            if not topic or name == topic:
+                print_examples(sections, heading=name)
 
     def _parse_service_and_name(self, args: argparse.Namespace, query_type: str) -> tuple[str, str | None]:
         """Parse service and name from arguments (single name - for ARN/condition queries).
@@ -419,6 +487,9 @@ note:
 
     async def execute(self, args: argparse.Namespace) -> int:
         """Execute query command."""
+        if args.query_type == "examples":
+            self._print_examples(args.topic)
+            return 0
         try:
             async with AWSServiceFetcher(prefetch_common=False) as fetcher:
                 result: dict[str, Any] | list[dict[str, Any]] | list[str]
@@ -437,12 +508,23 @@ note:
                     args.service = service
                     args.name = name
                     result = await self._query_condition_table(fetcher, args)
+                elif args.query_type == "global-condition":
+                    if args.name and ("*" in args.name or "?" in args.name):
+                        keys = await query_global_condition_keys(fetcher, args.key_type, pattern=args.name)
+                        if not keys:
+                            raise ValueError(f"No global condition keys match '{args.name}'")
+                        result = [dict(k) for k in keys]
+                    elif args.name:
+                        result = dict(await query_global_condition_key(fetcher, args.name))
+                    else:
+                        result = [dict(k) for k in await query_global_condition_keys(fetcher, args.key_type)]
+                    result = self._select_key_fields(result, args)
                 else:
                     logger.error(f"Unknown query type: {args.query_type}")
                     return 1
 
                 # Output result
-                self._print_result(result, args.output)
+                self._print_result(result, args.output, show_fields=self._has_key_field_filters(args))
                 return 0
 
         except ValueError as e:
@@ -451,32 +533,6 @@ note:
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error(f"Unexpected error during query: {e}", exc_info=True)
             return 1
-
-    def _get_access_level(self, action_detail: Any) -> str:
-        """Derive access level from action annotations.
-
-        AWS API provides Properties dict with boolean flags instead of AccessLevel string.
-        We derive the access level from these flags.
-        """
-        if not action_detail.annotations:
-            return "Unknown"
-
-        props = action_detail.annotations.get("Properties", {})
-        if not props:
-            return "Unknown"
-
-        # Check flags in priority order
-        if props.get("IsPermissionManagement"):
-            return "permissions-management"
-        if props.get("IsTaggingOnly"):
-            return "tagging"
-        if props.get("IsWrite"):
-            return "write"
-        if props.get("IsList"):
-            return "list"
-
-        # Default to read if none of the above
-        return "read"
 
     @staticmethod
     def _matches_condition_key(condition_keys: list[str], filter_value: str) -> bool:
@@ -500,12 +556,54 @@ note:
                 return True
         return False
 
+    @staticmethod
+    def _matches_filters(action_detail: Any, args: argparse.Namespace) -> bool:
+        """Apply the --access-level, --resource-type, --has-condition-key and plane filters."""
+        access_level = getattr(args, "access_level", None)
+        if access_level and action_detail.access_level != access_level:
+            return False
+        resource_type = getattr(args, "resource_type", None)
+        if resource_type:
+            resource_names = [r.get("Name", "") for r in action_detail.resources or []]
+            if resource_names if resource_type == "*" else resource_type not in resource_names:
+                return False
+        condition_key_filter = getattr(args, "has_condition_key", None)
+        if condition_key_filter and not QueryCommand._matches_condition_key(
+            action_detail.action_condition_keys or [], condition_key_filter
+        ):
+            return False
+        data_plane = getattr(args, "data_plane", None)
+        return data_plane is None or action_detail.is_data_plane is data_plane
+
+    @staticmethod
+    def _has_key_field_filters(args: argparse.Namespace) -> bool:
+        return any(getattr(args, f, False) for f in ("show_types", "show_description", "show_doc_url"))
+
+    @classmethod
+    def _select_key_fields(cls, result: Any, args: argparse.Namespace) -> Any:
+        """Reduce condition key results to ``condition_key`` plus the requested --show-* fields."""
+        if not cls._has_key_field_filters(args):
+            return result
+        keep = {"condition_key"}
+        keep.update(
+            field
+            for flag, field in (
+                ("show_types", "types"),
+                ("show_description", "description"),
+                ("show_doc_url", "doc_url"),
+            )
+            if getattr(args, flag, False)
+        )
+        if isinstance(result, dict):
+            return {k: v for k, v in result.items() if k in keep}
+        return [{k: v for k, v in item.items() if k in keep} for item in result]
+
     def _get_field_filters(self, args: argparse.Namespace) -> set[str] | None:
         """Extract field filters from arguments.
 
         Returns:
             Set of fields to include, or None if no filters specified (show all).
-            Valid fields: 'condition_keys', 'resource_types', 'access_level'
+            Valid fields: 'condition_keys', 'resource_types', 'access_level', 'data_plane', 'service_name'
         """
         fields: set[str] = set()
 
@@ -515,6 +613,10 @@ note:
             fields.add("resource_types")
         if getattr(args, "show_access_level", False):
             fields.add("access_level")
+        if getattr(args, "show_data_plane", False):
+            fields.add("data_plane")
+        if getattr(args, "show_service_name", False):
+            fields.add("service_name")
 
         return fields if fields else None
 
@@ -581,7 +683,6 @@ note:
 
         # Get field filters if any
         fields = self._get_field_filters(args)
-        condition_key_filter = getattr(args, "has_condition_key", None)
 
         # Check if this is a "list all" query (single service, no name)
         if len(parsed_actions) == 1 and parsed_actions[0][1] is None:
@@ -663,18 +764,15 @@ note:
                 action_part = full_action.split(":")[1] if ":" in full_action else full_action
                 action_detail = service_detail.actions.get(action_part)
                 if action_detail:
-                    # Filter by condition key on raw data before formatting
-                    if condition_key_filter and not self._matches_condition_key(
-                        action_detail.action_condition_keys or [], condition_key_filter
-                    ):
+                    if not self._matches_filters(action_detail, args):
                         continue
                     results.append(
                         self._format_action_detail(
                             service,
                             action_detail,
                             simple=args.output == "text" and not fields,
-                            include_service_prefix=True,  # Always include for wildcards
                             fields=fields,
+                            service_name=service_detail.service_name,
                         )
                     )
                 else:
@@ -682,7 +780,6 @@ note:
                         {
                             "action": full_action,
                             "access_level": "Unknown",
-                            "description": "N/A",
                         }
                     )
 
@@ -702,19 +799,15 @@ note:
                 seen_actions.add(full_action)
 
                 action_detail = service_detail.actions[original_key]
-                # Filter by condition key on raw data before formatting
-                if condition_key_filter and not self._matches_condition_key(
-                    action_detail.action_condition_keys or [], condition_key_filter
-                ):
+                if not self._matches_filters(action_detail, args):
                     continue
                 results.append(
                     self._format_action_detail(
                         service,
                         action_detail,
                         simple=args.output == "text" and not is_single_exact_query and not fields,
-                        # Backwards compat: single exact query returns action without service prefix
-                        include_service_prefix=not is_single_exact_query,
                         fields=fields,
+                        service_name=service_detail.service_name,
                     )
                 )
             else:
@@ -739,8 +832,8 @@ note:
         service: str,
         action_detail: Any,
         simple: bool = False,
-        include_service_prefix: bool = True,
         fields: set[str] | None = None,
+        service_name: str | None = None,
     ) -> dict[str, Any]:
         """Format action detail for output.
 
@@ -748,15 +841,16 @@ note:
             service: Service prefix
             action_detail: Action detail from service definition
             simple: If True, return minimal format (for text output lists)
-            include_service_prefix: If True, include service prefix in action name
             fields: Set of fields to include. If None, include all fields.
-                    Valid values: 'condition_keys', 'resource_types', 'access_level'
+                    Valid values: 'condition_keys', 'resource_types', 'access_level', 'data_plane',
+                    'service_name'
+            service_name: Service display name (`ServiceName`)
 
         Returns:
             Formatted action dictionary
         """
-        access_level = self._get_access_level(action_detail)
-        action_name = f"{service}:{action_detail.name}" if include_service_prefix else action_detail.name
+        access_level = action_detail.access_level
+        action_name = f"{service}:{action_detail.name}"
 
         # Simple mode: just action name (for text output of action lists)
         if simple and not fields:
@@ -771,16 +865,20 @@ note:
                 result["resource_types"] = [r.get("Name", "*") for r in (action_detail.resources or [])]
             if "access_level" in fields:
                 result["access_level"] = access_level
+            if "data_plane" in fields:
+                result["data_plane"] = action_detail.is_data_plane
+            if "service_name" in fields:
+                result["service_name"] = service_name
             return result
 
-        # Full output mode
-        description = action_detail.annotations.get("Description", "N/A") if action_detail.annotations else "N/A"
-
+        description = (action_detail.annotations or {}).get("Description")
         return {
             "service": service,
+            "service_name": service_name,
             "action": action_name,
-            "description": description,
+            **({"description": description} if description else {}),
             "access_level": access_level,
+            "data_plane": action_detail.is_data_plane,
             "resource_types": [r.get("Name", "*") for r in (action_detail.resources or [])],
             "condition_keys": action_detail.action_condition_keys or [],
         }
@@ -795,31 +893,9 @@ note:
         fields = self._get_field_filters(args)
 
         filtered_actions = []
-        for _action_name, action_detail in service_detail.actions.items():
-            access_level = self._get_access_level(action_detail)
-
-            # Apply filters
-            if args.access_level:
-                if access_level.lower() != args.access_level.lower():
-                    continue
-
-            if args.resource_type:
-                resources = action_detail.resources or []
-
-                # If filtering for wildcard-only actions (actions with no required resources)
-                if args.resource_type == "*":
-                    # Actions with empty resources list are wildcard-only
-                    if resources:
-                        continue
-                else:
-                    # Filter by specific resource type name
-                    resource_names = [r.get("Name", "") for r in resources]
-                    if args.resource_type not in resource_names:
-                        continue
-
-            if args.has_condition_key:
-                if not self._matches_condition_key(action_detail.action_condition_keys or [], args.has_condition_key):
-                    continue
+        for action_detail in service_detail.actions.values():
+            if not self._matches_filters(action_detail, args):
+                continue
 
             # Add to filtered list using _format_action_detail for consistency
             filtered_actions.append(
@@ -827,8 +903,8 @@ note:
                     service,
                     action_detail,
                     simple=args.output == "text" and not fields,
-                    include_service_prefix=True,
                     fields=fields,
+                    service_name=service_detail.service_name,
                 )
             )
 
@@ -863,6 +939,7 @@ note:
 
             return {
                 "service": args.service,
+                "service_name": service_detail.service_name,
                 "resource_type": resource_type.name,
                 "arn_formats": resource_type.arn_formats or [],
                 "condition_keys": resource_type.condition_keys or [],
@@ -916,33 +993,42 @@ note:
             if not condition_key:
                 raise ValueError(f"Condition key '{args.name}' not found in service '{args.service}'")
 
-            return {
-                "service": args.service,
-                "condition_key": condition_key.name,
-                "description": condition_key.description or "N/A",
-                "types": condition_key.types or [],
-            }
+            return self._select_key_fields(
+                {
+                    "service": args.service,
+                    "service_name": service_detail.service_name,
+                    "condition_key": condition_key.name,
+                    **({"description": condition_key.description} if condition_key.description else {}),
+                    "types": condition_key.types or [],
+                },
+                args,
+            )
 
-        # Return all condition keys
-        return [
-            {
-                "condition_key": ck.name,
-                "description": ck.description or "N/A",
-                "types": ck.types or [],
-            }
-            for ck in service_detail.condition_keys.values()
-        ]
+        return self._select_key_fields(
+            [
+                {
+                    "condition_key": ck.name,
+                    **({"description": ck.description} if ck.description else {}),
+                    "types": ck.types or [],
+                }
+                for ck in service_detail.condition_keys.values()
+            ],
+            args,
+        )
 
-    def _print_result(self, result: Any, fmt: str) -> None:
-        """Print query result in specified format."""
+    def _print_result(self, result: Any, fmt: str, show_fields: bool = False) -> None:
+        """Print query result in specified format.
+
+        ``show_fields`` prints each condition key with its selected fields in text output.
+        """
         if fmt == "yaml":
             print(yaml.dump(result, default_flow_style=False, sort_keys=False))
         elif fmt == "text":
-            self._print_text_format(result)
+            self._print_text_format(result, show_fields)
         else:  # json
             print(json.dumps(result, indent=2))
 
-    def _print_text_format(self, result: Any) -> None:
+    def _print_text_format(self, result: Any, show_fields: bool = False) -> None:
         """Print result in simple text format.
 
         Text format outputs only the essential information:
@@ -960,7 +1046,16 @@ note:
             first_item = result[0]
             if "action" in first_item:
                 # Action list - check if we have filtered fields to show
-                has_filtered_fields = any(k in first_item for k in ("condition_keys", "resource_types", "access_level"))
+                has_filtered_fields = any(
+                    k in first_item
+                    for k in (
+                        "condition_keys",
+                        "resource_types",
+                        "access_level",
+                        "data_plane",
+                        "service_name",
+                    )
+                )
                 for item in result:
                     if has_filtered_fields:
                         # Print action with filtered fields
@@ -969,9 +1064,11 @@ note:
                         # Simple list: just action name
                         print(item["action"])
             elif "condition_key" in first_item:
-                # Condition key list
                 for item in result:
-                    print(item["condition_key"])
+                    if show_fields:
+                        self._print_condition_key(item)
+                    else:
+                        print(item["condition_key"])
             elif "resource_type" in first_item:
                 # ARN type list - check if we have filtered fields to show
                 has_filtered_fields = any(
@@ -997,12 +1094,18 @@ note:
                 self._print_arn_with_fields(result)
 
             elif "condition_key" in result:
-                # Condition key details
-                print(result["condition_key"])
-                if result.get("types"):
-                    print(f"  Types: {', '.join(result['types'])}")
-                if result.get("description") and result["description"] != "N/A":
-                    print(f"  Description: {result['description']}")
+                self._print_condition_key(result)
+
+    @staticmethod
+    def _print_condition_key(item: dict[str, Any]) -> None:
+        """Print a condition key with any available fields."""
+        print(item["condition_key"])
+        if item.get("types"):
+            print(f"  Types: {', '.join(item['types'])}")
+        if item.get("description") and item["description"] != "N/A":
+            print(f"  Description: {item['description']}")
+        if item.get("doc_url"):
+            print(f"  Documentation: {item['doc_url']}")
 
     def _print_action_with_fields(self, item: dict[str, Any]) -> None:
         """Print action with any available fields.
@@ -1011,12 +1114,19 @@ note:
             item: Action dict with 'action' key and optionally filtered fields.
         """
         print(item["action"])
+        if item.get("description"):
+            print(f"  Description: {item['description']}")
+        if item.get("service_name"):
+            print(f"  Service name: {item['service_name']}")
         if item.get("resource_types"):
             print(f"  Resource types: {', '.join(item['resource_types'])}")
         if item.get("condition_keys"):
             print(f"  Condition keys: {', '.join(item['condition_keys'])}")
         if item.get("access_level"):
             print(f"  Access level: {item['access_level']}")
+        if "data_plane" in item:
+            plane = {True: "data", False: "control", None: "unclassified"}[item["data_plane"]]
+            print(f"  Plane: {plane}")
 
     def _print_arn_with_fields(self, item: dict[str, Any]) -> None:
         """Print ARN resource type with any available fields.

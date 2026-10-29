@@ -98,7 +98,7 @@ def main() -> int:
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog=command.epilog,
         )
-        command.add_arguments(cmd_parser)
+        command.configure_parser(cmd_parser)
         command_map[command.name] = command
 
     # Parse arguments

@@ -43,13 +43,16 @@ class ServiceCacheManager:
         self._memory_cache = LRUCache(maxsize=memory_cache_size, ttl=cache_ttl)
         self._storage = storage
 
-    async def get(self, cache_key: str, url: str | None = None, base_url: str = "") -> Any | None:
+    async def get(
+        self, cache_key: str, url: str | None = None, base_url: str = "", modified: int | None = None
+    ) -> Any | None:
         """Get from memory cache, fallback to disk cache.
 
         Args:
             cache_key: Key to lookup in memory cache
             url: Optional URL for disk cache lookup
             base_url: Base URL for service reference API (used for disk cache path)
+            modified: Upstream last-modified epoch, extends disk validity past the TTL
 
         Returns:
             Cached data if found, None otherwise
@@ -62,7 +65,7 @@ class ServiceCacheManager:
 
         # Check disk cache if URL provided and storage available
         if url and self._storage:
-            cached = await asyncio.to_thread(self._storage.read_from_cache, url, base_url)
+            cached = await asyncio.to_thread(self._storage.read_from_cache, url, base_url, False, modified)
             if cached is not None:
                 logger.debug(f"Disk cache hit for URL: {url}")
                 # Populate memory cache for faster future access
