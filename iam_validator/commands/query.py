@@ -109,6 +109,22 @@ QUERY_EXAMPLES: dict[str, ExampleSections] = {
                 "iam-validator query action --service iam --access-level write --output text",
             ],
         ),
+        (
+            "JSON piped to jq",
+            [
+                "iam-validator query action --service s3 --data-plane | jq -r '.[].action'",
+                "iam-validator query action --service s3 | jq 'group_by(.access_level) | map({(.[0].access_level): length}) | add'",
+                "iam-validator query action --service s3 | jq -r '.[] | select(.condition_keys | index(\"s3:TlsVersion\")) | .action'",
+                "iam-validator query global-condition --type Bool | jq -r '.[] | \"\\(.condition_key)\\t\\(.doc_url)\"'",
+            ],
+        ),
+        (
+            "YAML piped to yq",
+            [
+                "iam-validator query action --service iam --access-level permissions-management --output yaml | yq '.[].action'",
+                "iam-validator query condition --service s3 --output yaml | yq '.[] | select(.types | contains([\"Numeric\"])) | .condition_key'",
+            ],
+        ),
     ],
 }
 
