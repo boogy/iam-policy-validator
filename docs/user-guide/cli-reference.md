@@ -326,6 +326,9 @@ iam-validator query global-condition --type IPAddress
 iam-validator query global-condition --name aws:SourceIp
 iam-validator query global-condition --name aws:ResourceTag
 
+# Keys matching a wildcard (case-insensitive)
+iam-validator query global-condition --name 'aws:Re*' --output text
+
 # Only selected fields
 iam-validator query global-condition --type Bool --show-description --show-doc-url --output text
 ```

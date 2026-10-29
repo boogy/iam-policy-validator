@@ -1247,6 +1247,19 @@ class TestGlobalConditionQuery:
         rc, _ = await _run_query(query_cmd, ["global-condition", "--name", "aws:Nope"], plane_fetcher)
         assert rc == 1
 
+    async def test_wildcard_name_lists_matching_keys(self, query_cmd, plane_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["global-condition", "--name", "aws:Re*", "--output", "text"], plane_fetcher
+        )
+        assert rc == 0
+        names = [line for line in "\n".join(out).splitlines() if line and not line.startswith(" ")]
+        assert "aws:ResourceTag/${TagKey}" in names
+        assert all(n.startswith("aws:Re") for n in names)
+
+    async def test_wildcard_name_without_matches_fails(self, query_cmd, plane_fetcher) -> None:
+        rc, _ = await _run_query(query_cmd, ["global-condition", "--name", "aws:Zzz*"], plane_fetcher)
+        assert rc == 1
+
 
 class TestFiltersApplyToNamedQueries:
     async def test_access_level_filters_wildcard_query(self, query_cmd, plane_fetcher) -> None:

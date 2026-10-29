@@ -288,6 +288,17 @@ class TestGlobalConditionKeys:
         assert keys
         assert all("ArrayOfString" in k["types"] for k in keys)
 
+    async def test_name_pattern_is_case_insensitive_wildcard(self, mock_fetcher):
+        keys = await query_global_condition_keys(mock_fetcher, pattern="AWS:re*")
+        names = {k["condition_key"] for k in keys}
+        assert {"aws:RequestTag/${TagKey}", "aws:ResourceTag/${TagKey}", "aws:RequestedRegion"} <= names
+        assert all(n.lower().startswith("aws:re") for n in names)
+
+    async def test_name_pattern_combines_with_type_filter(self, mock_fetcher):
+        keys = await query_global_condition_keys(mock_fetcher, key_type="Bool", pattern="aws:Via*")
+        assert keys
+        assert all("Bool" in k["types"] and k["condition_key"].startswith("aws:Via") for k in keys)
+
     async def test_single_key_resolves_tag_template(self, mock_fetcher):
         details = await query_global_condition_key(mock_fetcher, "aws:RequestTag/env")
         assert details["condition_key"] == "aws:RequestTag/${TagKey}"

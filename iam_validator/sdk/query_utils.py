@@ -26,6 +26,7 @@ Example:
     ...     tag_key = await query_global_condition_key(fetcher, "aws:ResourceTag")
 """
 
+import fnmatch
 from typing import Literal, TypedDict
 
 from iam_validator.core.aws_service.fetcher import AWSServiceFetcher
@@ -444,12 +445,14 @@ def _global_key_details(info: GlobalConditionKeyInfo) -> GlobalConditionKeyDetai
 async def query_global_condition_keys(
     fetcher: AWSServiceFetcher,
     key_type: str | None = None,
+    pattern: str | None = None,
 ) -> list[GlobalConditionKeyDetails]:
     """Query the global condition keys (AWS Service Reference, bundled list as fallback).
 
     Args:
         fetcher: AWSServiceFetcher instance
         key_type: Optional case-insensitive filter on any listed type (e.g., "Bool", "ARN")
+        pattern: Optional case-insensitive wildcard on the key name (e.g., "aws:Re*")
 
     Returns:
         Keys sorted by name; tag keys appear under their templated name
@@ -458,13 +461,16 @@ async def query_global_condition_keys(
     Example:
         >>> async with AWSServiceFetcher() as fetcher:
         ...     bool_keys = await query_global_condition_keys(fetcher, key_type="Bool")
+        ...     re_keys = await query_global_condition_keys(fetcher, pattern="aws:Re*")
     """
     global_conditions = await fetcher.get_global_conditions()
     wanted = key_type.lower() if key_type else None
+    name_pattern = pattern.lower() if pattern else None
     return [
         _global_key_details(info)
         for info in global_conditions.list_keys()
-        if wanted is None or wanted in (t.lower() for t in info.types)
+        if (wanted is None or wanted in (t.lower() for t in info.types))
+        and (name_pattern is None or fnmatch.fnmatchcase(info.name.lower(), name_pattern))
     ]
 
 

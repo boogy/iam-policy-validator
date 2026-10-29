@@ -99,6 +99,13 @@ QUERY_EXAMPLES: dict[str, ExampleSections] = {
                 "iam-validator query global-condition --name aws:ResourceTag",
             ],
         ),
+        (
+            "Keys matching a wildcard (case-insensitive; quote it for the shell)",
+            [
+                "iam-validator query global-condition --name 'aws:Re*' --output text",
+                "iam-validator query global-condition --name 'aws:*Tag*' --show-types --output text",
+            ],
+        ),
         ("Show only selected fields", ["iam-validator query global-condition --show-types --output text"]),
     ],
     "output": [
@@ -323,7 +330,7 @@ class QueryCommand(Command):
         )
         global_condition_parser.add_argument(
             "--name",
-            help="Global condition key (e.g., aws:SourceIp or aws:ResourceTag)",
+            help="Global condition key or wildcard (e.g., aws:SourceIp, aws:ResourceTag, 'aws:Re*')",
         )
         global_condition_parser.add_argument(
             "--type",
@@ -502,7 +509,12 @@ class QueryCommand(Command):
                     args.name = name
                     result = await self._query_condition_table(fetcher, args)
                 elif args.query_type == "global-condition":
-                    if args.name:
+                    if args.name and ("*" in args.name or "?" in args.name):
+                        keys = await query_global_condition_keys(fetcher, args.key_type, pattern=args.name)
+                        if not keys:
+                            raise ValueError(f"No global condition keys match '{args.name}'")
+                        result = [dict(k) for k in keys]
+                    elif args.name:
                         result = dict(await query_global_condition_key(fetcher, args.name))
                     else:
                         result = [dict(k) for k in await query_global_condition_keys(fetcher, args.key_type)]
