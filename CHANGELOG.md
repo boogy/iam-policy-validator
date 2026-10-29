@@ -16,10 +16,12 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Reuse a cached service definition past its TTL while the service's `modified` timestamp in the AWS Service Reference shows it unchanged. ([#232])
 - Apply `--access-level` and `--resource-type` to `iam-validator query action --name` exact and wildcard queries; they were ignored unless listing a whole service. ([#232])
 - Move usage examples out of every command's `-h` output into `--examples`; `-h` now ends with a one-line pointer. ([#232])
+- Run the GitHub Action on Python 3.15 (was 3.13). ([#232])
 - Refresh locked dependencies, including boto3 and botocore 1.43.122, Pydantic 2.14.2, FastMCP 4.1.4 and ruff 0.17.3; minimum supported versions are unchanged. ([#232])
 
 ### Added
 
+- Support Python 3.15, now tested in CI. ([#232])
 - Add `iam-validator query global-condition` to list global condition keys, filter them by `--type`, or look one up by `--name`. Tag keys resolve to their `${TagKey}` template from the bare prefix (`aws:ResourceTag`), the template name, or a concrete key (`aws:ResourceTag/team`). A `--name` with `*` or `?` lists every matching key, case-insensitively (`--name 'aws:Re*'`); the SDK takes it as `query_global_condition_keys(pattern=...)`. ([#232])
 - Add `--data-plane` and `--control-plane` filters and the `--show-data-plane` field to `iam-validator query action`, based on AWS's `IsDataPlane` annotation. Unclassified actions match neither filter. ([#232])
 - Show the AWS `ServiceName` and data-plane classification in `query` output, the SDK (`query_actions`, `query_action_details`) and the MCP `query` tool. ([#232])
