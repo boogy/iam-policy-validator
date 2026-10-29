@@ -46,7 +46,9 @@ class Command(ABC):
         """Add the command's arguments plus ``--examples`` when it has examples."""
         self.add_arguments(parser)
         if self.examples:
-            parser.add_argument("--examples", action=ExamplesAction, command=self, help="Show usage examples and exit")
+            parser.add_argument(
+                "--examples", action=ExamplesAction, printer=self.print_examples, help="Show usage examples and exit"
+            )
 
     @abstractmethod
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:

@@ -1,13 +1,11 @@
 """Usage examples for CLI commands, printed by ``--examples``."""
 
 import argparse
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from typing import Any
 
 from rich.console import Console
 from rich.text import Text
-
-if TYPE_CHECKING:
-    from iam_validator.commands.base import Command
 
 ExampleSections = list[tuple[str, list[str]]]
 
@@ -30,9 +28,9 @@ def print_examples(sections: ExampleSections, heading: str | None = None, notes:
 class ExamplesAction(argparse.Action):
     """``--examples``: print the command's examples and exit before required-argument checks."""
 
-    def __init__(self, option_strings: list[str], dest: str, command: "Command", **kwargs: Any) -> None:
+    def __init__(self, option_strings: list[str], dest: str, printer: Callable[[], None], **kwargs: Any) -> None:
         super().__init__(option_strings, dest, nargs=0, default=argparse.SUPPRESS, **kwargs)
-        self.command = command
+        self.printer = printer
 
     def __call__(
         self,
@@ -41,5 +39,5 @@ class ExamplesAction(argparse.Action):
         values: Any,
         option_string: str | None = None,
     ) -> None:
-        self.command.print_examples()
+        self.printer()
         parser.exit()
