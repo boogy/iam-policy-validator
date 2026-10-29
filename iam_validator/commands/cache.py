@@ -8,6 +8,7 @@ from rich.console import Console
 from rich.table import Table
 
 from iam_validator.commands.base import Command
+from iam_validator.commands.examples import ExampleSections
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.aws_service.storage import ServiceFileStorage
 from iam_validator.core.config.config_loader import ConfigLoader
@@ -28,27 +29,15 @@ class CacheCommand(Command):
         return "Manage AWS service definition cache"
 
     @property
-    def epilog(self) -> str:
-        return """
-Examples:
-  # Show cache information
-  iam-validator cache info
-
-  # List all cached services
-  iam-validator cache list
-
-  # Clear all cached AWS service definitions
-  iam-validator cache clear
-
-  # Refresh all cached services with fresh data
-  iam-validator cache refresh
-
-  # Pre-fetch common AWS services
-  iam-validator cache prefetch
-
-  # Show cache location
-  iam-validator cache location
-"""
+    def examples(self) -> ExampleSections:
+        return [
+            ("Show cache information", ["iam-validator cache info"]),
+            ("List all cached services", ["iam-validator cache list"]),
+            ("Clear all cached AWS service definitions", ["iam-validator cache clear"]),
+            ("Refresh all cached services with fresh data", ["iam-validator cache refresh"]),
+            ("Pre-fetch common AWS services", ["iam-validator cache prefetch"]),
+            ("Show cache location", ["iam-validator cache location"]),
+        ]
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         """Add cache command arguments."""

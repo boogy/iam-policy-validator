@@ -4,6 +4,7 @@ import argparse
 import logging
 
 from iam_validator.commands.base import Command
+from iam_validator.commands.examples import ExampleSections
 
 
 class MCPCommand(Command):
@@ -18,18 +19,19 @@ class MCPCommand(Command):
         return "Start MCP server for AI assistant integration"
 
     @property
-    def epilog(self) -> str:
-        return """
-Examples:
-  # Start MCP server with stdio transport (for Claude Desktop)
-  iam-validator mcp
+    def examples(self) -> ExampleSections:
+        return [
+            ("Start MCP server with stdio transport (for Claude Desktop)", ["iam-validator mcp"]),
+            (
+                "Start with streamable HTTP transport on custom host/port",
+                ["iam-validator mcp --transport http --host 127.0.0.1 --port 8000"],
+            ),
+            ("Start with config preloaded", ["iam-validator mcp --config ./config.yaml"]),
+        ]
 
-  # Start with streamable HTTP transport on custom host/port
-  iam-validator mcp --transport http --host 127.0.0.1 --port 8000
-
-  # Start with config preloaded
-  iam-validator mcp --config ./config.yaml
-
+    @property
+    def examples_notes(self) -> str:
+        return """\
 Claude Desktop Configuration:
   Add to your claude_desktop_config.json:
   {
@@ -60,15 +62,19 @@ Config File (YAML) - same format as CLI validator:
     enabled: true
     severity: high
 
-Every flag also reads its IAM_VALIDATOR_MCP_* environment variable (flags win); see
-'iam-validator-mcp --help' -- both entry points resolve the same flags identically.
-
 Features:
   - Policy validation with 23 security checks
   - AWS service queries (actions, resources, condition keys, ARN formats)
   - AWS Access Analyzer integration
   - Session-wide configuration management (local mode)
-        """
+"""
+
+    @property
+    def epilog(self) -> str:
+        return (
+            "Run 'iam-validator mcp --examples' for usage examples and Claude Desktop config.\n\n"
+            "Every flag also reads its IAM_VALIDATOR_MCP_* environment variable (flags win); see 'iam-validator-mcp --help' -- both entry points resolve the same flags identically."
+        )
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         """Add MCP command arguments."""

@@ -27,6 +27,7 @@ import os
 from pathlib import Path
 
 from iam_validator.commands.base import Command
+from iam_validator.commands.examples import ExampleSections
 from iam_validator.core.aws_service.storage import ServiceFileStorage
 
 logger = logging.getLogger(__name__)
@@ -46,28 +47,26 @@ class CompletionCommand(Command):
         return "Generate shell completion scripts (bash or zsh)"
 
     @property
-    def epilog(self) -> str:
-        """Command epilog with examples."""
-        return """
-examples:
-  # Generate bash completion
-  iam-validator completion bash > ~/.bash_completion.d/iam-validator
-  source ~/.bash_completion.d/iam-validator
-
-  # Generate zsh completion
-  iam-validator completion zsh > ~/.zsh/completion/_iam-validator
-  # Add to ~/.zshrc: fpath=(~/.zsh/completion $fpath)
-
-  # Direct evaluation (bash)
-  eval "$(iam-validator completion bash)"
-
-  # Direct evaluation (zsh)
-  eval "$(iam-validator completion zsh)"
-
-  # Install into the XDG completion directory
-  iam-validator completion zsh --install
-  iam-validator completion bash --install
-"""
+    def examples(self) -> ExampleSections:
+        return [
+            (
+                "Generate bash completion",
+                [
+                    "iam-validator completion bash > ~/.bash_completion.d/iam-validator",
+                    "source ~/.bash_completion.d/iam-validator",
+                ],
+            ),
+            (
+                "Generate zsh completion (add fpath=(~/.zsh/completion $fpath) to ~/.zshrc)",
+                ["iam-validator completion zsh > ~/.zsh/completion/_iam-validator"],
+            ),
+            ("Direct evaluation (bash)", ['eval "$(iam-validator completion bash)"']),
+            ("Direct evaluation (zsh)", ['eval "$(iam-validator completion zsh)"']),
+            (
+                "Install into the XDG completion directory",
+                ["iam-validator completion zsh --install", "iam-validator completion bash --install"],
+            ),
+        ]
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         """Add completion command arguments."""
@@ -272,7 +271,7 @@ _iam_validator_completion() {{
             return 0
             ;;
         completion)
-            COMPREPLY=( $(compgen -W "bash zsh --install" -- "$cur") )
+            COMPREPLY=( $(compgen -W "bash zsh --install --examples" -- "$cur") )
             return 0
             ;;
         --transport)
@@ -320,7 +319,7 @@ _iam_validator_completion() {{
 
             if [[ -z "$query_subcmd" ]]; then
                 # Complete query subcommand
-                COMPREPLY=( $(compgen -W "action arn condition global-condition examples" -- "$cur") )
+                COMPREPLY=( $(compgen -W "action arn condition global-condition examples --examples" -- "$cur") )
                 return 0
             fi
 
@@ -366,17 +365,17 @@ _iam_validator_completion() {{
             return 0
             ;;
         validate)
-            opts="--path -p --stdin --format -f --output -o --no-recursive --fail-on-warnings --policy-type -t --github-comment --github-review --github-summary --verbose -v --config -c --custom-checks-dir --allow-config-custom-checks --aws-services-dir --stream --batch-size --summary --severity-breakdown --allow-owner-ignore --no-owner-ignore --ci --ci-output --off-diff-comment-mode --comment-tag"
+            opts="--path -p --stdin --format -f --output -o --no-recursive --fail-on-warnings --policy-type -t --github-comment --github-review --github-summary --verbose -v --config -c --custom-checks-dir --allow-config-custom-checks --aws-services-dir --stream --batch-size --summary --severity-breakdown --allow-owner-ignore --no-owner-ignore --ci --ci-output --off-diff-comment-mode --comment-tag --examples"
             COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
             return 0
             ;;
         post-to-pr)
-            opts="--report -r --create-review --no-review --add-summary --no-summary --config -c --off-diff-comment-mode --comment-tag"
+            opts="--report -r --create-review --no-review --add-summary --no-summary --config -c --off-diff-comment-mode --comment-tag --examples"
             COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
             return 0
             ;;
         analyze)
-            opts="--path -p --config -c --policy-type -t --region --profile --format -f --output -o --no-recursive --fail-on-warnings --github-comment --github-review --github-summary --run-all-checks --check-access-not-granted --check-access-resources --check-no-new-access --check-no-public-access --public-access-resource-type --off-diff-comment-mode --comment-tag --verbose -v"
+            opts="--path -p --config -c --policy-type -t --region --profile --format -f --output -o --no-recursive --fail-on-warnings --github-comment --github-review --github-summary --run-all-checks --check-access-not-granted --check-access-resources --check-no-new-access --check-no-public-access --public-access-resource-type --off-diff-comment-mode --comment-tag --verbose -v --examples"
             COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
             return 0
             ;;
@@ -392,7 +391,7 @@ _iam_validator_completion() {{
 
             if [[ -z "$cache_subcmd" ]]; then
                 # Complete cache subcommand
-                COMPREPLY=( $(compgen -W "info list clear refresh prefetch location" -- "$cur") )
+                COMPREPLY=( $(compgen -W "info list clear refresh prefetch location --examples" -- "$cur") )
                 return 0
             fi
 
@@ -408,12 +407,12 @@ _iam_validator_completion() {{
             return 0
             ;;
         sync-services)
-            opts="--output-dir --max-concurrent"
+            opts="--output-dir --max-concurrent --examples"
             COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
             return 0
             ;;
         mcp)
-            opts="--mode --transport --host --port --config --auth --profile --list-profiles --custom-checks-dir --aws-services-dir --cache-directory --instructions --instructions-file --allowed-regions --analyze-rate-limit --max-policies --max-policy-bytes --max-request-bytes --request-timeout-s --max-response-bytes"
+            opts="--mode --transport --host --port --config --auth --profile --list-profiles --custom-checks-dir --aws-services-dir --cache-directory --instructions --instructions-file --allowed-regions --analyze-rate-limit --max-policies --max-policy-bytes --max-request-bytes --request-timeout-s --max-response-bytes --examples"
             COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
             return 0
             ;;
@@ -460,6 +459,7 @@ _iam_validator() {{
                 query)
                     local query_state
                     _arguments -C \\
+                        '--examples[Show usage examples and exit]' \\
                         '1: :_iam_validator_query_subcommands' \\
                         '*::arg:->query_args' && return 0
 
@@ -519,6 +519,7 @@ _iam_validator() {{
                     ;;
                 validate)
                     _arguments \\
+                        '--examples[Show usage examples and exit]' \\
                         '*--path[Path to policy file or directory]:file:_files' \\
                         '*-p[Path to policy file or directory]:file:_files' \\
                         '--stdin[Read policy from stdin]' \\
@@ -548,6 +549,7 @@ _iam_validator() {{
                     ;;
                 post-to-pr)
                     _arguments \\
+                        '--examples[Show usage examples and exit]' \\
                         '(--report -r)'{{--report,-r}}'[Path to JSON report file]:file:_files' \\
                         '--create-review[Create line-specific review comments]' \\
                         '--no-review[Do not create line-specific review comments]' \\
@@ -559,6 +561,7 @@ _iam_validator() {{
                     ;;
                 analyze)
                     _arguments \\
+                        '--examples[Show usage examples and exit]' \\
                         '*--path[Path to policy file or directory]:file:_files' \\
                         '*-p[Path to policy file or directory]:file:_files' \\
                         '(--policy-type -t)'{{--policy-type,-t}}'[Type of IAM policy]:policy type:(IDENTITY_POLICY RESOURCE_POLICY SERVICE_CONTROL_POLICY)' \\
@@ -585,6 +588,7 @@ _iam_validator() {{
                 cache)
                     local cache_state
                     _arguments -C \\
+                        '--examples[Show usage examples and exit]' \\
                         '1: :_iam_validator_cache_subcommands' \\
                         '*::arg:->cache_args' && return 0
 
@@ -606,16 +610,19 @@ _iam_validator() {{
                     ;;
                 sync-services)
                     _arguments \\
+                        '--examples[Show usage examples and exit]' \\
                         '--output-dir[Output directory]:directory:_directories' \\
                         '--max-concurrent[Maximum concurrent downloads]:number:'
                     ;;
                 completion)
                     _arguments \\
+                        '--examples[Show usage examples and exit]' \\
                         '1: :(bash zsh)' \\
                         '--install[Write the script to the user completion directory]'
                     ;;
                 mcp)
                     _arguments \\
+                        '--examples[Show usage examples and exit]' \\
                         '--mode[Server mode]:mode:(local hosted)' \\
                         '--transport[Transport protocol]:transport:(stdio http)' \\
                         '--host[Bind host, used only with --transport http]:host:' \\

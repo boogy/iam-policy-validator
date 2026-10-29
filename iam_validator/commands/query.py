@@ -13,16 +13,15 @@ from collections import defaultdict
 from typing import Any
 
 import yaml
-from rich.console import Console
-from rich.text import Text
 
 from iam_validator.commands.base import Command
+from iam_validator.commands.examples import ExampleSections, print_examples
 from iam_validator.core.aws_service.fetcher import AWSServiceFetcher
 from iam_validator.sdk.query_utils import query_global_condition_key, query_global_condition_keys
 
 logger = logging.getLogger(__name__)
 
-QUERY_EXAMPLES: dict[str, list[tuple[str, list[str]]]] = {
+QUERY_EXAMPLES: dict[str, ExampleSections] = {
     "action": [
         ("All actions for a service", ["iam-validator query action --service s3"]),
         (
@@ -129,8 +128,15 @@ class QueryCommand(Command):
 
     @property
     def epilog(self) -> str:
-        """Command epilog pointing at the examples subcommand."""
-        return "Run 'iam-validator query examples [TOPIC]' for usage examples."
+        """Command epilog pointing at the examples."""
+        return "Run 'iam-validator query --examples' or 'iam-validator query examples [TOPIC]' for usage examples."
+
+    @property
+    def examples(self) -> ExampleSections:
+        return [section for sections in QUERY_EXAMPLES.values() for section in sections]
+
+    def print_examples(self) -> None:
+        self._print_examples(None)
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         """Add query command arguments."""
@@ -337,16 +343,9 @@ class QueryCommand(Command):
     @staticmethod
     def _print_examples(topic: str | None) -> None:
         """Print usage examples, optionally for one topic."""
-        console = Console()
         for name, sections in QUERY_EXAMPLES.items():
-            if topic and name != topic:
-                continue
-            console.print(Text(name, style="bold"))
-            for title, commands in sections:
-                console.print(Text(f"  # {title}", style="dim"))
-                for command in commands:
-                    console.print(Text.assemble(("  $ ", "cyan"), command), soft_wrap=True)
-            console.print()
+            if not topic or name == topic:
+                print_examples(sections, heading=name)
 
     def _parse_service_and_name(self, args: argparse.Namespace, query_type: str) -> tuple[str, str | None]:
         """Parse service and name from arguments (single name - for ARN/condition queries).

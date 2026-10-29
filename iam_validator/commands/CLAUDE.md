@@ -8,6 +8,8 @@
 
 1. Create `iam_validator/commands/my_command.py` inheriting from `Command` (see `base.py`):
    implement `name`, `description`, `add_arguments(parser)`, `async execute(args) -> int`.
+   Put usage examples in the `examples` property (verbatim extras in `examples_notes`), not
+   the epilog: `configure_parser()` adds `--examples` and the epilog points to it.
 2. Append the instance to `ALL_COMMANDS` in `iam_validator/commands/__init__.py`.
 3. Add bash + zsh stubs to `iam_validator/commands/completion.py`; add the command to
    `COMMANDS_WITH_FLAT_FLAGS` in `tests/commands/test_completion_command.py` so the parity

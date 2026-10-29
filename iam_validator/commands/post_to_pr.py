@@ -3,6 +3,7 @@
 import argparse
 
 from iam_validator.commands.base import Command
+from iam_validator.commands.examples import ExampleSections
 from iam_validator.core.pr_commenter import post_report_to_pr
 
 
@@ -18,18 +19,12 @@ class PostToPRCommand(Command):
         return "Post a JSON report to a GitHub PR"
 
     @property
-    def epilog(self) -> str:
-        return """
-Examples:
-  # Post report with line comments
-  iam-validator post-to-pr --report report.json
-
-  # Post only summary comment
-  iam-validator post-to-pr --report report.json --no-review
-
-  # Post only line comments (no summary)
-  iam-validator post-to-pr --report report.json --no-summary
-        """
+    def examples(self) -> ExampleSections:
+        return [
+            ("Post report with line comments", ["iam-validator post-to-pr --report report.json"]),
+            ("Post only summary comment", ["iam-validator post-to-pr --report report.json --no-review"]),
+            ("Post only line comments (no summary)", ["iam-validator post-to-pr --report report.json --no-summary"]),
+        ]
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         """Add post-to-pr command arguments."""

@@ -4,6 +4,7 @@ import argparse
 import logging
 
 from iam_validator.commands.base import Command
+from iam_validator.commands.examples import ExampleSections
 from iam_validator.core import constants
 from iam_validator.core.access_analyzer import (
     AccessAnalyzerReport,
@@ -32,44 +33,49 @@ class AnalyzeCommand(Command):
         return "Analyze IAM policies using AWS IAM Access Analyzer"
 
     @property
-    def epilog(self) -> str:
-        return """
-Examples:
-  # Analyze identity-based policies
-  iam-validator analyze --path ./policies/ --policy-type IDENTITY_POLICY
-
-  # Analyze resource-based policies (e.g., S3 bucket policies)
-  iam-validator analyze --path ./bucket-policies/ --policy-type RESOURCE_POLICY
-
-  # Analyze multiple paths
-  iam-validator analyze --path ./iam/ --path ./s3-policies/ --path bucket-policy.json
-
-  # Use specific AWS region and profile
-  iam-validator analyze --path ./policies/ --region us-west-2 --profile prod
-
-  # Run full validation if Access Analyzer passes
-  iam-validator analyze --path ./policies/ --run-all-checks
-
-  # Custom Policy Checks:
-
-  # Check that policies do NOT grant specific dangerous actions
-  iam-validator analyze --path ./policies/ --check-access-not-granted s3:DeleteBucket s3:DeleteObject
-
-  # Check that policies do NOT grant access to specific resources
-  iam-validator analyze --path ./policies/ \\
-    --check-access-not-granted s3:PutObject \\
-    --check-access-resources "arn:aws:s3:::production-bucket/*"
-
-  # Check that updated policies don't grant new access
-  iam-validator analyze --path ./new-policy.json \\
-    --check-no-new-access ./old-policy.json
-
-  # Check that S3 bucket policies don't allow public access
-  iam-validator analyze --path ./bucket-policy.json \\
-    --policy-type RESOURCE_POLICY \\
-    --check-no-public-access \\
-    --public-access-resource-type "AWS::S3::Bucket"
-        """
+    def examples(self) -> ExampleSections:
+        return [
+            (
+                "Analyze identity-based policies",
+                ["iam-validator analyze --path ./policies/ --policy-type IDENTITY_POLICY"],
+            ),
+            (
+                "Analyze resource-based policies (e.g., S3 bucket policies)",
+                ["iam-validator analyze --path ./bucket-policies/ --policy-type RESOURCE_POLICY"],
+            ),
+            (
+                "Analyze multiple paths",
+                ["iam-validator analyze --path ./iam/ --path ./s3-policies/ --path bucket-policy.json"],
+            ),
+            (
+                "Use specific AWS region and profile",
+                ["iam-validator analyze --path ./policies/ --region us-west-2 --profile prod"],
+            ),
+            (
+                "Run full validation if Access Analyzer passes",
+                ["iam-validator analyze --path ./policies/ --run-all-checks"],
+            ),
+            (
+                "Check that policies do NOT grant specific dangerous actions",
+                ["iam-validator analyze --path ./policies/ --check-access-not-granted s3:DeleteBucket s3:DeleteObject"],
+            ),
+            (
+                "Check that policies do NOT grant access to specific resources",
+                [
+                    'iam-validator analyze --path ./policies/ --check-access-not-granted s3:PutObject --check-access-resources "arn:aws:s3:::production-bucket/*"'
+                ],
+            ),
+            (
+                "Check that updated policies don't grant new access",
+                ["iam-validator analyze --path ./new-policy.json --check-no-new-access ./old-policy.json"],
+            ),
+            (
+                "Check that S3 bucket policies don't allow public access",
+                [
+                    'iam-validator analyze --path ./bucket-policy.json --policy-type RESOURCE_POLICY --check-no-public-access --public-access-resource-type "AWS::S3::Bucket"'
+                ],
+            ),
+        ]
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         """Add analyze command arguments."""

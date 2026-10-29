@@ -296,7 +296,7 @@ def _parser_flags(command_name: str) -> set[str]:
 
     command = next(c for c in ALL_COMMANDS if c.name == command_name)
     parser = argparse.ArgumentParser()
-    command.add_arguments(parser)
+    command.configure_parser(parser)
     return {s for action in parser._actions for s in action.option_strings} - {"-h", "--help"}
 
 
@@ -365,6 +365,15 @@ class TestCompletionMatchesParsers:
         for subcommand in _query_subparsers():
             assert f"{subcommand})" in bash
             assert f"'{subcommand}:" in zsh
+
+    @pytest.mark.parametrize("command_name", ["query", "cache", "completion"])
+    def test_examples_flag_offered_for_commands_with_subcommands(
+        self, completion_cmd: CompletionCommand, command_name: str
+    ) -> None:
+        bash_block = completion_cmd._generate_bash_completion().split(f"\n        {command_name})\n", 1)[1]
+        zsh_block = completion_cmd._generate_zsh_completion().split(f"\n                {command_name})\n", 1)[1]
+        assert "--examples" in bash_block.split("\n            ;;", 1)[0]
+        assert "--examples[" in zsh_block.split("\n                    ;;", 1)[0]
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not installed")
     def test_bash_query_examples_offers_topics(self, completion_cmd: CompletionCommand) -> None:

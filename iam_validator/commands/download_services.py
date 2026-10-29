@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeRemainingColumn
 
 from iam_validator.commands.base import Command
+from iam_validator.commands.examples import ExampleSections
 from iam_validator.core.aws_service.storage import GLOBAL_CONDITION_KEYS_FILENAME, service_filename
 from iam_validator.core.config import AWS_SERVICE_REFERENCE_BASE_URL
 from iam_validator.core.config.aws_api import AWS_GLOBAL_CONDITION_KEYS_URL
@@ -35,21 +36,17 @@ class DownloadServicesCommand(Command):
         return "Sync/download all AWS service definitions for offline use"
 
     @property
-    def epilog(self) -> str:
-        return """
-Examples:
-  # Sync all AWS service definitions to default directory (aws_services/)
-  iam-validator sync-services
+    def examples(self) -> ExampleSections:
+        return [
+            ("Sync all AWS service definitions to default directory (aws_services/)", ["iam-validator sync-services"]),
+            ("Sync to a custom directory", ["iam-validator sync-services --output-dir /path/to/backup"]),
+            ("Limit concurrent downloads", ["iam-validator sync-services --max-concurrent 5"]),
+            ("Enable verbose output", ["iam-validator sync-services --log-level debug"]),
+        ]
 
-  # Sync to a custom directory
-  iam-validator sync-services --output-dir /path/to/backup
-
-  # Limit concurrent downloads
-  iam-validator sync-services --max-concurrent 5
-
-  # Enable verbose output
-  iam-validator sync-services --log-level debug
-
+    @property
+    def examples_notes(self) -> str:
+        return """\
 Directory structure:
   aws_services/
       _manifest.json         # Metadata about the download

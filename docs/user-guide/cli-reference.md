@@ -20,6 +20,9 @@ Complete documentation for the `iam-validator` command-line interface.
 | `completion`        | Generate shell completion scripts             |
 | `mcp`               | Start MCP server for AI assistant integration |
 
+`<command> -h` lists options only. Every command prints its usage examples with
+`--examples`, e.g. `iam-validator validate --examples`; required arguments are not needed.
+
 ## validate
 
 Validate IAM policies for correctness and security issues.
@@ -154,6 +157,7 @@ apply to every `query action` mode: listing a service, exact names and wildcards
 `query -h` lists options only. Print grouped usage examples with:
 
 ```bash
+iam-validator query --examples          # all topics
 iam-validator query examples            # all topics
 iam-validator query examples action     # action, arn, condition, global-condition, output
 ```
