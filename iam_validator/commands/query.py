@@ -871,10 +871,12 @@ class QueryCommand(Command):
                 result["service_name"] = service_name
             return result
 
+        description = (action_detail.annotations or {}).get("Description")
         return {
             "service": service,
             "service_name": service_name,
             "action": action_name,
+            **({"description": description} if description else {}),
             "access_level": access_level,
             "data_plane": action_detail.is_data_plane,
             "resource_types": [r.get("Name", "*") for r in (action_detail.resources or [])],
@@ -996,6 +998,7 @@ class QueryCommand(Command):
                     "service": args.service,
                     "service_name": service_detail.service_name,
                     "condition_key": condition_key.name,
+                    **({"description": condition_key.description} if condition_key.description else {}),
                     "types": condition_key.types or [],
                 },
                 args,
@@ -1005,6 +1008,7 @@ class QueryCommand(Command):
             [
                 {
                     "condition_key": ck.name,
+                    **({"description": ck.description} if ck.description else {}),
                     "types": ck.types or [],
                 }
                 for ck in service_detail.condition_keys.values()
@@ -1110,6 +1114,8 @@ class QueryCommand(Command):
             item: Action dict with 'action' key and optionally filtered fields.
         """
         print(item["action"])
+        if item.get("description"):
+            print(f"  Description: {item['description']}")
         if item.get("service_name"):
             print(f"  Service name: {item['service_name']}")
         if item.get("resource_types"):

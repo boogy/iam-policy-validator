@@ -9,7 +9,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 ### Changed
 
 - **Breaking:** `query action --name` with one exact action now outputs the prefixed name in `.action` (`s3:GetObject`, was `GetObject`), like every other query mode.
-- Drop the `description` field from `query action` and `query condition` output; the AWS Service Reference has no action or service condition-key descriptions, so it was always `N/A`. Global condition keys keep theirs.
+- `query action` and `query condition` output include `description` only when the AWS data has one, instead of always printing `N/A`.
 - Load AWS global condition keys from the AWS Service Reference (`global-condition-keys.json`) instead of a hardcoded list. Lookup order is offline directory, disk cache, API, stale cache, then the bundled list; `sync-services` also downloads the file.
 - Treat `aws:RequestTag/*` and `aws:ResourceTag/*` as global condition keys, as AWS lists them. Using one on an action that does not document it is now reported with the global-key warning instead of an error.
 - Accept every type AWS lists for a condition key in `condition_type_mismatch` (e.g. `aws:EpochTime` as `Numeric` or `Date`), instead of the first type only.

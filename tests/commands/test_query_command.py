@@ -334,7 +334,7 @@ class TestQueryCommand:
                 printed_output = mock_print.call_args[0][0]
                 result_dict = json.loads(printed_output)
                 assert result_dict["condition_key"] == "test:condition1"
-                assert "description" not in result_dict
+                assert result_dict["description"] == "Test condition 1"
                 assert "String" in result_dict["types"]
 
     @pytest.mark.asyncio
@@ -1376,3 +1376,47 @@ class TestQueryExamples:
         help_text = parser.format_help()
         assert "iam-validator query examples" in help_text
         assert "$ " not in help_text
+
+
+class TestDescriptionShownOnlyWhenPresent:
+    @pytest.fixture
+    def described_fetcher(self) -> AsyncMock:
+        fetcher = AsyncMock()
+        fetcher.fetch_service_by_name = AsyncMock(
+            return_value=ServiceDetail(
+                Name="demo",
+                Actions=[
+                    ActionDetail(Name="Described", Annotations={"Description": "Does a thing"}),
+                    ActionDetail(Name="Bare"),
+                ],
+                ConditionKeys=[
+                    ConditionKey(Name="demo:described", Description="A key", Types=["String"]),
+                    ConditionKey(Name="demo:bare", Types=["String"]),
+                ],
+            )
+        )
+        return fetcher
+
+    async def test_action_description_included_when_present(self, query_cmd, described_fetcher) -> None:
+        rc, out = await _run_query(query_cmd, ["action", "--name", "demo:Described"], described_fetcher)
+        assert rc == 0
+        assert json.loads(out[0])["description"] == "Does a thing"
+
+    async def test_action_description_omitted_when_empty(self, query_cmd, described_fetcher) -> None:
+        rc, out = await _run_query(query_cmd, ["action", "--name", "demo:Bare"], described_fetcher)
+        assert rc == 0
+        assert "description" not in json.loads(out[0])
+
+    async def test_action_description_in_text_output(self, query_cmd, described_fetcher) -> None:
+        rc, out = await _run_query(
+            query_cmd, ["action", "--name", "demo:Described", "--output", "text"], described_fetcher
+        )
+        assert rc == 0
+        assert "  Description: Does a thing" in out
+
+    async def test_condition_description_only_on_keys_that_have_one(self, query_cmd, described_fetcher) -> None:
+        rc, out = await _run_query(query_cmd, ["condition", "--service", "demo"], described_fetcher)
+        assert rc == 0
+        by_name = {k["condition_key"]: k for k in json.loads(out[0])}
+        assert by_name["demo:described"]["description"] == "A key"
+        assert "description" not in by_name["demo:bare"]
