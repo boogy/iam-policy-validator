@@ -292,6 +292,23 @@ class TestGlobalConditionKeys:
         details = await query_global_condition_key(mock_fetcher, "aws:RequestTag/env")
         assert details["condition_key"] == "aws:RequestTag/${TagKey}"
 
+    @pytest.mark.parametrize(
+        "name", ["aws:RequestTag", "aws:requesttag/", "aws:RequestTag/${TagKey}", "aws:RequestTag/team/owner"]
+    )
+    async def test_tag_template_found_by_prefix_or_template_name(self, mock_fetcher, name):
+        details = await query_global_condition_key(mock_fetcher, name)
+        assert details["condition_key"] == "aws:RequestTag/${TagKey}"
+
+    @pytest.mark.parametrize("name", ["aws:RequestTag", "aws:RequestTag/${TagKey}"])
+    async def test_tag_template_lookup_does_not_loosen_validation(self, mock_fetcher, name):
+        global_conditions = await mock_fetcher.get_global_conditions()
+        assert not global_conditions.is_valid_global_key(name)
+
+    @pytest.mark.parametrize("name", ["aws:RequestTa", "aws:SourceIp/${TagKey}", "aws:Request"])
+    async def test_partial_names_do_not_match_tag_template(self, mock_fetcher, name):
+        with pytest.raises(ValueError, match="not a global condition key"):
+            await query_global_condition_key(mock_fetcher, name)
+
     async def test_single_key_unknown_raises(self, mock_fetcher):
         with pytest.raises(ValueError, match="not a global condition key"):
             await query_global_condition_key(mock_fetcher, "s3:prefix")

@@ -23,7 +23,7 @@ Example:
     Query global condition keys:
     >>> async with AWSServiceFetcher() as fetcher:
     ...     keys = await query_global_condition_keys(fetcher, key_type="Bool")
-    ...     tag_key = await query_global_condition_key(fetcher, "aws:ResourceTag/team")
+    ...     tag_key = await query_global_condition_key(fetcher, "aws:ResourceTag")
 """
 
 from typing import Literal, TypedDict
@@ -425,6 +425,13 @@ async def query_condition_key(
     }
 
 
+def _find_tag_template(keys: list[GlobalConditionKeyInfo], name: str) -> GlobalConditionKeyInfo | None:
+    """Find a ``${TagKey}`` template by its prefix, e.g. ``aws:ResourceTag`` or ``aws:ResourceTag/${TagKey}``."""
+    suffix = "/${tagkey}"
+    prefix = name.lower().removesuffix(suffix).rstrip("/")
+    return next((i for i in keys if i.name.lower().endswith(suffix) and i.name.lower()[: -len(suffix)] == prefix), None)
+
+
 def _global_key_details(info: GlobalConditionKeyInfo) -> GlobalConditionKeyDetails:
     return {
         "condition_key": info.name,
@@ -465,11 +472,12 @@ async def query_global_condition_key(
     fetcher: AWSServiceFetcher,
     condition_key_name: str,
 ) -> GlobalConditionKeyDetails:
-    """Get details for one global condition key; concrete tag keys resolve to their template.
+    """Get details for one global condition key; tag keys resolve to their ``${TagKey}`` template.
 
     Args:
         fetcher: AWSServiceFetcher instance
-        condition_key_name: Condition key (e.g., "aws:SourceIp", "aws:ResourceTag/team")
+        condition_key_name: Condition key (e.g., "aws:SourceIp", "aws:ResourceTag",
+            "aws:ResourceTag/${TagKey}", or a concrete tag key such as "aws:ResourceTag/team")
 
     Raises:
         ValueError: If the key is not a global condition key
@@ -479,7 +487,9 @@ async def query_global_condition_key(
         ...     details = await query_global_condition_key(fetcher, "aws:SourceIp")
     """
     global_conditions = await fetcher.get_global_conditions()
-    info = global_conditions.get_key_info(condition_key_name)
+    info = global_conditions.get_key_info(condition_key_name) or _find_tag_template(
+        global_conditions.list_keys(), condition_key_name
+    )
     if info is None:
         raise ValueError(f"'{condition_key_name}' is not a global condition key")
     return _global_key_details(info)

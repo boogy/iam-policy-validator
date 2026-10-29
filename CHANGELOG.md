@@ -17,7 +17,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Added
 
-- Add `iam-validator query global-condition` to list global condition keys, filter them by `--type`, or look one up by `--name` (concrete tag keys resolve to their `${TagKey}` template).
+- Add `iam-validator query global-condition` to list global condition keys, filter them by `--type`, or look one up by `--name`. Tag keys resolve to their `${TagKey}` template from the bare prefix (`aws:ResourceTag`), the template name, or a concrete key (`aws:ResourceTag/team`).
 - Add `--data-plane` and `--control-plane` filters and the `--show-data-plane` field to `iam-validator query action`, based on AWS's `IsDataPlane` annotation. Unclassified actions match neither filter.
 - Show the AWS `ServiceName` and data-plane classification in `query` output, the SDK (`query_actions`, `query_action_details`) and the MCP `query` tool.
 - Add SDK functions `query_global_condition_keys()` and `query_global_condition_key()`, and a `data_plane` filter on `query_actions()`.

@@ -93,10 +93,10 @@ QUERY_EXAMPLES: dict[str, ExampleSections] = {
         ("All global condition keys", ["iam-validator query global-condition --output text"]),
         ("Filter by value type", ["iam-validator query global-condition --type IPAddress"]),
         (
-            "One key (concrete tag keys resolve to their template)",
+            "One key (tag keys resolve to their ${TagKey} template)",
             [
                 "iam-validator query global-condition --name aws:SourceIp",
-                "iam-validator query global-condition --name aws:ResourceTag/team",
+                "iam-validator query global-condition --name aws:ResourceTag",
             ],
         ),
         ("Show only selected fields", ["iam-validator query global-condition --show-types --output text"]),
@@ -323,7 +323,7 @@ class QueryCommand(Command):
         )
         global_condition_parser.add_argument(
             "--name",
-            help="Global condition key (e.g., aws:SourceIp or aws:ResourceTag/team)",
+            help="Global condition key (e.g., aws:SourceIp or aws:ResourceTag)",
         )
         global_condition_parser.add_argument(
             "--type",

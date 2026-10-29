@@ -322,9 +322,9 @@ iam-validator query global-condition --output text
 # Filter by value type (case-insensitive)
 iam-validator query global-condition --type IPAddress
 
-# One key; concrete tag keys resolve to their template
+# One key; tag keys resolve to their ${TagKey} template
 iam-validator query global-condition --name aws:SourceIp
-iam-validator query global-condition --name aws:ResourceTag/team
+iam-validator query global-condition --name aws:ResourceTag
 
 # Only selected fields
 iam-validator query global-condition --type Bool --show-description --show-doc-url --output text
