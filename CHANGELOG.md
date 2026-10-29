@@ -4,6 +4,23 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Load AWS global condition keys from the AWS Service Reference (`global-condition-keys.json`) instead of a hardcoded list. Lookup order is offline directory, disk cache, API, stale cache, then the bundled list; `sync-services` also downloads the file.
+- Treat `aws:RequestTag/*` and `aws:ResourceTag/*` as global condition keys, as AWS lists them. Using one on an action that does not document it is now reported with the global-key warning instead of an error.
+- Accept every type AWS lists for a condition key in `condition_type_mismatch` (e.g. `aws:EpochTime` as `Numeric` or `Date`), instead of the first type only.
+- Reuse a cached service definition past its TTL while the service's `modified` timestamp in the AWS Service Reference shows it unchanged.
+
+### Added
+
+- Add `iam-validator query global-condition` to list global condition keys, filter them by `--type`, or look one up by `--name` (concrete tag keys resolve to their `${TagKey}` template).
+- Add `--data-plane` and `--control-plane` filters and the `--show-data-plane` field to `iam-validator query action`, based on AWS's `IsDataPlane` annotation. Unclassified actions match neither filter.
+- Show the AWS `ServiceName` and data-plane classification in `query` output, the SDK (`query_actions`, `query_action_details`) and the MCP `query` tool.
+- Add SDK functions `query_global_condition_keys()` and `query_global_condition_key()`, and a `data_plane` filter on `query_actions()`.
+- Add the `global_condition_keys` kind, plus `data_plane` and `key_type` parameters, to the MCP `query` tool.
+
 ## [1.31.4] - 2026-10-23
 
 ### Changed

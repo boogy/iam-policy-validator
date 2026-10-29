@@ -50,8 +50,12 @@ class ActionDetails(BaseModel):
 
     action: str = Field(description="Full action name (e.g., 's3:GetObject')")
     service: str = Field(description="AWS service prefix (e.g., 's3', 'ec2')")
+    service_name: str | None = Field(default=None, description="Service display name (e.g., 'Amazon S3')")
     access_level: str = Field(
         description="Access level category: Read, Write, List, Tagging, or Permissions management"
+    )
+    data_plane: bool | None = Field(
+        default=None, description="AWS IsDataPlane classification; None when AWS has not classified the action"
     )
     resource_types: list[str] = Field(
         default_factory=list,

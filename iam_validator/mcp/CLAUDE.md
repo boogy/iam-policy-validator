@@ -64,7 +64,8 @@ mcp/
     ├── validate.py         # TOOLS: validate_policies (mode-gated local/hosted variants,
     │                       # local carries path/glob)
     ├── query.py            # TOOLS: query (kind=service_actions|action_details|
-    │                       # condition_keys|arn_formats|expand_wildcard)
+    │                       # condition_keys|arn_formats|expand_wildcard|
+    │                       # global_condition_keys)
     ├── checks.py           # TOOLS: describe_checks (registry-driven check catalog +
     │                       # resolved enabled/severity/config + provenance source)
     ├── analyze.py           # TOOLS: analyze_policy (mode-gated local/hosted variants,

@@ -732,6 +732,7 @@ async def query_actions(
     access_level: AccessLevel | None = None,
     resource_type: str | None = None,
     condition: str | None = None,
+    data_plane: bool | None = None,
 ) -> list[ActionInfo]
 ```
 
@@ -744,8 +745,9 @@ async def query_actions(
 | `access_level`  | <code>AccessLevel &#124; None</code> | Filter: `"read"`, `"write"`, `"list"`, `"tagging"`, `"permissions-management"` |
 | `resource_type` | <code>str &#124; None</code>         | Filter by resource type. Use `"*"` for wildcard-only actions                   |
 | `condition`     | <code>str &#124; None</code>         | Filter by condition key support                                                |
+| `data_plane`    | <code>bool &#124; None</code>        | `True`: data-plane actions; `False`: control-plane actions; unclassified actions match neither |
 
-**Returns:** `list[ActionInfo]` — List of dicts with `action`, `access_level`, and `description` keys.
+**Returns:** `list[ActionInfo]` — List of dicts with `action`, `access_level`, `data_plane`, and `description` keys.
 
 **Example:**
 
@@ -767,6 +769,9 @@ async with AWSServiceFetcher() as fetcher:
     mfa_actions = await query_actions(
         fetcher, "iam", condition="aws:MultiFactorAuthPresent"
     )
+
+    # Get data-plane actions (AWS IsDataPlane annotation)
+    data_actions = await query_actions(fetcher, "s3", data_plane=True)
 ```
 
 ---
@@ -791,7 +796,7 @@ async def query_action_details(
 | `service`     | `str`               | Service name (e.g., `"s3"`, `"iam"`)              |
 | `action_name` | `str`               | Action name (e.g., `"GetObject"`, `"CreateUser"`) |
 
-**Returns:** `ActionDetails` — Dict with `service`, `action`, `description`, `access_level`, `resource_types`, and `condition_keys`.
+**Returns:** `ActionDetails` — Dict with `service`, `service_name`, `action`, `description`, `access_level`, `data_plane`, `resource_types`, and `condition_keys`.
 
 **Raises:** `ValueError` — If action is not found
 
@@ -953,6 +958,49 @@ async with AWSServiceFetcher() as fetcher:
 
 ---
 
+### query_global_condition_keys
+
+List AWS global condition keys (from the Service Reference `global-condition-keys.json`,
+with a bundled fallback).
+
+```python
+async def query_global_condition_keys(
+    fetcher: AWSServiceFetcher,
+    key_type: str | None = None,
+) -> list[GlobalConditionKeyDetails]
+```
+
+`key_type` filters case-insensitively on any listed type (e.g. `"ArrayOfString"`,
+`"IPAddress"`). Templated keys keep AWS's name, e.g. `aws:RequestTag/${TagKey}`.
+
+---
+
+### query_global_condition_key
+
+Get details for one global condition key. A concrete tag key such as
+`aws:RequestTag/env` resolves to its `aws:RequestTag/${TagKey}` template.
+
+```python
+async def query_global_condition_key(
+    fetcher: AWSServiceFetcher,
+    condition_key_name: str,
+) -> GlobalConditionKeyDetails
+```
+
+**Raises:** `ValueError` — If the key is not a global condition key
+
+**Example:**
+
+```python
+from iam_validator.sdk import AWSServiceFetcher, query_global_condition_key
+
+async with AWSServiceFetcher() as fetcher:
+    details = await query_global_condition_key(fetcher, "aws:SourceIp")
+    print(details["types"], details["doc_url"])
+```
+
+---
+
 ### get_actions_by_access_level
 
 Get action names filtered by access level.
@@ -1046,6 +1094,7 @@ Returned by `query_actions()`.
 class ActionInfo(TypedDict):
     action: str         # Full action name (e.g., "s3:GetObject")
     access_level: str   # "read", "write", "list", "tagging", "permissions-management"
+    data_plane: bool | None  # AWS IsDataPlane; None when unclassified
     description: str    # Human-readable description
 ```
 
@@ -1056,9 +1105,11 @@ Returned by `query_action_details()`.
 ```python
 class ActionDetails(TypedDict):
     service: str             # Service prefix (e.g., "s3")
+    service_name: str | None # AWS ServiceName (e.g., "S3")
     action: str              # Action name (e.g., "GetObject")
     description: str         # Human-readable description
     access_level: str        # Access level
+    data_plane: bool | None  # AWS IsDataPlane; None when unclassified
     resource_types: list[str]  # Supported resource types
     condition_keys: list[str]  # Supported condition keys
 ```
@@ -1084,6 +1135,18 @@ class ConditionKeyDetails(TypedDict):
     condition_key: str   # Full key name
     description: str     # Human-readable description
     types: list[str]     # Value types
+```
+
+### GlobalConditionKeyDetails
+
+Returned by `query_global_condition_keys()` and `query_global_condition_key()`.
+
+```python
+class GlobalConditionKeyDetails(TypedDict):
+    condition_key: str   # Key name (templated, e.g. "aws:RequestTag/${TagKey}")
+    types: list[str]     # Value types (e.g., ["String", "Numeric"])
+    description: str     # Human-readable description
+    doc_url: str | None  # AWS documentation link
 ```
 
 ### ArnTypeInfo

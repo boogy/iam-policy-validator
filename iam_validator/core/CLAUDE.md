@@ -223,7 +223,8 @@ nested `config:` key; `custom_checks:` module entries are the exception and keep
 
 - `sensitive_actions.py` — 490+ entries by risk category
 - `condition_requirements.py` — action → required conditions
-- `aws_global_conditions.py` — all AWS global condition keys
+- `aws_global_conditions.py` — bundled global condition keys (fallback) + `AWSGlobalConditions.from_api()`;
+  the fetcher's `get_global_conditions()` loads the live list (offline file → disk cache → API → stale → bundled)
 - `service_principals.py`, `wildcards.py`
 
 ---
@@ -234,7 +235,7 @@ nested `config:` key; `custom_checks:` module entries are the exception and keep
 | ------------------------ | ------------------------------------------------------------------------------------------------ |
 | New formatter            | `formatters/my_format.py` extending `BaseFormatter`; wire into formatter selection logic         |
 | New config option        | default in `config/defaults.py` → field on `ValidatorConfig` in `config/config_loader.py` → docs |
-| New global condition key | `config/aws_global_conditions.py`                                                                |
+| New global condition key | AWS publishes it; add to `config/aws_global_conditions.py` only as bundled fallback/supplement   |
 | New sensitive action     | `config/sensitive_actions.py` with risk category                                                 |
 | Third-party check        | advertise the class under the `iam_validator.checks` entry-point group (no core edit)            |
 

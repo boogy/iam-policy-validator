@@ -89,7 +89,7 @@ def mock_fetcher():
     fetcher.expand_wildcard_action = AsyncMock(side_effect=mock_expand_wildcard)
 
     def _action(name: str, access_flag: str | None, resource_type: str | None = None) -> ActionDetail:
-        """An ``ActionDetail`` carrying the ``Properties`` flag ``_get_access_level`` reads."""
+        """An ``ActionDetail`` carrying the ``Properties`` flag ``access_level`` reads."""
         return ActionDetail(
             name=name,
             annotations={"Properties": {access_flag: True}} if access_flag else None,

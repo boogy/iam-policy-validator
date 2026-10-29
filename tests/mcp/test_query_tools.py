@@ -1,7 +1,7 @@
 """Tests for MCP query tools."""
 
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import jsonschema
 import pytest
@@ -9,6 +9,7 @@ from fastmcp.exceptions import ToolError
 
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.config.config_loader import ConfigLoader
+from iam_validator.core.models import ActionDetail, ServiceDetail
 from iam_validator.core.policy_checks import build_registry
 from iam_validator.core.report import ReportGenerator
 from iam_validator.mcp.context import ServerContext
@@ -273,6 +274,8 @@ class TestQueryOutputSchema:
             ("condition_keys", {"service": "s3"}),
             ("arn_formats", {"service": "s3"}),
             ("expand_wildcard", {"patterns": ["s3:Get*"]}),
+            ("global_condition_keys", {}),
+            ("global_condition_keys", {"key_type": "Bool"}),
         ],
     )
     async def test_result_validates_against_output_schema(self, kind, kwargs, mock_fetcher):
@@ -320,6 +323,56 @@ class TestActionDetailsBatch:
         result = await query(kind="action_details", ctx=ctx, actions=actions)
         assert [e["action"] for e in result["results"]] == actions
         assert len(result["results"]) == 3
+
+
+class TestDataPlaneAndGlobalKeys:
+    @pytest.fixture
+    def plane_fetcher(self, mock_fetcher):
+        mock_fetcher.fetch_service_by_name = AsyncMock(
+            return_value=ServiceDetail(
+                Name="test",
+                ServiceName="Test Service",
+                Actions=[
+                    ActionDetail(Name="ReadData", Annotations={"Properties": {"IsDataPlane": True}}),
+                    ActionDetail(
+                        Name="CreateThing", Annotations={"Properties": {"IsWrite": True, "IsDataPlane": False}}
+                    ),
+                    ActionDetail(Name="Unclassified", Annotations={"Properties": {"IsWrite": True}}),
+                ],
+            )
+        )
+        return mock_fetcher
+
+    @pytest.mark.parametrize(
+        "data_plane,expected",
+        [(True, ["test:ReadData"]), (False, ["test:CreateThing"])],
+    )
+    async def test_service_actions_filters_by_plane(self, plane_fetcher, data_plane, expected):
+        ctx = _fake_ctx(_build_context(fetcher=plane_fetcher))
+        result = await query(kind="service_actions", ctx=ctx, service="test", data_plane=data_plane)
+        assert result["actions"] == expected
+
+    async def test_access_level_and_plane_filters_combine(self, plane_fetcher):
+        ctx = _fake_ctx(_build_context(fetcher=plane_fetcher))
+        result = await query(kind="service_actions", ctx=ctx, service="test", access_level="write", data_plane=False)
+        assert result["actions"] == ["test:CreateThing"]
+
+    async def test_action_details_carry_service_name_and_plane(self, plane_fetcher):
+        details = await query_action_details("test:ReadData", fetcher=plane_fetcher)
+        assert details is not None
+        assert details.service_name == "Test Service"
+        assert details.data_plane is True
+
+    async def test_global_condition_keys_type_filter(self, mock_fetcher):
+        ctx = _fake_ctx(_build_context(fetcher=mock_fetcher))
+        result = await query(kind="global_condition_keys", ctx=ctx, key_type="ARN")
+        names = {k["condition_key"] for k in result["condition_keys"]}
+        assert "aws:SourceArn" in names
+        assert "aws:SourceIp" not in names
+        assert result["total"] == len(result["condition_keys"])
+
+    def test_schema_accepts_global_condition_keys_without_params(self):
+        jsonschema.validate(instance={"kind": "global_condition_keys"}, schema=_QUERY_INPUT_SCHEMA)
 
 
 class TestUsesSharedFetcher:

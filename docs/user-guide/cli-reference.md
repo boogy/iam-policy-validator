@@ -118,7 +118,7 @@ iam-validator validate --path trust-policy.json --policy-type TRUST_POLICY
 
 ## query
 
-Query AWS service definitions for actions, ARNs, and condition keys.
+Query AWS service definitions for actions, ARNs, condition keys, and global condition keys.
 
 ### Usage
 
@@ -138,6 +138,9 @@ The `--service` option is **optional** when `--name` includes the service prefix
 | `--show-condition-keys` | Show only condition keys for each action                                                   |
 | `--show-resource-types` | Show only resource types for each action                                                   |
 | `--show-access-level`   | Show only access level for each action                                                     |
+| `--show-data-plane`     | Show only the data-plane classification for each action                                    |
+| `--data-plane`          | `query action`: only data-plane actions (AWS `IsDataPlane: true`)                          |
+| `--control-plane`       | `query action`: only control-plane actions (`IsDataPlane: false`); unclassified excluded   |
 
 ### Subcommands
 
@@ -260,6 +263,19 @@ iam-validator query arn --name s3:bucket
 iam-validator query arn --name iam:role
 ```
 
+##### Data-plane filters
+
+```bash
+# Data-plane actions (e.g. s3:GetObject)
+iam-validator query action --service s3 --data-plane --output text
+
+# Control-plane write actions
+iam-validator query action --service s3 --control-plane --access-level write
+```
+
+AWS annotates actions with `IsDataPlane`. Actions without the annotation match neither
+flag; some services (e.g. `kms`, `iam`) currently have no data-plane actions.
+
 #### query condition
 
 ```bash
@@ -269,6 +285,23 @@ iam-validator query condition --service s3
 # Query specific condition key (two equivalent forms)
 iam-validator query condition --service s3 --name prefix
 iam-validator query condition --name s3:prefix
+```
+
+#### query global-condition
+
+Global condition keys come from the AWS Service Reference
+(`global-condition-keys.json`), with a bundled fallback when offline.
+
+```bash
+# List all global condition keys
+iam-validator query global-condition --output text
+
+# Filter by value type (case-insensitive)
+iam-validator query global-condition --type IPAddress
+
+# One key; concrete tag keys resolve to their template
+iam-validator query global-condition --name aws:SourceIp
+iam-validator query global-condition --name aws:ResourceTag/team
 ```
 
 ## cache

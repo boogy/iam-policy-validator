@@ -25,21 +25,33 @@ from iam_validator.core.config.sensitive_actions import (
 from iam_validator.mcp.component_spec import ToolSpec
 from iam_validator.mcp.context import get_shared_fetcher
 from iam_validator.mcp.models import ActionDetails, PolicySummary
-from iam_validator.sdk import ArnTypeInfo, get_actions_by_access_level, parse_policy, query_arn_types
+from iam_validator.sdk import (
+    ArnTypeInfo,
+    GlobalConditionKeyDetails,
+    get_actions_by_access_level,
+    parse_policy,
+    query_actions,
+    query_arn_types,
+    query_global_condition_keys,
+)
 from iam_validator.sdk import get_policy_summary as sdk_get_policy_summary
 from iam_validator.sdk import query_action_details as sdk_query_action_details
 from iam_validator.sdk import query_condition_keys as sdk_query_condition_keys
 
 
 async def query_service_actions(
-    service: str, access_level: str | None = None, fetcher: AWSServiceFetcher | None = None
+    service: str,
+    access_level: str | None = None,
+    fetcher: AWSServiceFetcher | None = None,
+    data_plane: bool | None = None,
 ) -> list[str]:
-    """Get all actions for a service, optionally filtered by access level.
+    """Get all actions for a service, optionally filtered by access level and data/control plane.
 
     Args:
         service: AWS service prefix (e.g., "s3", "iam", "ec2")
         access_level: Optional filter by access level (read|write|list|tagging|permissions-management)
         fetcher: Optional shared AWSServiceFetcher instance. If None, creates a new one.
+        data_plane: True keeps data-plane actions, False only explicitly control-plane ones
 
     Returns:
         List of action names (e.g., ["s3:GetObject", "s3:PutObject"])
@@ -63,12 +75,10 @@ async def query_service_actions(
             valid_levels = ["read", "write", "list", "tagging", "permissions-management"]
             if access_level.lower() not in valid_levels:
                 raise ValueError(f"Invalid access level '{access_level}'. Must be one of: {', '.join(valid_levels)}")
-            return await get_actions_by_access_level(_fetcher, service, access_level)  # type: ignore
+            if data_plane is None:
+                return await get_actions_by_access_level(_fetcher, service, access_level)  # type: ignore
 
-        # Get all actions (no filter)
-        from iam_validator.sdk import query_actions
-
-        actions = await query_actions(_fetcher, service)
+        actions = await query_actions(_fetcher, service, access_level=access_level, data_plane=data_plane)  # type: ignore[arg-type]
         return [action["action"] for action in actions]
     finally:
         if should_close:
@@ -112,7 +122,9 @@ async def query_action_details(action: str, fetcher: AWSServiceFetcher | None = 
             return ActionDetails(
                 action=details["action"],
                 service=details["service"],
+                service_name=details["service_name"],
                 access_level=details["access_level"],
+                data_plane=details["data_plane"],
                 resource_types=details["resource_types"],
                 condition_keys=details["condition_keys"],
                 description=details.get("description"),
@@ -156,6 +168,21 @@ async def expand_wildcard_action(pattern: str, fetcher: AWSServiceFetcher | None
     finally:
         if should_close:
             await _fetcher.__aexit__(None, None, None)
+
+
+async def query_global_keys(
+    key_type: str | None = None, fetcher: AWSServiceFetcher | None = None
+) -> list[GlobalConditionKeyDetails]:
+    """Get the global condition keys, optionally filtered by type.
+
+    Args:
+        key_type: Optional case-insensitive type filter (e.g., "Bool", "ARN")
+        fetcher: Optional shared AWSServiceFetcher instance. If None, creates a new one.
+    """
+    if fetcher is not None:
+        return await query_global_condition_keys(fetcher, key_type)
+    async with AWSServiceFetcher() as _fetcher:
+        return await query_global_condition_keys(_fetcher, key_type)
 
 
 async def query_condition_keys(service: str, fetcher: AWSServiceFetcher | None = None) -> list[str]:
@@ -380,11 +407,14 @@ async def get_condition_requirements(action: str) -> dict[str, Any] | None:
 # `query` — consolidated selector tool (registered via TOOLS below)
 # =============================================================================
 
-QueryKind = Literal["service_actions", "action_details", "condition_keys", "arn_formats", "expand_wildcard"]
+QueryKind = Literal[
+    "service_actions", "action_details", "condition_keys", "arn_formats", "expand_wildcard", "global_condition_keys"
+]
+_QUERY_KINDS: tuple[QueryKind, ...] = cast(tuple[QueryKind, ...], QueryKind.__args__)  # type: ignore[attr-defined]
 
 _ACCESS_LEVELS: tuple[str, ...] = ("read", "write", "list", "tagging", "permissions-management")
 
-# Input field each kind requires; drives both the inputSchema branches and the ToolError backstop.
+# Input field each kind requires (kinds absent here take none); drives the inputSchema branches and ToolError backstop.
 _REQUIRED_PARAM_FOR_KIND: dict[QueryKind, str] = {
     "service_actions": "service",
     "action_details": "actions",
@@ -418,7 +448,9 @@ class ActionDetailEntry(BaseModel):
     valid: bool
     error: str | None = None
     service: str | None = None
+    service_name: str | None = None
     access_level: str | None = None
+    data_plane: bool | None = None
     resource_types: list[str] = Field(default_factory=list)
     condition_keys: list[str] = Field(default_factory=list)
     description: str | None = None
@@ -470,8 +502,30 @@ class ExpandWildcardResult(BaseModel):
     results: list[ExpandWildcardEntry]
 
 
+class GlobalConditionKeyEntry(BaseModel):
+    """One global condition key; tag keys use their templated name (``aws:ResourceTag/${TagKey}``)."""
+
+    condition_key: str
+    types: list[str]
+    description: str
+    doc_url: str | None = None
+
+
+class GlobalConditionKeysResult(BaseModel):
+    """``kind="global_condition_keys"``: global condition keys, optionally filtered by type."""
+
+    kind: Literal["global_condition_keys"] = "global_condition_keys"
+    condition_keys: list[GlobalConditionKeyEntry]
+    total: int
+
+
 QueryResult = Annotated[
-    ServiceActionsResult | ActionDetailsResult | ConditionKeysResult | ArnFormatsResult | ExpandWildcardResult,
+    ServiceActionsResult
+    | ActionDetailsResult
+    | ConditionKeysResult
+    | ArnFormatsResult
+    | ExpandWildcardResult
+    | GlobalConditionKeysResult,
     Field(discriminator="kind"),
 ]
 
@@ -485,7 +539,7 @@ _QUERY_INPUT_SCHEMA: dict[str, Any] = {
     "properties": {
         "kind": {
             "type": "string",
-            "enum": list(_REQUIRED_PARAM_FOR_KIND),
+            "enum": list(_QUERY_KINDS),
             "description": "Which query to run; determines which other parameter is required.",
         },
         "service": {
@@ -510,6 +564,15 @@ _QUERY_INPUT_SCHEMA: dict[str, Any] = {
         "name_filter": {
             "type": ["string", "null"],
             "description": "Optional case-insensitive substring filter on action names for service_actions.",
+        },
+        "data_plane": {
+            "type": ["boolean", "null"],
+            "description": "Optional service_actions filter: true = data-plane actions, false = actions AWS "
+            "explicitly classifies as control-plane (unclassified actions excluded).",
+        },
+        "key_type": {
+            "type": ["string", "null"],
+            "description": "Optional global_condition_keys filter on key type, e.g. 'Bool', 'ARN', 'ArrayOfString'.",
         },
     },
     "required": ["kind"],
@@ -553,7 +616,9 @@ async def _query_action_details_batch(actions: list[str], fetcher: AWSServiceFet
                 details = await query_action_details(action=action, fetcher=_fetcher)
                 if details is not None:
                     entry.service = details.service
+                    entry.service_name = details.service_name
                     entry.access_level = details.access_level
+                    entry.data_plane = details.data_plane
                     entry.resource_types = details.resource_types
                     entry.condition_keys = details.condition_keys
                     entry.description = details.description
@@ -587,8 +652,10 @@ async def query(
     patterns: list[str] | None = None,
     access_level: str | None = None,
     name_filter: str | None = None,
+    data_plane: bool | None = None,
+    key_type: str | None = None,
 ) -> dict[str, Any]:
-    """Query AWS service/action reference data. One selector for five query kinds.
+    """Query AWS service/action reference data. One selector for six query kinds.
 
     Consolidates the former query_service_actions, query_action_details,
     query_actions_batch, check_actions_batch, query_condition_keys,
@@ -596,8 +663,8 @@ async def query(
 
     Args:
         kind: Which query to run — service_actions|action_details|condition_keys
-            |arn_formats|expand_wildcard. Determines which other parameter is
-            required (see the field descriptions below).
+            |arn_formats|expand_wildcard|global_condition_keys. Determines which
+            other parameter is required (see the field descriptions below).
         service: AWS service prefix, e.g. "s3", "iam". Required for
             service_actions, condition_keys, arn_formats.
         actions: Full action names, e.g. ["s3:GetObject"]. Required for
@@ -609,6 +676,9 @@ async def query(
             filter, service_actions only.
         name_filter: Optional case-insensitive substring filter on action
             names, service_actions only.
+        data_plane: Optional data-plane (true) / control-plane (false) filter,
+            service_actions only.
+        key_type: Optional type filter, global_condition_keys only.
 
     Returns:
         A ``{kind, ...}`` object whose remaining shape is fixed by ``kind``
@@ -620,13 +690,14 @@ async def query(
     from iam_validator.mcp.audit import audited_call
 
     async def _do_query() -> dict[str, Any]:
-        required_param = _REQUIRED_PARAM_FOR_KIND.get(kind)
-        if required_param is None:
-            raise ToolError(f"kind: invalid value {kind!r}. Must be one of: {', '.join(_REQUIRED_PARAM_FOR_KIND)}")
+        if kind not in _QUERY_KINDS:
+            raise ToolError(f"kind: invalid value {kind!r}. Must be one of: {', '.join(_QUERY_KINDS)}")
 
-        provided = {"service": service, "actions": actions, "patterns": patterns}[required_param]
-        if not provided:
-            raise ToolError(f"kind={kind!r} requires '{required_param}'")
+        required_param = _REQUIRED_PARAM_FOR_KIND.get(kind)
+        if required_param is not None:
+            provided = {"service": service, "actions": actions, "patterns": patterns}[required_param]
+            if not provided:
+                raise ToolError(f"kind={kind!r} requires '{required_param}'")
 
         fetcher = get_shared_fetcher(ctx)
 
@@ -634,7 +705,7 @@ async def query(
             if kind == "service_actions":
                 assert service is not None
                 result_actions = await query_service_actions(
-                    service=service, access_level=access_level, fetcher=fetcher
+                    service=service, access_level=access_level, fetcher=fetcher, data_plane=data_plane
                 )
                 if name_filter:
                     needle = name_filter.lower()
@@ -658,6 +729,12 @@ async def query(
                 arn_formats = cast(list[dict[str, Any]], await query_arn_formats(service=service, fetcher=fetcher))
                 return ArnFormatsResult(
                     service=service, arn_formats=[ArnFormatEntry(**a) for a in arn_formats]
+                ).model_dump()
+
+            if kind == "global_condition_keys":
+                global_keys = await query_global_keys(key_type=key_type, fetcher=fetcher)
+                return GlobalConditionKeysResult(
+                    condition_keys=[GlobalConditionKeyEntry(**k) for k in global_keys], total=len(global_keys)
                 ).model_dump()
 
             assert kind == "expand_wildcard"
@@ -687,6 +764,7 @@ __all__ = [
     "query_action_details",
     "expand_wildcard_action",
     "query_condition_keys",
+    "query_global_keys",
     "query_arn_formats",
     "list_checks",
     "get_policy_summary",

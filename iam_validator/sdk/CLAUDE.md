@@ -51,7 +51,7 @@ validate` produces for the same input:
 | `shortcuts.py`    | `validate_file`, `validate_directory`, `validate_json`, `quick_validate`                                                                          |
 | `context.py`      | `validator()`, `validator_from_config()`, `ValidationContext`                                                                                     |
 | `policy_utils.py` | `parse_policy`, `extract_actions/resources/condition_keys`, `merge_policies`, `is_resource_policy`, `has_public_access`, …                        |
-| `query_utils.py`  | service / action / condition-key queries against the fetcher                                                                                      |
+| `query_utils.py`  | service / action / condition-key / global-key queries against the fetcher; `data_plane` filter                                                    |
 | `arn_matching.py` | `arn_matches`, `arn_strictly_valid`, `is_glob_match`, `convert_aws_pattern_to_wildcard`, `normalize_template_variables`, `has_template_variables` |
 | `helpers.py`      | check-development helpers                                                                                                                         |
 | `exceptions.py`   | `IAMValidatorError` and subclasses                                                                                                                |

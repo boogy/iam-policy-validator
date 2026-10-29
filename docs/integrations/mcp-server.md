@@ -159,15 +159,16 @@ has no filesystem access, so those two parameters aren't present in its schema.
 
 ### `query`
 
-One selector for five AWS-reference lookups, chosen via `kind`:
+One selector for six AWS-reference lookups, chosen via `kind`:
 
 | `kind`            | Required param | Returns                                                    |
 | ----------------- | --------------- | ----------------------------------------------------------- |
-| `service_actions`  | `service`       | All actions for a service, optionally filtered by `access_level` or `name_filter` |
+| `service_actions`  | `service`       | All actions for a service, optionally filtered by `access_level`, `data_plane`, or `name_filter` |
 | `action_details`   | `actions`       | Validity, metadata, and sensitivity classification for each action (batch) |
 | `condition_keys`   | `service`       | Condition keys supported by a service                       |
 | `arn_formats`      | `service`       | ARN format patterns per resource type                       |
 | `expand_wildcard`  | `patterns`      | Actions matching a wildcard pattern, e.g. `s3:Get*` (batch)  |
+| `global_condition_keys` | —          | AWS global condition keys, optionally filtered by `key_type` |
 
 Each response is `{kind, ...}`, where the rest of the shape is fixed by `kind`. This
 one tool replaces what used to be seven separate query tools, including two
