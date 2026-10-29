@@ -215,7 +215,8 @@ class TestQueryCommand:
                 # Verify the printed output
                 printed_output = mock_print.call_args[0][0]
                 result_dict = json.loads(printed_output)
-                assert result_dict["action"] == "GetItem"
+                assert result_dict["action"] == "test:GetItem"
+                assert "description" not in result_dict
                 assert result_dict["access_level"] == "read"
                 assert "table" in result_dict["resource_types"]
                 assert "test:condition1" in result_dict["condition_keys"]
@@ -333,7 +334,7 @@ class TestQueryCommand:
                 printed_output = mock_print.call_args[0][0]
                 result_dict = json.loads(printed_output)
                 assert result_dict["condition_key"] == "test:condition1"
-                assert result_dict["description"] == "Test condition 1"
+                assert "description" not in result_dict
                 assert "String" in result_dict["types"]
 
     @pytest.mark.asyncio

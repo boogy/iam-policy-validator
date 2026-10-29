@@ -771,7 +771,6 @@ class QueryCommand(Command):
                             service,
                             action_detail,
                             simple=args.output == "text" and not fields,
-                            include_service_prefix=True,  # Always include for wildcards
                             fields=fields,
                             service_name=service_detail.service_name,
                         )
@@ -781,7 +780,6 @@ class QueryCommand(Command):
                         {
                             "action": full_action,
                             "access_level": "Unknown",
-                            "description": "N/A",
                         }
                     )
 
@@ -808,8 +806,6 @@ class QueryCommand(Command):
                         service,
                         action_detail,
                         simple=args.output == "text" and not is_single_exact_query and not fields,
-                        # Backwards compat: single exact query returns action without service prefix
-                        include_service_prefix=not is_single_exact_query,
                         fields=fields,
                         service_name=service_detail.service_name,
                     )
@@ -836,7 +832,6 @@ class QueryCommand(Command):
         service: str,
         action_detail: Any,
         simple: bool = False,
-        include_service_prefix: bool = True,
         fields: set[str] | None = None,
         service_name: str | None = None,
     ) -> dict[str, Any]:
@@ -846,7 +841,6 @@ class QueryCommand(Command):
             service: Service prefix
             action_detail: Action detail from service definition
             simple: If True, return minimal format (for text output lists)
-            include_service_prefix: If True, include service prefix in action name
             fields: Set of fields to include. If None, include all fields.
                     Valid values: 'condition_keys', 'resource_types', 'access_level', 'data_plane',
                     'service_name'
@@ -856,7 +850,7 @@ class QueryCommand(Command):
             Formatted action dictionary
         """
         access_level = action_detail.access_level
-        action_name = f"{service}:{action_detail.name}" if include_service_prefix else action_detail.name
+        action_name = f"{service}:{action_detail.name}"
 
         # Simple mode: just action name (for text output of action lists)
         if simple and not fields:
@@ -877,14 +871,10 @@ class QueryCommand(Command):
                 result["service_name"] = service_name
             return result
 
-        # Full output mode
-        description = action_detail.annotations.get("Description", "N/A") if action_detail.annotations else "N/A"
-
         return {
             "service": service,
             "service_name": service_name,
             "action": action_name,
-            "description": description,
             "access_level": access_level,
             "data_plane": action_detail.is_data_plane,
             "resource_types": [r.get("Name", "*") for r in (action_detail.resources or [])],
@@ -911,7 +901,6 @@ class QueryCommand(Command):
                     service,
                     action_detail,
                     simple=args.output == "text" and not fields,
-                    include_service_prefix=True,
                     fields=fields,
                     service_name=service_detail.service_name,
                 )
@@ -1007,7 +996,6 @@ class QueryCommand(Command):
                     "service": args.service,
                     "service_name": service_detail.service_name,
                     "condition_key": condition_key.name,
-                    "description": condition_key.description or "N/A",
                     "types": condition_key.types or [],
                 },
                 args,
@@ -1017,7 +1005,6 @@ class QueryCommand(Command):
             [
                 {
                     "condition_key": ck.name,
-                    "description": ck.description or "N/A",
                     "types": ck.types or [],
                 }
                 for ck in service_detail.condition_keys.values()
