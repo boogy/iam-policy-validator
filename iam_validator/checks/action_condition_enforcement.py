@@ -1355,10 +1355,12 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     def _is_evaluable_requirement(entry: Any) -> bool:
         if not isinstance(entry, dict):
             return False
-        nested_all_of = entry.get("all_of")
-        if nested_all_of:
-            return isinstance(nested_all_of, list) and all(
-                ActionConditionEnforcementCheck._is_evaluable_requirement(e) for e in nested_all_of
+        if "all_of" in entry:
+            nested_all_of = entry["all_of"]
+            return (
+                isinstance(nested_all_of, list)
+                and bool(nested_all_of)
+                and all(ActionConditionEnforcementCheck._is_evaluable_requirement(e) for e in nested_all_of)
             )
         return bool(entry.get("condition_key"))
 

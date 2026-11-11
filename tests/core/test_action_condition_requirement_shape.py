@@ -97,6 +97,8 @@ class TestMalformedEntryIsReported:
             [{"all_of": {"condition_key": "aws:PrincipalOrgID"}}],
             {"all_of": [{"all_of": [{"condition_key": "aws:PrincipalOrgID"}, "typo"]}]},
             {"none_of": [{"all_of": ["typo"]}]},
+            {"any_of": [{"condition_key": "aws:PrincipalOrgID", "all_of": None}]},
+            {"any_of": [{"condition_key": "aws:PrincipalOrgID", "all_of": []}]},
         ],
     )
     async def test_malformed_nested_all_of_is_flagged_without_raising(self, check, mock_fetcher, required_conditions):
