@@ -174,6 +174,18 @@ are case-insensitive. Statement-level checks never receive `policy_file`, so a
 requirement carrying `ignore_patterns` counts as unenforced there and the finding is
 kept rather than wrongly suppressed.
 
+## `if:` branches in `action_condition_enforcement` (gotcha)
+
+A requirement carrying the `if` key (even `if: []`) dispatches to `_check_branches`;
+one without it takes the untouched old path. Parsing and matching live in
+`utils/requirement_branches.py`. Each valid branch becomes an ordinary requirement run
+through `_check_per_statement` / `_check_policy_wide` with keyword-only `effects` and
+`statement_filter`. An omitted branch `effect` means `Allow` in both forms; findings
+differing only in severity or suggestion are reported once (most severe kept); `none_of` flags only `Allow` statements. Malformed branches yield one `invalid_condition_requirement`
+(`error`, `statement_index=-1`) per policy. `enforced_actions` skips a requirement
+whose branches (including a top-level `required_conditions`, treated as an unscoped
+branch) never enforce `Allow` without `resource` / `not_resource`.
+
 ## `sensitive_action` severity (gotcha)
 
 Precedence: the user's `category_severities` entry → the check's `severity` →
@@ -283,3 +295,5 @@ Use these instead of reimplementing:
 - `sensitive_action_matcher.py` — `get_sensitive_actions_by_categories()`, `check_sensitive_actions()`
 - `policy_level_checks.py` — `check_policy_level_actions()`, `_check_all_of_pattern()`
 - `formatting.py` — `format_list_with_backticks()`
+- `requirement_branches.py` — `requirement_branches()`, `branch_problem()`, `branch_effects()`,
+  `branch_matches_resources()`, `branch_enforces_allow_everywhere()`

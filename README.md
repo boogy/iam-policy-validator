@@ -209,6 +209,22 @@ action_condition_enforcement:
           - condition_key: "aws:RequestTag/CostCenter"
           - condition_key: "aws:RequestTag/Environment"
           - condition_key: "aws:RequestTag/Owner"
+
+    # Branch on Effect / Resource: Allow needs SHORT_TERM, a Deny must block the rest
+    - actions: ["bedrock:CallWithBearerToken"]
+      severity: critical
+      if:
+        - effect: Allow
+          required_conditions:
+            - condition_key: "bedrock:bearerTokenType"
+              operator: "StringEquals"
+              expected_value: "SHORT_TERM"
+        - effect: Deny
+          severity: high
+          required_conditions:
+            - condition_key: "bedrock:bearerTokenType"
+              operator: "StringNotEquals"
+              expected_value: "SHORT_TERM"
 ```
 
 **Why this matters:** Other tools perform AWS-standard security checks but lack the flexibility to codify your organization's specific security requirements (IP restrictions, tagging mandates, encryption requirements, etc.).

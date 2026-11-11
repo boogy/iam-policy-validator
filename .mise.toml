@@ -1,5 +1,7 @@
+[settings]
+idiomatic_version_file_enable_tools = ["python"]
+
 [tools]
-python = "3.15"
 uv = "latest"
 
 [env]

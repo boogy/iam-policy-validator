@@ -1,0 +1,86 @@
+# Effect- and resource-aware condition requirements (`if:` branches)
+#
+# Each `if` branch scopes its `required_conditions` by the statement's `effect`
+# (default `Allow`), a `resource` regex and/or a `not_resource` regex. Regexes are
+# anchored full matches against each Resource / NotResource entry, and `.*` is the only
+# way to match `Resource: "*"`. Every matching branch applies; a statement matching no
+# branch is skipped. Docs: docs/user-guide/checks/advanced-checks.md
+#
+# Usage:
+#   iam-validator validate --path ./policies/ --config examples/configs/action-condition-branches.yaml
+
+action_condition_enforcement:
+  enabled: true
+  action_condition_requirements:
+    # effect: Allow and Deny statements need different operators on the same key.
+    - actions: ["bedrock:CallWithBearerToken"]
+      severity: critical
+      if:
+        - effect: Allow
+          required_conditions:
+            - condition_key: bedrock:bearerTokenType
+              operator: StringEquals
+              expected_value: SHORT_TERM
+        - effect: Deny
+          severity: high
+          required_conditions:
+            - condition_key: bedrock:bearerTokenType
+              operator: StringNotEquals
+              expected_value: SHORT_TERM
+
+    # resource only (effect defaults to Allow): deletes on prod buckets need MFA.
+    # `[^/]*[*?].*` also catches a wildcard in the bucket name (`*`, `arn:aws:s3:::*/*`, `pro?`),
+    # which may grant prod buckets. NotResource statements are skipped by a `resource` branch.
+    - actions: ["s3:DeleteObject", "s3:DeleteBucket"]
+      severity: high
+      if:
+        - resource: '[^/]*[*?].*|arn:aws:s3:::prod.*'
+          required_conditions:
+            - condition_key: aws:MultiFactorAuthPresent
+              operator: Bool
+              expected_value: "true"
+
+    # effect + resource: prod secrets are reachable only through a VPC endpoint.
+    # An Allow must pin the endpoint; a perimeter Deny must deny every other one.
+    # Wildcard resources are skipped; prefix the regex with `.*[*?].*|` to include them.
+    - actions: ["secretsmanager:GetSecretValue"]
+      severity: high
+      if:
+        - effect: Allow
+          resource: 'arn:aws:secretsmanager:[^:]+:\d{12}:secret:prod/.*'
+          required_conditions:
+            - condition_key: aws:SourceVpce
+              operator: StringEquals
+        - effect: Deny
+          resource: 'arn:aws:secretsmanager:[^:]+:\d{12}:secret:prod/.*'
+          required_conditions:
+            - condition_key: aws:SourceVpce
+              operator: StringNotEquals
+
+    # not_resource: an Allow with NotResource grants every bucket it does not list,
+    # including other accounts', so it must pin the owning account.
+    - actions: ["s3:GetObject"]
+      severity: medium
+      if:
+        - not_resource: ".*"
+          required_conditions:
+            - condition_key: s3:ResourceAccount
+
+    # effect list: every RunInstances statement, Allow or Deny, must name the regions.
+    - actions: ["ec2:RunInstances"]
+      severity: medium
+      if:
+        - effect: [Allow, Deny]
+          required_conditions:
+            - condition_key: aws:RequestedRegion
+
+    # Top-level required_conditions beside `if`: applies to every Allow statement;
+    # passing a prod role additionally pins the resource it is attached to.
+    - actions: ["iam:PassRole"]
+      severity: high
+      required_conditions:
+        - condition_key: iam:PassedToService
+      if:
+        - resource: 'arn:aws:iam::\d{12}:role/prod-.*'
+          required_conditions:
+            - condition_key: iam:AssociatedResourceArn
