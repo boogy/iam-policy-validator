@@ -132,6 +132,84 @@ to every `Allow` statement (an `Allow` or omitted `effect`, and no `resource` /
 `not_resource`). A `Deny`-only or resource-scoped requirement does not suppress its
 findings.
 
+#### More `if` examples
+
+Each pattern below is in
+[`examples/configs/action-condition-branches.yaml`](https://github.com/boogy/iam-policy-validator/blob/main/examples/configs/action-condition-branches.yaml).
+
+**Resource only.** The branch has no `effect`, so it checks `Allow` statements. Deletes
+on prod buckets need MFA. `\*` is in the pattern so `Resource: "*"`, which also grants
+the prod buckets, is checked too. `arn:aws:s3:::prod.*` also matches the glob
+`arn:aws:s3:::prod*`.
+
+```yaml
+- actions: ["s3:DeleteObject", "s3:DeleteBucket"]
+  severity: high
+  if:
+    - resource: '\*|arn:aws:s3:::prod.*'
+      required_conditions:
+        - condition_key: aws:MultiFactorAuthPresent
+          operator: Bool
+          expected_value: "true"
+```
+
+**Effect and resource.** Prod secrets are reachable only through a VPC endpoint. An
+`Allow` must pin the endpoint, and a perimeter `Deny` must deny every other endpoint.
+Statements on other secrets are skipped.
+
+```yaml
+- actions: ["secretsmanager:GetSecretValue"]
+  severity: high
+  if:
+    - effect: Allow
+      resource: 'arn:aws:secretsmanager:[^:]+:\d{12}:secret:prod/.*'
+      required_conditions:
+        - condition_key: aws:SourceVpce
+          operator: StringEquals
+    - effect: Deny
+      resource: 'arn:aws:secretsmanager:[^:]+:\d{12}:secret:prod/.*'
+      required_conditions:
+        - condition_key: aws:SourceVpce
+          operator: StringNotEquals
+```
+
+**`not_resource`.** An `Allow` with `NotResource` grants every bucket it does not list,
+including buckets in other accounts, so it must pin the owning account. `.*` matches any
+`NotResource` statement. `Resource` statements are skipped.
+
+```yaml
+- actions: ["s3:GetObject"]
+  if:
+    - not_resource: ".*"
+      required_conditions:
+        - condition_key: s3:ResourceAccount
+```
+
+**Both effects.** Every `RunInstances` statement must name the regions, whether it
+grants or denies.
+
+```yaml
+- actions: ["ec2:RunInstances"]
+  if:
+    - effect: [Allow, Deny]
+      required_conditions:
+        - condition_key: aws:RequestedRegion
+```
+
+**Top-level conditions beside `if`.** `iam:PassedToService` is required on every
+`Allow`. Passing a prod role also needs `iam:AssociatedResourceArn`.
+
+```yaml
+- actions: ["iam:PassRole"]
+  severity: high
+  required_conditions:
+    - condition_key: iam:PassedToService
+  if:
+    - resource: 'arn:aws:iam::\d{12}:role/prod-.*'
+      required_conditions:
+        - condition_key: iam:AssociatedResourceArn
+```
+
 ---
 
 ## action_resource_matching
