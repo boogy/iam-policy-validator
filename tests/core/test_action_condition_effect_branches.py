@@ -103,11 +103,13 @@ class TestEffectGating:
 
         assert await _run(check, config, _stmt("Deny")) == []
 
-    @pytest.mark.parametrize("branch", [_branch(effect=["Allow", "Deny"]), _branch()])
-    async def test_list_or_omitted_effect_flags_deny_per_statement(self, check, branch):
-        issues = await _run(check, _config({"actions": [ACTION], "if": [branch]}), _stmt("Deny"))
+    async def test_list_effect_flags_deny_per_statement(self, check):
+        config = _config({"actions": [ACTION], "if": [_branch(effect=["Allow", "Deny"])]})
 
-        assert len(issues) == 1
+        assert len(await _run(check, config, _stmt("Deny"))) == 1
+
+    async def test_omitted_effect_skips_deny_per_statement(self, check):
+        assert await _run(check, _config({"actions": [ACTION], "if": [_branch()]}), _stmt("Deny")) == []
 
     async def test_effect_is_case_insensitive(self, check):
         issues = await _run(check, _config({"actions": [ACTION], "if": [_branch(effect="allow")]}), _stmt())
@@ -182,16 +184,22 @@ class TestResourceMatching:
 
 class TestComposition:
     async def test_two_matching_branches_report_independently(self, check):
-        config = _config({"actions": [ACTION], "if": [_branch(), _branch(effect="Allow")]})
+        other = {"required_conditions": [{"condition_key": "aws:SourceVpc"}]}
+        config = _config({"actions": [ACTION], "if": [_branch(), other]})
 
         assert len(await _run(check, config, _stmt())) == 2
+
+    async def test_overlapping_branches_report_an_identical_finding_once(self, check):
+        config = _config({"actions": [ACTION], "if": [_branch(), _branch(effect="Allow")]})
+
+        assert len(await _run(check, config, _stmt())) == 1
 
     async def test_no_matching_branch_reports_nothing(self, check):
         config = _config({"actions": [ACTION], "if": [_branch(effect="Deny", resource="arn:x")]})
 
         assert await _run(check, config, _stmt("Deny")) == []
 
-    async def test_top_level_required_conditions_applies_beside_branches(self, check):
+    async def test_top_level_required_conditions_stays_allow_only_beside_branches(self, check):
         requirement = {
             "actions": [ACTION],
             "required_conditions": [{"condition_key": "aws:SourceVpc"}],
@@ -202,7 +210,7 @@ class TestComposition:
         deny_keys = sorted(i.condition_key for i in await _run(check, _config(requirement), _stmt("Deny")))
 
         assert allow_keys == ["aws:SourceVpc"]
-        assert deny_keys == ["aws:SourceVpc", KEY]
+        assert deny_keys == [KEY]
 
     async def test_allow_not_action_counts_as_granting(self, check):
         config = _config({"actions": [ACTION], "if": [ALLOW_BRANCH]})

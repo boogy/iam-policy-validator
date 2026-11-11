@@ -3,15 +3,13 @@
 import re
 from typing import Any
 
-from iam_validator.core.models import Statement
+from iam_validator.core.models import Statement, ValidationIssue
 from iam_validator.utils.regex import compile_and_cache
 
 BRANCH_KEYS = frozenset({"effect", "resource", "not_resource", "required_conditions", "severity"})
 EFFECTS = {"allow": "Allow", "deny": "Deny"}
-VALID_SEVERITIES = frozenset({"error", "warning", "info", "critical", "high", "medium", "low", "none"})
-
-PER_STATEMENT_DEFAULT_EFFECTS = frozenset({"Allow", "Deny"})
-POLICY_WIDE_DEFAULT_EFFECTS = frozenset({"Allow"})
+VALID_SEVERITIES = ValidationIssue.VALID_SEVERITIES
+DEFAULT_EFFECTS = frozenset({"Allow"})
 
 
 def _conditions_problem(required_conditions: Any) -> str | None:
@@ -90,10 +88,10 @@ def requirement_branches(requirement: dict[str, Any]) -> tuple[list[dict[str, An
     return branches, problems
 
 
-def branch_effects(branch: dict[str, Any], *, policy_wide: bool) -> frozenset[str]:
-    """Statement effects ``branch`` applies to; omitted means both per statement, ``Allow`` policy-wide."""
+def branch_effects(branch: dict[str, Any]) -> frozenset[str]:
+    """Statement effects ``branch`` applies to; ``Allow`` when ``effect`` is omitted."""
     if "effect" not in branch:
-        return POLICY_WIDE_DEFAULT_EFFECTS if policy_wide else PER_STATEMENT_DEFAULT_EFFECTS
+        return DEFAULT_EFFECTS
     effect = branch["effect"]
     values = effect if isinstance(effect, list) else [effect]
     return frozenset(EFFECTS[v.lower()] for v in values)
@@ -117,4 +115,4 @@ def branch_enforces_allow_everywhere(branch: dict[str, Any]) -> bool:
     """True when ``branch`` applies to every ``Allow`` statement regardless of resource."""
     if "resource" in branch or "not_resource" in branch:
         return False
-    return "Allow" in branch_effects(branch, policy_wide=True)
+    return "Allow" in branch_effects(branch)

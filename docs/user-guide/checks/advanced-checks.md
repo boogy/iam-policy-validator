@@ -99,7 +99,7 @@ block the tokens the rule wants to allow.
 
 | Key                   | Type                       | Meaning                                                                                                                   |
 | --------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `effect`              | `Allow`, `Deny`, or a list | Any-of, case-insensitive. `["Allow", "Deny"]` means either. Default: see the warning below.                               |
+| `effect`              | `Allow`, `Deny`, or a list | Any-of, case-insensitive. `["Allow", "Deny"]` means either. Default: `Allow`.                                            |
 | `resource`            | regex string               | Anchored full match against each `Resource` entry; the branch matches if any entry matches. Case-sensitive.               |
 | `not_resource`        | regex string               | Same, against `NotResource` entries. A branch with only `not_resource` applies only to `NotResource` statements.          |
 | `required_conditions` | list, `all_of`, `any_of`, `none_of` | Required and non-empty. Same forms as a requirement's `required_conditions`.                                     |
@@ -109,17 +109,13 @@ If both `resource` and `not_resource` are set, both must match; if neither is se
 branch ignores resources. A `resource` pattern is not special-cased for `Resource: "*"`:
 `arn:aws:s3:::prod/.*` does not match `"*"`, while `.*` does.
 
-!!! warning "An omitted `effect` means different things in the two action forms"
-
-    With a plain `actions` list (checked per statement), a branch without `effect` applies
-    to both `Allow` and `Deny` statements. With `actions: {all_of | any_of | none_of}`
-    (checked across the policy), it applies to `Allow` statements only; name `Deny`
-    explicitly to include deny statements. A requirement without `if` stays `Allow`-only in
-    both forms.
+A branch without `effect` applies to `Allow` statements only, in both action forms, as
+a requirement without `if` does. Name `Deny` explicitly to check deny statements.
 
 A top-level `required_conditions` beside `if` acts as one more branch with no predicate:
-it applies to every statement granting the requirement's actions, with the default
-effects above.
+it applies to every `Allow` statement granting the requirement's actions.
+
+When branches overlap, a finding identical in every field is reported once.
 
 **Severity precedence:** the condition entry's `severity`, then the branch's, then the
 requirement's, then the check's configured severity.

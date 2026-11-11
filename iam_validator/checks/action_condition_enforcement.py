@@ -161,7 +161,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             def matches(statement: Statement, branch: dict[str, Any] = branch) -> bool:
                 return branch_matches_resources(branch, statement)
 
-            effects = branch_effects(branch, policy_wide=policy_wide)
+            effects = branch_effects(branch)
             if policy_wide:
                 issues.extend(
                     await self._check_policy_wide(
@@ -174,7 +174,18 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                         policy, branch_requirement, fetcher, config, effects=effects, statement_filter=matches
                     )
                 )
-        return issues
+        return self._dedupe_issues(issues)
+
+    @staticmethod
+    def _dedupe_issues(issues: list[ValidationIssue]) -> list[ValidationIssue]:
+        seen: set[str] = set()
+        unique: list[ValidationIssue] = []
+        for issue in issues:
+            key = issue.model_dump_json()
+            if key not in seen:
+                seen.add(key)
+                unique.append(issue)
+        return unique
 
     def _create_malformed_branch_issue(self, requirement: dict[str, Any], problem: str) -> ValidationIssue:
         actions = requirement.get("actions", [])

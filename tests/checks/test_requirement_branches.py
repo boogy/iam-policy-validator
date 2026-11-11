@@ -76,11 +76,10 @@ def test_requirement_branches_adds_top_level_required_conditions_as_unscoped_bra
     assert branches[-1] == {"required_conditions": CONDS}
 
 
-def test_branch_effects_defaults_differ_per_form():
-    assert branch_effects({}, policy_wide=False) == {"Allow", "Deny"}
-    assert branch_effects({}, policy_wide=True) == {"Allow"}
-    assert branch_effects({"effect": "deny"}, policy_wide=True) == {"Deny"}
-    assert branch_effects({"effect": ["ALLOW", "deny"]}, policy_wide=False) == {"Allow", "Deny"}
+def test_branch_effects_defaults_to_allow():
+    assert branch_effects({}) == {"Allow"}
+    assert branch_effects({"effect": "deny"}) == {"Deny"}
+    assert branch_effects({"effect": ["ALLOW", "deny"]}) == {"Allow", "Deny"}
 
 
 def test_resource_match_is_anchored():
