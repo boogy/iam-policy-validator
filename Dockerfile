@@ -2,7 +2,10 @@
 #
 # Hosted MCP server image. See iam_validator/mcp/CLAUDE.md.
 
-FROM python:3.13-slim AS builder
+# Must equal .python-version (enforced by tests/test_dockerfile.py).
+ARG PYTHON_VERSION=3.14
+
+FROM python:${PYTHON_VERSION}-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -18,7 +21,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Invoked directly, not via `uv run` -- `uv run` re-syncs and reverts to an editable install.
 RUN /app/.venv/bin/iam-validator sync-services --output-dir /app/aws_services --max-concurrent 10
 
-FROM python:3.13-slim AS runtime
+FROM python:${PYTHON_VERSION}-slim AS runtime
 
 # Never PYTHONOPTIMIZE/-O: strips docstrings that describe_checks reads as catalog descriptions.
 
@@ -53,7 +56,7 @@ CMD ["uvicorn", "iam_validator.mcp.asgi:create_app", "--factory", "--host", "0.0
 # --- AWS Lambda container image (`docker build --target lambda`) ---
 # Separate builder stage: adds the `lambda` extra (Mangum) on top of `mcp`, kept out
 # of the uvicorn `runtime` image above since it's unused there.
-FROM python:3.13-slim AS builder-lambda
+FROM python:${PYTHON_VERSION}-slim AS builder-lambda
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -67,11 +70,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 RUN /app/.venv/bin/iam-validator sync-services --output-dir /app/aws_services --max-concurrent 10
 
-FROM public.ecr.aws/lambda/python:3.13 AS lambda
+FROM public.ecr.aws/lambda/python:${PYTHON_VERSION} AS lambda
+ARG PYTHON_VERSION
 
 # Never PYTHONOPTIMIZE/-O: strips docstrings that describe_checks reads as catalog descriptions.
 
-COPY --from=builder-lambda /app/.venv/lib/python3.13/site-packages/. ${LAMBDA_TASK_ROOT}/
+COPY --from=builder-lambda /app/.venv/lib/python${PYTHON_VERSION}/site-packages/. ${LAMBDA_TASK_ROOT}/
 COPY --from=builder-lambda /app/aws_services ${LAMBDA_TASK_ROOT}/aws_services
 
 ENV IAM_VALIDATOR_MCP_MODE=hosted \

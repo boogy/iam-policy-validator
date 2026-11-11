@@ -6,6 +6,10 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ## [1.33.0] - Unreleased
 
+### Changed
+
+- Build the MCP Docker images (uvicorn and Lambda) on Python 3.14, taken from `.python-version` via the `PYTHON_VERSION` build argument (was 3.13). ([#240])
+
 ### Added
 
 - Add `if:` branches to `action_condition_enforcement` requirements. Each branch scopes its `required_conditions` by statement `effect` (`Allow`, `Deny` or both), a `resource` or `not_resource` regex (anchored full match), and may override `severity`. Malformed branches are reported as `invalid_condition_requirement`; requirements without `if` are unchanged. ([#240])

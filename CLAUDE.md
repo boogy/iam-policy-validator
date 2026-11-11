@@ -90,7 +90,8 @@ mise run mcp:inspector           # debug
 
 Local Python version: `.python-version` is the single source; mise reads it
 (`idiomatic_version_file_enable_tools`) and exports `UV_PYTHON`. Run `mise lock` after
-changing it — mise rejects versions missing from `mise.lock`.
+changing it — mise rejects versions missing from `mise.lock` — and update the
+`Dockerfile`'s `ARG PYTHON_VERSION` default (`tests/test_dockerfile.py` enforces it).
 
 Test markers: `benchmark` (perf), `slow` (long), `integration` (external resources).
 `asyncio_mode = "auto"` is set in `pyproject.toml`.
