@@ -29,11 +29,12 @@ action_condition_enforcement:
               expected_value: SHORT_TERM
 
     # resource only (effect defaults to Allow): deletes on prod buckets need MFA.
-    # `\*` also catches `Resource: "*"`, which grants the prod buckets too.
+    # `[^/]*\*.*` also catches a wildcard in the bucket name (`*`, `arn:aws:s3:::*/*`),
+    # which may grant prod buckets. NotResource statements are skipped by a `resource` branch.
     - actions: ["s3:DeleteObject", "s3:DeleteBucket"]
       severity: high
       if:
-        - resource: '\*|arn:aws:s3:::prod.*'
+        - resource: '[^/]*\*.*|arn:aws:s3:::prod.*'
           required_conditions:
             - condition_key: aws:MultiFactorAuthPresent
               operator: Bool
@@ -41,6 +42,7 @@ action_condition_enforcement:
 
     # effect + resource: prod secrets are reachable only through a VPC endpoint.
     # An Allow must pin the endpoint; a perimeter Deny must deny every other one.
+    # Wildcard resources are skipped; prefix the regex with `.*\*.*|` to include them.
     - actions: ["secretsmanager:GetSecretValue"]
       severity: high
       if:

@@ -115,7 +115,11 @@ a requirement without `if` does. Name `Deny` explicitly to check deny statements
 A top-level `required_conditions` beside `if` acts as one more branch with no predicate:
 it applies to every `Allow` statement granting the requirement's actions.
 
-When branches overlap, a finding identical in every field is reported once.
+When branches overlap, findings that differ only in severity or suggestion are reported
+once, at the highest severity.
+
+With `none_of`, only `Allow` statements are flagged: a `Deny` of a forbidden action is
+compliant, so a `Deny` branch on a `none_of` requirement reports nothing.
 
 **Severity precedence:** the condition entry's `severity`, then the branch's, then the
 requirement's, then the check's configured severity.
@@ -138,15 +142,16 @@ Each pattern below is in
 [`examples/configs/action-condition-branches.yaml`](https://github.com/boogy/iam-policy-validator/blob/main/examples/configs/action-condition-branches.yaml).
 
 **Resource only.** The branch has no `effect`, so it checks `Allow` statements. Deletes
-on prod buckets need MFA. `\*` is in the pattern so `Resource: "*"`, which also grants
-the prod buckets, is checked too. `arn:aws:s3:::prod.*` also matches the glob
-`arn:aws:s3:::prod*`.
+on prod buckets need MFA. `[^/]*\*.*` matches any `Resource` with a wildcard in the
+bucket name (`*`, `arn:aws:s3:::*/*`, `arn:aws:s3:::p*`), since such a glob may grant
+the prod buckets.
+`NotResource` statements are still skipped; add a `not_resource: ".*"` branch for them.
 
 ```yaml
 - actions: ["s3:DeleteObject", "s3:DeleteBucket"]
   severity: high
   if:
-    - resource: '\*|arn:aws:s3:::prod.*'
+    - resource: '[^/]*\*.*|arn:aws:s3:::prod.*'
       required_conditions:
         - condition_key: aws:MultiFactorAuthPresent
           operator: Bool
@@ -155,7 +160,8 @@ the prod buckets, is checked too. `arn:aws:s3:::prod.*` also matches the glob
 
 **Effect and resource.** Prod secrets are reachable only through a VPC endpoint. An
 `Allow` must pin the endpoint, and a perimeter `Deny` must deny every other endpoint.
-Statements on other secrets are skipped.
+Statements on other secrets, and wildcard resources such as `Resource: "*"`, are
+skipped; prefix the pattern with `.*\*.*|` to include them.
 
 ```yaml
 - actions: ["secretsmanager:GetSecretValue"]

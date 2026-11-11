@@ -2,7 +2,7 @@
 #
 # Hosted MCP server image. See iam_validator/mcp/CLAUDE.md.
 
-# Must equal .python-version (enforced by tests/test_dockerfile.py).
+# Must equal .python-version, major.minor only: also the Lambda tag and site-packages path.
 ARG PYTHON_VERSION=3.14
 
 FROM python:${PYTHON_VERSION}-slim AS builder

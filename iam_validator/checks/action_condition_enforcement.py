@@ -26,6 +26,7 @@ from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.checks.utils.aws_matching import action_matches, iam_glob_match
 from iam_validator.checks.utils.condition_matching import has_condition_key
 from iam_validator.checks.utils.requirement_branches import (
+    DEFAULT_EFFECTS,
     branch_effects,
     branch_enforces_allow_everywhere,
     branch_matches_resources,
@@ -178,14 +179,22 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
     @staticmethod
     def _dedupe_issues(issues: list[ValidationIssue]) -> list[ValidationIssue]:
-        seen: set[str] = set()
-        unique: list[ValidationIssue] = []
+        """Collapse findings that differ only in severity or suggestion, keeping the most severe."""
+        unique: dict[tuple[Any, ...], ValidationIssue] = {}
         for issue in issues:
-            key = issue.model_dump_json()
-            if key not in seen:
-                seen.add(key)
-                unique.append(issue)
-        return unique
+            key = (
+                issue.issue_type,
+                issue.statement_index,
+                issue.field_name,
+                issue.action,
+                issue.condition_key,
+                issue.line_number,
+                issue.message,
+            )
+            kept = unique.get(key)
+            if kept is None or issue.get_severity_rank() > kept.get_severity_rank():
+                unique[key] = issue
+        return list(unique.values())
 
     def _create_malformed_branch_issue(self, requirement: dict[str, Any], problem: str) -> ValidationIssue:
         actions = requirement.get("actions", [])
@@ -199,6 +208,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 f"`action_condition_requirements` entry for action(s) {actions_str} has a malformed `if` "
                 f"branch, which enforces nothing: {problem}"
             ),
+            action=", ".join(a for a in actions if isinstance(a, str)) if isinstance(actions, list) else None,
             suggestion=(
                 "Each `if` branch is a mapping with a non-empty `required_conditions` and optional `effect` "
                 "(`Allow`/`Deny`), `resource`, `not_resource` (regex) and `severity`."
@@ -509,7 +519,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
         *,
-        effects: frozenset[str] = frozenset({"Allow"}),
+        effects: frozenset[str] = DEFAULT_EFFECTS,
         statement_filter: Callable[[Statement], bool] | None = None,
     ) -> list[ValidationIssue]:
         """
@@ -569,10 +579,15 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         # Check none_of: NONE of the forbidden actions should exist in policy
         if none_of:
+            allowed_by_action = {
+                action: allowed
+                for action, statements in statements_by_action.items()
+                if (allowed := [(i, s) for i, s in statements if s.effect == "Allow"])
+            }
             none_of_result = await self._check_none_of_policy_wide(
                 none_of,
-                policy_wide_actions,
-                statements_by_action,
+                set(allowed_by_action),
+                allowed_by_action,
                 requirement,
                 config,
                 fetcher,
@@ -872,7 +887,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
         *,
-        effects: frozenset[str] = frozenset({"Allow"}),
+        effects: frozenset[str] = DEFAULT_EFFECTS,
         statement_filter: Callable[[Statement], bool] | None = None,
     ) -> list[ValidationIssue]:
         """

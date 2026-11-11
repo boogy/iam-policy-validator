@@ -67,7 +67,8 @@ Branch keys: `effect` (`Allow`/`Deny`/list, case-insensitive), `resource` /
 reported as `invalid_condition_requirement` (`error`, `statement_index: -1`).
 
 - Omitted `effect`: `Allow` only; name `Deny` to check deny statements.
-- Every matching branch applies; identical findings are reported once; a statement
+- Every matching branch applies; findings differing only in severity are reported
+  once at the highest severity; `none_of` flags only `Allow` statements; a statement
   matching no branch is skipped.
 - A top-level `required_conditions` beside `if` is an unscoped `Allow` branch.
 - Severity: condition entry → branch → requirement → check.

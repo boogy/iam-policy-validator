@@ -194,6 +194,41 @@ class TestComposition:
 
         assert len(await _run(check, config, _stmt())) == 1
 
+    async def test_overlap_differing_in_note_and_severity_reports_most_severe_once(self, check):
+        requirement = {
+            "actions": [ACTION],
+            "severity": "low",
+            "required_conditions": [{"condition_key": "aws:RequestedRegion"}],
+            "if": [
+                {
+                    "effect": ["Allow", "Deny"],
+                    "severity": "high",
+                    "required_conditions": [{"condition_key": "aws:RequestedRegion"}],
+                }
+            ],
+        }
+
+        issues = await _run(check, _config(requirement), _stmt(), _stmt("Deny"))
+
+        assert sorted((i.statement_index, i.severity) for i in issues) == [(0, "high"), (1, "high")]
+
+    @pytest.mark.parametrize(
+        ("operator", "issue_type"), [("none_of", "forbidden_action"), ("any_of", "missing_required_condition")]
+    )
+    async def test_policy_wide_overlap_reports_most_severe_once(self, check, operator, issue_type):
+        requirement = {"actions": {operator: [ACTION]}, "if": [_branch(severity="low"), _branch(severity="high")]}
+
+        issues = await _run(check, _config(requirement), _stmt())
+
+        assert [(i.issue_type, i.severity) for i in issues] == [(issue_type, "high")]
+
+    async def test_none_of_skips_deny_statements(self, check):
+        requirement = {"actions": {"none_of": [ACTION]}, "if": [_branch(effect=["Allow", "Deny"])]}
+
+        issues = await _run(check, _config(requirement), _stmt("Deny"), _stmt())
+
+        assert [(i.issue_type, i.statement_index) for i in issues] == [("forbidden_action", 1)]
+
     async def test_no_matching_branch_reports_nothing(self, check):
         config = _config({"actions": [ACTION], "if": [_branch(effect="Deny", resource="arn:x")]})
 
@@ -290,6 +325,7 @@ class TestMalformedBranches:
         assert issue.statement_index == -1
         assert fragment in issue.message
         assert ACTION in issue.message
+        assert issue.action == ACTION
 
     async def test_reported_even_when_no_statement_grants_the_action(self, check):
         issues = await _run(check, _config({"actions": [ACTION], "if": []}), _stmt(action="s3:GetObject"))

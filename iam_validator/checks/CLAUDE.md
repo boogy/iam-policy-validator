@@ -180,8 +180,8 @@ A requirement carrying the `if` key (even `if: []`) dispatches to `_check_branch
 one without it takes the untouched old path. Parsing and matching live in
 `utils/requirement_branches.py`. Each valid branch becomes an ordinary requirement run
 through `_check_per_statement` / `_check_policy_wide` with keyword-only `effects` and
-`statement_filter`. An omitted branch `effect` means `Allow` in both forms; identical
-findings from overlapping branches are reported once. Malformed branches yield one `invalid_condition_requirement`
+`statement_filter`. An omitted branch `effect` means `Allow` in both forms; findings
+differing only in severity or suggestion are reported once (most severe kept); `none_of` flags only `Allow` statements. Malformed branches yield one `invalid_condition_requirement`
 (`error`, `statement_index=-1`) per policy. `enforced_actions` skips a requirement
 whose branches (including a top-level `required_conditions`, treated as an unscoped
 branch) never enforce `Allow` without `resource` / `not_resource`.
