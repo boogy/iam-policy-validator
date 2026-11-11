@@ -319,6 +319,10 @@ class TestMalformedBranches:
             (["Allow"], "`if[0]`: branch must be a mapping"),
             ([{"effect": "Allow"}], "`if[0]`: `required_conditions` is missing or empty"),
             ([{"required_conditions": []}], "`if[0]`: `required_conditions` is missing or empty"),
+            (
+                [{"required_conditions": {"all_of": {"condition_key": KEY}}}],
+                "`if[0]`: `required_conditions.all_of` must be a list",
+            ),
             ([_branch(effect="Permit")], "`if[0]`: `effect` must be"),
             ([_branch(resource="arn:(")], "`if[0]`: `resource` is not a valid regex"),
             ([_branch(resource=["arn:.*"])], "`if[0]`: `resource` must be a regex string"),

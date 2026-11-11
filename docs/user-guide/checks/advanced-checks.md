@@ -126,7 +126,7 @@ requirement's, then the check's configured severity.
 
 **Malformed branches** are reported once per policy as `invalid_condition_requirement`
 with severity `error` and `statement_index: -1`: `if` that is not a list or is empty, a
-branch that is not a mapping, missing or empty `required_conditions`, an invalid
+branch that is not a mapping, missing or empty `required_conditions` (or an `all_of`/`any_of`/`none_of` that is not a list), an invalid
 `effect`, an invalid or non-string `resource`/`not_resource` regex, an invalid
 `severity`, or an unknown key (so a typo such as `resources:` cannot make a branch match
 every resource). The broken branch enforces nothing; valid branches still run.

@@ -38,6 +38,14 @@ def test_well_formed_branch_has_no_problem():
         ({"required_conditions": []}, "`required_conditions` is missing or empty"),
         ({"required_conditions": {}}, "`required_conditions` is missing or empty"),
         ({"required_conditions": {"all_of": []}}, "`required_conditions` is missing or empty"),
+        (
+            {"required_conditions": {"all_of": {"condition_key": "aws:X"}}},
+            "`required_conditions.all_of` must be a list",
+        ),
+        (
+            {"required_conditions": {"any_of": CONDS, "none_of": "aws:X"}},
+            "`required_conditions.none_of` must be a list",
+        ),
         ({"effect": "Permit", "required_conditions": CONDS}, "`effect` must be"),
         ({"effect": [], "required_conditions": CONDS}, "`effect` must be"),
         ({"resource": "arn:(", "required_conditions": CONDS}, "not a valid regex"),

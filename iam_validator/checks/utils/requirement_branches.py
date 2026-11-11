@@ -15,10 +15,13 @@ DEFAULT_EFFECTS = frozenset({"Allow"})
 def _conditions_problem(required_conditions: Any) -> str | None:
     if isinstance(required_conditions, list) and required_conditions:
         return None
-    if isinstance(required_conditions, dict) and any(
-        required_conditions.get(k) for k in ("all_of", "any_of", "none_of")
-    ):
-        return None
+    if isinstance(required_conditions, dict):
+        groups = {k: required_conditions[k] for k in ("all_of", "any_of", "none_of") if k in required_conditions}
+        not_lists = [k for k, v in groups.items() if not isinstance(v, list)]
+        if not_lists:
+            return f"`required_conditions.{not_lists[0]}` must be a list, got `{groups[not_lists[0]]!r}`"
+        if any(groups.values()):
+            return None
     return "`required_conditions` is missing or empty"
 
 

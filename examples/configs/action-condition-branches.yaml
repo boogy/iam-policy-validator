@@ -2,9 +2,9 @@
 #
 # Each `if` branch scopes its `required_conditions` by the statement's `effect`
 # (default `Allow`), a `resource` regex and/or a `not_resource` regex. Regexes are
-# anchored full matches against each Resource / NotResource entry, and `.*` is the only
-# way to match `Resource: "*"`. Every matching branch applies; a statement matching no
-# branch is skipped. Docs: docs/user-guide/checks/advanced-checks.md
+# anchored full matches against each Resource / NotResource entry, so `Resource: "*"`
+# matches only a pattern that accepts a literal `*` (`.*`, `[^/]*[*?].*`). Every
+# matching branch applies; a statement matching no branch is skipped. Docs: docs/user-guide/checks/advanced-checks.md
 #
 # Usage:
 #   iam-validator validate --path ./policies/ --config examples/configs/action-condition-branches.yaml
