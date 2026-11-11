@@ -190,6 +190,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 issue.condition_key,
                 issue.line_number,
                 issue.message,
+                issue.example,
             )
             kept = unique.get(key)
             if kept is None or issue.get_severity_rank() > kept.get_severity_rank():

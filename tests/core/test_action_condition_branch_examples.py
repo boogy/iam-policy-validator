@@ -67,6 +67,7 @@ async def test_effect_branches(config, effect, condition, expected):
         ("*", None, ["aws:MultiFactorAuthPresent"]),
         ("arn:aws:s3:::*/*", None, ["aws:MultiFactorAuthPresent"]),
         ("arn:aws:s3:::p*", None, ["aws:MultiFactorAuthPresent"]),
+        ("arn:aws:s3:::pro?-logs/*", None, ["aws:MultiFactorAuthPresent"]),
         ("arn:aws:s3:::prod-logs/*", MFA, []),
         ("arn:aws:s3:::dev-logs/*", None, []),
     ],
