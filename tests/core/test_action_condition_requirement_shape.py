@@ -133,6 +133,31 @@ class TestMalformedEntryIsReported:
         assert {i.issue_type for i in issues} == {"invalid_condition_requirement", "missing_required_condition"}
 
 
+class TestNonListGroupIsReported:
+    @pytest.mark.parametrize(
+        ("required_conditions", "label"),
+        [
+            ({"all_of": "aws:PrincipalOrgID"}, "all_of"),
+            ({"any_of": "aws:PrincipalOrgID"}, "any_of"),
+            ({"none_of": "aws:PrincipalOrgID"}, "none_of"),
+            ({"all_of": 5}, "all_of"),
+            ("aws:PrincipalOrgID", "required_conditions"),
+        ],
+    )
+    async def test_flagged_without_raising(self, check, mock_fetcher, required_conditions, label):
+        issues = await _run(check, mock_fetcher, required_conditions)
+
+        assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+        assert f"`{label}`" in issues[0].message
+
+    async def test_a_wellformed_group_beside_it_is_still_enforced(self, check, mock_fetcher):
+        issues = await _run(
+            check, mock_fetcher, {"all_of": "typo", "any_of": [{"condition_key": "aws:PrincipalOrgID"}]}
+        )
+
+        assert {i.issue_type for i in issues} == {"invalid_condition_requirement", "missing_required_condition_any_of"}
+
+
 class TestNestedAllOfInsideAnyOf:
     NESTED = {
         "any_of": [
@@ -176,3 +201,13 @@ class TestNestedAllOfInsideAnyOf:
         issues = await _run(check, mock_fetcher, self.NESTED)
 
         assert "invalid_condition_requirement" not in {i.issue_type for i in issues}
+
+
+async def test_deeply_nested_all_of_keys_are_named_in_the_any_of_message(check, mock_fetcher):
+    required_conditions = {"any_of": [{"all_of": [{"all_of": [{"condition_key": "aws:SourceArn"}]}]}]}
+
+    issues = await _run(check, mock_fetcher, required_conditions)
+
+    assert [i.issue_type for i in issues] == ["missing_required_condition_any_of"]
+    assert "unknown" not in issues[0].message + (issues[0].suggestion or "")
+    assert "aws:SourceArn" in issues[0].message

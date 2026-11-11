@@ -117,11 +117,13 @@ a requirement without `if` does. Name `Deny` explicitly to check deny statements
 A top-level `required_conditions` beside `if` acts as one more branch with no predicate:
 it applies to every `Allow` statement granting the requirement's actions.
 
-When branches overlap, findings that differ only in severity or suggestion are reported
-once, at the highest severity.
+When branches overlap, findings for the same condition entry that differ only in severity
+or suggestion are reported once, at the highest severity.
 
 With `none_of`, only `Allow` statements are flagged: a `Deny` of a forbidden action is
-compliant, so a `Deny` branch on a `none_of` requirement reports nothing.
+compliant, so a `Deny` branch on a `none_of` requirement reports nothing. A branch's
+`required_conditions` does not exempt a forbidden action: every matching `Allow`
+statement is reported.
 
 **Severity precedence:** the condition entry's `severity`, then the branch's, then the
 requirement's, then the check's configured severity.

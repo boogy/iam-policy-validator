@@ -18,6 +18,7 @@ Merge Strategies (merge_strategy setting):
 For full documentation, see: docs/condition-requirements.md
 """
 
+import json
 import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -191,6 +192,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 issue.line_number,
                 issue.message,
                 issue.example,
+                issue._rule_identity,
             )
             kept = unique.get(key)
             if kept is None or issue.get_severity_rank() > kept.get_severity_rank():
@@ -1208,85 +1210,99 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     )
             return issues
 
-        # Handle all_of/any_of/none_of format
-        if isinstance(required_conditions_config, dict):
-            all_of = required_conditions_config.get("all_of", [])
-            any_of = required_conditions_config.get("any_of", [])
-            none_of = required_conditions_config.get("none_of", [])
-
-            # Validate all_of: ALL conditions must be present
-            if all_of:
-                malformed = self._malformed_condition_requirements(all_of)
-                for entry in malformed:
-                    issues.append(
-                        self._create_malformed_requirement_issue(
-                            statement, statement_idx, entry, matching_actions, "all_of"
-                        )
+        if not isinstance(required_conditions_config, dict):
+            if required_conditions_config:
+                issues.append(
+                    self._create_malformed_requirement_issue(
+                        statement,
+                        statement_idx,
+                        required_conditions_config,
+                        matching_actions,
+                        "required_conditions",
+                        problem="must be a list or a mapping of `all_of`/`any_of`/`none_of`",
                     )
-                for condition_requirement in all_of:
-                    if condition_requirement in malformed:
-                        continue
-                    if not self._has_condition_requirement(statement, condition_requirement):
-                        issues.append(
-                            self._create_issue(
-                                statement,
-                                statement_idx,
-                                condition_requirement,
-                                matching_actions,
-                                config,
-                                requirement_type="all_of",
-                                requirement=requirement,
-                            )
-                        )
-
-            # Validate any_of: At least ONE condition must be present
-            if any_of:
-                malformed = self._malformed_condition_requirements(any_of)
-                for entry in malformed:
-                    issues.append(
-                        self._create_malformed_requirement_issue(
-                            statement, statement_idx, entry, matching_actions, "any_of"
-                        )
-                    )
-                any_of = [cond_req for cond_req in any_of if cond_req not in malformed]
-                any_present = not any_of or any(
-                    self._has_condition_requirement(statement, cond_req) for cond_req in any_of
                 )
+            return issues
 
-                if not any_present:
-                    # Check if requirement has custom message/suggestion/example
-                    custom_message = requirement.get("message") if requirement else None
-                    custom_suggestion = requirement.get("suggestion") if requirement else None
-                    custom_example = requirement.get("example") if requirement else None
+        groups: dict[str, list[Any]] = {}
+        for group in ("all_of", "any_of", "none_of"):
+            value = required_conditions_config.get(group, [])
+            if not isinstance(value, list):
+                issues.append(
+                    self._create_malformed_requirement_issue(
+                        statement, statement_idx, value, matching_actions, group, problem="must be a list"
+                    )
+                )
+                value = []
+            groups[group] = value
 
-                    if custom_message:
-                        # Use fully custom message/suggestion/example from requirement
-                        message = custom_message
-                        suggestion = custom_suggestion or ""
-                        example = custom_example or ""
-                    else:
-                        # Generate default message and build suggestion from conditions
-                        condition_keys = []
-                        for cond in any_of:
-                            if "all_of" in cond:
-                                # Nested all_of - collect all condition keys
-                                nested_keys = [c.get("condition_key", "unknown") for c in cond["all_of"]]
-                                condition_keys.append(f"({' + '.join(f'`{k}`' for k in nested_keys)})")
-                            else:
-                                # Simple condition
-                                condition_keys.append(f"`{cond.get('condition_key', 'unknown')}`")
-                        condition_keys_formatted = " OR ".join(condition_keys)
-                        matching_actions_formatted = format_list_with_backticks(matching_actions)
+        all_of = groups["all_of"]
+        any_of = groups["any_of"]
+        none_of = groups["none_of"]
 
-                        message = (
-                            f"Actions {matching_actions_formatted} require at least ONE of these conditions: "
-                            f"{condition_keys_formatted}"
-                        )
-
-                        # Build suggestion and examples from conditions
-                        suggestion, example = self._build_any_of_suggestion(any_of)
-
+        # Validate all_of: ALL conditions must be present
+        if all_of:
+            malformed = self._malformed_condition_requirements(all_of)
+            for entry in malformed:
+                issues.append(
+                    self._create_malformed_requirement_issue(
+                        statement, statement_idx, entry, matching_actions, "all_of"
+                    )
+                )
+            for condition_requirement in all_of:
+                if condition_requirement in malformed:
+                    continue
+                if not self._has_condition_requirement(statement, condition_requirement):
                     issues.append(
+                        self._create_issue(
+                            statement,
+                            statement_idx,
+                            condition_requirement,
+                            matching_actions,
+                            config,
+                            requirement_type="all_of",
+                            requirement=requirement,
+                        )
+                    )
+
+        # Validate any_of: At least ONE condition must be present
+        if any_of:
+            malformed = self._malformed_condition_requirements(any_of)
+            for entry in malformed:
+                issues.append(
+                    self._create_malformed_requirement_issue(
+                        statement, statement_idx, entry, matching_actions, "any_of"
+                    )
+                )
+            any_of = [cond_req for cond_req in any_of if cond_req not in malformed]
+            any_present = not any_of or any(self._has_condition_requirement(statement, cond_req) for cond_req in any_of)
+
+            if not any_present:
+                # Check if requirement has custom message/suggestion/example
+                custom_message = requirement.get("message") if requirement else None
+                custom_suggestion = requirement.get("suggestion") if requirement else None
+                custom_example = requirement.get("example") if requirement else None
+
+                if custom_message:
+                    # Use fully custom message/suggestion/example from requirement
+                    message = custom_message
+                    suggestion = custom_suggestion or ""
+                    example = custom_example or ""
+                else:
+                    # Generate default message and build suggestion from conditions
+                    condition_keys_formatted = " OR ".join(self._describe_requirement(c) for c in any_of)
+                    matching_actions_formatted = format_list_with_backticks(matching_actions)
+
+                    message = (
+                        f"Actions {matching_actions_formatted} require at least ONE of these conditions: "
+                        f"{condition_keys_formatted}"
+                    )
+
+                    # Build suggestion and examples from conditions
+                    suggestion, example = self._build_any_of_suggestion(any_of)
+
+                issues.append(
+                    self._with_rule_identity(
                         ValidationIssue(
                             severity=self._resolve_severity(config, requirement),
                             statement_sid=statement.sid,
@@ -1298,32 +1314,35 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             example=example if example else None,
                             line_number=statement.line_number,
                             field_name="condition",
-                        )
+                        ),
+                        "any_of",
+                        any_of,
                     )
+                )
 
-            # Validate none_of: NONE of these conditions should be present
-            if none_of:
-                malformed = self._malformed_condition_requirements(none_of)
-                for entry in malformed:
+        # Validate none_of: NONE of these conditions should be present
+        if none_of:
+            malformed = self._malformed_condition_requirements(none_of)
+            for entry in malformed:
+                issues.append(
+                    self._create_malformed_requirement_issue(
+                        statement, statement_idx, entry, matching_actions, "none_of"
+                    )
+                )
+            for condition_requirement in none_of:
+                if condition_requirement in malformed:
+                    continue
+                if self._has_condition_requirement(statement, condition_requirement):
                     issues.append(
-                        self._create_malformed_requirement_issue(
-                            statement, statement_idx, entry, matching_actions, "none_of"
+                        self._create_none_of_issue(
+                            statement,
+                            statement_idx,
+                            condition_requirement,
+                            matching_actions,
+                            config,
+                            requirement=requirement,
                         )
                     )
-                for condition_requirement in none_of:
-                    if condition_requirement in malformed:
-                        continue
-                    if self._has_condition_requirement(statement, condition_requirement):
-                        issues.append(
-                            self._create_none_of_issue(
-                                statement,
-                                statement_idx,
-                                condition_requirement,
-                                matching_actions,
-                                config,
-                                requirement=requirement,
-                            )
-                        )
 
         return issues
 
@@ -1371,27 +1390,53 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         entry: Any,
         matching_actions: list[str],
         requirement_type: str,
+        problem: str | None = None,
     ) -> ValidationIssue:
         matching_actions_str = format_list_with_backticks(matching_actions)
-        # Deliberately not _resolve_severity: a broken requirement's own `severity` must not
-        # downgrade the notice that it enforces nothing.
-        return ValidationIssue(
-            severity="error",
-            statement_sid=statement.sid,
-            statement_index=statement_idx,
-            issue_type="invalid_condition_requirement",
-            message=(
+        if problem:
+            message = (
+                f"`action_condition_requirements` `{requirement_type}` {problem}, so it cannot be "
+                f"enforced for action(s) {matching_actions_str}: `{entry!r}`"
+            )
+            suggestion = f"Fix the shape of `{requirement_type}`. Until then it enforces nothing."
+        else:
+            message = (
                 f"`action_condition_requirements` entry under `{requirement_type}` names no "
                 f"`condition_key`, so it cannot be enforced for action(s) {matching_actions_str}: `{entry!r}`"
-            ),
-            action=", ".join(matching_actions),
-            suggestion=(
+            )
+            suggestion = (
                 "Add a `condition_key` to this entry (or nest the entry under `all_of`). "
                 "Until then the requirement enforces nothing."
+            )
+        # Deliberately not _resolve_severity: a broken requirement's own `severity` must not
+        # downgrade the notice that it enforces nothing.
+        return self._with_rule_identity(
+            ValidationIssue(
+                severity="error",
+                statement_sid=statement.sid,
+                statement_index=statement_idx,
+                issue_type="invalid_condition_requirement",
+                message=message,
+                action=", ".join(matching_actions),
+                suggestion=suggestion,
+                line_number=statement.line_number,
+                field_name="condition",
             ),
-            line_number=statement.line_number,
-            field_name="condition",
+            requirement_type,
+            entry,
         )
+
+    @staticmethod
+    def _with_rule_identity(issue: ValidationIssue, *rule: Any) -> ValidationIssue:
+        issue._rule_identity = json.dumps(rule, sort_keys=True, default=repr)
+        return issue
+
+    @staticmethod
+    def _describe_requirement(entry: dict[str, Any]) -> str:
+        nested = entry.get("all_of")
+        if nested:
+            return f"({' + '.join(ActionConditionEnforcementCheck._describe_requirement(e) for e in nested)})"
+        return f"`{entry.get('condition_key', 'unknown')}`"
 
     def _resolve_severity(
         self,
@@ -1438,18 +1483,22 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         )
 
         matching_actions_str = format_list_with_backticks(matching_actions)
-        return ValidationIssue(
-            severity=severity,
-            statement_sid=statement.sid,
-            statement_index=statement_idx,
-            issue_type="missing_required_condition",
-            message=f"{message_prefix} Action(s) {matching_actions_str} require condition `{condition_key}`",
-            action=", ".join(matching_actions),
-            condition_key=condition_key,
-            suggestion=suggestion_text,
-            example=example_code,
-            line_number=statement.line_number,
-            field_name="condition",
+        return self._with_rule_identity(
+            ValidationIssue(
+                severity=severity,
+                statement_sid=statement.sid,
+                statement_index=statement_idx,
+                issue_type="missing_required_condition",
+                message=f"{message_prefix} Action(s) {matching_actions_str} require condition `{condition_key}`",
+                action=", ".join(matching_actions),
+                condition_key=condition_key,
+                suggestion=suggestion_text,
+                example=example_code,
+                line_number=statement.line_number,
+                field_name="condition",
+            ),
+            requirement_type,
+            condition_requirement,
         )
 
     def _build_suggestion(
@@ -1520,8 +1569,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             if "all_of" in cond:
                 # Nested all_of - show all required conditions together
                 all_of_list = cond["all_of"]
-                condition_keys = [c.get("condition_key", "unknown") for c in all_of_list]
-                condition_keys_formatted = format_list_with_backticks(condition_keys, separator=" + ")
+                condition_keys_formatted = " + ".join(self._describe_requirement(c) for c in all_of_list)
 
                 # Check for custom message first
                 custom_message = cond.get("message")
@@ -1594,15 +1642,19 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         if description:
             suggestion += f". {description}"
 
-        return ValidationIssue(
-            severity=self._resolve_severity(config, requirement, condition_requirement),
-            statement_sid=statement.sid,
-            statement_index=statement_idx,
-            issue_type="forbidden_condition_present",
-            message=message,
-            action=", ".join(matching_actions),
-            condition_key=condition_key,
-            suggestion=suggestion,
-            line_number=statement.line_number,
-            field_name="condition",
+        return self._with_rule_identity(
+            ValidationIssue(
+                severity=self._resolve_severity(config, requirement, condition_requirement),
+                statement_sid=statement.sid,
+                statement_index=statement_idx,
+                issue_type="forbidden_condition_present",
+                message=message,
+                action=", ".join(matching_actions),
+                condition_key=condition_key,
+                suggestion=suggestion,
+                line_number=statement.line_number,
+                field_name="condition",
+            ),
+            "none_of",
+            condition_requirement,
         )

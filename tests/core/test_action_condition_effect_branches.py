@@ -196,6 +196,23 @@ class TestComposition:
 
         assert sorted("pci" in (i.example or "") for i in issues) == [False, True]
 
+    async def test_overlap_requiring_different_values_with_a_shared_example_reports_each(self, check):
+        def branch(resource: str, value: str) -> dict:
+            entry = {"condition_key": "aws:ResourceTag/env", "expected_value": value, "example": "EX"}
+            return {"resource": resource, "required_conditions": [entry]}
+
+        config = _config({"actions": [ACTION], "if": [branch("arn:prod.*", "prod"), branch(".*-pci", "pci")]})
+
+        assert len(await _run(check, config, _stmt(resource="arn:prod-pci"))) == 2
+
+    async def test_overlapping_any_of_branches_with_a_shared_message_report_each(self, check):
+        def branch(key: str) -> dict:
+            return {"required_conditions": {"any_of": [{"condition_key": key}]}}
+
+        requirement = {"actions": [ACTION], "message": "M", "if": [branch("aws:SourceVpc"), branch("aws:SourceIp")]}
+
+        assert len(await _run(check, _config(requirement), _stmt())) == 2
+
     async def test_overlap_differing_in_note_and_severity_reports_most_severe_once(self, check):
         requirement = {
             "actions": [ACTION],
