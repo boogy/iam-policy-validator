@@ -41,7 +41,36 @@ action_condition_enforcement:
     - actions: ["iam:PassRole"]
       required_conditions:
         - condition_key: "iam:PassedToService"
+
+    # `if:` branches scope conditions by effect / resource regex (omitted effect: both effects)
+    - actions: ["bedrock:CallWithBearerToken"]
+      severity: critical
+      if:
+        - effect: Allow
+          required_conditions:
+            - condition_key: bedrock:bearerTokenType
+              operator: StringEquals
+              expected_value: SHORT_TERM
+        - effect: Deny
+          severity: high
+          required_conditions:
+            - condition_key: bedrock:bearerTokenType
+              operator: StringNotEquals
+              expected_value: SHORT_TERM
 ```
+
+## `if:` branches in `action_condition_requirements`
+
+Branch keys: `effect` (`Allow`/`Deny`/list, case-insensitive), `resource` /
+`not_resource` (regex, anchored full match, case-sensitive), `required_conditions`
+(required, non-empty), `severity` (overrides the requirement's). Any other key is
+reported as `invalid_condition_requirement` (`error`, `statement_index: -1`).
+
+- Omitted `effect`: both effects with a plain `actions` list, `Allow` only with
+  `actions: {all_of|any_of|none_of}`.
+- Every matching branch applies; a statement matching no branch is skipped.
+- A top-level `required_conditions` beside `if` is an unscoped branch.
+- Severity: condition entry → branch → requirement → check.
 
 ## Supported `ignore_patterns` fields
 

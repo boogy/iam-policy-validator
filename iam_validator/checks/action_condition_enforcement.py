@@ -19,11 +19,18 @@ For full documentation, see: docs/condition-requirements.md
 """
 
 import re
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.checks.utils.aws_matching import action_matches, iam_glob_match
 from iam_validator.checks.utils.condition_matching import has_condition_key
+from iam_validator.checks.utils.requirement_branches import (
+    branch_effects,
+    branch_enforces_allow_everywhere,
+    branch_matches_resources,
+    requirement_branches,
+)
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.ignore_patterns import IgnorePatternMatcher
@@ -96,12 +103,16 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # Process each requirement
         for requirement in requirements:
             # Check if actions use all_of/any_of/none_of (policy-wide) or simple list (per-statement)
-            actions_config = requirement.get("actions", [])
-            uses_logical_operators = isinstance(actions_config, dict) and any(
-                key in actions_config for key in ("all_of", "any_of", "none_of")
-            )
+            uses_logical_operators = self._is_policy_wide(requirement)
 
-            if uses_logical_operators:
+            if "if" in requirement:
+                branch_issues = await self._check_branches(
+                    policy, requirement, fetcher, config, policy_wide=uses_logical_operators
+                )
+                issues.extend(
+                    self._filter_requirement_issues(branch_issues, requirement.get("ignore_patterns", []), policy_file)
+                )
+            elif uses_logical_operators:
                 # Policy-wide detection (all_of/any_of/none_of)
                 policy_issues = await self._check_policy_wide(policy, requirement, fetcher, config)
                 # Filter by requirement-level ignore_patterns
@@ -119,6 +130,70 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 issues.extend(statement_issues)
 
         return issues
+
+    @staticmethod
+    def _is_policy_wide(requirement: dict[str, Any]) -> bool:
+        actions_config = requirement.get("actions", [])
+        return isinstance(actions_config, dict) and any(
+            key in actions_config for key in ("all_of", "any_of", "none_of")
+        )
+
+    async def _check_branches(
+        self,
+        policy: "IAMPolicy",
+        requirement: dict[str, Any],
+        fetcher: AWSServiceFetcher,
+        config: CheckConfig,
+        *,
+        policy_wide: bool,
+    ) -> list[ValidationIssue]:
+        """Enforce each ``if`` branch as an ordinary requirement scoped by its effect and resource predicates."""
+        branches, problems = requirement_branches(requirement)
+        issues = [self._create_malformed_branch_issue(requirement, problem) for problem in problems]
+
+        base = {k: v for k, v in requirement.items() if k not in ("if", "required_conditions", "severity")}
+        for branch in branches:
+            branch_requirement = {**base, "required_conditions": branch["required_conditions"]}
+            severity = branch.get("severity") or requirement.get("severity")
+            if severity:
+                branch_requirement["severity"] = severity
+
+            def matches(statement: Statement, branch: dict[str, Any] = branch) -> bool:
+                return branch_matches_resources(branch, statement)
+
+            effects = branch_effects(branch, policy_wide=policy_wide)
+            if policy_wide:
+                issues.extend(
+                    await self._check_policy_wide(
+                        policy, branch_requirement, fetcher, config, effects=effects, statement_filter=matches
+                    )
+                )
+            else:
+                issues.extend(
+                    await self._check_per_statement(
+                        policy, branch_requirement, fetcher, config, effects=effects, statement_filter=matches
+                    )
+                )
+        return issues
+
+    def _create_malformed_branch_issue(self, requirement: dict[str, Any], problem: str) -> ValidationIssue:
+        actions = requirement.get("actions", [])
+        actions_str = format_list_with_backticks(actions) if isinstance(actions, list) else f"`{actions!r}`"
+        return ValidationIssue(
+            severity="error",
+            statement_sid=None,
+            statement_index=-1,
+            issue_type="invalid_condition_requirement",
+            message=(
+                f"`action_condition_requirements` entry for action(s) {actions_str} has a malformed `if` "
+                f"branch, which enforces nothing: {problem}"
+            ),
+            suggestion=(
+                "Each `if` branch is a mapping with a non-empty `required_conditions` and optional `effect` "
+                "(`Allow`/`Deny`), `resource`, `not_resource` (regex) and `severity`."
+            ),
+            field_name="condition",
+        )
 
     @classmethod
     def _resolve_own_config(cls, root_config: dict[str, Any]) -> dict[str, Any]:
@@ -164,6 +239,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         actions: set[str] = set()
         for requirement in requirements:
+            if "if" in requirement and not any(
+                branch_enforces_allow_everywhere(b) for b in requirement_branches(requirement)[0]
+            ):
+                continue
             configured = requirement.get("actions", [])
             if isinstance(configured, str):
                 actions.add(configured)
@@ -418,6 +497,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         requirement: dict[str, Any],
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
+        *,
+        effects: frozenset[str] = frozenset({"Allow"}),
+        statement_filter: Callable[[Statement], bool] | None = None,
     ) -> list[ValidationIssue]:
         """
         Check actions across the entire policy using all_of/any_of/none_of logic.
@@ -438,7 +520,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         statements_by_action: dict[str, list[tuple[int, Statement]]] = {}
 
         for idx, statement in enumerate(policy.statement or []):
-            if statement.effect != "Allow":
+            if statement.effect not in effects or (statement_filter and not statement_filter(statement)):
                 continue
 
             statement_actions = self._granted_actions(statement, [*all_of, *any_of, *none_of])
@@ -778,6 +860,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         requirement: dict[str, Any],
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
+        *,
+        effects: frozenset[str] = frozenset({"Allow"}),
+        statement_filter: Callable[[Statement], bool] | None = None,
     ) -> list[ValidationIssue]:
         """
         Check each statement individually for matching actions (simple list format).
@@ -788,8 +873,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         matching_statements: list[tuple[int, Statement, list[str]]] = []
 
         for idx, statement in enumerate(policy.statement or []):
-            # Only check Allow statements
-            if statement.effect != "Allow":
+            if statement.effect not in effects or (statement_filter and not statement_filter(statement)):
                 continue
 
             required = requirement.get("actions", [])

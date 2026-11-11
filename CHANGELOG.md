@@ -4,6 +4,15 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.0] - Unreleased
+
+### Added
+
+- Add `if:` branches to `action_condition_enforcement` requirements. Each branch scopes its `required_conditions` by statement `effect` (`Allow`, `Deny` or both), a `resource` or `not_resource` regex (anchored full match), and may override `severity`. Malformed branches are reported as `invalid_condition_requirement`; requirements without `if` are unchanged. ([#234])
+- Document `if:` branches in the Claude Code skill and bump the plugin version to 1.33.0 so installs pick it up. ([#234])
+
+[#234]: https://github.com/boogy/iam-policy-validator/issues/234
+
 ## [1.32.0] - 2026-10-29
 
 ### Changed
