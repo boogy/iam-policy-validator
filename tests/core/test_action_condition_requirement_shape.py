@@ -88,6 +88,29 @@ class TestMalformedEntryIsReported:
 
         assert "forbidden_condition_present" not in {i.issue_type for i in issues}
 
+    @pytest.mark.parametrize(
+        "required_conditions",
+        [
+            {"any_of": [{"all_of": "aws:PrincipalOrgID"}]},
+            {"any_of": [{"all_of": ["aws:PrincipalOrgID"]}]},
+            [{"all_of": "aws:PrincipalOrgID"}],
+            [{"all_of": {"condition_key": "aws:PrincipalOrgID"}}],
+            {"all_of": [{"all_of": [{"condition_key": "aws:PrincipalOrgID"}, "typo"]}]},
+            {"none_of": [{"all_of": ["typo"]}]},
+        ],
+    )
+    async def test_malformed_nested_all_of_is_flagged_without_raising(self, check, mock_fetcher, required_conditions):
+        issues = await _run(check, mock_fetcher, required_conditions)
+
+        assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+
+    async def test_keyless_any_of_entry_is_left_out_of_the_missing_condition_message(self, check, mock_fetcher):
+        issues = await _run(check, mock_fetcher, {"any_of": [{}, {"condition_key": "aws:PrincipalOrgID"}]})
+
+        missing = [i for i in issues if i.issue_type == "missing_required_condition_any_of"]
+        assert len(missing) == 1
+        assert "unknown" not in missing[0].message
+
     async def test_non_mapping_any_of_entry_is_flagged_without_raising(self, check, mock_fetcher):
         issues = await _run(check, mock_fetcher, {"any_of": ["aws:PrincipalOrgID"]})
 

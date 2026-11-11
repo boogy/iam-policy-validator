@@ -1241,13 +1241,14 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
             # Validate any_of: At least ONE condition must be present
             if any_of:
-                for entry in self._malformed_condition_requirements(any_of):
+                malformed = self._malformed_condition_requirements(any_of)
+                for entry in malformed:
                     issues.append(
                         self._create_malformed_requirement_issue(
                             statement, statement_idx, entry, matching_actions, "any_of"
                         )
                     )
-                any_of = [cond_req for cond_req in any_of if isinstance(cond_req, dict)]
+                any_of = [cond_req for cond_req in any_of if cond_req not in malformed]
                 any_present = not any_of or any(
                     self._has_condition_requirement(statement, cond_req) for cond_req in any_of
                 )
@@ -1348,7 +1349,18 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """Requirement entries that name no condition key, so they can never be evaluated."""
         if not isinstance(entries, list):
             return []
-        return [e for e in entries if not (isinstance(e, dict) and (e.get("condition_key") or e.get("all_of")))]
+        return [e for e in entries if not ActionConditionEnforcementCheck._is_evaluable_requirement(e)]
+
+    @staticmethod
+    def _is_evaluable_requirement(entry: Any) -> bool:
+        if not isinstance(entry, dict):
+            return False
+        nested_all_of = entry.get("all_of")
+        if nested_all_of:
+            return isinstance(nested_all_of, list) and all(
+                ActionConditionEnforcementCheck._is_evaluable_requirement(e) for e in nested_all_of
+            )
+        return bool(entry.get("condition_key"))
 
     def _create_malformed_requirement_issue(
         self,

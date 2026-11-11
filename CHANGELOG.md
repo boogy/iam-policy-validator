@@ -18,7 +18,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Fixed
 
-- Report a non-mapping entry under `required_conditions.any_of` (e.g. a bare condition key string) as `invalid_condition_requirement` instead of crashing `action_condition_enforcement` and losing its findings for the policy. ([#240])
+- Report a non-mapping entry under `required_conditions.any_of` (e.g. a bare condition key string) or a nested `all_of` that is not a list of condition entries as `invalid_condition_requirement` instead of crashing `action_condition_enforcement` and losing its findings for the policy. A malformed `any_of` entry is now left out of the evaluation and of the missing-condition message, as in `all_of` and `none_of`. ([#240])
 
 [#240]: https://github.com/boogy/iam-policy-validator/pull/240
 
