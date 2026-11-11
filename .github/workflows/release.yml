@@ -8,7 +8,7 @@ on:
 permissions: read-all
 
 env:
-  PYTHON_VERSION: "3.13"
+  PYTHON_VERSION: "3.14"
   PYPI_PROJECT: "iam-policy-validator"
 
 jobs:
