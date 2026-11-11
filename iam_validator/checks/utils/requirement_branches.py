@@ -50,6 +50,8 @@ def branch_problem(branch: Any) -> str | None:
     if unknown:
         allowed = ", ".join(f"`{k}`" for k in sorted(BRANCH_KEYS))
         return f"unknown key(s) {', '.join(f'`{k}`' for k in unknown)} (allowed: {allowed})"
+    if "resource" in branch and "not_resource" in branch:
+        return "`resource` and `not_resource` are mutually exclusive: a statement has only one of them"
     problem = _conditions_problem(branch.get("required_conditions"))
     if problem:
         return problem

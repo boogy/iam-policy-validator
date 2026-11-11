@@ -22,7 +22,6 @@ def test_well_formed_branch_has_no_problem():
     branch = {
         "effect": ["allow", "Deny"],
         "resource": "arn:.*",
-        "not_resource": "x",
         "severity": "high",
         "required_conditions": CONDS,
     }
@@ -51,6 +50,7 @@ def test_well_formed_branch_has_no_problem():
         ({"resource": "arn:(", "required_conditions": CONDS}, "not a valid regex"),
         ({"resource": ["arn:.*"], "required_conditions": CONDS}, "must be a regex string"),
         ({"not_resource": 5, "required_conditions": CONDS}, "must be a regex string"),
+        ({"resource": "a", "not_resource": "b", "required_conditions": CONDS}, "mutually exclusive"),
         ({"severity": "urgent", "required_conditions": CONDS}, "`severity` must be"),
     ],
 )
@@ -112,12 +112,6 @@ def test_resource_and_not_resource_target_their_own_field():
     assert not branch_matches_resources({"resource": ".*"}, _stmt(not_resource="arn:aws:s3:::prod/x"))
     assert branch_matches_resources({"not_resource": "arn:aws:s3:::prod/.*"}, _stmt(not_resource="arn:aws:s3:::prod/x"))
     assert not branch_matches_resources({"not_resource": ".*"}, _stmt(resource="arn:aws:s3:::prod/x"))
-
-
-def test_resource_and_not_resource_both_must_match():
-    stmt = _stmt(resource="arn:a", not_resource="arn:b")
-    assert branch_matches_resources({"resource": "arn:a", "not_resource": "arn:b"}, stmt)
-    assert not branch_matches_resources({"resource": "arn:a", "not_resource": "arn:c"}, stmt)
 
 
 def test_branch_without_resource_keys_matches_any_statement():

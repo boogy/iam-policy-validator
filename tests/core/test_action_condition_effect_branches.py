@@ -167,15 +167,6 @@ class TestResourceMatching:
         assert len(await _run(check, config, _stmt(not_resource="arn:aws:s3:::prod/x"))) == 1
         assert await _run(check, config, _stmt(resource="arn:aws:s3:::prod/x")) == []
 
-    async def test_both_resource_keys_must_match(self, check):
-        stmt = _stmt(resource="arn:a")
-        stmt.not_resource = "arn:b"
-        matching = _config({"actions": [ACTION], "if": [_branch(resource="arn:a", not_resource="arn:b")]})
-        partial = _config({"actions": [ACTION], "if": [_branch(resource="arn:a", not_resource="arn:c")]})
-
-        assert len(await _run(check, matching, stmt)) == 1
-        assert await _run(check, partial, stmt) == []
-
     async def test_unanchored_pattern_cannot_match_longer_string(self, check):
         config = _config({"actions": [ACTION], "if": [_branch(resource="prod")]})
 
@@ -327,6 +318,10 @@ class TestMalformedBranches:
             ([_branch(resource="arn:(")], "`if[0]`: `resource` is not a valid regex"),
             ([_branch(resource=["arn:.*"])], "`if[0]`: `resource` must be a regex string"),
             ([_branch(resources="arn:.*")], "`if[0]`: unknown key(s) `resources`"),
+            (
+                [_branch(resource="a", not_resource="b")],
+                "`if[0]`: `resource` and `not_resource` are mutually exclusive",
+            ),
             ([_branch(severity="urgent")], "`if[0]`: `severity` must be"),
         ],
     )

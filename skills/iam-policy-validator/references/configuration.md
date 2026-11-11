@@ -62,7 +62,7 @@ action_condition_enforcement:
 ## `if:` branches in `action_condition_requirements`
 
 Branch keys: `effect` (`Allow`/`Deny`/list, case-insensitive), `resource` /
-`not_resource` (regex, anchored full match, case-sensitive), `required_conditions`
+`not_resource` (regex, anchored full match, case-sensitive, mutually exclusive), `required_conditions`
 (required, non-empty), `severity` (overrides the requirement's). Any other key is
 reported as `invalid_condition_requirement` (`error`, `statement_index: -1`).
 

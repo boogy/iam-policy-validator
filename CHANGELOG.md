@@ -12,9 +12,13 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Added
 
-- Add `if:` branches to `action_condition_enforcement` requirements. Each branch scopes its `required_conditions` by statement `effect` (`Allow`, `Deny` or both; `Allow` when omitted), a `resource` or `not_resource` regex (anchored full match), and may override `severity`. Overlapping branches report a finding once, at its highest severity; `none_of` flags only `Allow` statements. Malformed branches are reported as `invalid_condition_requirement`; requirements without `if` are unchanged. ([#240])
+- Add `if:` branches to `action_condition_enforcement` requirements. Each branch scopes its `required_conditions` by statement `effect` (`Allow`, `Deny` or both; `Allow` when omitted), a `resource` or `not_resource` regex (anchored full match), and may override `severity`. Overlapping branches report a finding once, at its highest severity; `none_of` flags only `Allow` statements. `resource` and `not_resource` are mutually exclusive in a branch. Malformed branches are reported as `invalid_condition_requirement`; requirements without `if` are unchanged. ([#240])
 - Add `examples/configs/action-condition-branches.yaml` and worked `if:` examples (resource only, effect and resource, `not_resource`, both effects, top-level conditions beside `if`) to the advanced-checks guide. ([#240])
 - Document `if:` branches in the Claude Code skill and bump the plugin version to 1.33.0 so installs pick it up. ([#240])
+
+### Fixed
+
+- Report a non-mapping entry under `required_conditions.any_of` (e.g. a bare condition key string) as `invalid_condition_requirement` instead of crashing `action_condition_enforcement` and losing its findings for the policy. ([#240])
 
 [#240]: https://github.com/boogy/iam-policy-validator/pull/240
 

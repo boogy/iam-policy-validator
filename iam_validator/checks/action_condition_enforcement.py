@@ -1247,7 +1247,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             statement, statement_idx, entry, matching_actions, "any_of"
                         )
                     )
-                any_present = any(self._has_condition_requirement(statement, cond_req) for cond_req in any_of)
+                any_of = [cond_req for cond_req in any_of if isinstance(cond_req, dict)]
+                any_present = not any_of or any(
+                    self._has_condition_requirement(statement, cond_req) for cond_req in any_of
+                )
 
                 if not any_present:
                     # Check if requirement has custom message/suggestion/example

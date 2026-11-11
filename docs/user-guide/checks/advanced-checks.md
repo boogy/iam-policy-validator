@@ -105,8 +105,10 @@ block the tokens the rule wants to allow.
 | `required_conditions` | list, `all_of`, `any_of`, `none_of` | Required and non-empty. Same forms as a requirement's `required_conditions`.                                     |
 | `severity`            | severity string            | Overrides the requirement's `severity` for this branch.                                                                   |
 
-If both `resource` and `not_resource` are set, both must match; if neither is set, the
-branch ignores resources. A `resource` pattern is not special-cased for `Resource: "*"`:
+`resource` and `not_resource` are mutually exclusive (a statement has only one of
+`Resource` / `NotResource`); if neither is set, the branch ignores resources. The check
+skips SCPs and RCPs, so `effect: Deny` branches apply to identity, resource and trust
+policies only. A `resource` pattern is not special-cased for `Resource: "*"`:
 `arn:aws:s3:::prod/.*` does not match `"*"`, while `.*` does.
 
 A branch without `effect` applies to `Allow` statements only, in both action forms, as
@@ -127,7 +129,8 @@ requirement's, then the check's configured severity.
 **Malformed branches** are reported once per policy as `invalid_condition_requirement`
 with severity `error` and `statement_index: -1`: `if` that is not a list or is empty, a
 branch that is not a mapping, missing or empty `required_conditions` (or an `all_of`/`any_of`/`none_of` that is not a list), an invalid
-`effect`, an invalid or non-string `resource`/`not_resource` regex, an invalid
+`effect`, an invalid or non-string `resource`/`not_resource` regex, both `resource` and
+`not_resource` in one branch, an invalid
 `severity`, or an unknown key (so a typo such as `resources:` cannot make a branch match
 every resource). The broken branch enforces nothing; valid branches still run.
 

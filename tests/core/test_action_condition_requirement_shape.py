@@ -88,6 +88,16 @@ class TestMalformedEntryIsReported:
 
         assert "forbidden_condition_present" not in {i.issue_type for i in issues}
 
+    async def test_non_mapping_any_of_entry_is_flagged_without_raising(self, check, mock_fetcher):
+        issues = await _run(check, mock_fetcher, {"any_of": ["aws:PrincipalOrgID"]})
+
+        assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+
+    async def test_non_mapping_any_of_entry_beside_a_wellformed_one_still_enforces_it(self, check, mock_fetcher):
+        issues = await _run(check, mock_fetcher, {"any_of": ["typo", {"condition_key": "aws:PrincipalOrgID"}]})
+
+        assert {i.issue_type for i in issues} == {"invalid_condition_requirement", "missing_required_condition_any_of"}
+
     async def test_a_wellformed_entry_alongside_a_malformed_one_is_still_enforced(self, check, mock_fetcher):
         issues = await _run(
             check,
