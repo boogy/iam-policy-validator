@@ -8,7 +8,7 @@ on:
 permissions: read-all
 
 env:
-  PYTHON_VERSION: "3.13"
+  PYTHON_VERSION: "3.14"
   PYPI_PROJECT: "iam-policy-validator"
 
 jobs:
@@ -35,6 +35,7 @@ jobs:
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Get version from tag
         id: get_version
@@ -142,7 +143,7 @@ jobs:
       # the previous tag, grouped into the categories from .github/release.yml,
       # plus New Contributors and a Full Changelog compare link).
       - name: Create draft release with assets
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           name: ${{ steps.get_version.outputs.tag }}
           files: |
