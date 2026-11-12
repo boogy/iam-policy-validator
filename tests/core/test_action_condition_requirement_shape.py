@@ -305,3 +305,11 @@ async def test_null_group_is_treated_as_empty(check, mock_fetcher):
     issues = await _run(check, mock_fetcher, {"all_of": [{"condition_key": "aws:SourceVpc"}], "none_of": None})
 
     assert [i.issue_type for i in issues] == ["missing_required_condition"]
+
+
+async def test_nested_all_of_passes_its_example_to_each_missing_key(check, mock_fetcher):
+    group = {"all_of": [{"condition_key": "aws:SourceVpc"}, {"condition_key": "aws:SourceIp"}], "example": "GROUP"}
+
+    issues = await _run(check, mock_fetcher, [group], condition=VPC_CONDITION)
+
+    assert [(i.condition_key, i.example) for i in issues] == [("aws:SourceIp", "GROUP")]

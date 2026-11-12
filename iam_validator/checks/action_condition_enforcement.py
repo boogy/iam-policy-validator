@@ -147,9 +147,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     @staticmethod
     def _is_policy_wide(requirement: dict[str, Any]) -> bool:
         actions_config = requirement.get("actions", [])
-        return isinstance(actions_config, dict) and any(
-            key in actions_config for key in ("all_of", "any_of", "none_of")
-        )
+        return isinstance(actions_config, dict) and any(key in actions_config for key in CONDITION_GROUPS)
 
     async def _check_branches(
         self,
@@ -212,8 +210,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
     def _create_malformed_branch_issue(self, requirement: dict[str, Any], problem: str) -> ValidationIssue:
         actions = requirement.get("actions", [])
-        if isinstance(actions, str):
-            actions = [actions]
         actions_str = format_list_with_backticks(actions) if isinstance(actions, list) else f"`{actions!r}`"
         return ValidationIssue(
             severity="error",
@@ -281,9 +277,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             ):
                 continue
             configured = requirement.get("actions", [])
-            if isinstance(configured, str):
-                actions.add(configured)
-            elif isinstance(configured, list):
+            if isinstance(configured, list):
                 actions.update(a for a in configured if isinstance(a, str))
         return actions
 
@@ -1261,7 +1255,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             )
 
         groups: dict[str, list[Any]] = {}
-        for group in ("all_of", "any_of", "none_of"):
+        for group in CONDITION_GROUPS:
             value = required_conditions_config.get(group)
             if value is None:
                 value = []
@@ -1278,7 +1272,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         any_of = groups["any_of"]
         none_of = groups["none_of"]
 
-        # Validate all_of: ALL conditions must be present
         if all_of:
             malformed = self._malformed_condition_requirements(all_of)
             for entry in malformed:
@@ -1303,7 +1296,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                         )
                     )
 
-        # Validate any_of: At least ONE condition must be present
         if any_of:
             malformed = self._malformed_condition_requirements(any_of)
             for entry in malformed:
@@ -1316,18 +1308,15 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             any_present = not any_of or any(self._has_condition_requirement(statement, cond_req) for cond_req in any_of)
 
             if not any_present:
-                # Check if requirement has custom message/suggestion/example
                 custom_message = requirement.get("message") if requirement else None
                 custom_suggestion = requirement.get("suggestion") if requirement else None
                 custom_example = requirement.get("example") if requirement else None
 
                 if custom_message:
-                    # Use fully custom message/suggestion/example from requirement
                     message = custom_message
                     suggestion = custom_suggestion or ""
                     example = custom_example or ""
                 else:
-                    # Generate default message and build suggestion from conditions
                     condition_keys_formatted = " OR ".join(self._describe_requirement(c) for c in any_of)
                     matching_actions_formatted = format_list_with_backticks(matching_actions)
 
@@ -1336,7 +1325,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                         f"{condition_keys_formatted}"
                     )
 
-                    # Build suggestion and examples from conditions
                     suggestion, example = self._build_any_of_suggestion(any_of)
 
                 issues.append(
@@ -1358,7 +1346,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     )
                 )
 
-        # Validate none_of: NONE of these conditions should be present
         if none_of:
             malformed = self._malformed_condition_requirements(none_of)
             for entry in malformed:
@@ -1474,10 +1461,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         return issue
 
     def _missing_requirements(self, statement: Statement, entry: dict[str, Any]) -> list[dict[str, Any]]:
-        """The leaf requirements of ``entry`` the statement lacks; a nested ``all_of`` inherits its severity."""
+        """The leaf requirements of ``entry`` the statement lacks; a nested ``all_of`` passes down its severity, description and example."""
         if "all_of" not in entry:
             return [] if self._has_condition_requirement(statement, entry) else [entry]
-        inherited = {k: entry[k] for k in ("severity", "description") if k in entry}
+        inherited = {k: entry[k] for k in ("severity", "description", "example") if k in entry}
         return [m for e in entry["all_of"] for m in self._missing_requirements(statement, {**inherited, **e})]
 
     @staticmethod

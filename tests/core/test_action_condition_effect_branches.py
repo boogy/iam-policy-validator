@@ -470,3 +470,12 @@ class TestRuleIdentity:
         issues = await _run(check, _config({"actions": [ACTION], "if": [branch]}), _stmt())
 
         assert [i.issue_type for i in issues] == ["missing_required_condition"]
+
+
+class TestNullTopLevelConditions:
+    async def test_null_top_level_beside_if_is_not_a_malformed_branch(self, check):
+        requirement = {"actions": [ACTION], "required_conditions": None, "if": [_branch(effect="Allow")]}
+
+        issues = await _run(check, _config(requirement), _stmt())
+
+        assert [i.issue_type for i in issues] == ["missing_required_condition"]

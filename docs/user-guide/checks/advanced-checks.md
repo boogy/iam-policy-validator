@@ -115,7 +115,8 @@ A branch without `effect` applies to `Allow` statements only, in both action for
 a requirement without `if` does. Name `Deny` explicitly to check deny statements.
 
 A top-level `required_conditions` beside `if` acts as one more branch with no predicate:
-it applies to every `Allow` statement granting the requirement's actions.
+it applies to every `Allow` statement granting the requirement's actions. An empty (null)
+top-level `required_conditions` beside `if` is ignored.
 
 When branches overlap, findings for the same condition entry that differ only in severity
 or suggestion are reported once, at the highest severity. Entries are compared regardless
