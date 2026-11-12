@@ -434,3 +434,39 @@ class TestEnforcedActions:
         )
 
         assert [i.issue_type for i in issues] == ["missing_condition"]
+
+
+class TestRuleIdentity:
+    async def test_same_entry_with_keys_in_another_order_is_reported_once(self, check):
+        first = {"required_conditions": [{"condition_key": "aws:SourceVpc", "operator": "StringEquals"}]}
+        second = {"required_conditions": [{"operator": "StringEquals", "condition_key": "aws:SourceVpc"}]}
+        config = _config({"actions": [ACTION], "if": [first, second]})
+
+        assert len(await _run(check, config, _stmt())) == 1
+
+    async def test_same_entry_differing_in_severity_is_reported_once_at_the_highest(self, check):
+        branch = {"required_conditions": [{"condition_key": "aws:SourceVpc", "severity": "high"}]}
+        requirement = {
+            "actions": [ACTION],
+            "required_conditions": [{"condition_key": "aws:SourceVpc", "severity": "low", "description": "d"}],
+            "if": [branch],
+        }
+
+        issues = await _run(check, _config(requirement), _stmt())
+
+        assert [i.severity for i in issues] == ["high"]
+
+    async def test_branch_with_a_misspelled_group_is_malformed(self, check):
+        branch = {"required_conditions": {"all_of": [{"condition_key": "aws:SourceVpc"}], "allof": []}}
+
+        issues = await _run(check, _config({"actions": [ACTION], "if": [branch]}), _stmt())
+
+        assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+        assert "allof" in issues[0].message
+
+    async def test_branch_with_a_null_group_is_enforced(self, check):
+        branch = {"required_conditions": {"all_of": [{"condition_key": "aws:SourceVpc"}], "none_of": None}}
+
+        issues = await _run(check, _config({"actions": [ACTION], "if": [branch]}), _stmt())
+
+        assert [i.issue_type for i in issues] == ["missing_required_condition"]

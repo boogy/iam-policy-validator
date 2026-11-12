@@ -26,6 +26,7 @@ from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.checks.utils.aws_matching import action_matches, iam_glob_match
 from iam_validator.checks.utils.condition_matching import has_condition_key
 from iam_validator.checks.utils.requirement_branches import (
+    CONDITION_GROUPS,
     DEFAULT_EFFECTS,
     branch_effects,
     branch_enforces_allow_everywhere,
@@ -40,6 +41,17 @@ from iam_validator.utils.regex import compile_and_cache
 
 if TYPE_CHECKING:
     from iam_validator.core.models import IAMPolicy
+
+_PRESENTATION_KEYS = frozenset({"severity", "description"})
+
+
+def _canonical_rule(value: Any) -> Any:
+    """Key-order-independent form of a rule, without the keys that only change how it is reported."""
+    if isinstance(value, dict):
+        return tuple(sorted((repr(k), _canonical_rule(v)) for k, v in value.items() if k not in _PRESENTATION_KEYS))
+    if isinstance(value, (list, tuple)):
+        return tuple(_canonical_rule(v) for v in value)
+    return repr(value)
 
 
 class ActionConditionEnforcementCheck(PolicyCheck):
@@ -276,6 +288,17 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         return actions
 
     def _get_merged_requirements(
+        self,
+        config: CheckConfig,
+        policy_file: str | None,
+    ) -> list[dict[str, Any]]:
+        """Merged requirements, with a single-string ``actions`` normalized to a list."""
+        return [
+            {**r, "actions": [r["actions"]]} if isinstance(r, dict) and isinstance(r.get("actions"), str) else r
+            for r in self._merge_requirements(config, policy_file)
+        ]
+
+    def _merge_requirements(
         self,
         config: CheckConfig,
         policy_file: str | None,
@@ -1198,12 +1221,12 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             for condition_requirement in required_conditions_config:
                 if condition_requirement in malformed:
                     continue
-                if not self._has_condition_requirement(statement, condition_requirement):
+                for missing in self._missing_requirements(statement, condition_requirement):
                     issues.append(
                         self._create_issue(
                             statement,
                             statement_idx,
-                            condition_requirement,
+                            missing,
                             matching_actions,
                             config,
                             requirement=requirement,
@@ -1225,9 +1248,23 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 )
             return issues
 
+        for unknown in sorted(required_conditions_config.keys() - set(CONDITION_GROUPS), key=str):
+            issues.append(
+                self._create_malformed_requirement_issue(
+                    statement,
+                    statement_idx,
+                    required_conditions_config[unknown],
+                    matching_actions,
+                    f"required_conditions.{unknown}",
+                    problem="is not `all_of`, `any_of` or `none_of`",
+                )
+            )
+
         groups: dict[str, list[Any]] = {}
         for group in ("all_of", "any_of", "none_of"):
-            value = required_conditions_config.get(group, [])
+            value = required_conditions_config.get(group)
+            if value is None:
+                value = []
             if not isinstance(value, list):
                 issues.append(
                     self._create_malformed_requirement_issue(
@@ -1253,12 +1290,12 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             for condition_requirement in all_of:
                 if condition_requirement in malformed:
                     continue
-                if not self._has_condition_requirement(statement, condition_requirement):
+                for missing in self._missing_requirements(statement, condition_requirement):
                     issues.append(
                         self._create_issue(
                             statement,
                             statement_idx,
-                            condition_requirement,
+                            missing,
                             matching_actions,
                             config,
                             requirement_type="all_of",
@@ -1382,7 +1419,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 and bool(nested_all_of)
                 and all(ActionConditionEnforcementCheck._is_evaluable_requirement(e) for e in nested_all_of)
             )
-        return bool(entry.get("condition_key"))
+        condition_key = entry.get("condition_key")
+        operator = entry.get("operator")
+        return (
+            isinstance(condition_key, str) and bool(condition_key) and (operator is None or isinstance(operator, str))
+        )
 
     def _create_malformed_requirement_issue(
         self,
@@ -1402,11 +1443,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             suggestion = f"Fix the shape of `{requirement_type}`. Until then it enforces nothing."
         else:
             message = (
-                f"`action_condition_requirements` entry under `{requirement_type}` names no "
-                f"`condition_key`, so it cannot be enforced for action(s) {matching_actions_str}: `{entry!r}`"
+                f"`action_condition_requirements` entry under `{requirement_type}` names no string "
+                f"`condition_key` (or has a non-string `operator`), so it cannot be enforced for action(s) {matching_actions_str}: `{entry!r}`"
             )
             suggestion = (
-                "Add a `condition_key` to this entry (or nest the entry under `all_of`). "
+                "Give this entry a string `condition_key` and `operator` (or nest the entry under `all_of`). "
                 "Until then the requirement enforces nothing."
             )
         # Deliberately not _resolve_severity: a broken requirement's own `severity` must not
@@ -1429,8 +1470,15 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
     @staticmethod
     def _with_rule_identity(issue: ValidationIssue, *rule: Any) -> ValidationIssue:
-        issue._rule_identity = repr(rule)
+        issue._rule_identity = repr(_canonical_rule(rule))
         return issue
+
+    def _missing_requirements(self, statement: Statement, entry: dict[str, Any]) -> list[dict[str, Any]]:
+        """The leaf requirements of ``entry`` the statement lacks; a nested ``all_of`` inherits its severity."""
+        if "all_of" not in entry:
+            return [] if self._has_condition_requirement(statement, entry) else [entry]
+        inherited = {k: entry[k] for k in ("severity", "description") if k in entry}
+        return [m for e in entry["all_of"] for m in self._missing_requirements(statement, {**inherited, **e})]
 
     @staticmethod
     def _describe_requirement(entry: dict[str, Any]) -> str:
@@ -1630,16 +1678,17 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         requirement: dict[str, Any] | None = None,
     ) -> ValidationIssue:
         """Create a validation issue for a forbidden condition that is present."""
-        condition_key = condition_requirement.get("condition_key", "unknown")
+        condition_key = None if "all_of" in condition_requirement else condition_requirement.get("condition_key")
+        label = self._describe_requirement(condition_requirement)
         description = condition_requirement.get("description", "")
         expected_value = condition_requirement.get("expected_value")
 
         matching_actions_str = format_list_with_backticks(matching_actions)
-        message = f"FORBIDDEN: Action(s) {matching_actions_str} must NOT have condition `{condition_key}`"
+        message = f"FORBIDDEN: Action(s) {matching_actions_str} must NOT have condition {label}"
         if expected_value is not None:
             message += f" with value `{expected_value}`"
 
-        suggestion = f"Remove the `{condition_key}` condition from the statement"
+        suggestion = f"Remove the {label} condition from the statement"
         if description:
             suggestion += f". {description}"
 

@@ -10,13 +10,17 @@ BRANCH_KEYS = frozenset({"effect", "resource", "not_resource", "required_conditi
 EFFECTS = {"allow": "Allow", "deny": "Deny"}
 VALID_SEVERITIES = ValidationIssue.VALID_SEVERITIES
 DEFAULT_EFFECTS = frozenset({"Allow"})
+CONDITION_GROUPS = ("all_of", "any_of", "none_of")
 
 
 def _conditions_problem(required_conditions: Any) -> str | None:
     if isinstance(required_conditions, list) and required_conditions:
         return None
     if isinstance(required_conditions, dict):
-        groups = {k: required_conditions[k] for k in ("all_of", "any_of", "none_of") if k in required_conditions}
+        unknown = sorted(map(str, required_conditions.keys() - set(CONDITION_GROUPS)))
+        if unknown:
+            return f"`required_conditions.{unknown[0]}` is not `all_of`, `any_of` or `none_of`"
+        groups = {k: v for k in CONDITION_GROUPS if (v := required_conditions.get(k)) is not None}
         not_lists = [k for k, v in groups.items() if not isinstance(v, list)]
         if not_lists:
             return f"`required_conditions.{not_lists[0]}` must be a list, got `{groups[not_lists[0]]!r}`"

@@ -235,3 +235,73 @@ async def test_malformed_branch_with_string_actions_names_the_action(check, mock
     assert malformed
     assert malformed[0].action == "iam:PassRole"
     assert "`iam:PassRole`" in malformed[0].message
+
+
+VPC_CONDITION = {"StringEquals": {"aws:SourceVpc": "vpc-1"}}
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"condition_key": ["aws:SourceVpc", "aws:SourceIp"]},
+        {"condition_key": "aws:SourceVpc", "operator": 5},
+    ],
+)
+async def test_non_string_key_or_operator_is_reported_not_raised(check, mock_fetcher, entry):
+    issues = await _run(check, mock_fetcher, [entry], condition=VPC_CONDITION)
+
+    assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+
+
+async def test_single_string_actions_is_enforced(check, mock_fetcher):
+    config = CheckConfig(
+        check_id="action_condition_enforcement",
+        enabled=True,
+        config={
+            "merge_strategy": "user_only",
+            "action_condition_requirements": [
+                {"actions": "iam:PassRole", "required_conditions": [{"condition_key": "iam:PassedToService"}]}
+            ],
+        },
+    )
+
+    issues = await check.execute_policy(_policy(), "test.json", mock_fetcher, config)
+
+    assert [i.issue_type for i in issues] == ["missing_required_condition"]
+
+
+@pytest.mark.parametrize(
+    "required_conditions",
+    [
+        [{"all_of": [{"condition_key": "aws:SourceVpc"}, {"condition_key": "aws:SourceIp"}]}],
+        {"all_of": [{"all_of": [{"condition_key": "aws:SourceVpc"}, {"condition_key": "aws:SourceIp"}]}]},
+    ],
+)
+async def test_nested_all_of_reports_each_missing_key_by_name(check, mock_fetcher, required_conditions):
+    issues = await _run(check, mock_fetcher, required_conditions, condition=VPC_CONDITION)
+
+    assert [i.condition_key for i in issues] == ["aws:SourceIp"]
+
+
+async def test_nested_all_of_under_none_of_is_named(check, mock_fetcher):
+    condition = {"StringEquals": {"aws:SourceVpc": "vpc-1", "aws:SourceIp": "1.2.3.4"}}
+    required = {"none_of": [{"all_of": [{"condition_key": "aws:SourceVpc"}, {"condition_key": "aws:SourceIp"}]}]}
+
+    issues = await _run(check, mock_fetcher, required, condition=condition)
+
+    assert len(issues) == 1
+    assert "unknown" not in issues[0].message
+    assert "`aws:SourceVpc` + `aws:SourceIp`" in issues[0].message
+
+
+async def test_misspelled_group_is_reported(check, mock_fetcher):
+    issues = await _run(check, mock_fetcher, {"allof": [{"condition_key": "aws:SourceVpc"}]})
+
+    assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+    assert "allof" in issues[0].message
+
+
+async def test_null_group_is_treated_as_empty(check, mock_fetcher):
+    issues = await _run(check, mock_fetcher, {"all_of": [{"condition_key": "aws:SourceVpc"}], "none_of": None})
+
+    assert [i.issue_type for i in issues] == ["missing_required_condition"]

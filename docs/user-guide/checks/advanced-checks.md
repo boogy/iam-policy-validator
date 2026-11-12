@@ -118,7 +118,8 @@ A top-level `required_conditions` beside `if` acts as one more branch with no pr
 it applies to every `Allow` statement granting the requirement's actions.
 
 When branches overlap, findings for the same condition entry that differ only in severity
-or suggestion are reported once, at the highest severity.
+or suggestion are reported once, at the highest severity. Entries are compared regardless
+of key order, `severity` and `description`.
 
 With `none_of`, only `Allow` statements are flagged: a `Deny` of a forbidden action is
 compliant, so a `Deny` branch on a `none_of` requirement reports nothing. A branch's
@@ -130,7 +131,7 @@ requirement's, then the check's configured severity.
 
 **Malformed branches** are reported once per policy as `invalid_condition_requirement`
 with severity `error` and `statement_index: -1`: `if` that is not a list or is empty, a
-branch that is not a mapping, missing or empty `required_conditions` (or an `all_of`/`any_of`/`none_of` that is not a list), an invalid
+branch that is not a mapping, missing or empty `required_conditions` (or an `all_of`/`any_of`/`none_of` that is not a list, or any other key in it), an invalid
 `effect`, an invalid or non-string `resource`/`not_resource` regex, both `resource` and
 `not_resource` in one branch, an invalid
 `severity`, or an unknown key (so a typo such as `resources:` cannot make a branch match
