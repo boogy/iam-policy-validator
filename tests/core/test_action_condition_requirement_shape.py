@@ -211,3 +211,27 @@ async def test_deeply_nested_all_of_keys_are_named_in_the_any_of_message(check, 
     assert [i.issue_type for i in issues] == ["missing_required_condition_any_of"]
     assert "unknown" not in issues[0].message + (issues[0].suggestion or "")
     assert "aws:SourceArn" in issues[0].message
+
+
+async def test_entry_with_mixed_type_keys_is_still_enforced(check, mock_fetcher):
+    issues = await _run(check, mock_fetcher, [{"condition_key": "iam:PassedToService", True: "yaml on", 2: "x"}])
+
+    assert [i.issue_type for i in issues] == ["missing_required_condition"]
+
+
+async def test_malformed_branch_with_string_actions_names_the_action(check, mock_fetcher):
+    config = CheckConfig(
+        check_id="action_condition_enforcement",
+        enabled=True,
+        config={
+            "merge_strategy": "user_only",
+            "action_condition_requirements": [{"actions": "iam:PassRole", "if": [{"effect": "Allow"}]}],
+        },
+    )
+
+    issues = await check.execute_policy(_policy(), "test.json", mock_fetcher, config)
+
+    malformed = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+    assert malformed
+    assert malformed[0].action == "iam:PassRole"
+    assert "`iam:PassRole`" in malformed[0].message

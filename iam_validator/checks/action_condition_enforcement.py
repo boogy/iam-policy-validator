@@ -18,7 +18,6 @@ Merge Strategies (merge_strategy setting):
 For full documentation, see: docs/condition-requirements.md
 """
 
-import json
 import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -201,6 +200,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
     def _create_malformed_branch_issue(self, requirement: dict[str, Any], problem: str) -> ValidationIssue:
         actions = requirement.get("actions", [])
+        if isinstance(actions, str):
+            actions = [actions]
         actions_str = format_list_with_backticks(actions) if isinstance(actions, list) else f"`{actions!r}`"
         return ValidationIssue(
             severity="error",
@@ -1428,7 +1429,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
     @staticmethod
     def _with_rule_identity(issue: ValidationIssue, *rule: Any) -> ValidationIssue:
-        issue._rule_identity = json.dumps(rule, sort_keys=True, default=repr)
+        issue._rule_identity = repr(rule)
         return issue
 
     @staticmethod
