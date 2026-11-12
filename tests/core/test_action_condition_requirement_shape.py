@@ -313,3 +313,11 @@ async def test_nested_all_of_passes_its_example_to_each_missing_key(check, mock_
     issues = await _run(check, mock_fetcher, [group], condition=VPC_CONDITION)
 
     assert [(i.condition_key, i.example) for i in issues] == [("aws:SourceIp", "GROUP")]
+
+
+async def test_nested_all_of_under_any_of_keeps_its_example(check, mock_fetcher):
+    group = {"all_of": [{"condition_key": "aws:SourceIp"}], "example": "GROUP"}
+
+    issues = await _run(check, mock_fetcher, {"any_of": [group]}, condition=VPC_CONDITION)
+
+    assert [i.example for i in issues] == ["GROUP"]

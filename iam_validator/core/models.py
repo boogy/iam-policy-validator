@@ -249,7 +249,7 @@ class ValidationIssue(BaseModel):
     # Risk category for classification (e.g., "privilege_escalation", "data_exfiltration")
     risk_category: str | None = None
 
-    # Identity of the rule a check found violated; never serialized. Set by checks that dedupe findings.
+    # Identity of the violated rule; never serialized.
     _rule_identity: str | None = PrivateAttr(default=None)
 
     # Severity level constants (ClassVar to avoid Pydantic treating them as fields)

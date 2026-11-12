@@ -479,3 +479,13 @@ class TestNullTopLevelConditions:
         issues = await _run(check, _config(requirement), _stmt())
 
         assert [i.issue_type for i in issues] == ["missing_required_condition"]
+
+    async def test_malformed_top_level_beside_if_names_required_conditions(self, check):
+        requirement = {"actions": [ACTION], "required_conditions": KEY, "if": [_branch(effect="Allow")]}
+
+        issues = await _run(check, _config(requirement), _stmt())
+        malformed = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+
+        assert len(malformed) == 1
+        assert "malformed `required_conditions`" in malformed[0].message
+        assert "`if` branch" not in malformed[0].suggestion

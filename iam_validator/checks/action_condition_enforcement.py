@@ -211,18 +211,22 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     def _create_malformed_branch_issue(self, requirement: dict[str, Any], problem: str) -> ValidationIssue:
         actions = requirement.get("actions", [])
         actions_str = format_list_with_backticks(actions) if isinstance(actions, list) else f"`{actions!r}`"
+        top_level = problem.startswith("top-level ")
         return ValidationIssue(
             severity="error",
             statement_sid=None,
             statement_index=-1,
             issue_type="invalid_condition_requirement",
             message=(
-                f"`action_condition_requirements` entry for action(s) {actions_str} has a malformed `if` "
-                f"branch, which enforces nothing: {problem}"
+                f"`action_condition_requirements` entry for action(s) {actions_str} has a malformed "
+                f"{'`required_conditions`' if top_level else '`if` branch'}, which enforces nothing: {problem}"
             ),
             action=", ".join(a for a in actions if isinstance(a, str)) if isinstance(actions, list) else None,
             suggestion=(
-                "Each `if` branch is a mapping with a non-empty `required_conditions` and optional `effect` "
+                "Make the top-level `required_conditions` a non-empty list or an `all_of`/`any_of`/`none_of` "
+                "mapping, or remove it."
+                if top_level
+                else "Each `if` branch is a mapping with a non-empty `required_conditions` and optional `effect` "
                 "(`Allow`/`Deny`), `resource`, `not_resource` (regex) and `severity`."
             ),
             field_name="condition",
@@ -1612,15 +1616,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 if custom_message:
                     suggestions.append(f"\n- {custom_message}")
                 else:
-                    # Use description from first condition or combine them
-                    descriptions = [c.get("description", "") for c in all_of_list if c.get("description")]
+                    descriptions = [c.get("description", "") for c in [cond, *all_of_list] if c.get("description")]
                     if descriptions:
                         suggestions.append(f"\n- {condition_keys_formatted} - {descriptions[0]}")
                     else:
                         suggestions.append(f"\n- {condition_keys_formatted} (both required)")
 
-                # Collect example from first condition that has one
-                for c in all_of_list:
+                for c in [cond, *all_of_list]:
                     if c.get("example"):
                         examples.append(c["example"])
                         break

@@ -120,7 +120,8 @@ top-level `required_conditions` beside `if` is ignored.
 
 When branches overlap, findings for the same condition entry that differ only in severity
 or suggestion are reported once, at the highest severity. Entries are compared regardless
-of key order, `severity` and `description`.
+of key order, `severity` and `description`. A condition in list form and the same condition
+inside `all_of` are different entries and are reported separately.
 
 With `none_of`, only `Allow` statements are flagged: a `Deny` of a forbidden action is
 compliant, so a `Deny` branch on a `none_of` requirement reports nothing. A branch's
