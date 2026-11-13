@@ -12,7 +12,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Added
 
-- Add `if:` branches to `action_condition_enforcement` requirements. Each branch scopes its `required_conditions` by statement `effect` (`Allow`, `Deny` or both; `Allow` when omitted), a `resource` or `not_resource` regex (anchored full match), and may override `severity`. Overlapping branches report a finding for the same condition entry once (whatever its key order, `severity` or `description`), at its highest severity; `none_of` flags only `Allow` statements. `resource` and `not_resource` are mutually exclusive in a branch. Malformed branches are reported as `invalid_condition_requirement`; requirements without `if` are unchanged. ([#240])
+- Add `if:` branches to `action_condition_enforcement` requirements. Each branch scopes its `required_conditions` by statement `effect` (`Allow`, `Deny` or both; `Allow` when omitted), a `resource` or `not_resource` regex (anchored full match), and may override `severity`. Overlapping branches report a finding for the same condition entry once (whatever its key order, `severity` or `description`), at its highest severity; `none_of` flags only `Allow` statements. `resource` and `not_resource` are mutually exclusive in a branch. Malformed branches are reported as `invalid_condition_requirement`; requirements without `if` keep their semantics (see Fixed for malformed-shape handling). ([#240])
 - Add `examples/configs/action-condition-branches.yaml` and worked `if:` examples (resource only, effect and resource, `not_resource`, both effects, top-level conditions beside `if`) to the advanced-checks guide. ([#240])
 - Document `if:` branches in the Claude Code skill and bump the plugin version to 1.33.0 so installs pick it up. ([#240])
 
@@ -28,6 +28,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Report a condition entry whose `condition_key` or `operator` is not a string as `invalid_condition_requirement` instead of crashing `action_condition_enforcement` and losing its findings for the policy. ([#240])
 - Report a key in a `required_conditions` mapping other than `all_of`, `any_of` or `none_of` (e.g. a misspelled `allof`) as `invalid_condition_requirement` instead of silently enforcing nothing for it. ([#240])
 - Treat a `required_conditions` mapping whose groups are all empty or null as detection-only (`action_detected`) instead of silently enforcing nothing while `sensitive_action` defers to it. ([#240])
+- Ignore `none_of` conditions on a `Deny` statement in an `if` branch, as documented; a `Deny` carrying a forbidden condition was reported as `forbidden_condition_present`. ([#240])
 - Report a condition entry with an invalid `severity` as `invalid_condition_requirement` instead of crashing `action_condition_enforcement`. ([#240])
 - Name each missing condition key of an `all_of` nested in a list, `all_of` or `none_of` group, instead of `unknown`. ([#240])
 - Name every condition key of an `all_of` nested more than one level inside `any_of` in the missing-condition message and suggestion, instead of `unknown`. ([#240])

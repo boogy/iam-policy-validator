@@ -177,7 +177,8 @@ kept rather than wrongly suppressed.
 ## `if:` branches in `action_condition_enforcement` (gotcha)
 
 A requirement carrying the `if` key (even `if: []`) dispatches to `_check_branches`;
-one without it takes the untouched old path. Parsing and matching live in
+one without it runs the single-requirement path, whose semantics changed only where
+the CHANGELOG `Fixed` entries say. Parsing and matching live in
 `utils/requirement_branches.py`. Each valid branch becomes an ordinary requirement run
 through `_check_per_statement` / `_check_policy_wide` with keyword-only `effects` and
 `statement_filter`. An omitted branch `effect` means `Allow` in both forms; findings
@@ -223,8 +224,10 @@ literally instead of calling `get_severity(config)`:
 - `condition_key_validation` on a `NotAction` statement — `warning`. There is no action
   to resolve per-action keys against, so only global keys are decidable and an unknown
   key is a hint, not a rejection.
-- `action_condition_enforcement` keeps `error` for a **malformed** `any_of`/`none_of`
-  requirement, where the config itself is at fault. For a satisfied-requirement finding
+- `action_condition_enforcement` emits `invalid_condition_requirement` at `error` for any
+  **malformed** config (bad `required_conditions` shape, unknown or non-list group,
+  non-string `condition_key`/`operator`, invalid entry `severity`, malformed `if`
+  branch), where the config itself is at fault. For a satisfied-requirement finding
   the requirement's own `severity` takes precedence over the check default.
 
 ---

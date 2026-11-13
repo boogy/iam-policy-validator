@@ -1364,7 +1364,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             for condition_requirement in none_of:
                 if condition_requirement in malformed:
                     continue
-                if self._has_condition_requirement(statement, condition_requirement):
+                if statement.effect == "Allow" and self._has_condition_requirement(statement, condition_requirement):
                     issues.append(
                         self._create_none_of_issue(
                             statement,

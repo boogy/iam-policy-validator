@@ -91,6 +91,12 @@ class TestDenyBranch:
     async def test_string_not_equals_passes(self, check):
         assert await _run(check, _config(BEDROCK), _stmt("Deny", _token("StringNotEquals", "SHORT_TERM"))) == []
 
+    async def test_none_of_does_not_flag_a_deny_statement(self, check):
+        branch = {"effect": ["Allow", "Deny"], "required_conditions": {"none_of": [{"condition_key": KEY}]}}
+        config = _config({"actions": [ACTION], "if": [branch]})
+
+        assert await _run(check, config, _stmt("Deny", {"StringEquals": {KEY: "x"}})) == []
+
 
 class TestEffectGating:
     async def test_deny_only_branch_skips_allow_statement(self, check):
