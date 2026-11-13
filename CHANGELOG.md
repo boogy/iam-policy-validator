@@ -20,7 +20,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 - Report a non-mapping entry under `required_conditions.any_of` (e.g. a bare condition key string) or a nested `all_of` that is not a non-empty list of condition entries as `invalid_condition_requirement` instead of crashing `action_condition_enforcement` and losing its findings for the policy. A malformed `any_of` entry is now left out of the evaluation and of the missing-condition message, as in `all_of` and `none_of`. ([#240])
 - Report a `required_conditions` that is neither a list nor a mapping, or an `all_of`/`any_of`/`none_of` group that is not a list, as `invalid_condition_requirement` instead of crashing `action_condition_enforcement`. A null group (an empty YAML key) still counts as empty. ([#240])
-- Ignore an empty top-level `required_conditions` (null, `[]` or `{}`) beside `if` instead of reporting the requirement as having a malformed `if` branch. ([#240])
+- Ignore an empty top-level `required_conditions` (null, `[]`, `{}` or a mapping whose groups are all empty) beside `if` instead of reporting the requirement as having a malformed `if` branch. ([#240])
 - Keep the `example` of a nested `all_of` entry on each of its missing-key findings; it was dropped when the entry was split per key. ([#240])
 - Keep the `example` and `description` of a nested `all_of` entry inside `any_of` in its finding. ([#240])
 - Name a malformed top-level `required_conditions` beside `if` as such, instead of reporting it as a malformed `if` branch. ([#240])

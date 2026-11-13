@@ -473,7 +473,7 @@ class TestRuleIdentity:
 
 
 class TestNullTopLevelConditions:
-    @pytest.mark.parametrize("top_level", [None, [], {}])
+    @pytest.mark.parametrize("top_level", [None, [], {}, {"all_of": []}, {"all_of": None, "any_of": []}])
     async def test_empty_top_level_beside_if_is_not_a_malformed_branch(self, check, top_level):
         requirement = {"actions": [ACTION], "required_conditions": top_level, "if": [_branch(effect="Allow")]}
 

@@ -28,10 +28,12 @@ from iam_validator.checks.utils.condition_matching import has_condition_key
 from iam_validator.checks.utils.requirement_branches import (
     CONDITION_GROUPS,
     DEFAULT_EFFECTS,
+    TOP_LEVEL_PREFIX,
     VALID_SEVERITIES,
     branch_effects,
     branch_enforces_allow_everywhere,
     branch_matches_resources,
+    has_no_conditions,
     requirement_branches,
 )
 from iam_validator.core.aws_service import AWSServiceFetcher
@@ -212,7 +214,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     def _create_malformed_branch_issue(self, requirement: dict[str, Any], problem: str) -> ValidationIssue:
         actions = requirement.get("actions", [])
         actions_str = format_list_with_backticks(actions) if isinstance(actions, list) else f"`{actions!r}`"
-        top_level = problem.startswith("top-level ")
+        top_level = problem.startswith(TOP_LEVEL_PREFIX)
         return ValidationIssue(
             severity="error",
             statement_sid=None,
@@ -859,7 +861,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         description = requirement.get("description", "")
         severity = requirement.get("severity", self.get_severity(config))
 
-        if self._has_no_conditions(required_conditions_config):
+        if has_no_conditions(required_conditions_config):
             # No conditions specified, just report that actions were found
             all_actions_formatted = format_list_with_backticks(sorted(set(found_actions)))
             statement_refs = [
@@ -943,7 +945,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         # Now validate that ALL matching statements have the required conditions
         required_conditions_config = requirement.get("required_conditions", [])
-        if self._has_no_conditions(required_conditions_config):
+        if has_no_conditions(required_conditions_config):
             # No conditions specified, just report that actions were found
             description = requirement.get("description", "")
             severity = requirement.get("severity", self.get_severity(config))
@@ -1466,13 +1468,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     def _with_rule_identity(issue: ValidationIssue, *rule: Any) -> ValidationIssue:
         issue._rule_identity = repr(_canonical_rule(rule))
         return issue
-
-    @staticmethod
-    def _has_no_conditions(required_conditions: Any) -> bool:
-        """Whether ``required_conditions`` is empty, including a mapping whose groups are all empty or null."""
-        if isinstance(required_conditions, dict) and required_conditions.keys() <= set(CONDITION_GROUPS):
-            return not any(required_conditions.values())
-        return not required_conditions
 
     def _missing_requirements(self, statement: Statement, entry: dict[str, Any]) -> list[dict[str, Any]]:
         """The leaf requirements of ``entry`` the statement lacks; a nested ``all_of`` passes down its severity, description and example."""

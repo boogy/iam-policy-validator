@@ -11,6 +11,14 @@ EFFECTS = {"allow": "Allow", "deny": "Deny"}
 VALID_SEVERITIES = ValidationIssue.VALID_SEVERITIES
 DEFAULT_EFFECTS = frozenset({"Allow"})
 CONDITION_GROUPS = ("all_of", "any_of", "none_of")
+TOP_LEVEL_PREFIX = "top-level "
+
+
+def has_no_conditions(required_conditions: Any) -> bool:
+    """Whether ``required_conditions`` is empty, including a mapping whose groups are all empty or null."""
+    if isinstance(required_conditions, dict) and required_conditions.keys() <= set(CONDITION_GROUPS):
+        return not any(required_conditions.values())
+    return not required_conditions
 
 
 def _conditions_problem(required_conditions: Any) -> str | None:
@@ -87,11 +95,11 @@ def requirement_branches(requirement: dict[str, Any]) -> tuple[list[dict[str, An
             problems.append(f"`if[{index}]`: {problem}")
         else:
             branches.append(branch)
-    if requirement.get("required_conditions") not in (None, [], {}):
+    if not has_no_conditions(requirement.get("required_conditions")):
         top_level = requirement["required_conditions"]
         problem = _conditions_problem(top_level)
         if problem:
-            problems.append(f"top-level {problem}")
+            problems.append(f"{TOP_LEVEL_PREFIX}{problem}")
         else:
             branches.append({"required_conditions": top_level})
     return branches, problems

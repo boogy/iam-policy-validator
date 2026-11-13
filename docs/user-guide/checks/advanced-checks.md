@@ -112,11 +112,15 @@ policies only. A `resource` pattern is not special-cased for `Resource: "*"`:
 `arn:aws:s3:::prod/.*` does not match `"*"`, while `.*` does.
 
 A branch without `effect` applies to `Allow` statements only, in both action forms, as
-a requirement without `if` does. Name `Deny` explicitly to check deny statements.
+a requirement without `if` does. Name `Deny` explicitly to check deny statements. A
+`Deny` branch checks every `Deny` statement granting the actions, including `Action: "*"`,
+`NotAction` and unconditional denies; narrow it with `resource`, `not_resource` or
+`ignore_patterns`.
 
 A top-level `required_conditions` beside `if` acts as one more branch with no predicate:
 it applies to every `Allow` statement granting the requirement's actions. An empty top-level
-`required_conditions` (null, `[]` or `{}`) beside `if` is ignored.
+`required_conditions` (null, `[]`, `{}` or a mapping whose groups are all empty) beside
+`if` is ignored.
 
 When branches overlap, findings for the same condition entry that differ only in severity
 or suggestion are reported once, at the highest severity. Entries are compared regardless
