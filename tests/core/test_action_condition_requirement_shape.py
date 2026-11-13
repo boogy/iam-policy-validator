@@ -321,3 +321,24 @@ async def test_nested_all_of_under_any_of_keeps_its_example(check, mock_fetcher)
     issues = await _run(check, mock_fetcher, {"any_of": [group]}, condition=VPC_CONDITION)
 
     assert [i.example for i in issues] == ["GROUP"]
+
+
+@pytest.mark.parametrize(
+    "required_conditions",
+    [
+        [{"condition_key": "aws:SourceIp", "severity": "High"}],
+        [{"all_of": [{"condition_key": "aws:SourceIp", "severity": "High"}]}],
+        {"all_of": [{"condition_key": "aws:SourceIp", "severity": "urgent"}]},
+    ],
+)
+async def test_invalid_entry_severity_is_reported_not_raised(check, mock_fetcher, required_conditions):
+    issues = await _run(check, mock_fetcher, required_conditions, condition=VPC_CONDITION)
+
+    assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+
+
+@pytest.mark.parametrize("required_conditions", [{"all_of": None}, {"all_of": [], "any_of": None}])
+async def test_mapping_of_empty_groups_is_detection_only(check, mock_fetcher, required_conditions):
+    issues = await _run(check, mock_fetcher, required_conditions, condition=VPC_CONDITION)
+
+    assert [i.issue_type for i in issues] == ["action_detected"]

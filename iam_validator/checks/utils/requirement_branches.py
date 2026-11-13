@@ -87,7 +87,7 @@ def requirement_branches(requirement: dict[str, Any]) -> tuple[list[dict[str, An
             problems.append(f"`if[{index}]`: {problem}")
         else:
             branches.append(branch)
-    if requirement.get("required_conditions") is not None:
+    if requirement.get("required_conditions") not in (None, [], {}):
         top_level = requirement["required_conditions"]
         problem = _conditions_problem(top_level)
         if problem:

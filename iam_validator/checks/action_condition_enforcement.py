@@ -28,6 +28,7 @@ from iam_validator.checks.utils.condition_matching import has_condition_key
 from iam_validator.checks.utils.requirement_branches import (
     CONDITION_GROUPS,
     DEFAULT_EFFECTS,
+    VALID_SEVERITIES,
     branch_effects,
     branch_enforces_allow_everywhere,
     branch_matches_resources,
@@ -858,7 +859,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         description = requirement.get("description", "")
         severity = requirement.get("severity", self.get_severity(config))
 
-        if not required_conditions_config:
+        if self._has_no_conditions(required_conditions_config):
             # No conditions specified, just report that actions were found
             all_actions_formatted = format_list_with_backticks(sorted(set(found_actions)))
             statement_refs = [
@@ -942,7 +943,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         # Now validate that ALL matching statements have the required conditions
         required_conditions_config = requirement.get("required_conditions", [])
-        if not required_conditions_config:
+        if self._has_no_conditions(required_conditions_config):
             # No conditions specified, just report that actions were found
             description = requirement.get("description", "")
             severity = requirement.get("severity", self.get_severity(config))
@@ -1403,6 +1404,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     def _is_evaluable_requirement(entry: Any) -> bool:
         if not isinstance(entry, dict):
             return False
+        if "severity" in entry and not (isinstance(entry["severity"], str) and entry["severity"] in VALID_SEVERITIES):
+            return False
         if "all_of" in entry:
             nested_all_of = entry["all_of"]
             return (
@@ -1435,10 +1438,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         else:
             message = (
                 f"`action_condition_requirements` entry under `{requirement_type}` names no string "
-                f"`condition_key` (or has a non-string `operator`), so it cannot be enforced for action(s) {matching_actions_str}: `{entry!r}`"
+                f"`condition_key` (or has a non-string `operator` or an invalid `severity`), so it cannot be enforced for action(s) {matching_actions_str}: `{entry!r}`"
             )
             suggestion = (
-                "Give this entry a string `condition_key` and `operator` (or nest the entry under `all_of`). "
+                "Give this entry a string `condition_key` and `operator` and a valid `severity` (or nest the entry under `all_of`). "
                 "Until then the requirement enforces nothing."
             )
         # Deliberately not _resolve_severity: a broken requirement's own `severity` must not
@@ -1463,6 +1466,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     def _with_rule_identity(issue: ValidationIssue, *rule: Any) -> ValidationIssue:
         issue._rule_identity = repr(_canonical_rule(rule))
         return issue
+
+    @staticmethod
+    def _has_no_conditions(required_conditions: Any) -> bool:
+        """Whether ``required_conditions`` is empty, including a mapping whose groups are all empty or null."""
+        if isinstance(required_conditions, dict) and required_conditions.keys() <= set(CONDITION_GROUPS):
+            return not any(required_conditions.values())
+        return not required_conditions
 
     def _missing_requirements(self, statement: Statement, entry: dict[str, Any]) -> list[dict[str, Any]]:
         """The leaf requirements of ``entry`` the statement lacks; a nested ``all_of`` passes down its severity, description and example."""

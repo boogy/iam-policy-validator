@@ -20,13 +20,15 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 - Report a non-mapping entry under `required_conditions.any_of` (e.g. a bare condition key string) or a nested `all_of` that is not a non-empty list of condition entries as `invalid_condition_requirement` instead of crashing `action_condition_enforcement` and losing its findings for the policy. A malformed `any_of` entry is now left out of the evaluation and of the missing-condition message, as in `all_of` and `none_of`. ([#240])
 - Report a `required_conditions` that is neither a list nor a mapping, or an `all_of`/`any_of`/`none_of` group that is not a list, as `invalid_condition_requirement` instead of crashing `action_condition_enforcement`. A null group (an empty YAML key) still counts as empty. ([#240])
-- Ignore an empty (null) top-level `required_conditions` beside `if` instead of reporting the requirement as having a malformed `if` branch. ([#240])
+- Ignore an empty top-level `required_conditions` (null, `[]` or `{}`) beside `if` instead of reporting the requirement as having a malformed `if` branch. ([#240])
 - Keep the `example` of a nested `all_of` entry on each of its missing-key findings; it was dropped when the entry was split per key. ([#240])
 - Keep the `example` and `description` of a nested `all_of` entry inside `any_of` in its finding. ([#240])
 - Name a malformed top-level `required_conditions` beside `if` as such, instead of reporting it as a malformed `if` branch. ([#240])
 - Enforce an `action_condition_enforcement` requirement whose `actions` is a single string (`actions: "iam:PassRole"`). It matched no statement, while `sensitive_action` still deferred to it, so neither check reported the action. ([#240])
 - Report a condition entry whose `condition_key` or `operator` is not a string as `invalid_condition_requirement` instead of crashing `action_condition_enforcement` and losing its findings for the policy. ([#240])
 - Report a key in a `required_conditions` mapping other than `all_of`, `any_of` or `none_of` (e.g. a misspelled `allof`) as `invalid_condition_requirement` instead of silently enforcing nothing for it. ([#240])
+- Treat a `required_conditions` mapping whose groups are all empty or null as detection-only (`action_detected`) instead of silently enforcing nothing while `sensitive_action` defers to it. ([#240])
+- Report a condition entry with an invalid `severity` as `invalid_condition_requirement` instead of crashing `action_condition_enforcement`. ([#240])
 - Name each missing condition key of an `all_of` nested in a list, `all_of` or `none_of` group, instead of `unknown`. ([#240])
 - Name every condition key of an `all_of` nested more than one level inside `any_of` in the missing-condition message and suggestion, instead of `unknown`. ([#240])
 
