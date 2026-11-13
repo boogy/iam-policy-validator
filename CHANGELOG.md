@@ -29,7 +29,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Report a key in a `required_conditions` mapping other than `all_of`, `any_of` or `none_of` (e.g. a misspelled `allof`) as `invalid_condition_requirement` instead of silently enforcing nothing for it. ([#240])
 - Treat a `required_conditions` mapping whose groups are all empty or null as detection-only (`action_detected`) instead of silently enforcing nothing while `sensitive_action` defers to it. ([#240])
 - Ignore `none_of` conditions on a `Deny` statement in an `if` branch, as documented; a `Deny` carrying a forbidden condition was reported as `forbidden_condition_present`. ([#240])
-- Report a condition entry with an invalid `severity` as `invalid_condition_requirement` instead of crashing `action_condition_enforcement`. ([#240])
+- Report a condition entry with an invalid `severity` as `invalid_condition_requirement` instead of crashing `action_condition_enforcement`. A null `severity` on an entry or `if` branch falls back to the requirement's severity. ([#240])
 - Name each missing condition key of an `all_of` nested in a list, `all_of` or `none_of` group, instead of `unknown`. ([#240])
 - Name every condition key of an `all_of` nested more than one level inside `any_of` in the missing-condition message and suggestion, instead of `unknown`. ([#240])
 

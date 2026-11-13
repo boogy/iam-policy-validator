@@ -342,3 +342,17 @@ async def test_mapping_of_empty_groups_is_detection_only(check, mock_fetcher, re
     issues = await _run(check, mock_fetcher, required_conditions, condition=VPC_CONDITION)
 
     assert [i.issue_type for i in issues] == ["action_detected"]
+
+
+async def test_null_entry_severity_falls_back_to_requirement_severity(check, mock_fetcher):
+    issues = await _run(
+        check, mock_fetcher, [{"condition_key": "aws:SourceIp", "severity": None}], condition=VPC_CONDITION
+    )
+
+    assert [i.issue_type for i in issues] == ["missing_required_condition"]
+
+
+async def test_non_list_falsy_group_is_reported_not_detection_only(check, mock_fetcher):
+    issues = await _run(check, mock_fetcher, {"all_of": {}}, condition=VPC_CONDITION)
+
+    assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]

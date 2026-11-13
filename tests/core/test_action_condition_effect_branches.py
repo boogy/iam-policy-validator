@@ -375,6 +375,20 @@ class TestMalformedBranches:
             ("missing_required_condition", 1),
         ]
 
+    async def test_null_branch_severity_inherits_requirement_severity(self, check):
+        config = _config({"actions": [ACTION], "severity": "low", "if": [_branch(severity=None)]})
+
+        issues = await _run(check, config, _stmt())
+
+        assert [(i.issue_type, i.severity) for i in issues] == [("missing_required_condition", "low")]
+
+    async def test_non_list_falsy_group_beside_if_is_reported(self, check):
+        config = _config({"actions": [ACTION], "required_conditions": {"all_of": {}}, "if": [_branch(effect="Deny")]})
+
+        issues = await _run(check, config, _stmt())
+
+        assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+
 
 class TestBackwardCompatibility:
     async def test_plain_requirement_skips_deny_per_statement(self, check):

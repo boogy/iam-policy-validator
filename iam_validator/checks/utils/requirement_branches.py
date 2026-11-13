@@ -17,7 +17,7 @@ TOP_LEVEL_PREFIX = "top-level "
 def has_no_conditions(required_conditions: Any) -> bool:
     """Whether ``required_conditions`` is empty, including a mapping whose groups are all empty or null."""
     if isinstance(required_conditions, dict) and required_conditions.keys() <= set(CONDITION_GROUPS):
-        return not any(required_conditions.values())
+        return all(v is None or v == [] for v in required_conditions.values())
     return not required_conditions
 
 
@@ -73,7 +73,7 @@ def branch_problem(branch: Any) -> str | None:
         if key in branch and (problem := _regex_problem(key, branch[key])):
             return problem
     severity = branch.get("severity")
-    if "severity" in branch and not (isinstance(severity, str) and severity in VALID_SEVERITIES):
+    if severity is not None and not (isinstance(severity, str) and severity in VALID_SEVERITIES):
         return f"`severity` must be one of {', '.join(sorted(VALID_SEVERITIES))}, got `{severity!r}`"
     return None
 

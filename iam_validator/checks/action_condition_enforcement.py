@@ -1406,7 +1406,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     def _is_evaluable_requirement(entry: Any) -> bool:
         if not isinstance(entry, dict):
             return False
-        if "severity" in entry and not (isinstance(entry["severity"], str) and entry["severity"] in VALID_SEVERITIES):
+        severity = entry.get("severity")
+        if severity is not None and not (isinstance(severity, str) and severity in VALID_SEVERITIES):
             return False
         if "all_of" in entry:
             nested_all_of = entry["all_of"]
