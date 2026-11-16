@@ -133,7 +133,8 @@ compliant, so a `Deny` branch on a `none_of` requirement reports nothing. A bran
 statement is reported.
 
 **Severity precedence:** the condition entry's `severity`, then the branch's, then the
-requirement's, then the check's configured severity.
+requirement's, then the check's configured severity. An invalid requirement `severity`
+is reported as `invalid_condition_requirement` and the check's severity is used.
 
 **Malformed branches** are reported once per policy as `invalid_condition_requirement`
 with severity `error` and `statement_index: -1`: `if` that is not a list or is empty, a

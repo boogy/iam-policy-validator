@@ -35,7 +35,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Report an invalid requirement-level `severity` in `action_condition_requirements` (e.g. `severity: hgih`) as `invalid_condition_requirement` and fall back to the check severity, instead of returning only a `check_execution_error` for the policy. ([#240])
 - Stop `sensitive_action` deferring to an `action_condition_enforcement` requirement (or `if` branch) whose `required_conditions` holds only `none_of`. It enforces no condition, so an unconditional grant of the action was reported by neither check. ([#240])
 - Match a policy-wide `actions: {all_of: [...]}` requirement against an `Allow` + `NotAction` statement that grants all of those actions; a plain `actions: [...]` list already matched it. ([#240])
-- Report a non-mapping entry in `principal_condition_requirements[].required_conditions` (list form, `all_of`, `any_of` or `none_of`; e.g. a bare `- aws:SourceArn`) as `invalid_condition_requirement` and skip it, instead of returning only a `check_execution_error` for `principal_validation`. ([#240])
+- Report a non-mapping entry in `principal_condition_requirements[].required_conditions` (list form, `all_of`, `any_of` or `none_of`; e.g. a bare `- aws:SourceArn`), a group that is not a list, or a `required_conditions` that is neither a list nor a mapping as `invalid_condition_requirement` and skip it, instead of returning only a `check_execution_error` for `principal_validation`. ([#240])
 - Label a policy-level finding (`statement_index: -1`) `Policy-level` in the default console output instead of `Statement 0`, as the `enhanced` format does. ([#240])
 
 [#240]: https://github.com/boogy/iam-policy-validator/pull/240

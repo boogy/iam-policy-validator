@@ -642,11 +642,14 @@ class PrincipalValidationCheck(PolicyCheck):
         issues: list[ValidationIssue] = []
 
         def entries(value: Any) -> list[dict[str, Any]]:
-            items = value if isinstance(value, list) else [value] if value else []
-            for item in items:
+            if not isinstance(value, list):
+                if value is not None:
+                    issues.append(self._create_invalid_entry_issue(statement, statement_idx, value, "a list"))
+                return []
+            for item in value:
                 if not isinstance(item, dict):
-                    issues.append(self._create_invalid_entry_issue(statement, statement_idx, item))
-            return [item for item in items if isinstance(item, dict)]
+                    issues.append(self._create_invalid_entry_issue(statement, statement_idx, item, "a mapping"))
+            return [item for item in value if isinstance(item, dict)]
 
         # Handle simple list format (backward compatibility)
         if isinstance(required_conditions_config, list):
@@ -662,6 +665,15 @@ class PrincipalValidationCheck(PolicyCheck):
                             requirement,
                         )
                     )
+            return issues
+
+        if not isinstance(required_conditions_config, dict):
+            if required_conditions_config is not None:
+                issues.append(
+                    self._create_invalid_entry_issue(
+                        statement, statement_idx, required_conditions_config, "a list or mapping"
+                    )
+                )
             return issues
 
         # Handle all_of/any_of/none_of format
@@ -728,17 +740,22 @@ class PrincipalValidationCheck(PolicyCheck):
         return issues
 
     @staticmethod
-    def _create_invalid_entry_issue(statement: Statement, statement_idx: int, entry: Any) -> ValidationIssue:
+    def _create_invalid_entry_issue(
+        statement: Statement, statement_idx: int, entry: Any, expected: str
+    ) -> ValidationIssue:
         return ValidationIssue(
             severity="error",
             statement_sid=statement.sid,
             statement_index=statement_idx,
             issue_type="invalid_condition_requirement",
             message=(
-                f"`principal_condition_requirements` has a `required_conditions` entry `{entry!r}` that is not "
-                "a mapping, so it is not enforced"
+                f"`principal_condition_requirements` has a `required_conditions` value `{entry!r}` that is not "
+                f"{expected}, so it is not enforced"
             ),
-            suggestion="Write each entry as a mapping, e.g. `- condition_key: aws:SourceArn`.",
+            suggestion=(
+                "Use a list of mappings (e.g. `- condition_key: aws:SourceArn`), or an `all_of`/`any_of`/`none_of` "
+                "mapping of such lists."
+            ),
             line_number=statement.line_number,
             field_name="principal",
         )

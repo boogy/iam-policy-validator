@@ -230,7 +230,8 @@ literally instead of calling `get_severity(config)`:
   non-string `condition_key`/`operator`, invalid entry or requirement `severity`,
   malformed `if` branch), where the config itself is at fault. An invalid requirement
   `severity` is dropped so its findings use the check severity. `principal_validation`
-  reports a non-mapping `required_conditions` entry the same way and skips it. For a satisfied-requirement finding
+  reports a non-mapping `required_conditions` entry, a non-list group or a scalar
+  `required_conditions` the same way and skips it. For a satisfied-requirement finding
   the requirement's own `severity` takes precedence over the check default.
 
 ---

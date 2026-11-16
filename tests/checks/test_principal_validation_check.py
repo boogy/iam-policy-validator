@@ -224,6 +224,7 @@ class TestPrincipalConditionRequirements:
             {"any_of": ["aws:SourceArn", {"condition_key": "aws:SourceAccount"}]},
             {"none_of": ["aws:SourceArn", {"condition_key": "aws:SourceAccount"}]},
             {"all_of": "aws:SourceArn", "any_of": [{"condition_key": "aws:SourceAccount"}]},
+            {"all_of": [{"condition_key": "aws:SourceAccount"}], "any_of": {"condition_key": "aws:SourceArn"}},
         ],
     )
     async def test_non_mapping_condition_entry_is_reported_not_raised(self, check, fetcher, required_conditions):
@@ -245,10 +246,24 @@ class TestPrincipalConditionRequirements:
         invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
         assert len(invalid) == 1
         assert invalid[0].severity == "error"
-        assert "'aws:SourceArn'" in invalid[0].message
+        assert "aws:SourceArn" in invalid[0].message
         others = [i for i in issues if i not in invalid]
         assert len(others) == (0 if "none_of" in required_conditions else 1)
         assert all("aws:SourceAccount" in i.message for i in others)
+
+    @pytest.mark.parametrize("required_conditions", ["aws:SourceArn", 3])
+    async def test_scalar_required_conditions_is_reported(self, check, fetcher, required_conditions):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [{"principals": ["*"], "required_conditions": required_conditions}],
+            },
+        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal="*")
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
 
     @pytest.mark.asyncio
     async def test_all_of_conditions(self, check, fetcher):

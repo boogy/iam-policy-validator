@@ -1501,7 +1501,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """The leaf requirements of ``entry`` the statement lacks; a nested ``all_of`` passes down its severity, description and example."""
         if "all_of" not in entry:
             return [] if self._has_condition_requirement(statement, entry) else [entry]
-        inherited = {k: entry[k] for k in ("severity", "description", "example") if k in entry}
+        inherited: dict[str, Any] = {k: entry[k] for k in ("severity", "description", "example") if k in entry}
         return [m for e in entry["all_of"] for m in self._missing_requirements(statement, {**inherited, **e})]
 
     @staticmethod
