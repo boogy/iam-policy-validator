@@ -12,6 +12,7 @@ VALID_SEVERITIES = ValidationIssue.VALID_SEVERITIES
 DEFAULT_EFFECTS = frozenset({"Allow"})
 CONDITION_GROUPS = ("all_of", "any_of", "none_of")
 TOP_LEVEL_PREFIX = "top-level "
+CONDITIONS_SHAPE_PROBLEM = "`required_conditions` must be a list or a mapping of `all_of`/`any_of`/`none_of`"
 
 
 def has_no_conditions(required_conditions: Any) -> bool:
@@ -28,9 +29,18 @@ def only_forbids(required_conditions: Any) -> bool:
     return not any(required_conditions.get(k) for k in ("all_of", "any_of"))
 
 
+def severity_problem(severity: Any) -> str | None:
+    """Why ``severity`` is not a valid severity, or ``None`` when it is valid or unset."""
+    if severity is None or (isinstance(severity, str) and severity in VALID_SEVERITIES):
+        return None
+    return f"`severity` must be one of {', '.join(sorted(VALID_SEVERITIES))}, got `{severity!r}`"
+
+
 def _conditions_problem(required_conditions: Any) -> str | None:
     if isinstance(required_conditions, list) and required_conditions:
         return None
+    if required_conditions and not isinstance(required_conditions, (list, dict)):
+        return CONDITIONS_SHAPE_PROBLEM
     if isinstance(required_conditions, dict):
         unknown = sorted(map(str, required_conditions.keys() - set(CONDITION_GROUPS)))
         if unknown:
@@ -62,7 +72,7 @@ def _regex_problem(key: str, pattern: Any) -> str | None:
 
 
 def branch_problem(branch: Any) -> str | None:
-    """Why ``branch`` cannot be enforced, or ``None`` when it is well formed."""
+    """Why ``branch`` cannot be enforced, or ``None`` when it is well formed; ``severity`` is checked by the caller."""
     if not isinstance(branch, dict):
         return f"branch must be a mapping, got `{branch!r}`"
     unknown = sorted(str(k) for k in branch if k not in BRANCH_KEYS)
@@ -79,9 +89,6 @@ def branch_problem(branch: Any) -> str | None:
     for key in ("resource", "not_resource"):
         if key in branch and (problem := _regex_problem(key, branch[key])):
             return problem
-    severity = branch.get("severity")
-    if severity is not None and not (isinstance(severity, str) and severity in VALID_SEVERITIES):
-        return f"`severity` must be one of {', '.join(sorted(VALID_SEVERITIES))}, got `{severity!r}`"
     return None
 
 

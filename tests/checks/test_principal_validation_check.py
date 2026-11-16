@@ -265,6 +265,62 @@ class TestPrincipalConditionRequirements:
         issues = await check.execute(statement, 0, fetcher, config)
         assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
 
+    @pytest.mark.parametrize(
+        ("required_conditions", "expected"),
+        [
+            ({"any_of": [{"conditon_key": "aws:SourceArn"}]}, ["invalid_condition_requirement"]),
+            ([{"conditon_key": "aws:SourceArn"}], ["invalid_condition_requirement"]),
+            (
+                {"any_of": [{"conditon_key": "aws:SourceArn"}, {"condition_key": "aws:SourceAccount"}]},
+                ["invalid_condition_requirement", "missing_principal_condition_any_of"],
+            ),
+            (
+                {"allof": [{"condition_key": "aws:SourceArn"}], "any_of": [{"condition_key": "aws:SourceAccount"}]},
+                ["invalid_condition_requirement", "missing_principal_condition_any_of"],
+            ),
+        ],
+    )
+    async def test_keyless_entry_or_unknown_group_is_reported_never_satisfied(
+        self, check, fetcher, required_conditions, expected
+    ):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [{"principals": ["*"], "required_conditions": required_conditions}],
+            },
+        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal="*")
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert sorted(i.issue_type for i in issues) == expected
+
+    @pytest.mark.parametrize(
+        ("condition", "expected"),
+        [
+            (None, ["missing_principal_condition_any_of"]),
+            ({"StringEquals": {"aws:SourceArn": "a"}}, ["missing_principal_condition_any_of"]),
+            ({"StringEquals": {"aws:SourceArn": "a", "aws:SourceAccount": "1"}}, []),
+        ],
+    )
+    async def test_nested_all_of_entry_under_any_of_needs_every_key(self, check, fetcher, condition, expected):
+        nested = {"all_of": [{"condition_key": "aws:SourceArn"}, {"condition_key": "aws:SourceAccount"}]}
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [
+                    {"principals": ["*"], "required_conditions": {"any_of": [nested]}}
+                ],
+            },
+        )
+        statement = Statement(
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal="*", Condition=condition
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert [i.issue_type for i in issues] == expected
+
     @pytest.mark.asyncio
     async def test_all_of_conditions(self, check, fetcher):
         """Test all_of logic - ALL conditions must be present."""

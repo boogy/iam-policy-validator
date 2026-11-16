@@ -345,7 +345,6 @@ class TestMalformedBranches:
                 [_branch(resource="a", not_resource="b")],
                 "`if[0]`: `resource` and `not_resource` are mutually exclusive",
             ),
-            ([_branch(severity="urgent")], "`if[0]`: `severity` must be"),
         ],
     )
     async def test_reported_once_without_raising(self, check, if_value, fragment):

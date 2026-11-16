@@ -133,15 +133,22 @@ compliant, so a `Deny` branch on a `none_of` requirement reports nothing. A bran
 statement is reported.
 
 **Severity precedence:** the condition entry's `severity`, then the branch's, then the
-requirement's, then the check's configured severity. An invalid requirement `severity`
-is reported as `invalid_condition_requirement` and the check's severity is used.
+requirement's, then the check's configured severity. A null `severity` at any level
+counts as unset. An invalid `severity` on a requirement, branch or condition entry is
+reported once per policy as `invalid_condition_requirement` and dropped; the requirement,
+branch or entry is still enforced at the next severity in that order.
+
+**Malformed `required_conditions`** (with or without `if`) are reported once per policy as
+`invalid_condition_requirement` with severity `error` and `statement_index: -1`, even when
+no statement grants the action: a scalar `required_conditions`, an unknown or non-list
+group, or an entry without a string `condition_key` (or with a non-string `operator`).
+The malformed piece enforces nothing; well-formed siblings are still enforced.
 
 **Malformed branches** are reported once per policy as `invalid_condition_requirement`
 with severity `error` and `statement_index: -1`: `if` that is not a list or is empty, a
 branch that is not a mapping, missing or empty `required_conditions` (or an `all_of`/`any_of`/`none_of` that is not a list, or any other key in it), an invalid
 `effect`, an invalid or non-string `resource`/`not_resource` regex, both `resource` and
-`not_resource` in one branch, an invalid
-`severity`, or an unknown key (so a typo such as `resources:` cannot make a branch match
+`not_resource` in one branch, or an unknown key (so a typo such as `resources:` cannot make a branch match
 every resource). The broken branch enforces nothing; valid branches still run.
 
 `sensitive_action` defers to this check only for requirements with a branch that applies

@@ -71,7 +71,9 @@ reported as `invalid_condition_requirement` (`error`, `statement_index: -1`).
   once at the highest severity; `none_of` flags only `Allow` statements; a statement
   matching no branch is skipped.
 - A top-level `required_conditions` beside `if` is an unscoped `Allow` branch.
-- Severity: condition entry → branch → requirement → check.
+- Severity: condition entry → branch → requirement → check. A null `severity` is unset; an invalid one
+  is reported once per policy and dropped, and the entry, branch or requirement is still
+  enforced.
 
 ## Supported `ignore_patterns` fields
 

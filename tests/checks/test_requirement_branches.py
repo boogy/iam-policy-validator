@@ -8,6 +8,7 @@ from iam_validator.checks.utils.requirement_branches import (
     branch_matches_resources,
     branch_problem,
     requirement_branches,
+    severity_problem,
 )
 from iam_validator.core.models import Statement
 
@@ -51,7 +52,6 @@ def test_well_formed_branch_has_no_problem():
         ({"resource": ["arn:.*"], "required_conditions": CONDS}, "must be a regex string"),
         ({"not_resource": 5, "required_conditions": CONDS}, "must be a regex string"),
         ({"resource": "a", "not_resource": "b", "required_conditions": CONDS}, "mutually exclusive"),
-        ({"severity": "urgent", "required_conditions": CONDS}, "`severity` must be"),
     ],
 )
 def test_branch_problem_reports(branch, fragment):
@@ -124,3 +124,25 @@ def test_branch_enforces_allow_everywhere():
     assert not branch_enforces_allow_everywhere({"effect": "Deny"})
     assert not branch_enforces_allow_everywhere({"effect": "Allow", "resource": ".*"})
     assert not branch_enforces_allow_everywhere({"not_resource": ".*"})
+
+
+@pytest.mark.parametrize("severity", [None, "high", "error"])
+def test_severity_problem_accepts_unset_or_valid(severity):
+    assert severity_problem(severity) is None
+
+
+@pytest.mark.parametrize("severity", ["urgent", "High", 5, ["high"]])
+def test_severity_problem_rejects_invalid(severity):
+    problem = severity_problem(severity)
+    assert problem is not None
+    assert "`severity` must be one of" in problem
+
+
+def test_branch_problem_leaves_severity_to_the_caller():
+    assert branch_problem({"severity": "urgent", "required_conditions": CONDS}) is None
+
+
+@pytest.mark.parametrize("required_conditions", ["aws:SourceIp", 5])
+def test_truthy_scalar_required_conditions_is_not_called_missing(required_conditions):
+    problem = branch_problem({"required_conditions": required_conditions})
+    assert problem == "`required_conditions` must be a list or a mapping of `all_of`/`any_of`/`none_of`"

@@ -649,11 +649,20 @@ class PrincipalValidationCheck(PolicyCheck):
             for item in value:
                 if not isinstance(item, dict):
                     issues.append(self._create_invalid_entry_issue(statement, statement_idx, item, "a mapping"))
-            return [item for item in value if isinstance(item, dict)]
+                elif not self._is_enforceable(item):
+                    issues.append(
+                        self._create_invalid_entry_issue(
+                            statement,
+                            statement_idx,
+                            item,
+                            "a mapping with a string `condition_key` or a non-empty `all_of` list of them",
+                        )
+                    )
+            return [item for item in value if isinstance(item, dict) and self._is_enforceable(item)]
 
         # Handle simple list format (backward compatibility)
         if isinstance(required_conditions_config, list):
-            for condition_requirement in entries(required_conditions_config):
+            for condition_requirement in self._leaves(entries(required_conditions_config)):
                 if not self._has_condition_requirement(statement, condition_requirement):
                     issues.append(
                         self._create_condition_issue(
@@ -678,7 +687,13 @@ class PrincipalValidationCheck(PolicyCheck):
 
         # Handle all_of/any_of/none_of format
         if isinstance(required_conditions_config, dict):
-            all_of = entries(required_conditions_config.get("all_of"))
+            for unknown in sorted(required_conditions_config.keys() - {"all_of", "any_of", "none_of"}, key=str):
+                issues.append(
+                    self._create_invalid_entry_issue(
+                        statement, statement_idx, unknown, "`all_of`, `any_of` or `none_of`"
+                    )
+                )
+            all_of = self._leaves(entries(required_conditions_config.get("all_of")))
             any_of = entries(required_conditions_config.get("any_of"))
             none_of = entries(required_conditions_config.get("none_of"))
 
@@ -704,7 +719,7 @@ class PrincipalValidationCheck(PolicyCheck):
 
                 if not any_present:
                     # Create a combined error for any_of
-                    condition_keys = [cond.get("condition_key", "unknown") for cond in any_of]
+                    condition_keys = [self._describe(cond) for cond in any_of]
                     severity = requirement.get("severity", self.get_severity(config))
                     issues.append(
                         ValidationIssue(
@@ -760,6 +775,27 @@ class PrincipalValidationCheck(PolicyCheck):
             field_name="principal",
         )
 
+    @classmethod
+    def _is_enforceable(cls, entry: Any) -> bool:
+        if not isinstance(entry, dict):
+            return False
+        if "all_of" in entry:
+            nested = entry["all_of"]
+            return isinstance(nested, list) and bool(nested) and all(cls._is_enforceable(e) for e in nested)
+        condition_key = entry.get("condition_key")
+        return isinstance(condition_key, str) and bool(condition_key)
+
+    @classmethod
+    def _leaves(cls, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """``entries`` with each nested ``all_of`` replaced by its leaf requirements."""
+        return [leaf for e in entries for leaf in (cls._leaves(e["all_of"]) if "all_of" in e else [e])]
+
+    @classmethod
+    def _describe(cls, entry: dict[str, Any]) -> str:
+        if "all_of" in entry:
+            return " + ".join(cls._describe(e) for e in entry["all_of"])
+        return entry.get("condition_key", "unknown")
+
     def _has_condition_requirement(self, statement: Statement, condition_requirement: dict[str, Any]) -> bool:
         """Check if statement has the required condition.
 
@@ -770,9 +806,11 @@ class PrincipalValidationCheck(PolicyCheck):
         Returns:
             True if condition is present and matches requirements
         """
+        if "all_of" in condition_requirement:
+            return all(self._has_condition_requirement(statement, nested) for nested in condition_requirement["all_of"])
         condition_key = condition_requirement.get("condition_key")
-        if not condition_key:
-            return True  # No condition key specified, skip
+        if not isinstance(condition_key, str) or not condition_key:
+            return False
 
         operator = condition_requirement.get("operator")
         expected_value = condition_requirement.get("expected_value")
@@ -901,7 +939,7 @@ class PrincipalValidationCheck(PolicyCheck):
         suggestions.append("Add at least ONE of these conditions:")
 
         for i, cond in enumerate(any_of_conditions, 1):
-            condition_key = cond.get("condition_key", "unknown")
+            condition_key = self._describe(cond)
             description = cond.get("description", "")
             expected_value = cond.get("expected_value")
 
@@ -937,7 +975,7 @@ class PrincipalValidationCheck(PolicyCheck):
         Returns:
             ValidationIssue
         """
-        condition_key = condition_requirement.get("condition_key", "unknown")
+        condition_key = self._describe(condition_requirement)
         description = condition_requirement.get("description", "")
         expected_value = condition_requirement.get("expected_value")
 

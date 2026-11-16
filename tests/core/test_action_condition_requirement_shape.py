@@ -331,10 +331,13 @@ async def test_nested_all_of_under_any_of_keeps_its_example(check, mock_fetcher)
         {"all_of": [{"condition_key": "aws:SourceIp", "severity": "urgent"}]},
     ],
 )
-async def test_invalid_entry_severity_is_reported_not_raised(check, mock_fetcher, required_conditions):
+async def test_invalid_entry_severity_is_reported_and_entry_still_enforced(check, mock_fetcher, required_conditions):
     issues = await _run(check, mock_fetcher, required_conditions, condition=VPC_CONDITION)
 
-    assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+    assert [(i.issue_type, i.severity) for i in issues] == [
+        ("invalid_condition_requirement", "error"),
+        ("missing_required_condition", "high"),
+    ]
 
 
 @pytest.mark.parametrize("required_conditions", [{"all_of": None}, {"all_of": [], "any_of": None}])
