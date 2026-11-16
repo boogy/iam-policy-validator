@@ -228,6 +228,31 @@ grants or denies.
         - condition_key: iam:AssociatedResourceArn
 ```
 
+**Condition groups in a branch.** A branch's `required_conditions` takes the same
+`all_of` / `any_of` / `none_of` mapping as a requirement. Uploads to prod buckets must be
+KMS-encrypted, come from the VPC endpoint or the organization, and must not allow a
+`public-read` ACL. `none_of` flags only `Allow` statements.
+
+```yaml
+- actions: ["s3:PutObject"]
+  severity: high
+  if:
+    - effect: Allow
+      resource: 'arn:aws:s3:::prod-.*'
+      required_conditions:
+        all_of:
+          - condition_key: s3:x-amz-server-side-encryption
+            operator: StringEquals
+            expected_value: aws:kms
+        any_of:
+          - condition_key: aws:SourceVpce
+          - condition_key: aws:PrincipalOrgID
+        none_of:
+          - condition_key: s3:x-amz-acl
+            operator: StringEquals
+            expected_value: public-read
+```
+
 ---
 
 ## action_resource_matching

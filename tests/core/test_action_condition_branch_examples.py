@@ -116,3 +116,31 @@ async def test_effect_list_branch(config, effect):
 )
 async def test_top_level_conditions_beside_branches(config, effect, resource, condition, expected):
     assert await _keys(config, effect, "iam:PassRole", condition, resource=resource) == expected
+
+
+PROD_UPLOAD = "arn:aws:s3:::prod-data/*"
+KMS = {"s3:x-amz-server-side-encryption": "aws:kms"}
+VPCE = {"aws:SourceVpce": "vpce-1a2b3c4d"}
+
+
+@pytest.mark.parametrize(
+    ("resource", "condition", "expected"),
+    [
+        (PROD_UPLOAD, None, ["missing_required_condition", "missing_required_condition_any_of"]),
+        (PROD_UPLOAD, {"StringEquals": KMS}, ["missing_required_condition_any_of"]),
+        (PROD_UPLOAD, {"StringEquals": {**KMS, **VPCE}}, []),
+        (PROD_UPLOAD, {"StringEquals": {**KMS, "aws:PrincipalOrgID": "o-abc123"}}, []),
+        (
+            PROD_UPLOAD,
+            {"StringEquals": {**KMS, **VPCE, "s3:x-amz-acl": "public-read"}},
+            ["forbidden_condition_present"],
+        ),
+        (PROD_UPLOAD, {"StringEquals": {**KMS, **VPCE, "s3:x-amz-acl": "private"}}, []),
+        ("arn:aws:s3:::dev-data/*", None, []),
+    ],
+)
+async def test_condition_groups_in_branch(config, resource, condition, expected):
+    statement = Statement(effect="Allow", action="s3:PutObject", resource=resource, condition=condition)
+    policy = IAMPolicy(version="2012-10-17", statement=[statement])
+    issues = await ActionConditionEnforcementCheck().execute_policy(policy, "policy.json", None, config)
+    assert sorted(i.issue_type for i in issues) == expected
