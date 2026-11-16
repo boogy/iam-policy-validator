@@ -146,7 +146,7 @@ every resource). The broken branch enforces nothing; valid branches still run.
 `sensitive_action` defers to this check only for requirements with a branch that applies
 to every `Allow` statement (an `Allow` or omitted `effect`, and no `resource` /
 `not_resource`). A `Deny`-only or resource-scoped requirement does not suppress its
-findings.
+findings, nor does one whose `required_conditions` holds only `none_of`.
 
 #### More `if` examples
 

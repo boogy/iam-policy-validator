@@ -216,6 +216,40 @@ class TestPrincipalConditionRequirements:
     def check(self):
         return PrincipalValidationCheck()
 
+    @pytest.mark.parametrize(
+        "required_conditions",
+        [
+            ["aws:SourceArn", {"condition_key": "aws:SourceAccount"}],
+            {"all_of": ["aws:SourceArn", {"condition_key": "aws:SourceAccount"}]},
+            {"any_of": ["aws:SourceArn", {"condition_key": "aws:SourceAccount"}]},
+            {"none_of": ["aws:SourceArn", {"condition_key": "aws:SourceAccount"}]},
+            {"all_of": "aws:SourceArn", "any_of": [{"condition_key": "aws:SourceAccount"}]},
+        ],
+    )
+    async def test_non_mapping_condition_entry_is_reported_not_raised(self, check, fetcher, required_conditions):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [{"principals": ["*"], "required_conditions": required_conditions}],
+            },
+        )
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:::my-bucket/*"],
+            Principal="*",
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert len(invalid) == 1
+        assert invalid[0].severity == "error"
+        assert "'aws:SourceArn'" in invalid[0].message
+        others = [i for i in issues if i not in invalid]
+        assert len(others) == (0 if "none_of" in required_conditions else 1)
+        assert all("aws:SourceAccount" in i.message for i in others)
+
     @pytest.mark.asyncio
     async def test_all_of_conditions(self, check, fetcher):
         """Test all_of logic - ALL conditions must be present."""

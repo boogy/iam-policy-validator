@@ -185,7 +185,8 @@ through `_check_per_statement` / `_check_policy_wide` with keyword-only `effects
 for the same rule (`ValidationIssue._rule_identity`, key-order independent, ignoring `severity`/`description`) differing only in severity or suggestion are reported once (most severe kept); `none_of` flags only `Allow` statements. Malformed branches yield one `invalid_condition_requirement`
 (`error`, `statement_index=-1`) per policy. `enforced_actions` skips a requirement
 whose branches (including a top-level `required_conditions`, treated as an unscoped
-branch) never enforce `Allow` without `resource` / `not_resource`.
+branch) never enforce `Allow` without `resource` / `not_resource`, and any requirement
+or branch whose `required_conditions` only forbids (`only_forbids`: `none_of` alone).
 
 ## `sensitive_action` severity (gotcha)
 
@@ -226,8 +227,10 @@ literally instead of calling `get_severity(config)`:
   key is a hint, not a rejection.
 - `action_condition_enforcement` emits `invalid_condition_requirement` at `error` for any
   **malformed** config (bad `required_conditions` shape, unknown or non-list group,
-  non-string `condition_key`/`operator`, invalid entry `severity`, malformed `if`
-  branch), where the config itself is at fault. For a satisfied-requirement finding
+  non-string `condition_key`/`operator`, invalid entry or requirement `severity`,
+  malformed `if` branch), where the config itself is at fault. An invalid requirement
+  `severity` is dropped so its findings use the check severity. `principal_validation`
+  reports a non-mapping `required_conditions` entry the same way and skips it. For a satisfied-requirement finding
   the requirement's own `severity` takes precedence over the check default.
 
 ---
@@ -299,4 +302,4 @@ Use these instead of reimplementing:
 - `policy_level_checks.py` — `check_policy_level_actions()`, `_check_all_of_pattern()`
 - `formatting.py` — `format_list_with_backticks()`
 - `requirement_branches.py` — `requirement_branches()`, `branch_problem()`, `branch_effects()`,
-  `branch_matches_resources()`, `branch_enforces_allow_everywhere()`
+  `branch_matches_resources()`, `branch_enforces_allow_everywhere()`, `only_forbids()`

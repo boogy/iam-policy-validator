@@ -21,6 +21,13 @@ def has_no_conditions(required_conditions: Any) -> bool:
     return not required_conditions
 
 
+def only_forbids(required_conditions: Any) -> bool:
+    """Whether ``required_conditions`` holds a ``none_of`` group and no condition it requires."""
+    if not isinstance(required_conditions, dict) or not required_conditions.get("none_of"):
+        return False
+    return not any(required_conditions.get(k) for k in ("all_of", "any_of"))
+
+
 def _conditions_problem(required_conditions: Any) -> str | None:
     if isinstance(required_conditions, list) and required_conditions:
         return None

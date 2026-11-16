@@ -135,6 +135,51 @@ class TestEnforcedActions:
 
         assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
 
+    @pytest.mark.parametrize(
+        "required_conditions",
+        [
+            {"none_of": [{"condition_key": "aws:SourceIp"}]},
+            {"all_of": [], "none_of": [{"condition_key": "aws:SourceIp"}]},
+        ],
+    )
+    def test_a_none_of_only_requirement_enforces_nothing(self, required_conditions):
+        requirement = {"actions": ["iam:PassRole"], "required_conditions": required_conditions}
+        root = {
+            "action_condition_enforcement": {
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [requirement],
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    def test_a_none_of_only_if_branch_enforces_nothing(self):
+        branch = {"required_conditions": {"none_of": [{"condition_key": "aws:SourceIp"}]}}
+        requirement = {"actions": ["iam:PassRole"], "if": [branch]}
+        root = {
+            "action_condition_enforcement": {
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [requirement],
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    def test_a_none_of_requirement_with_any_of_still_enforces(self):
+        required_conditions = {
+            "any_of": [{"condition_key": "iam:PassedToService"}],
+            "none_of": [{"condition_key": "aws:SourceIp"}],
+        }
+        requirement = {"actions": ["iam:PassRole"], "required_conditions": required_conditions}
+        root = {
+            "action_condition_enforcement": {
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [requirement],
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
+
     def test_an_empty_config_enforces_nothing(self):
         assert ActionConditionEnforcementCheck.enforced_actions({}) == set()
 

@@ -641,9 +641,16 @@ class PrincipalValidationCheck(PolicyCheck):
         """
         issues: list[ValidationIssue] = []
 
+        def entries(value: Any) -> list[dict[str, Any]]:
+            items = value if isinstance(value, list) else [value] if value else []
+            for item in items:
+                if not isinstance(item, dict):
+                    issues.append(self._create_invalid_entry_issue(statement, statement_idx, item))
+            return [item for item in items if isinstance(item, dict)]
+
         # Handle simple list format (backward compatibility)
         if isinstance(required_conditions_config, list):
-            for condition_requirement in required_conditions_config:
+            for condition_requirement in entries(required_conditions_config):
                 if not self._has_condition_requirement(statement, condition_requirement):
                     issues.append(
                         self._create_condition_issue(
@@ -659,9 +666,9 @@ class PrincipalValidationCheck(PolicyCheck):
 
         # Handle all_of/any_of/none_of format
         if isinstance(required_conditions_config, dict):
-            all_of = required_conditions_config.get("all_of", [])
-            any_of = required_conditions_config.get("any_of", [])
-            none_of = required_conditions_config.get("none_of", [])
+            all_of = entries(required_conditions_config.get("all_of"))
+            any_of = entries(required_conditions_config.get("any_of"))
+            none_of = entries(required_conditions_config.get("none_of"))
 
             # Validate all_of: ALL conditions must be present
             if all_of:
@@ -719,6 +726,22 @@ class PrincipalValidationCheck(PolicyCheck):
                         )
 
         return issues
+
+    @staticmethod
+    def _create_invalid_entry_issue(statement: Statement, statement_idx: int, entry: Any) -> ValidationIssue:
+        return ValidationIssue(
+            severity="error",
+            statement_sid=statement.sid,
+            statement_index=statement_idx,
+            issue_type="invalid_condition_requirement",
+            message=(
+                f"`principal_condition_requirements` has a `required_conditions` entry `{entry!r}` that is not "
+                "a mapping, so it is not enforced"
+            ),
+            suggestion="Write each entry as a mapping, e.g. `- condition_key: aws:SourceArn`.",
+            line_number=statement.line_number,
+            field_name="principal",
+        )
 
     def _has_condition_requirement(self, statement: Statement, condition_requirement: dict[str, Any]) -> bool:
         """Check if statement has the required condition.

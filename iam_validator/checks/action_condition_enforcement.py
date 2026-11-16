@@ -34,6 +34,7 @@ from iam_validator.checks.utils.requirement_branches import (
     branch_enforces_allow_everywhere,
     branch_matches_resources,
     has_no_conditions,
+    only_forbids,
     requirement_branches,
 )
 from iam_validator.core.aws_service import AWSServiceFetcher
@@ -118,6 +119,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         # Process each requirement
         for requirement in requirements:
+            severity = requirement.get("severity")
+            if severity is not None and not (isinstance(severity, str) and severity in VALID_SEVERITIES):
+                issues.append(self._create_invalid_severity_issue(requirement, severity))
+                requirement = {k: v for k, v in requirement.items() if k != "severity"}
             # Check if actions use all_of/any_of/none_of (policy-wide) or simple list (per-statement)
             uses_logical_operators = self._is_policy_wide(requirement)
 
@@ -211,6 +216,24 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 unique[key] = issue
         return list(unique.values())
 
+    @staticmethod
+    def _create_invalid_severity_issue(requirement: dict[str, Any], severity: Any) -> ValidationIssue:
+        actions = requirement.get("actions", [])
+        actions_str = format_list_with_backticks(actions) if isinstance(actions, list) else f"`{actions!r}`"
+        return ValidationIssue(
+            severity="error",
+            statement_sid=None,
+            statement_index=-1,
+            issue_type="invalid_condition_requirement",
+            message=(
+                f"`action_condition_requirements` entry for action(s) {actions_str} has an invalid `severity` "
+                f"`{severity!r}`; its findings use the check severity instead"
+            ),
+            action=", ".join(a for a in actions if isinstance(a, str)) if isinstance(actions, list) else None,
+            suggestion=f"Set `severity` to one of {', '.join(sorted(VALID_SEVERITIES))}, or remove it.",
+            field_name="condition",
+        )
+
     def _create_malformed_branch_issue(self, requirement: dict[str, Any], problem: str) -> ValidationIssue:
         actions = requirement.get("actions", [])
         actions_str = format_list_with_backticks(actions) if isinstance(actions, list) else f"`{actions!r}`"
@@ -279,9 +302,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         actions: set[str] = set()
         for requirement in requirements:
-            if "if" in requirement and not any(
-                branch_enforces_allow_everywhere(b) for b in requirement_branches(requirement)[0]
-            ):
+            if "if" in requirement:
+                if not any(
+                    branch_enforces_allow_everywhere(b) and not only_forbids(b["required_conditions"])
+                    for b in requirement_branches(requirement)[0]
+                ):
+                    continue
+            elif only_forbids(requirement.get("required_conditions")):
                 continue
             configured = requirement.get("actions", [])
             if isinstance(configured, list):
@@ -670,7 +697,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # Check each statement to see if it contains ALL required actions
         for statement in statements_by_action.get(list(found_actions_mapping.values())[0], []):
             stmt_idx, stmt = statement
-            stmt_actions = stmt.get_actions()
+            stmt_actions = self._granted_actions(stmt, all_of_actions)
 
             # Check if this statement has ALL required actions
             has_all_actions = True
@@ -701,7 +728,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 if stmt_idx in checked_indices:
                     continue
 
-                stmt_actions = stmt.get_actions()
+                stmt_actions = self._granted_actions(stmt, all_of_actions)
 
                 # Check if this statement has ALL required actions
                 has_all_actions = True

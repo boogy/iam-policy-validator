@@ -699,3 +699,71 @@ class TestNotActionStatements:
         )
         issues = await check.execute_policy(self._policy("s3:*"), "p.json", None, config)
         assert [i.issue_type for i in issues] == ["forbidden_action"]
+
+    @pytest.mark.asyncio
+    async def test_not_action_grants_all_of_actions(self, check):
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            config={
+                "action_condition_requirements": [
+                    {
+                        "actions": {"all_of": ["iam:CreateUser", "iam:AttachUserPolicy"]},
+                        "required_conditions": [{"condition_key": "aws:MultiFactorAuthPresent"}],
+                    }
+                ]
+            },
+        )
+        granted = await check.execute_policy(self._policy("s3:*"), "p.json", None, config)
+        excluded = await check.execute_policy(self._policy("iam:AttachUserPolicy"), "p.json", None, config)
+        assert [i.issue_type for i in granted] == ["missing_required_condition"]
+        assert excluded == []
+
+
+class TestInvalidRequirementSeverity:
+    @staticmethod
+    def _config(severity):
+        return CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            severity="high",
+            config={
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [
+                    {
+                        "actions": ["iam:PassRole"],
+                        "severity": severity,
+                        "required_conditions": [{"condition_key": "iam:PassedToService"}],
+                    }
+                ],
+            },
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("severity", ["hgih", 3, ["high"]])
+    async def test_invalid_severity_is_reported_and_falls_back_to_check_severity(self, severity):
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[Statement(effect="Allow", action="iam:PassRole", resource="*")],
+        )
+        issues = await ActionConditionEnforcementCheck().execute_policy(policy, "p.json", None, self._config(severity))
+        by_type = {i.issue_type: i for i in issues}
+        assert sorted(by_type) == ["invalid_condition_requirement", "missing_required_condition"]
+        assert by_type["invalid_condition_requirement"].severity == "error"
+        assert by_type["invalid_condition_requirement"].statement_index == -1
+        assert by_type["missing_required_condition"].severity == "high"
+
+    @pytest.mark.asyncio
+    async def test_invalid_severity_in_if_requirement_falls_back_to_check_severity(self):
+        config = self._config("hgih")
+        requirement = config.config["action_condition_requirements"][0]
+        requirement["if"] = [{"required_conditions": requirement.pop("required_conditions")}]
+        policy = IAMPolicy(
+            version="2012-10-17",
+            statement=[Statement(effect="Allow", action="iam:PassRole", resource="*")],
+        )
+        issues = await ActionConditionEnforcementCheck().execute_policy(policy, "p.json", None, config)
+        assert sorted((i.issue_type, i.severity) for i in issues) == [
+            ("invalid_condition_requirement", "error"),
+            ("missing_required_condition", "high"),
+        ]
