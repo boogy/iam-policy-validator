@@ -1,6 +1,6 @@
 """Dedup must track what action_condition_enforcement actually enforces, not what is configured."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -195,3 +195,25 @@ class TestEnforcedActions:
 
         assert ActionConditionEnforcementCheck.enforced_actions(root, "prod/policy.json") == {"iam:PassRole"}
         assert ActionConditionEnforcementCheck.enforced_actions(root, "tests/policy.json") == set()
+
+
+class TestEnforcedActionsComputedOncePerConfig:
+    async def test_many_statements_compute_enforced_actions_once(self, check):
+        config = _config({"requirements": [PASS_ROLE_REQUIREMENT]})
+
+        with patch.object(
+            ActionConditionEnforcementCheck,
+            "enforced_actions",
+            wraps=ActionConditionEnforcementCheck.enforced_actions,
+        ) as spy:
+            for action in ("iam:PassRole", "iam:CreateUser", "iam:PassRole"):
+                await _run(check, config, action)
+
+        assert spy.call_count == 1
+
+    async def test_a_new_root_config_is_recomputed(self, check):
+        assert await _run(check, _config({"requirements": [PASS_ROLE_REQUIREMENT]})) == []
+
+        issues = await _run(check, _config({"enabled": False, "requirements": [PASS_ROLE_REQUIREMENT]}))
+
+        assert [i.issue_type for i in issues] == ["missing_condition"]

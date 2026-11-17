@@ -166,7 +166,7 @@ that check what it will **actually** enforce, not read its config. `sensitive_ac
 calls `ActionConditionEnforcementCheck.enforced_actions(root_config, policy_file=None)`,
 which resolves the check's own config the way `ValidatorConfig.checks_config` does,
 returns an empty set when the check is disabled, and runs the real
-`_get_merged_requirements` — so a `merge_strategy`, an `ignore_patterns` match or a
+`_get_merged_requirements` — once per `root_config` object (`sensitive_action` caches it) — so a `merge_strategy`, an `ignore_patterns` match or a
 user-supplied `action_condition_requirements` entry moves both checks together. Reading
 `requirements` directly suppressed findings for requirements that were never in play.
 Matching is `action_matches`, not `==`: a requirement may be a glob and IAM action names
@@ -182,7 +182,7 @@ the CHANGELOG `Fixed` entries say. Parsing and matching live in
 `utils/requirement_branches.py`. Each valid branch becomes an ordinary requirement run
 through `_check_per_statement` / `_check_policy_wide` with keyword-only `effects` and
 `statement_filter`. An omitted branch `effect` means `Allow` in both forms; findings
-for the same rule (`ValidationIssue._rule_identity`, key-order independent, ignoring `severity`/`description`) differing only in severity, suggestion or message wording are reported once (most severe kept; a list entry and an `all_of` entry share an identity); `none_of` flags only `Allow` statements. Malformed branches yield one `invalid_condition_requirement` (only when a statement matches the requirement's actions)
+for the same rule (`ValidationIssue._rule_identity`, key-order independent, ignoring `severity`/`description`/`example`) differing only in severity, suggestion or message wording are reported once (most severe kept; a list entry and an `all_of` entry share an identity); `none_of` flags only `Allow` statements. Malformed branches yield one `invalid_condition_requirement` (only when a statement matches the requirement's actions)
 (`error`, `statement_index=-1`) per policy. `branch_problem` does not check `severity`:
 an invalid branch severity is reported and dropped by `_prepare_requirement` and the
 branch still enforced (and counted by `enforced_actions`). `enforced_actions` skips a requirement
@@ -229,22 +229,23 @@ literally instead of calling `get_severity(config)`:
   to resolve per-action keys against, so only global keys are decidable and an unknown
   key is a hint, not a rejection.
 - `action_condition_enforcement` emits `invalid_condition_requirement` at `error` for any
-  **malformed** config (bad `required_conditions` shape, unknown or non-list group,
+  **malformed** config (bad `actions` or `required_conditions` shape, unknown or non-list group,
   non-string `condition_key`/`operator`, invalid requirement, branch or entry
   `severity`, malformed `if` branch), where the config itself is at fault. All of these
-  except malformed `if` branches (`requirement_branches`, via `_check_branches`) come
+  except malformed `if` branches (`requirement_branches`, reported by `execute_policy`) come
   from one pre-pass, `_prepare_requirement`, once per policy at `statement_index=-1`; it
   returns a copy (never mutate the shared config) with null and invalid severities
   stripped, so the entry/branch/requirement is still enforced at the fallback severity.
   The per-statement path skips malformed pieces silently. A requirement's config
   problems (both kinds) are emitted only for a policy with a statement of either effect
-  matching its actions (`_matches_any_statement`), and both kinds bypass the
+  matching its actions (`_matches_any_statement`, which also reads strings from a malformed
+  `actions` group and matches every policy when `actions` names none), and both kinds bypass the
   requirement's own `ignore_patterns`. `enforced_actions` counts a requirement (or `if`
   branch) only when its prepared `required_conditions` holds an evaluable `all_of` /
   `any_of` / list entry (`_requires_evaluable_condition`); detection-only (empty) still
   counts. Both checks judge an entry with `is_evaluable_entry` (`utils/requirement_branches.py`).
   `principal_validation` instead reports a non-mapping or keyless entry, a
-  non-string `operator`, an unknown or non-list group or a scalar `required_conditions`
+  non-string `operator`, an invalid requirement or entry `severity`, an unknown or non-list group or a scalar `required_conditions`
   per statement (`statement_index` = that statement, no pre-pass) and skips it (never
   satisfied); a nested `all_of` entry needs every child, and its leaves inherit the
   parent's `severity`/`description`/`example` unless they set their own (a null or

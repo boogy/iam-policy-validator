@@ -49,6 +49,12 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Keep the `severity`, `description` and `example` of a nested `all_of` entry in `principal_condition_requirements` on each of its findings; a child's own non-null value wins. ([#240])
 - Describe a malformed nested `all_of` entry in `action_condition_enforcement` as such, instead of suggesting to nest it under `all_of`, and name a non-list group as `required_conditions.<group>`. ([#240])
 - Label a policy-level finding (`statement_index: -1`) `Policy-level` in the default console output instead of `Statement 0`, as the `enhanced` format does. ([#240])
+- Report an `action_condition_requirements` `actions` mapping key other than `all_of`/`any_of`/`none_of` (e.g. `allof`), a non-list group (e.g. `all_of: "iam:PassRole"`) or an `actions` that is neither a string, list nor mapping as `invalid_condition_requirement` instead of silently enforcing nothing. It is reported when a statement names an action listed anywhere in the mapping, or for every policy when it lists none. ([#240])
+- Render an explicit `operator: null` as `StringEquals` in the generated example of `action_condition_enforcement` and `principal_validation` findings, instead of `None`. ([#240])
+- Report a missing condition once when the same entry is required by a top-level `required_conditions` (inheriting a nested `all_of`'s `example`) and by an `if` branch; `example` no longer distinguishes otherwise-identical rules. ([#240])
+- Use a `principal_condition_requirements` `none_of` entry's own `severity` for its `forbidden_principal_condition` finding instead of the requirement's. ([#240])
+- Report an invalid `severity` (e.g. `Critical`, `hgih`) on a `principal_condition_requirements` requirement or entry (including nested `all_of` entries) as `invalid_condition_requirement` instead of silently falling back; the finding still uses the fallback severity. ([#240])
+- Compute the actions `action_condition_enforcement` enforces once per config in `sensitive_action`, instead of once per unconditioned sensitive statement. ([#240])
 
 [#240]: https://github.com/boogy/iam-policy-validator/pull/240
 

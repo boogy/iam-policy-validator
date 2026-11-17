@@ -102,6 +102,8 @@ class SensitiveActionCheck(PolicyCheck):
     #: category in ``category_severities`` nor the check's own ``severity``. They
     #: live here rather than in the default config so a user's ``severity:`` can win
     #: over them (a merged config cannot tell a shipped value from a user's).
+    _covered_cache: tuple[dict[str, Any], frozenset[str]] | None = None
+
     DEFAULT_CATEGORY_SEVERITIES: ClassVar[dict[str, str]] = {
         "credential_exposure": "critical",
         "priv_esc": "critical",
@@ -176,7 +178,13 @@ class SensitiveActionCheck(PolicyCheck):
         Returns:
             Set of action strings that are covered by condition requirements
         """
-        return ActionConditionEnforcementCheck.enforced_actions(config.root_config)
+        root_config = config.root_config
+        cached = self._covered_cache
+        # The cache holds root_config itself, so `is` cannot match a reused id.
+        if cached is None or cached[0] is not root_config:
+            cached = (root_config, frozenset(ActionConditionEnforcementCheck.enforced_actions(root_config)))
+            self._covered_cache = cached
+        return set(cached[1])
 
     def _get_category_specific_suggestion(self, action: str, config: CheckConfig) -> tuple[str, str]:
         """

@@ -1290,7 +1290,8 @@ class TestPrincipalRequirementConfigRobustness:
 
         issues = await check.execute(self._statement(condition), 0, None, config)
 
-        assert [(i.issue_type, i.severity) for i in issues] == [(issue_type, "high")]
+        invalid = [] if severity is None else [("invalid_condition_requirement", "error")]
+        assert [(i.issue_type, i.severity) for i in issues] == [*invalid, (issue_type, "high")]
 
     async def test_invalid_entry_severity_falls_back_to_requirement(self, check):
         config = self._config(
@@ -1299,7 +1300,10 @@ class TestPrincipalRequirementConfigRobustness:
 
         issues = await check.execute(self._statement(), 0, None, config)
 
-        assert [(i.issue_type, i.severity) for i in issues] == [("missing_principal_condition", "low")]
+        assert [(i.issue_type, i.severity) for i in issues] == [
+            ("invalid_condition_requirement", "error"),
+            ("missing_principal_condition", "low"),
+        ]
 
     async def test_invalid_leaf_severity_falls_back_to_parent_all_of_severity(self, check):
         entry = {"severity": "low", "all_of": [{"condition_key": "aws:SourceArn", "severity": "Low"}]}
@@ -1307,7 +1311,10 @@ class TestPrincipalRequirementConfigRobustness:
 
         issues = await check.execute(self._statement(), 0, None, config)
 
-        assert [(i.issue_type, i.severity) for i in issues] == [("missing_principal_condition", "low")]
+        assert [(i.issue_type, i.severity) for i in issues] == [
+            ("invalid_condition_requirement", "error"),
+            ("missing_principal_condition", "low"),
+        ]
 
     async def test_nested_all_of_children_inherit_parent_presentation(self, check):
         entry = {
@@ -1327,3 +1334,80 @@ class TestPrincipalRequirementConfigRobustness:
             ("critical", "DESC", "EX"),
             ("low", "DESC", "EX"),
         ]
+
+
+class TestPrincipalRequirementPresentation:
+    @pytest.fixture
+    def check(self):
+        return PrincipalValidationCheck()
+
+    @staticmethod
+    def _config(requirement: dict) -> CheckConfig:
+        return CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [{"principals": ["*"], **requirement}],
+            },
+        )
+
+    @staticmethod
+    def _statement(condition: dict | None = None) -> Statement:
+        return Statement(
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal="*", Condition=condition
+        )
+
+    async def test_null_operator_example_renders_default_operator(self, check):
+        config = self._config({"required_conditions": [{"condition_key": "aws:SourceArn", "operator": None}]})
+
+        issues = await check.execute(self._statement(), 0, None, config)
+
+        assert [i.issue_type for i in issues] == ["missing_principal_condition"]
+        assert '"StringEquals"' in issues[0].example
+        assert "None" not in issues[0].example
+
+    async def test_none_of_entry_severity_overrides_requirement_severity(self, check):
+        config = self._config(
+            {
+                "severity": "low",
+                "required_conditions": {"none_of": [{"condition_key": "aws:SourceArn", "severity": "critical"}]},
+            }
+        )
+
+        issues = await check.execute(self._statement({"StringEquals": {"aws:SourceArn": "x"}}), 0, None, config)
+
+        assert [(i.issue_type, i.severity) for i in issues] == [("forbidden_principal_condition", "critical")]
+
+    @pytest.mark.parametrize("severity", ["Critical", "hgih"])
+    async def test_invalid_requirement_severity_is_reported(self, check, severity):
+        config = self._config({"severity": severity, "required_conditions": [{"condition_key": "aws:SourceArn"}]})
+
+        issues = await check.execute(self._statement(), 0, None, config)
+
+        assert sorted((i.issue_type, i.severity) for i in issues) == [
+            ("invalid_condition_requirement", "error"),
+            ("missing_principal_condition", "high"),
+        ]
+        invalid = next(i for i in issues if i.issue_type == "invalid_condition_requirement")
+        assert severity in invalid.message
+        assert "Set `severity` to one of" in invalid.suggestion
+
+    @pytest.mark.parametrize(
+        "required_conditions",
+        [
+            [{"condition_key": "aws:SourceArn", "severity": "hgih"}],
+            {"any_of": [{"condition_key": "aws:SourceArn", "severity": "hgih"}]},
+            {"all_of": [{"all_of": [{"condition_key": "aws:SourceArn", "severity": "hgih"}]}]},
+            [{"severity": "hgih", "all_of": [{"condition_key": "aws:SourceArn"}]}],
+        ],
+    )
+    async def test_invalid_entry_severity_is_reported(self, check, required_conditions):
+        config = self._config({"severity": "low", "required_conditions": required_conditions})
+
+        issues = await check.execute(self._statement(), 0, None, config)
+
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert len(invalid) == 1
+        assert "hgih" in invalid[0].message
+        assert [i.severity for i in issues if i not in invalid] == ["low"]

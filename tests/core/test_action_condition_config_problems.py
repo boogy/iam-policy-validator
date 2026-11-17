@@ -323,3 +323,70 @@ class TestMalformedMessages:
 
         assert "has an empty, non-list or malformed nested `all_of`" in issues[0].message
         assert issues[0].suggestion == "Give `all_of` a non-empty list of entries, each with a string `condition_key`."
+
+
+class TestMalformedActions:
+    @pytest.mark.parametrize(
+        ("actions", "fragment"),
+        [
+            ({"allof": [ACTION]}, "`actions.allof` is not"),
+            ({"all_of": ACTION}, "`actions.all_of` must be a list"),
+            (5, "`actions` must be"),
+        ],
+    )
+    async def test_reported_once_per_policy(self, check, actions, fragment):
+        config = _config({"actions": actions, "required_conditions": [{"condition_key": KEY}]})
+
+        issues = await _run(check, config, _stmt("One"), _stmt("Two"))
+
+        assert _types(issues) == [("invalid_condition_requirement", -1)]
+        assert fragment in issues[0].message
+
+    async def test_unknown_group_beside_a_valid_one_is_reported_and_valid_one_enforced(self, check):
+        config = _config(
+            {"actions": {"any_of": [ACTION], "nonof": [ACTION]}, "required_conditions": [{"condition_key": KEY}]}
+        )
+
+        issues = await _run(check, config)
+
+        assert _types(issues) == [("invalid_condition_requirement", -1), ("missing_required_condition", 0)]
+
+    @pytest.mark.parametrize("actions", [{"allof": [ACTION]}, {"all_of": ACTION}])
+    async def test_not_reported_for_a_policy_without_the_named_action(self, check, actions):
+        config = _config({"actions": actions, "required_conditions": [{"condition_key": KEY}]})
+
+        assert await _run(check, config, _stmt("One", action="s3:GetObject")) == []
+
+    async def test_unsalvageable_actions_are_reported_for_any_policy(self, check):
+        config = _config({"actions": 5, "required_conditions": [{"condition_key": KEY}]})
+
+        issues = await _run(check, config, _stmt("One", action="s3:GetObject"))
+
+        assert _types(issues) == [("invalid_condition_requirement", -1)]
+
+    @pytest.mark.parametrize("actions", [{"allof": [ACTION]}, {"all_of": ACTION}, 5])
+    def test_malformed_actions_are_not_enforced(self, actions):
+        root = _root({"actions": actions, "required_conditions": [{"condition_key": KEY}]})
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    async def test_bare_string_actions_still_enforced(self, check):
+        config = _config({"actions": ACTION, "required_conditions": [{"condition_key": KEY}]})
+
+        issues = await _run(check, config)
+
+        assert _types(issues) == [("missing_required_condition", 0)]
+        assert ActionConditionEnforcementCheck.enforced_actions(
+            _root({"actions": ACTION, "required_conditions": [{"condition_key": KEY}]})
+        ) == {ACTION}
+
+
+class TestNullOperator:
+    async def test_example_renders_default_operator(self, check):
+        config = _config({"actions": [ACTION], "required_conditions": [{"condition_key": KEY, "operator": None}]})
+
+        issues = await _run(check, config)
+
+        assert [i.issue_type for i in issues] == ["missing_required_condition"]
+        assert '"StringEquals"' in issues[0].example
+        assert "None" not in issues[0].example

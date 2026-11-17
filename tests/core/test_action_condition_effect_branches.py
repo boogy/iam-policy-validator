@@ -529,3 +529,19 @@ class TestRequiredListAndAllOfBranchOverlap:
         issues = await _run(check, _config(requirement), statement)
 
         assert [i.issue_type for i in issues] == ["missing_required_condition"]
+
+
+class TestInheritedExampleIsPresentation:
+    async def test_leaf_with_parent_example_and_branch_leaf_are_reported_once_at_the_highest(self, check):
+        leaf = {"condition_key": "iam:PassedToService"}
+        requirement = {
+            "actions": ["iam:PassRole"],
+            "severity": "low",
+            "required_conditions": {"all_of": [{"all_of": [leaf], "example": "X"}]},
+            "if": [{"severity": "high", "required_conditions": [leaf]}],
+        }
+        statement = Statement(effect="Allow", action="iam:PassRole", resource="*")
+
+        issues = await _run(check, _config(requirement), statement)
+
+        assert [(i.issue_type, i.severity) for i in issues] == [("missing_required_condition", "high")]
