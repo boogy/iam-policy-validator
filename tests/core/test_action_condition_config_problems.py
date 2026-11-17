@@ -210,3 +210,105 @@ class TestNestedNullOverride:
         assert [(i.issue_type, i.severity, i.example) for i in issues] == [
             ("missing_required_condition", "critical", "EX")
         ]
+
+
+def _root(*requirements: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "action_condition_enforcement": {
+            "merge_strategy": "user_only",
+            "action_condition_requirements": list(requirements),
+        }
+    }
+
+
+class TestEnforcedActionsNeedAnEvaluableEntry:
+    @pytest.mark.parametrize(
+        "required_conditions",
+        [
+            {"allof": [{"condition_key": KEY}]},
+            {"all_of": "aws:SourceIp"},
+            [{"condition_key": 5}],
+            [{"description": "no key"}],
+            [{"condition_key": KEY, "operator": 5}],
+            {"any_of": [{"conditon_key": KEY}]},
+            [{"all_of": []}],
+        ],
+    )
+    def test_requirement_without_evaluable_entry_is_not_enforced(self, required_conditions):
+        root = _root({"actions": [ACTION], "required_conditions": required_conditions})
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    def test_if_branch_without_evaluable_entry_is_not_enforced(self):
+        root = _root({"actions": [ACTION], "if": [{"required_conditions": [{"description": "no key"}]}]})
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    def test_one_evaluable_entry_is_enough(self):
+        root = _root({"actions": [ACTION], "required_conditions": ["x", {"condition_key": KEY}]})
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == {ACTION}
+
+
+class TestConfigProblemsNeedAMatchingStatement:
+    @pytest.mark.parametrize(
+        "requirement",
+        [
+            {"actions": [ACTION], "required_conditions": ["x"]},
+            {"actions": [ACTION], "severity": "urgent", "required_conditions": [{"condition_key": KEY}]},
+            {"actions": {"any_of": [ACTION]}, "required_conditions": {"allof": []}},
+            {"actions": [ACTION], "if": [{"required_conditions": "x"}]},
+            {"actions": [ACTION], "if": [{"severity": "urgent", "required_conditions": [{"condition_key": KEY}]}]},
+        ],
+    )
+    async def test_not_reported_for_a_policy_without_the_action(self, check, requirement):
+        issues = await _run(check, _config(requirement), _stmt("One", action="s3:GetObject"))
+
+        assert issues == []
+
+    async def test_reported_when_a_deny_statement_matches(self, check):
+        config = _config({"actions": [ACTION], "required_conditions": ["x"]})
+
+        issues = await _run(check, config, _stmt("One", effect="Deny"))
+
+        assert _types(issues) == [("invalid_condition_requirement", -1)]
+
+
+class TestConfigProblemsIgnoreRequirementIgnorePatterns:
+    @pytest.mark.parametrize(
+        "ignore_patterns",
+        [[{"action": "iam:.*"}], [{"filepath_regex": "policy"}]],
+    )
+    async def test_config_problem_is_not_hidden(self, check, ignore_patterns):
+        requirement = {
+            "actions": [ACTION],
+            "severity": "urgent",
+            "required_conditions": ["x"],
+            "ignore_patterns": ignore_patterns,
+        }
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            config={"merge_strategy": "append", "requirements": [requirement]},
+        )
+
+        issues = await _run(check, config)
+
+        assert _types(issues) == [("invalid_condition_requirement", -1)] * 2
+
+
+class TestMalformedMessages:
+    async def test_non_list_group_names_required_conditions(self, check):
+        config = _config({"actions": [ACTION], "required_conditions": {"all_of": "x"}})
+
+        issues = await _run(check, config)
+
+        assert "`required_conditions.all_of` must be a list" in issues[0].message
+
+    async def test_malformed_nested_all_of_is_described(self, check):
+        config = _config({"actions": [ACTION], "required_conditions": [{"all_of": [{"description": "x"}]}]})
+
+        issues = await _run(check, config)
+
+        assert "has an empty, non-list or malformed nested `all_of`" in issues[0].message
+        assert issues[0].suggestion == "Give `all_of` a non-empty list of entries, each with a string `condition_key`."

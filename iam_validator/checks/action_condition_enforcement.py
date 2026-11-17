@@ -36,7 +36,6 @@ from iam_validator.checks.utils.requirement_branches import (
     branch_matches_resources,
     branch_problem,
     has_no_conditions,
-    only_forbids,
     requirement_branches,
     severity_problem,
 )
@@ -123,15 +122,16 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # Process each requirement
         for raw_requirement in requirements:
             requirement, problems = self._prepare_requirement(raw_requirement)
-            issues.extend(
-                self._filter_requirement_issues(problems, requirement.get("ignore_patterns", []), policy_file)
-            )
+            has_problems = bool(problems) or ("if" in requirement and bool(requirement_branches(requirement)[1]))
+            matched = has_problems and await self._matches_any_statement(policy, requirement, fetcher)
+            if matched:
+                issues.extend(problems)
             # Check if actions use all_of/any_of/none_of (policy-wide) or simple list (per-statement)
             uses_logical_operators = self._is_policy_wide(requirement)
 
             if "if" in requirement:
                 branch_issues = await self._check_branches(
-                    policy, requirement, fetcher, config, policy_wide=uses_logical_operators
+                    policy, requirement, fetcher, config, policy_wide=uses_logical_operators, report_problems=matched
                 )
                 issues.extend(
                     self._filter_requirement_issues(branch_issues, requirement.get("ignore_patterns", []), policy_file)
@@ -155,6 +155,21 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         return issues
 
+    async def _matches_any_statement(
+        self, policy: "IAMPolicy", requirement: dict[str, Any], fetcher: AWSServiceFetcher
+    ) -> bool:
+        """Whether any statement, of either effect, names an action of ``requirement`` in any group."""
+        configured = requirement.get("actions", [])
+        if isinstance(configured, dict):
+            configured = [a for g in CONDITION_GROUPS if isinstance(v := configured.get(g), list) for a in v]
+        actions = [a for a in configured if isinstance(a, str)] if isinstance(configured, list) else []
+        probe = {**requirement, "actions": actions}
+        for statement in policy.statement or []:
+            matched, _ = await self._check_action_match(self._granted_actions(statement, actions), probe, fetcher)
+            if matched:
+                return True
+        return False
+
     @staticmethod
     def _is_policy_wide(requirement: dict[str, Any]) -> bool:
         actions_config = requirement.get("actions", [])
@@ -168,10 +183,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         config: CheckConfig,
         *,
         policy_wide: bool,
+        report_problems: bool = True,
     ) -> list[ValidationIssue]:
         """Enforce each ``if`` branch as an ordinary requirement scoped by its effect and resource predicates."""
         branches, problems = requirement_branches(requirement)
-        issues = [self._create_malformed_branch_issue(requirement, problem) for problem in problems]
+        issues = [self._create_malformed_branch_issue(requirement, p) for p in problems] if report_problems else []
 
         base = {k: v for k, v in requirement.items() if k not in ("if", "required_conditions", "severity")}
         for branch in branches:
@@ -290,7 +306,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             if isinstance(value, list):
                 cleaned[group] = self._prepare_entries(requirement, value, f"{prefix}{group}", issues)
             elif value is not None and report_shape:
-                issues.append(self._create_malformed_requirement_issue(requirement, f"`{group}` must be a list", value))
+                issues.append(
+                    self._create_malformed_requirement_issue(
+                        requirement, f"`required_conditions.{group}` must be a list", value
+                    )
+                )
         return cleaned
 
     def _prepare_entries(
@@ -360,6 +380,12 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 f"{actions_str}: `{entry!r}`"
             )
             suggestion = "Fix its shape. Until then it enforces nothing."
+        elif isinstance(entry, dict) and "all_of" in entry:
+            message = (
+                f"`action_condition_requirements` entry under `{label}` has an empty, non-list or malformed nested "
+                f"`all_of`, so it cannot be enforced for action(s) {actions_str}: `{entry!r}`"
+            )
+            suggestion = "Give `all_of` a non-empty list of entries, each with a string `condition_key`."
         else:
             message = (
                 f"`action_condition_requirements` entry under `{label}` names no string `condition_key` "
@@ -445,15 +471,19 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             policy_file,
         )
 
+        check = cls()
         actions: set[str] = set()
-        for requirement in requirements:
+        for raw_requirement in requirements:
+            requirement, _ = check._prepare_requirement(raw_requirement)
             if "if" in requirement:
                 if not any(
-                    branch_enforces_allow_everywhere(b) and not only_forbids(b["required_conditions"])
+                    branch_enforces_allow_everywhere(b) and cls._requires_evaluable_condition(b["required_conditions"])
                     for b in requirement_branches(requirement)[0]
                 ):
                     continue
-            elif only_forbids(requirement.get("required_conditions")):
+            elif not has_no_conditions(
+                required := requirement.get("required_conditions")
+            ) and not cls._requires_evaluable_condition(required):
                 continue
             configured = requirement.get("actions", [])
             if isinstance(configured, list):
@@ -1489,6 +1519,15 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         expected_value = condition_requirement.get("expected_value")
 
         return has_condition_key(statement, condition_key, operator, expected_value)
+
+    @classmethod
+    def _requires_evaluable_condition(cls, required_conditions: Any) -> bool:
+        """Whether ``required_conditions`` requires (not only forbids) at least one evaluable entry."""
+        if isinstance(required_conditions, list):
+            return bool(cls._evaluable_requirements(required_conditions))
+        if isinstance(required_conditions, dict):
+            return any(cls._evaluable_requirements(required_conditions.get(g)) for g in ("all_of", "any_of"))
+        return False
 
     @staticmethod
     def _evaluable_requirements(entries: Any) -> list[dict[str, Any]]:

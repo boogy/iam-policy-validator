@@ -182,7 +182,7 @@ the CHANGELOG `Fixed` entries say. Parsing and matching live in
 `utils/requirement_branches.py`. Each valid branch becomes an ordinary requirement run
 through `_check_per_statement` / `_check_policy_wide` with keyword-only `effects` and
 `statement_filter`. An omitted branch `effect` means `Allow` in both forms; findings
-for the same rule (`ValidationIssue._rule_identity`, key-order independent, ignoring `severity`/`description`) differing only in severity or suggestion are reported once (most severe kept); `none_of` flags only `Allow` statements. Malformed branches yield one `invalid_condition_requirement`
+for the same rule (`ValidationIssue._rule_identity`, key-order independent, ignoring `severity`/`description`) differing only in severity or suggestion are reported once (most severe kept); `none_of` flags only `Allow` statements. Malformed branches yield one `invalid_condition_requirement` (only when a statement matches the requirement's actions)
 (`error`, `statement_index=-1`) per policy. `branch_problem` does not check `severity`:
 an invalid branch severity is reported and dropped by `_prepare_requirement` and the
 branch still enforced (and counted by `enforced_actions`). `enforced_actions` skips a requirement
@@ -231,14 +231,22 @@ literally instead of calling `get_severity(config)`:
   **malformed** config (bad `required_conditions` shape, unknown or non-list group,
   non-string `condition_key`/`operator`, invalid requirement, branch or entry
   `severity`, malformed `if` branch), where the config itself is at fault. All of these
-  come from one pre-pass, `_prepare_requirement`, once per policy at
-  `statement_index=-1`; it returns a copy (never mutate the shared config) with null and
-  invalid severities stripped, so the entry/branch/requirement is still enforced at the
-  fallback severity. The per-statement path skips malformed pieces silently.
-  `principal_validation` reports a non-mapping or keyless `required_conditions` entry, an
-  unknown or non-list group or a scalar `required_conditions` the same way and skips it
-  (never satisfied); a nested `all_of` entry needs every child. For a
-  satisfied-requirement finding the requirement's own `severity` takes precedence over
+  except malformed `if` branches (`requirement_branches`, via `_check_branches`) come
+  from one pre-pass, `_prepare_requirement`, once per policy at `statement_index=-1`; it
+  returns a copy (never mutate the shared config) with null and invalid severities
+  stripped, so the entry/branch/requirement is still enforced at the fallback severity.
+  The per-statement path skips malformed pieces silently. A requirement's config
+  problems (both kinds) are emitted only for a policy with a statement of either effect
+  matching its actions (`_matches_any_statement`), and the pre-pass ones bypass the
+  requirement's own `ignore_patterns`. `enforced_actions` counts a requirement (or `if`
+  branch) only when its prepared `required_conditions` holds an evaluable `all_of` /
+  `any_of` / list entry (`_requires_evaluable_condition`); detection-only (empty) still
+  counts. `principal_validation` instead reports a non-mapping or keyless entry, a
+  non-string `operator`, an unknown or non-list group or a scalar `required_conditions`
+  per statement (`statement_index` = that statement, no pre-pass) and skips it (never
+  satisfied); a nested `all_of` entry needs every child, and its leaves inherit the
+  parent's `severity`/`description`/`example` unless they set their own. A null, empty
+  or invalid `severity` (entry, then requirement) falls back to the next level, then
   the check default.
 
 ---

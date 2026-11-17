@@ -46,12 +46,15 @@ from iam_validator.checks.utils.condition_matching import (
     is_deny,
     is_negated_operator,
 )
+from iam_validator.checks.utils.requirement_branches import severity_problem
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.condition_validators import is_operator_supports_wildcards
 from iam_validator.core.config.service_principals import is_aws_service_principal
 from iam_validator.core.constants import ACCOUNT_ID_PATTERN, ARN_PARTITIONS, ROOT_ARN_PATTERN
 from iam_validator.core.models import Statement, ValidationIssue
+
+_INHERITED_KEYS = ("severity", "description", "example")
 
 
 def principal_spellings(principal: str) -> list[str]:
@@ -655,7 +658,8 @@ class PrincipalValidationCheck(PolicyCheck):
                             statement,
                             statement_idx,
                             item,
-                            "a mapping with a string `condition_key` or a non-empty `all_of` list of them",
+                            "a mapping with a string `condition_key` (and a string `operator`, if set) "
+                            "or a non-empty `all_of` list of them",
                         )
                     )
             return [item for item in value if isinstance(item, dict) and self._is_enforceable(item)]
@@ -720,7 +724,7 @@ class PrincipalValidationCheck(PolicyCheck):
                 if not any_present:
                     # Create a combined error for any_of
                     condition_keys = [self._describe(cond) for cond in any_of]
-                    severity = requirement.get("severity", self.get_severity(config))
+                    severity = self._severity(config, requirement)
                     issues.append(
                         ValidationIssue(
                             severity=severity,
@@ -783,12 +787,27 @@ class PrincipalValidationCheck(PolicyCheck):
             nested = entry["all_of"]
             return isinstance(nested, list) and bool(nested) and all(cls._is_enforceable(e) for e in nested)
         condition_key = entry.get("condition_key")
-        return isinstance(condition_key, str) and bool(condition_key)
+        operator = entry.get("operator")
+        return (
+            isinstance(condition_key, str) and bool(condition_key) and (operator is None or isinstance(operator, str))
+        )
 
     @classmethod
-    def _leaves(cls, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """``entries`` with each nested ``all_of`` replaced by its leaf requirements."""
-        return [leaf for e in entries for leaf in (cls._leaves(e["all_of"]) if "all_of" in e else [e])]
+    def _leaves(cls, entries: list[dict[str, Any]], inherited: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """``entries`` with each nested ``all_of`` replaced by its leaves, which inherit the parent's presentation."""
+        leaves: list[dict[str, Any]] = []
+        for entry in entries:
+            own = {**(inherited or {}), **{k: v for k in _INHERITED_KEYS if (v := entry.get(k)) is not None}}
+            leaves.extend(cls._leaves(entry["all_of"], own) if "all_of" in entry else [{**entry, **own}])
+        return leaves
+
+    def _severity(self, config: CheckConfig, *nodes: dict[str, Any]) -> str:
+        """The first valid ``severity`` among ``nodes``, else the check severity."""
+        for node in nodes:
+            severity = node.get("severity")
+            if severity is not None and severity_problem(severity) is None:
+                return severity
+        return self.get_severity(config)
 
     @classmethod
     def _describe(cls, entry: dict[str, Any]) -> str:
@@ -855,7 +874,7 @@ class PrincipalValidationCheck(PolicyCheck):
         message_prefix = "ALL required:" if requirement_type == "all_of" else "Required:"
 
         # Determine severity with precedence: condition > requirement > global
-        severity = condition_requirement.get("severity") or requirement.get("severity") or self.get_severity(config)
+        severity = self._severity(config, condition_requirement, requirement)
 
         suggestion_text, example_code = self._build_condition_suggestion(
             condition_key, description, example, expected_value, operator
@@ -988,7 +1007,7 @@ class PrincipalValidationCheck(PolicyCheck):
         if description:
             suggestion += f". {description}"
 
-        severity = requirement.get("severity", self.get_severity(config))
+        severity = self._severity(config, requirement)
 
         return ValidationIssue(
             severity=severity,

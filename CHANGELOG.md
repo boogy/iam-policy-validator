@@ -19,7 +19,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 ### Fixed
 
 - Report a non-mapping entry under `required_conditions.any_of` (e.g. a bare condition key string) or a nested `all_of` that is not a non-empty list of condition entries as `invalid_condition_requirement` instead of crashing `action_condition_enforcement` and losing its findings for the policy. A malformed `any_of` entry is now left out of the evaluation and of the missing-condition message, as in `all_of` and `none_of`. ([#240])
-- Report a `required_conditions` that is neither a list nor a mapping, or an `all_of`/`any_of`/`none_of` group that is not a list, as `invalid_condition_requirement` instead of crashing `action_condition_enforcement`. A null group (an empty YAML key) still counts as empty. Every malformed-config finding of this check is reported once per policy (`statement_index: -1`), even when no statement grants the action. ([#240])
+- Report a `required_conditions` that is neither a list nor a mapping, or an `all_of`/`any_of`/`none_of` group that is not a list, as `invalid_condition_requirement` instead of crashing `action_condition_enforcement`. A null group (an empty YAML key) still counts as empty. Every malformed-config finding of this check is reported once per policy (`statement_index: -1`), and only for a policy with a statement (`Allow` or `Deny`) that names one of the requirement's actions. A shape, entry or `severity` problem is no longer hidden by the requirement's own `ignore_patterns`. ([#240])
 - Ignore an empty top-level `required_conditions` (null, `[]`, `{}` or a mapping whose groups are all empty) beside `if` instead of reporting the requirement as having a malformed `if` branch. ([#240])
 - Keep the `example` of a nested `all_of` entry on each of its missing-key findings; it was dropped when the entry was split per key. A leaf's null `severity` or `example` no longer overrides the enclosing entry's. ([#240])
 - Keep the `example` and `description` of a nested `all_of` entry inside `any_of` in its finding. ([#240])
@@ -39,6 +39,11 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Treat a null requirement-level `severity` in `action_condition_requirements` as unset instead of returning only a `check_execution_error` for the policy. ([#240])
 - Treat a null group in a policy-wide `actions` mapping (e.g. `all_of:` left empty) as empty instead of crashing `action_condition_enforcement`. ([#240])
 - Report a `principal_condition_requirements` entry without a string `condition_key`, or a `required_conditions` key other than `all_of`/`any_of`/`none_of`, as `invalid_condition_requirement` and never treat it as satisfied; a keyless entry satisfied `any_of` unconditionally. A nested `all_of` entry now requires every condition in it. ([#240])
+- Stop `sensitive_action` deferring to an `action_condition_enforcement` requirement (or `if` branch) with no well-formed condition entry (e.g. `required_conditions: {allof: [...]}` or only keyless entries). It enforces nothing, so the action was reported by neither check. ([#240])
+- Report a `principal_condition_requirements` entry whose `operator` is not a string as `invalid_condition_requirement` instead of crashing `principal_validation` when the statement has a `Condition`. ([#240])
+- Fall back to the enclosing or check severity for a null, empty or invalid `severity` in `principal_condition_requirements` (requirement or entry) instead of crashing `principal_validation`. ([#240])
+- Keep the `severity`, `description` and `example` of a nested `all_of` entry in `principal_condition_requirements` on each of its findings; a child's own non-null value wins. ([#240])
+- Describe a malformed nested `all_of` entry in `action_condition_enforcement` as such, instead of suggesting to nest it under `all_of`, and name a non-list group as `required_conditions.<group>`. ([#240])
 - Label a policy-level finding (`statement_index: -1`) `Policy-level` in the default console output instead of `Statement 0`, as the `enhanced` format does. ([#240])
 
 [#240]: https://github.com/boogy/iam-policy-validator/pull/240

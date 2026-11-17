@@ -359,8 +359,13 @@ class TestMalformedBranches:
         assert ACTION in issue.message
         assert issue.action == ACTION
 
-    async def test_reported_even_when_no_statement_grants_the_action(self, check):
+    async def test_not_reported_when_no_statement_grants_the_action(self, check):
         issues = await _run(check, _config({"actions": [ACTION], "if": []}), _stmt(action="s3:GetObject"))
+
+        assert issues == []
+
+    async def test_reported_when_a_deny_statement_grants_the_action(self, check):
+        issues = await _run(check, _config({"actions": [ACTION], "if": []}), _stmt("Deny"))
 
         assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
 

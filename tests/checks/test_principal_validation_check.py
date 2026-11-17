@@ -1237,3 +1237,85 @@ class TestCrossAccountOrgRequirement:
         )
         assert "operator" not in entry
         assert "ForAnyValue:StringLike" in entry["example"]
+
+
+class TestPrincipalRequirementConfigRobustness:
+    @pytest.fixture
+    def check(self):
+        return PrincipalValidationCheck()
+
+    @staticmethod
+    def _config(requirement: dict) -> CheckConfig:
+        return CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [{"principals": ["*"], **requirement}],
+            },
+        )
+
+    @staticmethod
+    def _statement(condition: dict | None = None) -> Statement:
+        return Statement(
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal="*", Condition=condition
+        )
+
+    @pytest.mark.parametrize("operator", [5, ["StringEquals"]])
+    async def test_non_string_operator_is_reported_not_raised(self, check, operator):
+        config = self._config({"required_conditions": [{"condition_key": "aws:SourceArn", "operator": operator}]})
+
+        issues = await check.execute(self._statement({"StringEquals": {"aws:SourceAccount": "1"}}), 0, None, config)
+
+        assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+        assert "operator" in issues[0].message
+
+    @pytest.mark.parametrize("severity", [None, "", "urgent"])
+    @pytest.mark.parametrize(
+        ("required_conditions", "condition", "issue_type"),
+        [
+            ({"any_of": [{"condition_key": "aws:SourceArn"}]}, None, "missing_principal_condition_any_of"),
+            (
+                {"none_of": [{"condition_key": "aws:SourceArn"}]},
+                {"StringEquals": {"aws:SourceArn": "x"}},
+                "forbidden_principal_condition",
+            ),
+            ([{"condition_key": "aws:SourceArn"}], None, "missing_principal_condition"),
+        ],
+    )
+    async def test_null_or_invalid_requirement_severity_falls_back(
+        self, check, severity, required_conditions, condition, issue_type
+    ):
+        config = self._config({"severity": severity, "required_conditions": required_conditions})
+
+        issues = await check.execute(self._statement(condition), 0, None, config)
+
+        assert [(i.issue_type, i.severity) for i in issues] == [(issue_type, "high")]
+
+    async def test_invalid_entry_severity_falls_back_to_requirement(self, check):
+        config = self._config(
+            {"severity": "low", "required_conditions": [{"condition_key": "aws:SourceArn", "severity": "urgent"}]}
+        )
+
+        issues = await check.execute(self._statement(), 0, None, config)
+
+        assert [(i.issue_type, i.severity) for i in issues] == [("missing_principal_condition", "low")]
+
+    async def test_nested_all_of_children_inherit_parent_presentation(self, check):
+        entry = {
+            "severity": "critical",
+            "description": "DESC",
+            "example": "EX",
+            "all_of": [
+                {"condition_key": "aws:SourceArn", "severity": None},
+                {"condition_key": "aws:SourceAccount", "severity": "low"},
+            ],
+        }
+        config = self._config({"required_conditions": [entry]})
+
+        issues = await check.execute(self._statement(), 0, None, config)
+
+        assert [(i.severity, i.suggestion, i.example) for i in issues] == [
+            ("critical", "DESC", "EX"),
+            ("low", "DESC", "EX"),
+        ]

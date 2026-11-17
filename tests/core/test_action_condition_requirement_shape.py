@@ -137,10 +137,10 @@ class TestNonListGroupIsReported:
     @pytest.mark.parametrize(
         ("required_conditions", "label"),
         [
-            ({"all_of": "aws:PrincipalOrgID"}, "all_of"),
-            ({"any_of": "aws:PrincipalOrgID"}, "any_of"),
-            ({"none_of": "aws:PrincipalOrgID"}, "none_of"),
-            ({"all_of": 5}, "all_of"),
+            ({"all_of": "aws:PrincipalOrgID"}, "required_conditions.all_of"),
+            ({"any_of": "aws:PrincipalOrgID"}, "required_conditions.any_of"),
+            ({"none_of": "aws:PrincipalOrgID"}, "required_conditions.none_of"),
+            ({"all_of": 5}, "required_conditions.all_of"),
             ("aws:PrincipalOrgID", "required_conditions"),
         ],
     )
