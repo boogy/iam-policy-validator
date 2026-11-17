@@ -22,11 +22,16 @@ def has_no_conditions(required_conditions: Any) -> bool:
     return not required_conditions
 
 
-def only_forbids(required_conditions: Any) -> bool:
-    """Whether ``required_conditions`` holds a ``none_of`` group and no condition it requires."""
-    if not isinstance(required_conditions, dict) or not required_conditions.get("none_of"):
+def is_evaluable_entry(entry: Any) -> bool:
+    """Whether a condition entry has a non-empty string ``condition_key`` (and string ``operator``, if set), or a non-empty ``all_of`` of such entries."""
+    if not isinstance(entry, dict):
         return False
-    return not any(required_conditions.get(k) for k in ("all_of", "any_of"))
+    if "all_of" in entry:
+        nested = entry["all_of"]
+        return isinstance(nested, list) and bool(nested) and all(is_evaluable_entry(e) for e in nested)
+    condition_key = entry.get("condition_key")
+    operator = entry.get("operator")
+    return isinstance(condition_key, str) and bool(condition_key) and (operator is None or isinstance(operator, str))
 
 
 def severity_problem(severity: Any) -> str | None:

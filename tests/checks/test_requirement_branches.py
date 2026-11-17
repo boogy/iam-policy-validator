@@ -7,6 +7,7 @@ from iam_validator.checks.utils.requirement_branches import (
     branch_enforces_allow_everywhere,
     branch_matches_resources,
     branch_problem,
+    is_evaluable_entry,
     requirement_branches,
     severity_problem,
 )
@@ -146,3 +147,22 @@ def test_branch_problem_leaves_severity_to_the_caller():
 def test_truthy_scalar_required_conditions_is_not_called_missing(required_conditions):
     problem = branch_problem({"required_conditions": required_conditions})
     assert problem == "`required_conditions` must be a list or a mapping of `all_of`/`any_of`/`none_of`"
+
+
+@pytest.mark.parametrize(
+    ("entry", "expected"),
+    [
+        ({"condition_key": "aws:SourceArn"}, True),
+        ({"condition_key": "aws:SourceArn", "operator": "StringEquals"}, True),
+        ({"all_of": [{"condition_key": "a"}, {"all_of": [{"condition_key": "b"}]}]}, True),
+        ("aws:SourceArn", False),
+        ({"condition_key": ""}, False),
+        ({"condition_key": 5}, False),
+        ({"condition_key": "a", "operator": ["StringEquals"]}, False),
+        ({"all_of": []}, False),
+        ({"all_of": "a"}, False),
+        ({"all_of": [{"condition_key": "a"}, "b"]}, False),
+    ],
+)
+def test_is_evaluable_entry(entry, expected):
+    assert is_evaluable_entry(entry) is expected

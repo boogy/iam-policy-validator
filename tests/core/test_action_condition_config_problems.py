@@ -296,6 +296,17 @@ class TestConfigProblemsIgnoreRequirementIgnorePatterns:
 
         assert _types(issues) == [("invalid_condition_requirement", -1)] * 2
 
+    async def test_malformed_branch_is_not_hidden(self, check):
+        requirement = {
+            "actions": [ACTION],
+            "ignore_patterns": [{"action": ACTION}],
+            "if": [{"effect": "Nope", "required_conditions": [{"condition_key": KEY}]}],
+        }
+
+        issues = await _run(check, _config(requirement))
+
+        assert _types(issues) == [("invalid_condition_requirement", -1)]
+
 
 class TestMalformedMessages:
     async def test_non_list_group_names_required_conditions(self, check):

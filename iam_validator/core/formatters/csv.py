@@ -110,7 +110,7 @@ class CSVFormatter(OutputFormatter):
                 writer.writerow(
                     [
                         self._sanitize_cell(policy_result.policy_file),
-                        (issue.statement_index + 1 if issue.statement_index is not None else ""),
+                        (issue.statement_index + 1 if issue.statement_index >= 0 else ""),
                         self._sanitize_cell(issue.statement_sid or ""),
                         issue.line_number or "",
                         issue.severity,

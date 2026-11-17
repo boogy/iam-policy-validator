@@ -36,6 +36,7 @@ from iam_validator.checks.utils.requirement_branches import (
     branch_matches_resources,
     branch_problem,
     has_no_conditions,
+    is_evaluable_entry,
     requirement_branches,
     severity_problem,
 )
@@ -122,16 +123,17 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # Process each requirement
         for raw_requirement in requirements:
             requirement, problems = self._prepare_requirement(raw_requirement)
-            has_problems = bool(problems) or ("if" in requirement and bool(requirement_branches(requirement)[1]))
-            matched = has_problems and await self._matches_any_statement(policy, requirement, fetcher)
-            if matched:
+            branch_problems = requirement_branches(requirement)[1] if "if" in requirement else []
+            has_problems = bool(problems) or bool(branch_problems)
+            if has_problems and await self._matches_any_statement(policy, requirement, fetcher):
                 issues.extend(problems)
+                issues.extend(self._create_malformed_branch_issue(requirement, p) for p in branch_problems)
             # Check if actions use all_of/any_of/none_of (policy-wide) or simple list (per-statement)
             uses_logical_operators = self._is_policy_wide(requirement)
 
             if "if" in requirement:
                 branch_issues = await self._check_branches(
-                    policy, requirement, fetcher, config, policy_wide=uses_logical_operators, report_problems=matched
+                    policy, requirement, fetcher, config, policy_wide=uses_logical_operators
                 )
                 issues.extend(
                     self._filter_requirement_issues(branch_issues, requirement.get("ignore_patterns", []), policy_file)
@@ -183,11 +185,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         config: CheckConfig,
         *,
         policy_wide: bool,
-        report_problems: bool = True,
     ) -> list[ValidationIssue]:
         """Enforce each ``if`` branch as an ordinary requirement scoped by its effect and resource predicates."""
-        branches, problems = requirement_branches(requirement)
-        issues = [self._create_malformed_branch_issue(requirement, p) for p in problems] if report_problems else []
+        branches, _ = requirement_branches(requirement)
+        issues: list[ValidationIssue] = []
 
         base = {k: v for k, v in requirement.items() if k not in ("if", "required_conditions", "severity")}
         for branch in branches:
@@ -226,7 +227,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 issue.action,
                 issue.condition_key,
                 issue.line_number,
-                issue.message,
+                issue.message if issue._rule_identity is None else None,
                 issue.example,
                 issue._rule_identity,
             )
@@ -318,7 +319,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     ) -> list[Any]:
         prepared: list[Any] = []
         for entry in entries:
-            if not self._is_evaluable_requirement(entry):
+            if not is_evaluable_entry(entry):
                 issues.append(self._create_malformed_requirement_issue(requirement, None, entry, label))
                 prepared.append(entry)
             else:
@@ -1534,24 +1535,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """The entries of a condition group that can be evaluated; malformed ones are reported once per policy."""
         if not isinstance(entries, list):
             return []
-        return [e for e in entries if ActionConditionEnforcementCheck._is_evaluable_requirement(e)]
-
-    @staticmethod
-    def _is_evaluable_requirement(entry: Any) -> bool:
-        if not isinstance(entry, dict):
-            return False
-        if "all_of" in entry:
-            nested_all_of = entry["all_of"]
-            return (
-                isinstance(nested_all_of, list)
-                and bool(nested_all_of)
-                and all(ActionConditionEnforcementCheck._is_evaluable_requirement(e) for e in nested_all_of)
-            )
-        condition_key = entry.get("condition_key")
-        operator = entry.get("operator")
-        return (
-            isinstance(condition_key, str) and bool(condition_key) and (operator is None or isinstance(operator, str))
-        )
+        return [e for e in entries if is_evaluable_entry(e)]
 
     @staticmethod
     def _with_rule_identity(issue: ValidationIssue, *rule: Any) -> ValidationIssue:
@@ -1637,7 +1621,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 line_number=statement.line_number,
                 field_name="condition",
             ),
-            requirement_type,
+            "all_of" if requirement_type == "required" else requirement_type,
             condition_requirement,
         )
 

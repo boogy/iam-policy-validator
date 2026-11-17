@@ -182,13 +182,14 @@ the CHANGELOG `Fixed` entries say. Parsing and matching live in
 `utils/requirement_branches.py`. Each valid branch becomes an ordinary requirement run
 through `_check_per_statement` / `_check_policy_wide` with keyword-only `effects` and
 `statement_filter`. An omitted branch `effect` means `Allow` in both forms; findings
-for the same rule (`ValidationIssue._rule_identity`, key-order independent, ignoring `severity`/`description`) differing only in severity or suggestion are reported once (most severe kept); `none_of` flags only `Allow` statements. Malformed branches yield one `invalid_condition_requirement` (only when a statement matches the requirement's actions)
+for the same rule (`ValidationIssue._rule_identity`, key-order independent, ignoring `severity`/`description`) differing only in severity, suggestion or message wording are reported once (most severe kept; a list entry and an `all_of` entry share an identity); `none_of` flags only `Allow` statements. Malformed branches yield one `invalid_condition_requirement` (only when a statement matches the requirement's actions)
 (`error`, `statement_index=-1`) per policy. `branch_problem` does not check `severity`:
 an invalid branch severity is reported and dropped by `_prepare_requirement` and the
 branch still enforced (and counted by `enforced_actions`). `enforced_actions` skips a requirement
 whose branches (including a top-level `required_conditions`, treated as an unscoped
 branch) never enforce `Allow` without `resource` / `not_resource`, and any requirement
-or branch whose `required_conditions` only forbids (`only_forbids`: `none_of` alone).
+or branch whose `required_conditions` holds no evaluable `all_of` / `any_of` / list entry
+(`_requires_evaluable_condition`, e.g. `none_of` alone).
 
 ## `sensitive_action` severity (gotcha)
 
@@ -237,15 +238,17 @@ literally instead of calling `get_severity(config)`:
   stripped, so the entry/branch/requirement is still enforced at the fallback severity.
   The per-statement path skips malformed pieces silently. A requirement's config
   problems (both kinds) are emitted only for a policy with a statement of either effect
-  matching its actions (`_matches_any_statement`), and the pre-pass ones bypass the
+  matching its actions (`_matches_any_statement`), and both kinds bypass the
   requirement's own `ignore_patterns`. `enforced_actions` counts a requirement (or `if`
   branch) only when its prepared `required_conditions` holds an evaluable `all_of` /
   `any_of` / list entry (`_requires_evaluable_condition`); detection-only (empty) still
-  counts. `principal_validation` instead reports a non-mapping or keyless entry, a
+  counts. Both checks judge an entry with `is_evaluable_entry` (`utils/requirement_branches.py`).
+  `principal_validation` instead reports a non-mapping or keyless entry, a
   non-string `operator`, an unknown or non-list group or a scalar `required_conditions`
   per statement (`statement_index` = that statement, no pre-pass) and skips it (never
   satisfied); a nested `all_of` entry needs every child, and its leaves inherit the
-  parent's `severity`/`description`/`example` unless they set their own. A null, empty
+  parent's `severity`/`description`/`example` unless they set their own (a null or
+  invalid one counts as unset). A null, empty
   or invalid `severity` (entry, then requirement) falls back to the next level, then
   the check default.
 
@@ -318,4 +321,4 @@ Use these instead of reimplementing:
 - `policy_level_checks.py` — `check_policy_level_actions()`, `_check_all_of_pattern()`
 - `formatting.py` — `format_list_with_backticks()`
 - `requirement_branches.py` — `requirement_branches()`, `branch_problem()`, `severity_problem()`, `branch_effects()`,
-  `branch_matches_resources()`, `branch_enforces_allow_everywhere()`, `only_forbids()`
+  `branch_matches_resources()`, `branch_enforces_allow_everywhere()`, `is_evaluable_entry()`

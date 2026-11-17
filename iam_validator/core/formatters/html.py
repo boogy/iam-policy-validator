@@ -499,7 +499,7 @@ class HTMLFormatter(OutputFormatter):
 
             issues_by_statement: dict[int, list[ValidationIssue]] = {}
             for issue in policy_result.issues:
-                stmt_idx = issue.statement_index or -1
+                stmt_idx = issue.statement_index
                 if stmt_idx not in issues_by_statement:
                     issues_by_statement[stmt_idx] = []
                 issues_by_statement[stmt_idx].append(issue)

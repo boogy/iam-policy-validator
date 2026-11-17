@@ -1301,6 +1301,14 @@ class TestPrincipalRequirementConfigRobustness:
 
         assert [(i.issue_type, i.severity) for i in issues] == [("missing_principal_condition", "low")]
 
+    async def test_invalid_leaf_severity_falls_back_to_parent_all_of_severity(self, check):
+        entry = {"severity": "low", "all_of": [{"condition_key": "aws:SourceArn", "severity": "Low"}]}
+        config = self._config({"required_conditions": {"all_of": [entry]}})
+
+        issues = await check.execute(self._statement(), 0, None, config)
+
+        assert [(i.issue_type, i.severity) for i in issues] == [("missing_principal_condition", "low")]
+
     async def test_nested_all_of_children_inherit_parent_presentation(self, check):
         entry = {
             "severity": "critical",

@@ -46,7 +46,7 @@ from iam_validator.checks.utils.condition_matching import (
     is_deny,
     is_negated_operator,
 )
-from iam_validator.checks.utils.requirement_branches import severity_problem
+from iam_validator.checks.utils.requirement_branches import is_evaluable_entry, severity_problem
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.condition_validators import is_operator_supports_wildcards
@@ -649,10 +649,13 @@ class PrincipalValidationCheck(PolicyCheck):
                 if value is not None:
                     issues.append(self._create_invalid_entry_issue(statement, statement_idx, value, "a list"))
                 return []
+            enforceable: list[dict[str, Any]] = []
             for item in value:
-                if not isinstance(item, dict):
+                if is_evaluable_entry(item):
+                    enforceable.append(item)
+                elif not isinstance(item, dict):
                     issues.append(self._create_invalid_entry_issue(statement, statement_idx, item, "a mapping"))
-                elif not self._is_enforceable(item):
+                else:
                     issues.append(
                         self._create_invalid_entry_issue(
                             statement,
@@ -662,7 +665,7 @@ class PrincipalValidationCheck(PolicyCheck):
                             "or a non-empty `all_of` list of them",
                         )
                     )
-            return [item for item in value if isinstance(item, dict) and self._is_enforceable(item)]
+            return enforceable
 
         # Handle simple list format (backward compatibility)
         if isinstance(required_conditions_config, list):
@@ -780,26 +783,17 @@ class PrincipalValidationCheck(PolicyCheck):
         )
 
     @classmethod
-    def _is_enforceable(cls, entry: Any) -> bool:
-        if not isinstance(entry, dict):
-            return False
-        if "all_of" in entry:
-            nested = entry["all_of"]
-            return isinstance(nested, list) and bool(nested) and all(cls._is_enforceable(e) for e in nested)
-        condition_key = entry.get("condition_key")
-        operator = entry.get("operator")
-        return (
-            isinstance(condition_key, str) and bool(condition_key) and (operator is None or isinstance(operator, str))
-        )
-
-    @classmethod
     def _leaves(cls, entries: list[dict[str, Any]], inherited: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """``entries`` with each nested ``all_of`` replaced by its leaves, which inherit the parent's presentation."""
         leaves: list[dict[str, Any]] = []
         for entry in entries:
-            own = {**(inherited or {}), **{k: v for k in _INHERITED_KEYS if (v := entry.get(k)) is not None}}
+            own = {**(inherited or {}), **{k: entry[k] for k in _INHERITED_KEYS if cls._is_set(k, entry.get(k))}}
             leaves.extend(cls._leaves(entry["all_of"], own) if "all_of" in entry else [{**entry, **own}])
         return leaves
+
+    @staticmethod
+    def _is_set(key: str, value: Any) -> bool:
+        return value is not None and (key != "severity" or severity_problem(value) is None)
 
     def _severity(self, config: CheckConfig, *nodes: dict[str, Any]) -> str:
         """The first valid ``severity`` among ``nodes``, else the check severity."""

@@ -514,3 +514,18 @@ class TestNullTopLevelConditions:
         assert len(malformed) == 1
         assert "malformed `required_conditions`" in malformed[0].message
         assert "`if` branch" not in malformed[0].suggestion
+
+
+class TestRequiredListAndAllOfBranchOverlap:
+    async def test_same_missing_key_as_list_and_all_of_is_reported_once(self, check):
+        entry = {"condition_key": "iam:PassedToService"}
+        requirement = {
+            "actions": ["iam:PassRole"],
+            "required_conditions": [entry],
+            "if": [{"resource": ".*prod.*", "required_conditions": {"all_of": [entry]}}],
+        }
+        statement = Statement(effect="Allow", action="iam:PassRole", resource="arn:aws:iam::1:role/prod")
+
+        issues = await _run(check, _config(requirement), statement)
+
+        assert [i.issue_type for i in issues] == ["missing_required_condition"]
