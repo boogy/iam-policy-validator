@@ -166,3 +166,14 @@ def test_truthy_scalar_required_conditions_is_not_called_missing(required_condit
 )
 def test_is_evaluable_entry(entry, expected):
     assert is_evaluable_entry(entry) is expected
+
+
+def test_entry_with_condition_key_and_all_of_is_not_evaluable():
+    assert not is_evaluable_entry({"condition_key": "aws:X", "all_of": [{"condition_key": "aws:Y"}]})
+
+
+@pytest.mark.parametrize("value", [False, 0, ""])
+def test_falsy_scalar_required_conditions_is_a_shape_problem(value):
+    assert branch_problem({"required_conditions": value}) == (
+        "`required_conditions` must be a list or a mapping of `all_of`/`any_of`/`none_of`"
+    )

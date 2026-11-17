@@ -55,6 +55,11 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Use a `principal_condition_requirements` `none_of` entry's own `severity` for its `forbidden_principal_condition` finding instead of the requirement's. ([#240])
 - Report an invalid `severity` (e.g. `Critical`, `hgih`) on a `principal_condition_requirements` requirement or entry (including nested `all_of` entries) as `invalid_condition_requirement` instead of silently falling back; the finding still uses the fallback severity. ([#240])
 - Compute the actions `action_condition_enforcement` enforces once per config in `sensitive_action`, instead of once per unconditioned sensitive statement. ([#240])
+- Report a non-string element in an `action_condition_requirements` `actions` list or `all_of`/`any_of`/`none_of` group (e.g. `actions: [null]`) as `invalid_condition_requirement` and enforce the remaining actions, instead of crashing `action_condition_enforcement` (also under `merge_strategy: per_action_override`) and losing its findings for the policy. ([#240])
+- Report a condition entry carrying both `condition_key` and `all_of` as `invalid_condition_requirement` in `action_condition_enforcement` and `principal_validation`; the `condition_key` was silently dropped. ([#240])
+- Report a falsy scalar `required_conditions` (`false`, `0`, `""`) as `invalid_condition_requirement` in `action_condition_enforcement` and `principal_validation` instead of treating it as empty (detection-only or skipped). Only null, `[]` and `{}` count as empty. ([#240])
+- Word a malformed top-level `required_conditions` in `action_condition_enforcement` the same way as the same problem in an `if` branch. ([#240])
+- Report an invalid requirement-level `severity` in `principal_condition_requirements` once per policy (`statement_index: -1`) instead of once per matching statement. ([#240])
 
 [#240]: https://github.com/boogy/iam-policy-validator/pull/240
 

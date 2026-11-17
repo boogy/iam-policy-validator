@@ -217,3 +217,11 @@ class TestEnforcedActionsComputedOncePerConfig:
         issues = await _run(check, _config({"enabled": False, "requirements": [PASS_ROLE_REQUIREMENT]}))
 
         assert [i.issue_type for i in issues] == ["missing_condition"]
+
+    def test_covered_actions_are_the_cached_frozenset_not_a_copy(self, check):
+        config = _config({"requirements": [PASS_ROLE_REQUIREMENT]})
+
+        first = check._get_actions_covered_by_condition_enforcement(config)
+
+        assert isinstance(first, frozenset)
+        assert check._get_actions_covered_by_condition_enforcement(config) is first

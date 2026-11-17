@@ -16,10 +16,10 @@ CONDITIONS_SHAPE_PROBLEM = "`required_conditions` must be a list or a mapping of
 
 
 def has_no_conditions(required_conditions: Any) -> bool:
-    """Whether ``required_conditions`` is empty, including a mapping whose groups are all empty or null."""
+    """Whether ``required_conditions`` is ``None``, ``[]``, ``{}`` or a mapping whose groups are all empty or null."""
     if isinstance(required_conditions, dict) and required_conditions.keys() <= set(CONDITION_GROUPS):
         return all(v is None or v == [] for v in required_conditions.values())
-    return not required_conditions
+    return required_conditions is None or required_conditions == [] or required_conditions == {}
 
 
 def is_evaluable_entry(entry: Any) -> bool:
@@ -27,6 +27,8 @@ def is_evaluable_entry(entry: Any) -> bool:
     if not isinstance(entry, dict):
         return False
     if "all_of" in entry:
+        if "condition_key" in entry:
+            return False
         nested = entry["all_of"]
         return isinstance(nested, list) and bool(nested) and all(is_evaluable_entry(e) for e in nested)
     condition_key = entry.get("condition_key")
@@ -41,10 +43,11 @@ def severity_problem(severity: Any) -> str | None:
     return f"`severity` must be one of {', '.join(sorted(VALID_SEVERITIES))}, got `{severity!r}`"
 
 
-def _conditions_problem(required_conditions: Any) -> str | None:
+def conditions_problem(required_conditions: Any) -> str | None:
+    """Why ``required_conditions`` cannot be enforced, or ``None`` when it holds at least one group or entry."""
     if isinstance(required_conditions, list) and required_conditions:
         return None
-    if required_conditions and not isinstance(required_conditions, (list, dict)):
+    if required_conditions is not None and not isinstance(required_conditions, (list, dict)):
         return CONDITIONS_SHAPE_PROBLEM
     if isinstance(required_conditions, dict):
         unknown = sorted(map(str, required_conditions.keys() - set(CONDITION_GROUPS)))
@@ -86,7 +89,7 @@ def branch_problem(branch: Any) -> str | None:
         return f"unknown key(s) {', '.join(f'`{k}`' for k in unknown)} (allowed: {allowed})"
     if "resource" in branch and "not_resource" in branch:
         return "`resource` and `not_resource` are mutually exclusive: a statement has only one of them"
-    problem = _conditions_problem(branch.get("required_conditions"))
+    problem = conditions_problem(branch.get("required_conditions"))
     if problem:
         return problem
     if "effect" in branch and (problem := _effect_problem(branch["effect"])):
@@ -116,7 +119,7 @@ def requirement_branches(requirement: dict[str, Any]) -> tuple[list[dict[str, An
             branches.append(branch)
     if not has_no_conditions(requirement.get("required_conditions")):
         top_level = requirement["required_conditions"]
-        problem = _conditions_problem(top_level)
+        problem = conditions_problem(top_level)
         if problem:
             problems.append(f"{TOP_LEVEL_PREFIX}{problem}")
         else:

@@ -102,8 +102,6 @@ class SensitiveActionCheck(PolicyCheck):
     #: category in ``category_severities`` nor the check's own ``severity``. They
     #: live here rather than in the default config so a user's ``severity:`` can win
     #: over them (a merged config cannot tell a shipped value from a user's).
-    _covered_cache: tuple[dict[str, Any], frozenset[str]] | None = None
-
     DEFAULT_CATEGORY_SEVERITIES: ClassVar[dict[str, str]] = {
         "credential_exposure": "critical",
         "priv_esc": "critical",
@@ -121,6 +119,8 @@ class SensitiveActionCheck(PolicyCheck):
         "data_access": "medium",
         "credential_exposure": "medium",
     }
+
+    _covered_cache: tuple[dict[str, Any], frozenset[str]] | None = None
 
     def _get_severity_for_action(self, action: str, config: CheckConfig, resource_scoped: bool = False) -> str:
         """
@@ -163,7 +163,7 @@ class SensitiveActionCheck(PolicyCheck):
         resources = statement.get_resources()
         return bool(resources) and not statement.not_resource and all("*" not in r for r in resources)
 
-    def _get_actions_covered_by_condition_enforcement(self, config: CheckConfig) -> set[str]:
+    def _get_actions_covered_by_condition_enforcement(self, config: CheckConfig) -> frozenset[str]:
         """
         Get the actions `action_condition_enforcement` will actually enforce.
 
@@ -176,7 +176,7 @@ class SensitiveActionCheck(PolicyCheck):
             config: Check configuration with root_config access
 
         Returns:
-            Set of action strings that are covered by condition requirements
+            Frozen set of action strings that are covered by condition requirements
         """
         root_config = config.root_config
         cached = self._covered_cache
@@ -184,7 +184,7 @@ class SensitiveActionCheck(PolicyCheck):
         if cached is None or cached[0] is not root_config:
             cached = (root_config, frozenset(ActionConditionEnforcementCheck.enforced_actions(root_config)))
             self._covered_cache = cached
-        return set(cached[1])
+        return cached[1]
 
     def _get_category_specific_suggestion(self, action: str, config: CheckConfig) -> tuple[str, str]:
         """

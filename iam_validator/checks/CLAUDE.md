@@ -243,11 +243,18 @@ literally instead of calling `get_severity(config)`:
   requirement's own `ignore_patterns`. `enforced_actions` counts a requirement (or `if`
   branch) only when its prepared `required_conditions` holds an evaluable `all_of` /
   `any_of` / list entry (`_requires_evaluable_condition`); detection-only (empty) still
-  counts. Both checks judge an entry with `is_evaluable_entry` (`utils/requirement_branches.py`).
+  counts. Both checks judge an entry with `is_evaluable_entry` (`utils/requirement_branches.py`);
+  an entry with both `condition_key` and `all_of` is not evaluable. Only null, `[]` and `{}`
+  (`has_no_conditions`) count as an empty, detection-only `required_conditions`; a falsy
+  scalar (`false`, `0`, `""`) is malformed. A non-string element of `actions` (list or group)
+  is reported and dropped. Top-level shape messages come from `conditions_problem`, as for
+  `if` branches.
   `principal_validation` instead reports a non-mapping or keyless entry, a
-  non-string `operator`, an invalid requirement or entry `severity`, an unknown or non-list group or a scalar `required_conditions`
+  non-string `operator`, an invalid entry `severity`, an unknown or non-list group or a scalar `required_conditions`
   per statement (`statement_index` = that statement, no pre-pass) and skips it (never
-  satisfied); a nested `all_of` entry needs every child, and its leaves inherit the
+  satisfied); an invalid requirement-level `severity` is reported once per policy by its
+  `execute_policy` (`statement_index=-1`), only when the requirement's principals match a
+  statement that `execute` would evaluate; a nested `all_of` entry needs every child, and its leaves inherit the
   parent's `severity`/`description`/`example` unless they set their own (a null or
   invalid one counts as unset). A null, empty
   or invalid `severity` (entry, then requirement) falls back to the next level, then
@@ -321,5 +328,5 @@ Use these instead of reimplementing:
 - `sensitive_action_matcher.py` — `get_sensitive_actions_by_categories()`, `check_sensitive_actions()`
 - `policy_level_checks.py` — `check_policy_level_actions()`, `_check_all_of_pattern()`
 - `formatting.py` — `format_list_with_backticks()`
-- `requirement_branches.py` — `requirement_branches()`, `branch_problem()`, `severity_problem()`, `branch_effects()`,
+- `requirement_branches.py` — `requirement_branches()`, `branch_problem()`, `conditions_problem()`, `severity_problem()`, `branch_effects()`,
   `branch_matches_resources()`, `branch_enforces_allow_everywhere()`, `is_evaluable_entry()`

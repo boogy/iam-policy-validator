@@ -390,3 +390,92 @@ class TestNullOperator:
         assert [i.issue_type for i in issues] == ["missing_required_condition"]
         assert '"StringEquals"' in issues[0].example
         assert "None" not in issues[0].example
+
+
+class TestNonStringActionElements:
+    @pytest.mark.parametrize(
+        "actions",
+        [[None], [ACTION, 5], {"any_of": [ACTION, 5]}, {"all_of": [None]}, {"none_of": [ACTION, {"x": 1}]}],
+    )
+    async def test_reported_once_without_crashing(self, check, actions):
+        config = _config({"actions": actions, "required_conditions": [{"condition_key": KEY}]})
+
+        issues = await _run(check, config, _stmt("One"), _stmt("Two"))
+
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert [(i.statement_index, i.severity) for i in invalid] == [(-1, "error")]
+        assert "must be an action string" in invalid[0].message
+
+    @pytest.mark.parametrize("actions", [[ACTION, 5], {"any_of": [ACTION, 5]}])
+    async def test_string_elements_still_enforced(self, check, actions):
+        config = _config({"actions": actions, "required_conditions": [{"condition_key": KEY}]})
+
+        issues = await _run(check, config)
+
+        assert _types(issues) == [("invalid_condition_requirement", -1), ("missing_required_condition", 0)]
+
+    def test_only_string_elements_are_enforced(self):
+        root = _root({"actions": [ACTION, 5], "required_conditions": [{"condition_key": KEY}]})
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == {ACTION}
+
+    async def test_unhashable_element_is_reported_under_per_action_override(self, check):
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            config={
+                "merge_strategy": "per_action_override",
+                "action_condition_requirements": [
+                    {"actions": [ACTION, ["nested"]], "required_conditions": [{"condition_key": KEY}]}
+                ],
+            },
+        )
+
+        issues = await _run(check, config)
+
+        assert ("invalid_condition_requirement", -1) in _types(issues)
+
+
+class TestFalsyScalarRequiredConditions:
+    @pytest.mark.parametrize("required_conditions", [False, 0, ""])
+    async def test_reported_as_malformed(self, check, required_conditions):
+        config = _config({"actions": [ACTION], "required_conditions": required_conditions})
+
+        issues = await _run(check, config, _stmt("One"), _stmt("Two"))
+
+        assert _types(issues) == [("invalid_condition_requirement", -1)]
+        assert "must be a list or a mapping" in issues[0].message
+
+    @pytest.mark.parametrize("required_conditions", [None, [], {}])
+    async def test_empty_is_detection_only(self, check, required_conditions):
+        config = _config({"actions": [ACTION], "required_conditions": required_conditions})
+
+        issues = await _run(check, config)
+
+        assert [i.issue_type for i in issues] == ["action_detected"]
+
+    @pytest.mark.parametrize("required_conditions", [False, 0, ""])
+    def test_not_counted_as_enforced(self, required_conditions):
+        root = _root({"actions": [ACTION], "required_conditions": required_conditions})
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+
+class TestTopLevelShapeWording:
+    @pytest.mark.parametrize(
+        "required_conditions",
+        [5, {"allof": [{"condition_key": KEY}]}, {"all_of": {"condition_key": KEY}}],
+    )
+    async def test_matches_if_branch_wording(self, check, required_conditions):
+        top = await _run(check, _config({"actions": [ACTION], "required_conditions": required_conditions}))
+        branch = await _run(check, _config({"actions": [ACTION], "if": [{"required_conditions": required_conditions}]}))
+
+        assert len(top) == len(branch) == 1
+        assert branch[0].message.split("`if[0]`: ", 1)[1] in top[0].message
+
+    async def test_every_bad_group_is_reported(self, check):
+        required_conditions = {"allof": [], "nonof": [], "any_of": "x"}
+
+        issues = await _run(check, _config({"actions": [ACTION], "required_conditions": required_conditions}))
+
+        assert len(issues) == 3

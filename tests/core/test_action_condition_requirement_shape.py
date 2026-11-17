@@ -359,3 +359,11 @@ async def test_non_list_falsy_group_is_reported_not_detection_only(check, mock_f
     issues = await _run(check, mock_fetcher, {"all_of": {}}, condition=VPC_CONDITION)
 
     assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+
+
+async def test_entry_with_condition_key_and_all_of_is_reported(check, mock_fetcher):
+    entry = {"condition_key": "aws:SourceIp", "all_of": [{"condition_key": "aws:SourceVpc"}]}
+
+    issues = await _run(check, mock_fetcher, [entry], condition=VPC_CONDITION)
+
+    assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
