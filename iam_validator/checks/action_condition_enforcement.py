@@ -1067,7 +1067,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             return issues
 
         description = requirement.get("description", "These actions should not be used")
-        severity = requirement.get("severity") or self.get_severity(config)
+        severity = self._resolve_severity(config, requirement)
 
         for stmt_idx, stmt, actions in statements_with_forbidden:
             actions_formatted = format_list_with_backticks(actions)
@@ -1104,7 +1104,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         issues = []
         required_conditions_config = requirement.get("required_conditions", [])
         description = requirement.get("description", "")
-        severity = requirement.get("severity") or self.get_severity(config)
+        severity = self._resolve_severity(config, requirement)
 
         if has_no_conditions(required_conditions_config):
             # No conditions specified, just report that actions were found
@@ -1193,7 +1193,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         if has_no_conditions(required_conditions_config):
             # No conditions specified, just report that actions were found
             description = requirement.get("description", "")
-            severity = requirement.get("severity") or self.get_severity(config)
+            severity = self._resolve_severity(config, requirement)
 
             # Create a summary issue for all matching statements
             all_actions = set()

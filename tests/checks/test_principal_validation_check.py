@@ -1483,3 +1483,80 @@ class TestPrincipalRequirementPolicyLevelSeverity:
         issues = await check.execute(self._statement(), 0, None, config)
 
         assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+
+
+class TestPrincipalRequirementEvaluationScope:
+    @pytest.fixture
+    def check(self):
+        return PrincipalValidationCheck()
+
+    @staticmethod
+    def _config(requirement: dict | None = None, **options) -> CheckConfig:
+        requirements = None if requirement is None else [{"principals": ["*"], **requirement}]
+        return CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={"blocked_principals": [], "principal_condition_requirements": requirements, **options},
+        )
+
+    @staticmethod
+    def _policy(principal) -> IAMPolicy:
+        statement = Statement(
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal=principal
+        )
+        return IAMPolicy(Version="2012-10-17", Statement=[statement])
+
+    async def _invalid(self, check, config, principal) -> list:
+        policy = self._policy(principal)
+        issues = list(await check.execute_policy(policy, "policy.json", None, config))
+        issues.extend(await check.execute(policy.statement[0], 0, None, config))
+        return [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+
+    _BAD_SEVERITY = {"severity": "urgent", "required_conditions": [{"condition_key": "aws:SourceArn"}]}
+
+    async def test_null_requirements_do_not_raise(self, check):
+        assert await check.execute_policy(self._policy("*"), "policy.json", None, self._config()) == []
+
+    async def test_bad_severity_not_reported_for_blocked_wildcard_principal(self, check):
+        config = self._config(self._BAD_SEVERITY, block_wildcard_principal=True)
+
+        assert await self._invalid(check, config, "*") == []
+
+    async def test_bad_severity_not_reported_for_service_principal_wildcard(self, check):
+        assert await self._invalid(check, self._config(self._BAD_SEVERITY), {"Service": "*"}) == []
+
+    async def test_bad_severity_reported_for_aws_wildcard_principal(self, check):
+        invalid = await self._invalid(check, self._config(self._BAD_SEVERITY), {"AWS": "*"})
+
+        assert [i.statement_index for i in invalid] == [-1]
+
+    async def test_string_principals_pattern_matches(self, check):
+        root = "arn:aws:iam::123456789012:root"
+        config = self._config({"principals": root, "required_conditions": [{"condition_key": "aws:SourceArn"}]})
+        statement = self._policy({"AWS": root}).statement[0]
+
+        issues = await check.execute(statement, 0, None, config)
+
+        assert [i.issue_type for i in issues] == ["missing_principal_condition"]
+        assert root in issues[0].message
+
+    async def test_string_principals_label_in_invalid_severity(self, check):
+        root = "arn:aws:iam::123456789012:root"
+        config = self._config({**self._BAD_SEVERITY, "principals": root})
+
+        invalid = await self._invalid(check, config, {"AWS": root})
+
+        assert len(invalid) == 1
+        assert f"`{root}`" in invalid[0].message
+
+    @pytest.mark.parametrize("principals", [123, {"AWS": "*"}, True])
+    async def test_malformed_principals_reported_once_per_policy(self, check, principals):
+        config = self._config({"principals": principals, "required_conditions": [{"condition_key": "aws:SourceArn"}]})
+
+        policy = self._policy("*")
+        issues = list(await check.execute_policy(policy, "policy.json", None, config))
+        issues.extend(await check.execute(policy.statement[0], 0, None, config))
+
+        assert [(i.issue_type, i.statement_index, i.severity) for i in issues] == [
+            ("invalid_condition_requirement", -1, "error")
+        ]

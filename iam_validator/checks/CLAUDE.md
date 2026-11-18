@@ -254,7 +254,9 @@ literally instead of calling `get_severity(config)`:
   per statement (`statement_index` = that statement, no pre-pass) and skips it (never
   satisfied); an invalid requirement-level `severity` is reported once per policy by its
   `execute_policy` (`statement_index=-1`), only when the requirement's principals match a
-  statement that `execute` would evaluate; a nested `all_of` entry needs every child, and its leaves inherit the
+  statement that `execute` would evaluate (`_condition_requirement_principals`, shared by both, so
+  blocked principals and `Service: "*"` statements never count); a `principals` that is neither a
+  string (one pattern) nor a list is reported there too and matches nothing; a nested `all_of` entry needs every child, and its leaves inherit the
   parent's `severity`/`description`/`example` unless they set their own (a null or
   invalid one counts as unset). A null, empty
   or invalid `severity` (entry, then requirement) falls back to the next level, then

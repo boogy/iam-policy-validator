@@ -59,7 +59,8 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Report a condition entry carrying both `condition_key` and `all_of` as `invalid_condition_requirement` in `action_condition_enforcement` and `principal_validation`; the `condition_key` was silently dropped. ([#240])
 - Report a falsy scalar `required_conditions` (`false`, `0`, `""`) as `invalid_condition_requirement` in `action_condition_enforcement` and `principal_validation` instead of treating it as empty (detection-only or skipped). Only null, `[]` and `{}` count as empty. ([#240])
 - Word a malformed top-level `required_conditions` in `action_condition_enforcement` the same way as the same problem in an `if` branch. ([#240])
-- Report an invalid requirement-level `severity` in `principal_condition_requirements` once per policy (`statement_index: -1`) instead of once per matching statement. ([#240])
+- Report an invalid requirement-level `severity` in `principal_condition_requirements` once per policy (`statement_index: -1`) instead of once per matching statement, and only when its principals match a statement `principal_validation` evaluates for condition requirements (not a blocked principal or a `Service: "*"` statement). ([#240])
+- Match a `principal_condition_requirements` entry whose `principals` is a single string (`principals: "arn:aws:iam::123456789012:root"`); it was compared character by character and matched nothing. A `principals` that is neither a string nor a list is reported once per policy as `invalid_condition_requirement`. ([#240])
 
 [#240]: https://github.com/boogy/iam-policy-validator/pull/240
 
