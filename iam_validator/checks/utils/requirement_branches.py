@@ -22,13 +22,24 @@ def has_no_conditions(required_conditions: Any) -> bool:
     return required_conditions is None or required_conditions == [] or required_conditions == {}
 
 
+def has_key_and_group(entry: Any) -> bool:
+    """Whether a condition entry sets both ``condition_key`` and ``all_of`` to non-null values."""
+    return isinstance(entry, dict) and entry.get("condition_key") is not None and entry.get("all_of") is not None
+
+
+def without_null_all_of(entry: dict[str, Any]) -> dict[str, Any]:
+    """An evaluable ``entry`` with every null ``all_of`` (its own and nested ones) removed."""
+    nested = entry.get("all_of")
+    if nested is None:
+        return {k: v for k, v in entry.items() if k != "all_of"}
+    return {**entry, "all_of": [without_null_all_of(e) for e in nested]}
+
+
 def is_evaluable_entry(entry: Any) -> bool:
-    """Whether a condition entry has a non-empty string ``condition_key`` (and string ``operator``, if set), or a non-empty ``all_of`` of such entries."""
-    if not isinstance(entry, dict):
+    """Whether a condition entry has a non-empty string ``condition_key`` (and string ``operator``, if set), or a non-empty ``all_of`` of such entries; a null key or group counts as unset."""
+    if not isinstance(entry, dict) or has_key_and_group(entry):
         return False
-    if "all_of" in entry:
-        if entry.get("condition_key") is not None:
-            return False
+    if entry.get("all_of") is not None:
         nested = entry["all_of"]
         return isinstance(nested, list) and bool(nested) and all(is_evaluable_entry(e) for e in nested)
     condition_key = entry.get("condition_key")

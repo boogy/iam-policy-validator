@@ -1476,6 +1476,22 @@ class TestPrincipalRequirementPolicyLevelSeverity:
 
         assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
 
+    @pytest.mark.parametrize(
+        "required_conditions",
+        [
+            [{"condition_key": "aws:SourceArn", "all_of": None}],
+            {"all_of": [{"all_of": [{"condition_key": "aws:SourceArn", "all_of": None}]}]},
+        ],
+    )
+    async def test_null_all_of_beside_condition_key_is_enforced(self, check, required_conditions):
+        config = self._config({"required_conditions": required_conditions})
+        policy = IAMPolicy(Version="2012-10-17", Statement=[self._statement()])
+
+        issues = await check.execute_policy(policy, "policy.json", None, config)
+        issues += await check.execute(self._statement(), 0, None, config)
+
+        assert [i.issue_type for i in issues] == ["missing_principal_condition"]
+
     @pytest.mark.parametrize("required_conditions", [False, 0, ""])
     async def test_falsy_scalar_required_conditions_is_reported(self, check, required_conditions):
         config = self._config({"required_conditions": required_conditions})

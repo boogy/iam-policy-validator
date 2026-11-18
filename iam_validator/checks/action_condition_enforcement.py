@@ -35,6 +35,7 @@ from iam_validator.checks.utils.requirement_branches import (
     branch_matches_resources,
     branch_problem,
     conditions_problem,
+    has_key_and_group,
     has_no_conditions,
     is_evaluable_entry,
     requirement_branches,
@@ -123,7 +124,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         requirements = self._get_merged_requirements(config, policy_file)
 
         if not requirements:
-            return issues
+            return self._dedupe_issues(issues)
 
         # Process each requirement
         for raw_requirement in requirements:
@@ -160,7 +161,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 )
                 issues.extend(statement_issues)
 
-        return issues
+        return self._dedupe_issues(issues)
 
     async def _matches_any_statement(
         self, policy: "IAMPolicy", requirement: dict[str, Any], fetcher: AWSServiceFetcher
@@ -222,7 +223,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                         policy, branch_requirement, fetcher, config, effects=effects, statement_filter=matches
                     )
                 )
-        return self._dedupe_issues(issues)
+        return issues
 
     @staticmethod
     def _dedupe_issues(issues: list[ValidationIssue]) -> list[ValidationIssue]:
@@ -373,7 +374,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         self, requirement: dict[str, Any], entry: dict[str, Any], label: str, issues: list[ValidationIssue]
     ) -> dict[str, Any]:
         cleaned = self._without_bad_severity(requirement, entry, f"entry under `{label}`", issues)
-        if "all_of" in cleaned:
+        if cleaned.get("all_of") is None:
+            cleaned.pop("all_of", None)
+        else:
             cleaned["all_of"] = [
                 self._entry_without_bad_severity(requirement, e, f"{label}.all_of", issues) for e in cleaned["all_of"]
             ]
@@ -424,7 +427,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 f"{actions_str}: `{entry!r}`"
             )
             suggestion = "Fix its shape. Until then it enforces nothing."
-        elif isinstance(entry, dict) and "all_of" in entry and entry.get("condition_key") is not None:
+        elif has_key_and_group(entry):
             message = (
                 f"`action_condition_requirements` entry under `{label}` has both `condition_key` and `all_of`, "
                 f"so it cannot be enforced for action(s) {actions_str}: `{entry!r}`"

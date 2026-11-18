@@ -52,6 +52,7 @@ from iam_validator.checks.utils.requirement_branches import (
     has_no_conditions,
     is_evaluable_entry,
     severity_problem,
+    without_null_all_of,
 )
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
@@ -764,6 +765,7 @@ class PrincipalValidationCheck(PolicyCheck):
             enforceable: list[dict[str, Any]] = []
             for item in value:
                 if is_evaluable_entry(item):
+                    item = without_null_all_of(item)
                     report_entry_severities(item, label)
                     enforceable.append(item)
                 elif not isinstance(item, dict):

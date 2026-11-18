@@ -182,7 +182,7 @@ the CHANGELOG `Fixed` entries say. Parsing and matching live in
 `utils/requirement_branches.py`. Each valid branch becomes an ordinary requirement run
 through `_check_per_statement` / `_check_policy_wide` with keyword-only `effects` and
 `statement_filter`. An omitted branch `effect` means `Allow` in both forms; findings
-for the same rule (`ValidationIssue._rule_identity`, key-order independent, ignoring `severity`/`description`/`example` and null-valued keys) differing only in severity, suggestion or message wording are reported once (most severe kept; a list entry and an `all_of` entry share an identity); `none_of` flags only `Allow` statements. Malformed branches yield one `invalid_condition_requirement` (only when a statement matches the requirement's actions)
+for the same rule (`ValidationIssue._rule_identity`, key-order independent, ignoring `severity`/`description`/`example` and null-valued keys) differing only in severity, suggestion or message wording are reported once (in every requirement, not only `if` ones) (most severe kept; a list entry and an `all_of` entry share an identity); `none_of` flags only `Allow` statements. Malformed branches yield one `invalid_condition_requirement` (only when a statement matches the requirement's actions)
 (`error`, `statement_index=-1`) per policy. `branch_problem` does not check `severity`:
 an invalid branch severity is reported and dropped by `_prepare_requirement` and the
 branch still enforced (and counted by `enforced_actions`). `enforced_actions` skips a requirement
@@ -244,7 +244,7 @@ literally instead of calling `get_severity(config)`:
   branch) only when its prepared `required_conditions` holds an evaluable `all_of` /
   `any_of` / list entry (`_requires_evaluable_condition`); detection-only (empty) still
   counts. Both checks judge an entry with `is_evaluable_entry` (`utils/requirement_branches.py`);
-  an entry with both a non-null `condition_key` and `all_of` is not evaluable (a null one counts as unset). Null, `[]`, `{}` and a
+  an entry with both a non-null `condition_key` and `all_of` (`has_key_and_group`) is not evaluable; a null one of either counts as unset (`without_null_all_of` strips a null `all_of` before evaluation). `execute_policy` runs every finding, config problems included, through `_dedupe_issues`. Null, `[]`, `{}` and a
   mapping whose groups are all empty or null (`has_no_conditions`) count as an empty,
   detection-only `required_conditions`; a falsy scalar (`false`, `0`, `""`) is malformed. A
   non-string element of `actions` (list or group) is reported (one issue each) and dropped. Top-level shape
@@ -348,4 +348,5 @@ Use these instead of reimplementing:
 - `policy_level_checks.py` — `check_policy_level_actions()`, `_check_all_of_pattern()`
 - `formatting.py` — `format_list_with_backticks()`
 - `requirement_branches.py` — `requirement_branches()`, `branch_problem()`, `conditions_problem()`, `severity_problem()`, `branch_effects()`,
-  `branch_matches_resources()`, `branch_enforces_allow_everywhere()`, `is_evaluable_entry()`
+  `branch_matches_resources()`, `branch_enforces_allow_everywhere()`, `is_evaluable_entry()`,
+  `has_key_and_group()`, `without_null_all_of()`

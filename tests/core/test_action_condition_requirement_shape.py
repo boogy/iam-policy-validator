@@ -97,7 +97,6 @@ class TestMalformedEntryIsReported:
             [{"all_of": {"condition_key": "aws:PrincipalOrgID"}}],
             {"all_of": [{"all_of": [{"condition_key": "aws:PrincipalOrgID"}, "typo"]}]},
             {"none_of": [{"all_of": ["typo"]}]},
-            {"any_of": [{"condition_key": "aws:PrincipalOrgID", "all_of": None}]},
             {"any_of": [{"condition_key": "aws:PrincipalOrgID", "all_of": []}]},
         ],
     )

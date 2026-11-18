@@ -7,6 +7,7 @@ from iam_validator.checks.utils.requirement_branches import (
     branch_enforces_allow_everywhere,
     branch_matches_resources,
     branch_problem,
+    has_key_and_group,
     is_evaluable_entry,
     requirement_branches,
     severity_problem,
@@ -181,3 +182,29 @@ def test_falsy_scalar_required_conditions_is_a_shape_problem(value):
 
 def test_null_condition_key_beside_all_of_is_evaluable():
     assert is_evaluable_entry({"condition_key": None, "all_of": [{"condition_key": "aws:SourceVpc"}]})
+
+
+def test_null_all_of_beside_condition_key_is_evaluable():
+    assert is_evaluable_entry({"condition_key": "aws:MultiFactorAuthPresent", "all_of": None})
+
+
+@pytest.mark.parametrize(
+    "entry", [{"all_of": None}, {"condition_key": None, "all_of": None}, {"condition_key": "", "all_of": None}]
+)
+def test_null_all_of_without_key_is_not_evaluable(entry):
+    assert not is_evaluable_entry(entry)
+
+
+@pytest.mark.parametrize(
+    ("entry", "expected"),
+    [
+        ({"condition_key": "aws:X", "all_of": []}, True),
+        ({"condition_key": "", "all_of": [{"condition_key": "aws:Y"}]}, True),
+        ({"condition_key": None, "all_of": [{"condition_key": "aws:Y"}]}, False),
+        ({"condition_key": "aws:X", "all_of": None}, False),
+        ({"condition_key": "aws:X"}, False),
+        ("aws:X", False),
+    ],
+)
+def test_has_key_and_group(entry, expected):
+    assert has_key_and_group(entry) is expected
