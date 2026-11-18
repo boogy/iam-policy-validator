@@ -156,7 +156,7 @@ unzipped zip-package limit. The container image path has no equivalent size pres
 per image), so it isn't a constraint here.
 
 One `Dockerfile` serves both deployment targets: `docker build --target lambda` builds the
-Lambda image (`public.ecr.aws/lambda/python:3.13` base, the `lambda` extra pulled in on top
+Lambda image (`public.ecr.aws/lambda/python` base at the `.python-version` version, the `lambda` extra pulled in on top
 of `mcp`); the default target (no `--target`) builds the uvicorn container from [MCP
 Hosting](mcp-hosting.md). `/health` and `/ready` stay registered in the Lambda image — they
 come along for free since both targets share `asgi.py:create_app()` — but nothing calls

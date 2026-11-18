@@ -5,7 +5,7 @@ import pytest
 from iam_validator.checks.principal_validation import PrincipalValidationCheck
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig
-from iam_validator.core.models import Statement
+from iam_validator.core.models import IAMPolicy, Statement
 
 
 @pytest.fixture
@@ -215,6 +215,111 @@ class TestPrincipalConditionRequirements:
     @pytest.fixture
     def check(self):
         return PrincipalValidationCheck()
+
+    @pytest.mark.parametrize(
+        "required_conditions",
+        [
+            ["aws:SourceArn", {"condition_key": "aws:SourceAccount"}],
+            {"all_of": ["aws:SourceArn", {"condition_key": "aws:SourceAccount"}]},
+            {"any_of": ["aws:SourceArn", {"condition_key": "aws:SourceAccount"}]},
+            {"none_of": ["aws:SourceArn", {"condition_key": "aws:SourceAccount"}]},
+            {"all_of": "aws:SourceArn", "any_of": [{"condition_key": "aws:SourceAccount"}]},
+            {"all_of": [{"condition_key": "aws:SourceAccount"}], "any_of": {"condition_key": "aws:SourceArn"}},
+        ],
+    )
+    async def test_non_mapping_condition_entry_is_reported_not_raised(self, check, fetcher, required_conditions):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [{"principals": ["*"], "required_conditions": required_conditions}],
+            },
+        )
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:::my-bucket/*"],
+            Principal="*",
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert len(invalid) == 1
+        assert invalid[0].severity == "error"
+        assert "aws:SourceArn" in invalid[0].message
+        others = [i for i in issues if i not in invalid]
+        assert len(others) == (0 if "none_of" in required_conditions else 1)
+        assert all("aws:SourceAccount" in i.message for i in others)
+
+    @pytest.mark.parametrize("required_conditions", ["aws:SourceArn", 3])
+    async def test_scalar_required_conditions_is_reported(self, check, fetcher, required_conditions):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [{"principals": ["*"], "required_conditions": required_conditions}],
+            },
+        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal="*")
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+
+    @pytest.mark.parametrize(
+        ("required_conditions", "expected"),
+        [
+            ({"any_of": [{"conditon_key": "aws:SourceArn"}]}, ["invalid_condition_requirement"]),
+            ([{"conditon_key": "aws:SourceArn"}], ["invalid_condition_requirement"]),
+            (
+                {"any_of": [{"conditon_key": "aws:SourceArn"}, {"condition_key": "aws:SourceAccount"}]},
+                ["invalid_condition_requirement", "missing_principal_condition_any_of"],
+            ),
+            (
+                {"allof": [{"condition_key": "aws:SourceArn"}], "any_of": [{"condition_key": "aws:SourceAccount"}]},
+                ["invalid_condition_requirement", "missing_principal_condition_any_of"],
+            ),
+        ],
+    )
+    async def test_keyless_entry_or_unknown_group_is_reported_never_satisfied(
+        self, check, fetcher, required_conditions, expected
+    ):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [{"principals": ["*"], "required_conditions": required_conditions}],
+            },
+        )
+        statement = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal="*")
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert sorted(i.issue_type for i in issues) == expected
+
+    @pytest.mark.parametrize(
+        ("condition", "expected"),
+        [
+            (None, ["missing_principal_condition_any_of"]),
+            ({"StringEquals": {"aws:SourceArn": "a"}}, ["missing_principal_condition_any_of"]),
+            ({"StringEquals": {"aws:SourceArn": "a", "aws:SourceAccount": "1"}}, []),
+        ],
+    )
+    async def test_nested_all_of_entry_under_any_of_needs_every_key(self, check, fetcher, condition, expected):
+        nested = {"all_of": [{"condition_key": "aws:SourceArn"}, {"condition_key": "aws:SourceAccount"}]}
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [
+                    {"principals": ["*"], "required_conditions": {"any_of": [nested]}}
+                ],
+            },
+        )
+        statement = Statement(
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal="*", Condition=condition
+        )
+        issues = await check.execute(statement, 0, fetcher, config)
+        assert [i.issue_type for i in issues] == expected
 
     @pytest.mark.asyncio
     async def test_all_of_conditions(self, check, fetcher):
@@ -1132,3 +1237,468 @@ class TestCrossAccountOrgRequirement:
         )
         assert "operator" not in entry
         assert "ForAnyValue:StringLike" in entry["example"]
+
+
+class TestPrincipalRequirementConfigRobustness:
+    @pytest.fixture
+    def check(self):
+        return PrincipalValidationCheck()
+
+    @staticmethod
+    def _config(requirement: dict) -> CheckConfig:
+        return CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [{"principals": ["*"], **requirement}],
+            },
+        )
+
+    @staticmethod
+    def _statement(condition: dict | None = None) -> Statement:
+        return Statement(
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal="*", Condition=condition
+        )
+
+    @pytest.mark.parametrize("operator", [5, ["StringEquals"]])
+    async def test_non_string_operator_is_reported_not_raised(self, check, operator):
+        config = self._config({"required_conditions": [{"condition_key": "aws:SourceArn", "operator": operator}]})
+
+        issues = await check.execute(self._statement({"StringEquals": {"aws:SourceAccount": "1"}}), 0, None, config)
+
+        assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+        assert "operator" in issues[0].message
+
+    @pytest.mark.parametrize("severity", [None, "", "urgent"])
+    @pytest.mark.parametrize(
+        ("required_conditions", "condition", "issue_type"),
+        [
+            ({"any_of": [{"condition_key": "aws:SourceArn"}]}, None, "missing_principal_condition_any_of"),
+            (
+                {"none_of": [{"condition_key": "aws:SourceArn"}]},
+                {"StringEquals": {"aws:SourceArn": "x"}},
+                "forbidden_principal_condition",
+            ),
+            ([{"condition_key": "aws:SourceArn"}], None, "missing_principal_condition"),
+        ],
+    )
+    async def test_null_or_invalid_requirement_severity_falls_back(
+        self, check, severity, required_conditions, condition, issue_type
+    ):
+        config = self._config({"severity": severity, "required_conditions": required_conditions})
+        statement = self._statement(condition)
+        policy = IAMPolicy(Version="2012-10-17", Statement=[statement])
+
+        issues = await check.execute_policy(policy, "policy.json", None, config)
+        issues += await check.execute(statement, 0, None, config)
+
+        invalid = [] if severity is None else [("invalid_condition_requirement", "error")]
+        assert [(i.issue_type, i.severity) for i in issues] == [*invalid, (issue_type, "high")]
+
+    async def test_invalid_entry_severity_falls_back_to_requirement(self, check):
+        config = self._config(
+            {"severity": "low", "required_conditions": [{"condition_key": "aws:SourceArn", "severity": "urgent"}]}
+        )
+
+        issues = await check.execute(self._statement(), 0, None, config)
+
+        assert [(i.issue_type, i.severity) for i in issues] == [
+            ("invalid_condition_requirement", "error"),
+            ("missing_principal_condition", "low"),
+        ]
+
+    async def test_invalid_leaf_severity_falls_back_to_parent_all_of_severity(self, check):
+        entry = {"severity": "low", "all_of": [{"condition_key": "aws:SourceArn", "severity": "Low"}]}
+        config = self._config({"required_conditions": {"all_of": [entry]}})
+
+        issues = await check.execute(self._statement(), 0, None, config)
+
+        assert [(i.issue_type, i.severity) for i in issues] == [
+            ("invalid_condition_requirement", "error"),
+            ("missing_principal_condition", "low"),
+        ]
+
+    async def test_nested_all_of_children_inherit_parent_presentation(self, check):
+        entry = {
+            "severity": "critical",
+            "description": "DESC",
+            "example": "EX",
+            "all_of": [
+                {"condition_key": "aws:SourceArn", "severity": None},
+                {"condition_key": "aws:SourceAccount", "severity": "low"},
+            ],
+        }
+        config = self._config({"required_conditions": [entry]})
+
+        issues = await check.execute(self._statement(), 0, None, config)
+
+        assert [(i.severity, i.suggestion, i.example) for i in issues] == [
+            ("critical", "DESC", "EX"),
+            ("low", "DESC", "EX"),
+        ]
+
+
+class TestPrincipalRequirementPresentation:
+    @pytest.fixture
+    def check(self):
+        return PrincipalValidationCheck()
+
+    @staticmethod
+    def _config(requirement: dict) -> CheckConfig:
+        return CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [{"principals": ["*"], **requirement}],
+            },
+        )
+
+    @staticmethod
+    def _statement(condition: dict | None = None) -> Statement:
+        return Statement(
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal="*", Condition=condition
+        )
+
+    async def test_null_operator_example_renders_default_operator(self, check):
+        config = self._config({"required_conditions": [{"condition_key": "aws:SourceArn", "operator": None}]})
+
+        issues = await check.execute(self._statement(), 0, None, config)
+
+        assert [i.issue_type for i in issues] == ["missing_principal_condition"]
+        assert '"StringEquals"' in issues[0].example
+        assert "None" not in issues[0].example
+
+    async def test_none_of_entry_severity_overrides_requirement_severity(self, check):
+        config = self._config(
+            {
+                "severity": "low",
+                "required_conditions": {"none_of": [{"condition_key": "aws:SourceArn", "severity": "critical"}]},
+            }
+        )
+
+        issues = await check.execute(self._statement({"StringEquals": {"aws:SourceArn": "x"}}), 0, None, config)
+
+        assert [(i.issue_type, i.severity) for i in issues] == [("forbidden_principal_condition", "critical")]
+
+    @pytest.mark.parametrize("severity", ["Critical", "hgih"])
+    async def test_invalid_requirement_severity_is_reported(self, check, severity):
+        config = self._config({"severity": severity, "required_conditions": [{"condition_key": "aws:SourceArn"}]})
+        statement = self._statement()
+        policy = IAMPolicy(Version="2012-10-17", Statement=[statement])
+
+        issues = await check.execute_policy(policy, "policy.json", None, config)
+        issues += await check.execute(statement, 0, None, config)
+
+        assert sorted((i.issue_type, i.severity) for i in issues) == [
+            ("invalid_condition_requirement", "error"),
+            ("missing_principal_condition", "high"),
+        ]
+        invalid = next(i for i in issues if i.issue_type == "invalid_condition_requirement")
+        assert severity in invalid.message
+        assert "Set `severity` to one of" in invalid.suggestion
+
+    @pytest.mark.parametrize(
+        "required_conditions",
+        [
+            [{"condition_key": "aws:SourceArn", "severity": "hgih"}],
+            {"any_of": [{"condition_key": "aws:SourceArn", "severity": "hgih"}]},
+            {"all_of": [{"all_of": [{"condition_key": "aws:SourceArn", "severity": "hgih"}]}]},
+            [{"severity": "hgih", "all_of": [{"condition_key": "aws:SourceArn"}]}],
+        ],
+    )
+    async def test_invalid_entry_severity_is_reported(self, check, required_conditions):
+        config = self._config({"severity": "low", "required_conditions": required_conditions})
+
+        issues = await check.execute(self._statement(), 0, None, config)
+
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert len(invalid) == 1
+        assert "hgih" in invalid[0].message
+        assert [i.severity for i in issues if i not in invalid] == ["low"]
+
+
+class TestPrincipalRequirementPolicyLevelSeverity:
+    @pytest.fixture
+    def check(self):
+        return PrincipalValidationCheck()
+
+    @staticmethod
+    def _config(requirement: dict) -> CheckConfig:
+        return CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [{"principals": ["*"], **requirement}],
+            },
+        )
+
+    @staticmethod
+    def _statement(principal: str = "*") -> Statement:
+        return Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal=principal)
+
+    async def _run_all(self, check, config, statements: list[Statement]) -> list:
+        policy = IAMPolicy(Version="2012-10-17", Statement=statements)
+        issues = list(await check.execute_policy(policy, "policy.json", None, config))
+        for idx, statement in enumerate(statements):
+            issues.extend(await check.execute(statement, idx, None, config))
+        return issues
+
+    async def test_invalid_requirement_severity_reported_once_per_policy(self, check):
+        config = self._config({"severity": "urgent", "required_conditions": [{"condition_key": "aws:SourceArn"}]})
+
+        issues = await self._run_all(check, config, [self._statement() for _ in range(3)])
+
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert [(i.statement_index, i.severity) for i in invalid] == [(-1, "error")]
+        assert [i.severity for i in issues if i not in invalid] == ["high"] * 3
+
+    async def test_not_reported_when_no_statement_matches(self, check):
+        config = self._config(
+            {
+                "principals": ["arn:aws:iam::*:root"],
+                "severity": "urgent",
+                "required_conditions": [{"condition_key": "aws:SourceArn"}],
+            }
+        )
+
+        policy = IAMPolicy(Version="2012-10-17", Statement=[self._statement()])
+
+        assert await check.execute_policy(policy, "policy.json", None, config) == []
+
+    async def test_entry_with_condition_key_and_all_of_is_reported(self, check):
+        entry = {"condition_key": "aws:SourceArn", "all_of": [{"condition_key": "aws:SourceAccount"}]}
+        config = self._config({"required_conditions": [entry]})
+
+        issues = await check.execute(self._statement(), 0, None, config)
+
+        assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+
+    @pytest.mark.parametrize(
+        "required_conditions",
+        [
+            [{"condition_key": "aws:SourceArn", "all_of": None}],
+            {"all_of": [{"all_of": [{"condition_key": "aws:SourceArn", "all_of": None}]}]},
+        ],
+    )
+    async def test_null_all_of_beside_condition_key_is_enforced(self, check, required_conditions):
+        config = self._config({"required_conditions": required_conditions})
+        policy = IAMPolicy(Version="2012-10-17", Statement=[self._statement()])
+
+        issues = await check.execute_policy(policy, "policy.json", None, config)
+        issues += await check.execute(self._statement(), 0, None, config)
+
+        assert [i.issue_type for i in issues] == ["missing_principal_condition"]
+
+    @pytest.mark.parametrize("required_conditions", [False, 0, ""])
+    async def test_falsy_scalar_required_conditions_is_reported(self, check, required_conditions):
+        config = self._config({"required_conditions": required_conditions})
+
+        issues = await check.execute(self._statement(), 0, None, config)
+
+        assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+
+
+class TestPrincipalRequirementEvaluationScope:
+    @pytest.fixture
+    def check(self):
+        return PrincipalValidationCheck()
+
+    @staticmethod
+    def _config(requirement: dict | None = None, **options) -> CheckConfig:
+        requirements = None if requirement is None else [{"principals": ["*"], **requirement}]
+        return CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={"blocked_principals": [], "principal_condition_requirements": requirements, **options},
+        )
+
+    @staticmethod
+    def _policy(principal) -> IAMPolicy:
+        statement = Statement(
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal=principal
+        )
+        return IAMPolicy(Version="2012-10-17", Statement=[statement])
+
+    async def _invalid(self, check, config, principal) -> list:
+        policy = self._policy(principal)
+        issues = list(await check.execute_policy(policy, "policy.json", None, config))
+        issues.extend(await check.execute(policy.statement[0], 0, None, config))
+        return [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+
+    _BAD_SEVERITY = {"severity": "urgent", "required_conditions": [{"condition_key": "aws:SourceArn"}]}
+
+    async def test_null_requirements_do_not_raise(self, check):
+        assert await check.execute_policy(self._policy("*"), "policy.json", None, self._config()) == []
+
+    async def test_bad_severity_not_reported_for_blocked_wildcard_principal(self, check):
+        config = self._config(self._BAD_SEVERITY, block_wildcard_principal=True)
+
+        assert await self._invalid(check, config, "*") == []
+
+    async def test_bad_severity_not_reported_for_service_principal_wildcard(self, check):
+        assert await self._invalid(check, self._config(self._BAD_SEVERITY), {"Service": "*"}) == []
+
+    async def test_bad_severity_reported_for_aws_wildcard_principal(self, check):
+        invalid = await self._invalid(check, self._config(self._BAD_SEVERITY), {"AWS": "*"})
+
+        assert [i.statement_index for i in invalid] == [-1]
+
+    async def test_string_principals_pattern_matches(self, check):
+        root = "arn:aws:iam::123456789012:root"
+        config = self._config({"principals": root, "required_conditions": [{"condition_key": "aws:SourceArn"}]})
+        statement = self._policy({"AWS": root}).statement[0]
+
+        issues = await check.execute(statement, 0, None, config)
+
+        assert [i.issue_type for i in issues] == ["missing_principal_condition"]
+        assert root in issues[0].message
+
+    async def test_string_principals_label_in_invalid_severity(self, check):
+        root = "arn:aws:iam::123456789012:root"
+        config = self._config({**self._BAD_SEVERITY, "principals": root})
+
+        invalid = await self._invalid(check, config, {"AWS": root})
+
+        assert len(invalid) == 1
+        assert f"`{root}`" in invalid[0].message
+
+    @pytest.mark.parametrize("principals", [123, {"AWS": "*"}, True])
+    async def test_malformed_principals_reported_once_per_policy(self, check, principals):
+        config = self._config({"principals": principals, "required_conditions": [{"condition_key": "aws:SourceArn"}]})
+
+        policy = self._policy("*")
+        issues = list(await check.execute_policy(policy, "policy.json", None, config))
+        issues.extend(await check.execute(policy.statement[0], 0, None, config))
+
+        assert [(i.issue_type, i.statement_index, i.severity) for i in issues] == [
+            ("invalid_condition_requirement", -1, "error")
+        ]
+
+
+class TestPrincipalListConfigRobustness:
+    @pytest.fixture
+    def check(self):
+        return PrincipalValidationCheck()
+
+    @staticmethod
+    def _policy(principal) -> IAMPolicy:
+        statement = Statement(
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal=principal
+        )
+        return IAMPolicy(Version="2012-10-17", Statement=[statement])
+
+    async def _run(self, check, options: dict, principal) -> list:
+        config = CheckConfig(
+            check_id="principal_validation", enabled=True, config={"blocked_principals": [], **options}
+        )
+        policy = self._policy(principal)
+        issues = list(await check.execute_policy(policy, "policy.json", None, config))
+        issues.extend(await check.execute(policy.statement[0], 0, None, config))
+        return issues
+
+    @pytest.mark.parametrize("key", ["blocked_principals", "allowed_principals"])
+    async def test_non_string_list_entry_reported_once_and_string_entries_kept(self, check, key):
+        root = "arn:aws:iam::123456789012:root"
+        issues = await self._run(check, {key: [123456789012, root]}, {"AWS": root})
+
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert [(i.statement_index, i.severity) for i in invalid] == [(-1, "error")]
+        assert key in invalid[0].message and "123456789012" in invalid[0].message
+        expected = ["blocked_principal"] if key == "blocked_principals" else []
+        assert [i.issue_type for i in issues if i not in invalid] == expected
+
+    async def test_non_string_allowed_service_principal_reported(self, check):
+        options = {"allowed_principals": ["arn:aws:iam::*:root"], "allowed_service_principals": [5]}
+        issues = await self._run(check, options, {"Service": "s3.amazonaws.com"})
+
+        assert [(i.issue_type, i.statement_index) for i in issues] == [
+            ("invalid_condition_requirement", -1),
+            ("unauthorized_principal", 0),
+        ]
+
+    async def test_non_string_requirement_principal_reported_once(self, check):
+        requirement = {"principals": [123, "*"], "required_conditions": [{"condition_key": "aws:SourceArn"}]}
+        issues = await self._run(check, {"principal_condition_requirements": [requirement]}, "*")
+
+        assert [(i.issue_type, i.statement_index) for i in issues] == [
+            ("invalid_condition_requirement", -1),
+            ("missing_principal_condition", 0),
+        ]
+
+    @pytest.mark.parametrize("allowed", [[111111111111], 111111111111, {"AWS": "x"}, True])
+    async def test_allowlist_with_no_string_entries_stays_restrictive(self, check, allowed):
+        issues = await self._run(check, {"allowed_principals": allowed}, {"AWS": "arn:aws:iam::999999999999:root"})
+
+        assert [(i.issue_type, i.statement_index) for i in issues] == [
+            ("invalid_condition_requirement", -1),
+            ("unauthorized_principal", 0),
+        ]
+
+    async def test_empty_allowlist_is_disabled(self, check):
+        issues = await self._run(check, {"allowed_principals": []}, {"AWS": "arn:aws:iam::999999999999:root"})
+
+        assert issues == []
+
+    @pytest.mark.parametrize("services", [[5], 5, {"a": 1}, False])
+    async def test_service_allowlist_with_no_string_entries_allows_no_service(self, check, services):
+        options = {"allowed_principals": ["arn:aws:iam::*:root"], "allowed_service_principals": services}
+        issues = await self._run(check, options, {"Service": "s3.amazonaws.com"})
+
+        assert [(i.issue_type, i.statement_index) for i in issues] == [
+            ("invalid_condition_requirement", -1),
+            ("unauthorized_principal", 0),
+        ]
+
+    @pytest.mark.parametrize("key", ["blocked_principals", "allowed_principals", "allowed_service_principals"])
+    @pytest.mark.parametrize("value", [123456789012, {"AWS": "*"}, True])
+    async def test_scalar_non_string_list_value_reported_once(self, check, key, value):
+        issues = await self._run(check, {key: value}, {"AWS": "arn:aws:iam::123456789012:root"})
+
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert [(i.statement_index, i.severity) for i in invalid] == [(-1, "error")]
+        assert key in invalid[0].message and repr(value) in invalid[0].message
+        assert "not a string or list" in invalid[0].message
+
+    async def test_scalar_non_string_requirement_principals_reported_once(self, check):
+        requirement = {"principals": 123, "required_conditions": [{"condition_key": "aws:SourceArn"}]}
+        issues = await self._run(check, {"principal_condition_requirements": [requirement]}, "*")
+
+        assert [(i.issue_type, i.statement_index) for i in issues] == [("invalid_condition_requirement", -1)]
+
+    @pytest.mark.parametrize(
+        ("principal", "expected"),
+        [
+            ({"AWS": [123456789012]}, []),
+            ({"AWS": 123}, []),
+            ({"AWS": [None, "*"]}, ["unauthorized_principal", "missing_principal_condition"]),
+        ],
+    )
+    async def test_non_string_policy_principal_does_not_raise(self, check, principal, expected):
+        requirement = {"principals": ["*"], "required_conditions": [{"condition_key": "aws:SourceArn"}]}
+        options = {
+            "allowed_principals": ["arn:aws:iam::*:root"],
+            "blocked_principals": ["arn:aws:iam::999999999999:root"],
+            "principal_condition_requirements": [requirement],
+        }
+        issues = await self._run(check, options, principal)
+
+        assert [i.issue_type for i in issues] == expected
+
+    @pytest.mark.parametrize("requirements", [["oops", 5], {"principals": ["*"]}, "oops", 5])
+    async def test_malformed_requirement_entries_reported_once_not_raised(self, check, requirements):
+        issues = await self._run(check, {"principal_condition_requirements": requirements}, "*")
+
+        expected = 2 if isinstance(requirements, list) else 1
+        assert [(i.issue_type, i.statement_index) for i in issues] == [("invalid_condition_requirement", -1)] * expected
+
+    async def test_non_dict_requirement_entry_skipped_beside_valid_one(self, check):
+        requirement = {"principals": ["*"], "required_conditions": [{"condition_key": "aws:SourceArn"}]}
+        issues = await self._run(check, {"principal_condition_requirements": ["oops", requirement]}, "*")
+
+        assert [(i.issue_type, i.statement_index) for i in issues] == [
+            ("invalid_condition_requirement", -1),
+            ("missing_principal_condition", 0),
+        ]

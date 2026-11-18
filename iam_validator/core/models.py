@@ -6,7 +6,7 @@ IAM policies, and validation results.
 
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, computed_field, field_validator
 
 from iam_validator.core import constants
 
@@ -248,6 +248,9 @@ class ValidationIssue(BaseModel):
     remediation_steps: list[str] | None = None
     # Risk category for classification (e.g., "privilege_escalation", "data_exfiltration")
     risk_category: str | None = None
+
+    # Identity of the violated rule; never serialized.
+    _rule_identity: str | None = PrivateAttr(default=None)
 
     # Severity level constants (ClassVar to avoid Pydantic treating them as fields)
     VALID_SEVERITIES: ClassVar[frozenset[str]] = frozenset(

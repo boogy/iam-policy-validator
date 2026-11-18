@@ -19,11 +19,28 @@ For full documentation, see: docs/condition-requirements.md
 """
 
 import re
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.checks.utils.aws_matching import action_matches, iam_glob_match
 from iam_validator.checks.utils.condition_matching import has_condition_key
+from iam_validator.checks.utils.requirement_branches import (
+    CONDITION_GROUPS,
+    DEFAULT_EFFECTS,
+    TOP_LEVEL_PREFIX,
+    VALID_SEVERITIES,
+    branch_effects,
+    branch_enforces_allow_everywhere,
+    branch_matches_resources,
+    branch_problem,
+    conditions_problem,
+    has_key_and_group,
+    has_no_conditions,
+    is_evaluable_entry,
+    requirement_branches,
+    severity_problem,
+)
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.ignore_patterns import IgnorePatternMatcher
@@ -32,6 +49,22 @@ from iam_validator.utils.regex import compile_and_cache
 
 if TYPE_CHECKING:
     from iam_validator.core.models import IAMPolicy
+
+ACTIONS_SHAPE_PROBLEM = "`actions` must be a string, a list or a mapping of `all_of`/`any_of`/`none_of`"
+_PRESENTATION_KEYS = frozenset({"severity", "description", "example"})
+
+
+def _canonical_rule(value: Any) -> Any:
+    """Key-order-independent form of a rule, without null keys or the keys that only change how it is reported."""
+    if isinstance(value, dict):
+        return tuple(
+            sorted(
+                (repr(k), _canonical_rule(v)) for k, v in value.items() if k not in _PRESENTATION_KEYS and v is not None
+            )
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_canonical_rule(v) for v in value)
+    return repr(value)
 
 
 class ActionConditionEnforcementCheck(PolicyCheck):
@@ -85,23 +118,33 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             List of ValidationIssue objects found by this check
         """
         del kwargs  # Not used in current implementation
-        issues: list[ValidationIssue] = []
+        issues: list[ValidationIssue] = self._requirement_list_problems(config)
 
         # Get action condition requirements using configurable merge strategy
         requirements = self._get_merged_requirements(config, policy_file)
 
         if not requirements:
-            return issues
+            return self._dedupe_issues(issues)
 
         # Process each requirement
-        for requirement in requirements:
+        for raw_requirement in requirements:
+            requirement, problems = self._prepare_requirement(raw_requirement)
+            branch_problems = requirement_branches(requirement)[1] if "if" in requirement else []
+            has_problems = bool(problems) or bool(branch_problems)
+            if has_problems and await self._matches_any_statement(policy, raw_requirement, fetcher):
+                issues.extend(problems)
+                issues.extend(self._create_malformed_branch_issue(requirement, p) for p in branch_problems)
             # Check if actions use all_of/any_of/none_of (policy-wide) or simple list (per-statement)
-            actions_config = requirement.get("actions", [])
-            uses_logical_operators = isinstance(actions_config, dict) and any(
-                key in actions_config for key in ("all_of", "any_of", "none_of")
-            )
+            uses_logical_operators = self._is_policy_wide(requirement)
 
-            if uses_logical_operators:
+            if "if" in requirement:
+                branch_issues = await self._check_branches(
+                    policy, requirement, fetcher, config, policy_wide=uses_logical_operators
+                )
+                issues.extend(
+                    self._filter_requirement_issues(branch_issues, requirement.get("ignore_patterns", []), policy_file)
+                )
+            elif uses_logical_operators:
                 # Policy-wide detection (all_of/any_of/none_of)
                 policy_issues = await self._check_policy_wide(policy, requirement, fetcher, config)
                 # Filter by requirement-level ignore_patterns
@@ -118,7 +161,326 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 )
                 issues.extend(statement_issues)
 
+        return self._dedupe_issues(issues)
+
+    async def _matches_any_statement(
+        self, policy: "IAMPolicy", requirement: dict[str, Any], fetcher: AWSServiceFetcher
+    ) -> bool:
+        """Whether any statement, of either effect, names an action of ``requirement``; true when it names none."""
+        configured = requirement.get("actions", [])
+        if isinstance(configured, dict):
+            configured = [a for v in configured.values() for a in (v if isinstance(v, list) else [v])]
+        actions = [a for a in configured if isinstance(a, str)] if isinstance(configured, list) else []
+        if not actions and not requirement.get("action_patterns"):
+            return True
+        probe = {**requirement, "actions": actions}
+        for statement in policy.statement or []:
+            if requirement.get("action_patterns") and "*" in statement.get_actions():
+                return True
+            matched, _ = await self._check_action_match(self._granted_actions(statement, actions), probe, fetcher)
+            if matched:
+                return True
+        return False
+
+    @staticmethod
+    def _is_policy_wide(requirement: dict[str, Any]) -> bool:
+        actions_config = requirement.get("actions", [])
+        return isinstance(actions_config, dict) and any(key in actions_config for key in CONDITION_GROUPS)
+
+    async def _check_branches(
+        self,
+        policy: "IAMPolicy",
+        requirement: dict[str, Any],
+        fetcher: AWSServiceFetcher,
+        config: CheckConfig,
+        *,
+        policy_wide: bool,
+    ) -> list[ValidationIssue]:
+        """Enforce each ``if`` branch as an ordinary requirement scoped by its effect and resource predicates."""
+        branches, _ = requirement_branches(requirement)
+        issues: list[ValidationIssue] = []
+
+        base = {k: v for k, v in requirement.items() if k not in ("if", "required_conditions", "severity")}
+        for branch in branches:
+            branch_requirement = {**base, "required_conditions": branch["required_conditions"]}
+            severity = branch.get("severity") or requirement.get("severity")
+            if severity:
+                branch_requirement["severity"] = severity
+
+            def matches(statement: Statement, branch: dict[str, Any] = branch) -> bool:
+                return branch_matches_resources(branch, statement)
+
+            effects = branch_effects(branch)
+            if policy_wide:
+                issues.extend(
+                    await self._check_policy_wide(
+                        policy, branch_requirement, fetcher, config, effects=effects, statement_filter=matches
+                    )
+                )
+            else:
+                issues.extend(
+                    await self._check_per_statement(
+                        policy, branch_requirement, fetcher, config, effects=effects, statement_filter=matches
+                    )
+                )
         return issues
+
+    @staticmethod
+    def _dedupe_issues(issues: list[ValidationIssue]) -> list[ValidationIssue]:
+        """Collapse findings that differ only in severity or suggestion, keeping the most severe."""
+        unique: dict[tuple[Any, ...], ValidationIssue] = {}
+        for issue in issues:
+            key = (
+                issue.issue_type,
+                issue.statement_index,
+                issue.field_name,
+                issue.action,
+                issue.condition_key,
+                issue.line_number,
+                issue.message if issue._rule_identity is None else None,
+                issue.example if issue._rule_identity is None else None,
+                issue._rule_identity,
+            )
+            kept = unique.get(key)
+            if kept is None or issue.get_severity_rank() > kept.get_severity_rank():
+                unique[key] = issue
+        return list(unique.values())
+
+    def _prepare_requirement(self, requirement: dict[str, Any]) -> tuple[dict[str, Any], list[ValidationIssue]]:
+        """A copy of ``requirement`` without null or invalid severities, and one issue per config problem."""
+        issues: list[ValidationIssue] = []
+        cleaned = self._without_bad_severity(requirement, requirement, "", issues)
+        self._prepare_actions(requirement, cleaned, issues)
+        if "if" not in cleaned:
+            if "required_conditions" in cleaned:
+                cleaned["required_conditions"] = self._prepare_conditions(
+                    requirement, cleaned["required_conditions"], "", issues, report_shape=True
+                )
+            return cleaned, issues
+        if isinstance(cleaned["if"], list):
+            branches: list[Any] = []
+            for index, branch in enumerate(cleaned["if"]):
+                if isinstance(branch, dict):
+                    branch = self._without_bad_severity(requirement, branch, f"`if[{index}]`", issues)
+                    if branch_problem(branch) is None:
+                        branch["required_conditions"] = self._prepare_conditions(
+                            requirement, branch["required_conditions"], f"if[{index}].", issues, report_shape=False
+                        )
+                branches.append(branch)
+            cleaned["if"] = branches
+        top_level = cleaned.get("required_conditions")
+        if not has_no_conditions(top_level) and branch_problem({"required_conditions": top_level}) is None:
+            cleaned["required_conditions"] = self._prepare_conditions(
+                requirement, top_level, "", issues, report_shape=False
+            )
+        return cleaned, issues
+
+    def _prepare_actions(
+        self, requirement: dict[str, Any], cleaned: dict[str, Any], issues: list[ValidationIssue]
+    ) -> None:
+        actions = cleaned.get("actions")
+        if actions is None:
+            return
+        if isinstance(actions, list):
+            cleaned["actions"] = self._string_actions(requirement, actions, "actions", issues)
+            return
+        if not isinstance(actions, dict):
+            issues.append(self._create_malformed_requirement_issue(requirement, ACTIONS_SHAPE_PROBLEM, actions))
+            cleaned["actions"] = []
+            return
+        kept: dict[str, Any] = {}
+        for group, value in actions.items():
+            if group not in CONDITION_GROUPS:
+                problem = f"`actions.{group}` is not `all_of`, `any_of` or `none_of`"
+            elif value is not None and not isinstance(value, list):
+                problem = f"`actions.{group}` must be a list"
+            else:
+                kept[group] = value and self._string_actions(requirement, value, f"actions.{group}", issues)
+                continue
+            issues.append(self._create_malformed_requirement_issue(requirement, problem, value))
+        cleaned["actions"] = kept
+
+    def _string_actions(
+        self, requirement: dict[str, Any], actions: list[Any], label: str, issues: list[ValidationIssue]
+    ) -> list[str]:
+        problem = f"`{label}` element must be an action string"
+        issues.extend(
+            self._create_malformed_requirement_issue(requirement, problem, a) for a in actions if not isinstance(a, str)
+        )
+        return [a for a in actions if isinstance(a, str)]
+
+    def _without_bad_severity(
+        self, requirement: dict[str, Any], node: dict[str, Any], where: str, issues: list[ValidationIssue]
+    ) -> dict[str, Any]:
+        cleaned = {k: v for k, v in node.items() if k != "severity"}
+        severity = node.get("severity")
+        if severity_problem(severity):
+            issues.append(self._create_invalid_severity_issue(requirement, severity, where))
+        elif severity is not None:
+            cleaned["severity"] = severity
+        return cleaned
+
+    def _prepare_conditions(
+        self,
+        requirement: dict[str, Any],
+        required_conditions: Any,
+        prefix: str,
+        issues: list[ValidationIssue],
+        *,
+        report_shape: bool,
+    ) -> Any:
+        if isinstance(required_conditions, list):
+            return self._prepare_entries(requirement, required_conditions, f"{prefix}required_conditions", issues)
+        if report_shape and not has_no_conditions(required_conditions):
+            self._report_conditions_shape(requirement, required_conditions, issues)
+        if not isinstance(required_conditions, dict):
+            return required_conditions
+        cleaned = dict(required_conditions)
+        for group in CONDITION_GROUPS:
+            value = required_conditions.get(group)
+            if isinstance(value, list):
+                cleaned[group] = self._prepare_entries(requirement, value, f"{prefix}{group}", issues)
+        return cleaned
+
+    def _report_conditions_shape(
+        self, requirement: dict[str, Any], required_conditions: Any, issues: list[ValidationIssue]
+    ) -> None:
+        if not isinstance(required_conditions, dict):
+            problem = conditions_problem(required_conditions)
+            if problem:
+                issues.append(self._create_malformed_requirement_issue(requirement, problem, required_conditions))
+            return
+        for key in sorted(required_conditions, key=str):
+            value = required_conditions[key]
+            if key in CONDITION_GROUPS and (value is None or isinstance(value, list)):
+                continue
+            problem = conditions_problem({key: value})
+            if problem:
+                issues.append(self._create_malformed_requirement_issue(requirement, problem, value))
+
+    def _prepare_entries(
+        self, requirement: dict[str, Any], entries: list[Any], label: str, issues: list[ValidationIssue]
+    ) -> list[Any]:
+        prepared: list[Any] = []
+        for entry in entries:
+            if not is_evaluable_entry(entry):
+                issues.append(self._create_malformed_requirement_issue(requirement, None, entry, label))
+                prepared.append(entry)
+            else:
+                prepared.append(self._entry_without_bad_severity(requirement, entry, label, issues))
+        return prepared
+
+    def _entry_without_bad_severity(
+        self, requirement: dict[str, Any], entry: dict[str, Any], label: str, issues: list[ValidationIssue]
+    ) -> dict[str, Any]:
+        cleaned = self._without_bad_severity(requirement, entry, f"entry under `{label}`", issues)
+        if cleaned.get("all_of") is None:
+            cleaned.pop("all_of", None)
+        else:
+            cleaned["all_of"] = [
+                self._entry_without_bad_severity(requirement, e, f"{label}.all_of", issues) for e in cleaned["all_of"]
+            ]
+        return cleaned
+
+    @staticmethod
+    def _actions_label(requirement: dict[str, Any]) -> tuple[str, str | None]:
+        """The requirement's actions as backticked text, and as the issue's ``action`` field."""
+        actions = requirement.get("actions", [])
+        if isinstance(actions, list):
+            return format_list_with_backticks(actions), ", ".join(a for a in actions if isinstance(a, str))
+        if isinstance(actions, dict):
+            named = [
+                a for g in CONDITION_GROUPS if isinstance(v := actions.get(g), list) for a in v if isinstance(a, str)
+            ]
+            return f"`{actions!r}`", ", ".join(named) or None
+        return f"`{actions!r}`", None
+
+    def _create_invalid_severity_issue(self, requirement: dict[str, Any], severity: Any, where: str) -> ValidationIssue:
+        actions_str, action = self._actions_label(requirement)
+        located = (
+            f" has an invalid `severity` `{severity!r}` in {where}"
+            if where
+            else f" has an invalid `severity` `{severity!r}`"
+        )
+        fallback = "the enclosing severity" if where else "the check severity"
+        return ValidationIssue(
+            severity="error",
+            statement_sid=None,
+            statement_index=-1,
+            issue_type="invalid_condition_requirement",
+            message=(
+                f"`action_condition_requirements` entry for action(s) {actions_str}{located}; "
+                f"its findings use {fallback} instead"
+            ),
+            action=action,
+            suggestion=f"Set `severity` to one of {', '.join(sorted(VALID_SEVERITIES))}, or remove it.",
+            field_name="condition",
+        )
+
+    def _create_malformed_requirement_issue(
+        self, requirement: dict[str, Any], problem: str | None, entry: Any, label: str = ""
+    ) -> ValidationIssue:
+        actions_str, action = self._actions_label(requirement)
+        if problem:
+            message = (
+                f"`action_condition_requirements` {problem}, so it cannot be enforced for action(s) "
+                f"{actions_str}: `{entry!r}`"
+            )
+            suggestion = "Fix its shape. Until then it enforces nothing."
+        elif has_key_and_group(entry):
+            message = (
+                f"`action_condition_requirements` entry under `{label}` has both `condition_key` and `all_of`, "
+                f"so it cannot be enforced for action(s) {actions_str}: `{entry!r}`"
+            )
+            suggestion = "Keep either `condition_key` or `all_of`; nest the key under `all_of` to require both."
+        elif isinstance(entry, dict) and "all_of" in entry:
+            message = (
+                f"`action_condition_requirements` entry under `{label}` has an empty, non-list or malformed nested "
+                f"`all_of`, so it cannot be enforced for action(s) {actions_str}: `{entry!r}`"
+            )
+            suggestion = "Give `all_of` a non-empty list of entries, each with a string `condition_key`."
+        else:
+            message = (
+                f"`action_condition_requirements` entry under `{label}` names no string `condition_key` "
+                f"(or has a non-string `operator`), so it cannot be enforced for action(s) {actions_str}: `{entry!r}`"
+            )
+            suggestion = (
+                "Give this entry a string `condition_key` and `operator` (or nest the entry under `all_of`). "
+                "Until then the entry enforces nothing."
+            )
+        return ValidationIssue(
+            severity="error",
+            statement_sid=None,
+            statement_index=-1,
+            issue_type="invalid_condition_requirement",
+            message=message,
+            action=action,
+            suggestion=suggestion,
+            field_name="condition",
+        )
+
+    def _create_malformed_branch_issue(self, requirement: dict[str, Any], problem: str) -> ValidationIssue:
+        actions_str, action = self._actions_label(requirement)
+        top_level = problem.startswith(TOP_LEVEL_PREFIX)
+        return ValidationIssue(
+            severity="error",
+            statement_sid=None,
+            statement_index=-1,
+            issue_type="invalid_condition_requirement",
+            message=(
+                f"`action_condition_requirements` entry for action(s) {actions_str} has a malformed "
+                f"{'`required_conditions`' if top_level else '`if` branch'}, which enforces nothing: {problem}"
+            ),
+            action=action,
+            suggestion=(
+                "Make the top-level `required_conditions` a non-empty list or an `all_of`/`any_of`/`none_of` "
+                "mapping, or remove it."
+                if top_level
+                else "Each `if` branch is a mapping with a non-empty `required_conditions` and optional `effect` "
+                "(`Allow`/`Deny`), `resource`, `not_resource` (regex) and `severity`."
+            ),
+            field_name="condition",
+        )
 
     @classmethod
     def _resolve_own_config(cls, root_config: dict[str, Any]) -> dict[str, Any]:
@@ -152,7 +514,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         if not own_config.get("enabled", True):
             return set()
 
-        requirements = cls()._get_merged_requirements(
+        check = cls()
+        requirements = check._get_merged_requirements(
             CheckConfig(
                 check_id=cls.check_id,
                 enabled=True,
@@ -163,15 +526,74 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         )
 
         actions: set[str] = set()
-        for requirement in requirements:
+        for raw_requirement in requirements:
+            requirement, _ = check._prepare_requirement(raw_requirement)
+            if "if" in requirement:
+                if not any(
+                    branch_enforces_allow_everywhere(b) and cls._requires_evaluable_condition(b["required_conditions"])
+                    for b in requirement_branches(requirement)[0]
+                ):
+                    continue
+            elif not has_no_conditions(
+                required := requirement.get("required_conditions")
+            ) and not cls._requires_evaluable_condition(required):
+                continue
             configured = requirement.get("actions", [])
-            if isinstance(configured, str):
-                actions.add(configured)
-            elif isinstance(configured, list):
+            if isinstance(configured, list):
                 actions.update(a for a in configured if isinstance(a, str))
         return actions
 
     def _get_merged_requirements(
+        self,
+        config: CheckConfig,
+        policy_file: str | None,
+    ) -> list[dict[str, Any]]:
+        """Merged requirements, with a single-string ``actions`` normalized to a list."""
+        return [
+            {**r, "actions": [r["actions"]]} if isinstance(r.get("actions"), str) else r
+            for r in self._merge_requirements(config, policy_file)
+        ]
+
+    _REQUIREMENT_LIST_KEYS: ClassVar[tuple[str, ...]] = (
+        "requirements",
+        "policy_level_requirements",
+        "action_condition_requirements",
+    )
+
+    @staticmethod
+    def _requirement_entries(config: CheckConfig, key: str) -> list[dict[str, Any]]:
+        """The mapping entries of the requirement list under ``key``; ``execute_policy`` reports the rest."""
+        value = config.config.get(key)
+        return [r for r in value if isinstance(r, dict)] if isinstance(value, list) else []
+
+    @classmethod
+    def _requirement_list_problems(cls, config: CheckConfig) -> list[ValidationIssue]:
+        """A non-list requirement list, or a non-mapping entry in one, each reported once per policy."""
+        problems: list[tuple[str, Any, str]] = []
+        for key in cls._REQUIREMENT_LIST_KEYS:
+            value = config.config.get(key)
+            if value is None:
+                continue
+            if not isinstance(value, list):
+                problems.append((key, value, "is not a list"))
+            else:
+                problems.extend(
+                    (key, entry, "has an entry that is not a mapping") for entry in value if not isinstance(entry, dict)
+                )
+        return [
+            ValidationIssue(
+                severity="error",
+                statement_sid=None,
+                statement_index=-1,
+                issue_type="invalid_condition_requirement",
+                message=f"`{key}` {problem}, so it is not enforced: `{entry!r}`",
+                suggestion=f"Make `{key}` a list of mappings, each with `actions` and `required_conditions`.",
+                field_name="condition",
+            )
+            for key, entry, problem in problems
+        ]
+
+    def _merge_requirements(
         self,
         config: CheckConfig,
         policy_file: str | None,
@@ -199,10 +621,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # defaults always set `requirements`, so entries a user added there were
         # silently ignored.
         default_requirements = [
-            *(config.config.get("requirements") or []),
-            *(config.config.get("policy_level_requirements") or []),
+            *self._requirement_entries(config, "requirements"),
+            *self._requirement_entries(config, "policy_level_requirements"),
         ]
-        user_requirements = config.config.get("action_condition_requirements")
+        user_requirements = self._requirement_entries(config, "action_condition_requirements")
 
         # Get merge strategy (default: append - both defaults and user requirements apply)
         merge_strategy = config.config.get("merge_strategy", "append")
@@ -237,9 +659,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             # Non-matching defaults are kept
             # Note: We use the ORIGINAL user_requirements to determine which actions
             # are "user-defined" (even if filtered out by ignore_patterns)
-            return self._merge_per_action_override(
-                default_requirements, user_requirements or [], active_user_requirements
-            )
+            return self._merge_per_action_override(default_requirements, user_requirements, active_user_requirements)
 
         else:  # "append" (default)
             # Both defaults AND user requirements apply
@@ -350,14 +770,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """
         # Build a set of actions that user has customized (from ALL user requirements)
         # This determines which defaults to exclude
-        user_actions = set()
+        user_actions: set[str] = set()
         for req in all_user_requirements:
             actions = req.get("actions", [])
-            # Handle both single action and list of actions
             if isinstance(actions, str):
                 user_actions.add(actions)
-            else:
-                user_actions.update(actions)
+            elif isinstance(actions, list):
+                user_actions.update(a for a in actions if isinstance(a, str))
 
         # Start with ACTIVE user requirements (filtered by ignore_patterns)
         merged = list(active_user_requirements)
@@ -418,6 +837,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         requirement: dict[str, Any],
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
+        *,
+        effects: frozenset[str] = DEFAULT_EFFECTS,
+        statement_filter: Callable[[Statement], bool] | None = None,
     ) -> list[ValidationIssue]:
         """
         Check actions across the entire policy using all_of/any_of/none_of logic.
@@ -429,16 +851,16 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """
         issues = []
         actions_config = requirement.get("actions", {})
-        all_of = actions_config.get("all_of", [])
-        any_of = actions_config.get("any_of", [])
-        none_of = actions_config.get("none_of", [])
+        all_of = actions_config.get("all_of") or []
+        any_of = actions_config.get("any_of") or []
+        none_of = actions_config.get("none_of") or []
 
         # Collect all actions across the entire policy
         policy_wide_actions: set[str] = set()
         statements_by_action: dict[str, list[tuple[int, Statement]]] = {}
 
         for idx, statement in enumerate(policy.statement or []):
-            if statement.effect != "Allow":
+            if statement.effect not in effects or (statement_filter and not statement_filter(statement)):
                 continue
 
             statement_actions = self._granted_actions(statement, [*all_of, *any_of, *none_of])
@@ -476,10 +898,15 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         # Check none_of: NONE of the forbidden actions should exist in policy
         if none_of:
+            allowed_by_action = {
+                action: allowed
+                for action, statements in statements_by_action.items()
+                if (allowed := [(i, s) for i, s in statements if s.effect == "Allow"])
+            }
             none_of_result = await self._check_none_of_policy_wide(
                 none_of,
-                policy_wide_actions,
-                statements_by_action,
+                set(allowed_by_action),
+                allowed_by_action,
                 requirement,
                 config,
                 fetcher,
@@ -534,7 +961,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # Check each statement to see if it contains ALL required actions
         for statement in statements_by_action.get(list(found_actions_mapping.values())[0], []):
             stmt_idx, stmt = statement
-            stmt_actions = stmt.get_actions()
+            stmt_actions = self._granted_actions(stmt, all_of_actions)
 
             # Check if this statement has ALL required actions
             has_all_actions = True
@@ -565,7 +992,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 if stmt_idx in checked_indices:
                     continue
 
-                stmt_actions = stmt.get_actions()
+                stmt_actions = self._granted_actions(stmt, all_of_actions)
 
                 # Check if this statement has ALL required actions
                 has_all_actions = True
@@ -686,7 +1113,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             return issues
 
         description = requirement.get("description", "These actions should not be used")
-        severity = requirement.get("severity", self.get_severity(config))
+        severity = self._resolve_severity(config, requirement)
 
         for stmt_idx, stmt, actions in statements_with_forbidden:
             actions_formatted = format_list_with_backticks(actions)
@@ -723,9 +1150,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         issues = []
         required_conditions_config = requirement.get("required_conditions", [])
         description = requirement.get("description", "")
-        severity = requirement.get("severity", self.get_severity(config))
+        severity = self._resolve_severity(config, requirement)
 
-        if not required_conditions_config:
+        if has_no_conditions(required_conditions_config):
             # No conditions specified, just report that actions were found
             all_actions_formatted = format_list_with_backticks(sorted(set(found_actions)))
             statement_refs = [
@@ -778,6 +1205,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         requirement: dict[str, Any],
         fetcher: AWSServiceFetcher,
         config: CheckConfig,
+        *,
+        effects: frozenset[str] = DEFAULT_EFFECTS,
+        statement_filter: Callable[[Statement], bool] | None = None,
     ) -> list[ValidationIssue]:
         """
         Check each statement individually for matching actions (simple list format).
@@ -788,8 +1218,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         matching_statements: list[tuple[int, Statement, list[str]]] = []
 
         for idx, statement in enumerate(policy.statement or []):
-            # Only check Allow statements
-            if statement.effect != "Allow":
+            if statement.effect not in effects or (statement_filter and not statement_filter(statement)):
                 continue
 
             required = requirement.get("actions", [])
@@ -807,10 +1236,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         # Now validate that ALL matching statements have the required conditions
         required_conditions_config = requirement.get("required_conditions", [])
-        if not required_conditions_config:
+        if has_no_conditions(required_conditions_config):
             # No conditions specified, just report that actions were found
             description = requirement.get("description", "")
-            severity = requirement.get("severity", self.get_severity(config))
+            severity = self._resolve_severity(config, requirement)
 
             # Create a summary issue for all matching statements
             all_actions = set()
@@ -920,9 +1349,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         # Handle all_of/any_of/none_of format
         if isinstance(actions_config, dict):
-            all_of = actions_config.get("all_of", [])
-            any_of = actions_config.get("any_of", [])
-            none_of = actions_config.get("none_of", [])
+            all_of = actions_config.get("all_of") or []
+            any_of = actions_config.get("any_of") or []
+            none_of = actions_config.get("none_of") or []
 
             # Check all_of: ALL specified actions must be in statement
             if all_of:
@@ -1072,24 +1501,14 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """
         issues: list[ValidationIssue] = []
 
-        # Handle simple list format (backward compatibility)
         if isinstance(required_conditions_config, list):
-            malformed = self._malformed_condition_requirements(required_conditions_config)
-            for entry in malformed:
-                issues.append(
-                    self._create_malformed_requirement_issue(
-                        statement, statement_idx, entry, matching_actions, "required_conditions"
-                    )
-                )
-            for condition_requirement in required_conditions_config:
-                if condition_requirement in malformed:
-                    continue
-                if not self._has_condition_requirement(statement, condition_requirement):
+            for condition_requirement in self._evaluable_requirements(required_conditions_config):
+                for missing in self._missing_requirements(statement, condition_requirement):
                     issues.append(
                         self._create_issue(
                             statement,
                             statement_idx,
-                            condition_requirement,
+                            missing,
                             matching_actions,
                             config,
                             requirement=requirement,
@@ -1097,81 +1516,52 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     )
             return issues
 
-        # Handle all_of/any_of/none_of format
-        if isinstance(required_conditions_config, dict):
-            all_of = required_conditions_config.get("all_of", [])
-            any_of = required_conditions_config.get("any_of", [])
-            none_of = required_conditions_config.get("none_of", [])
+        if not isinstance(required_conditions_config, dict):
+            return issues
 
-            # Validate all_of: ALL conditions must be present
-            if all_of:
-                malformed = self._malformed_condition_requirements(all_of)
-                for entry in malformed:
-                    issues.append(
-                        self._create_malformed_requirement_issue(
-                            statement, statement_idx, entry, matching_actions, "all_of"
-                        )
+        all_of, any_of, none_of = (
+            self._evaluable_requirements(required_conditions_config.get(group)) for group in CONDITION_GROUPS
+        )
+
+        for condition_requirement in all_of:
+            for missing in self._missing_requirements(statement, condition_requirement):
+                issues.append(
+                    self._create_issue(
+                        statement,
+                        statement_idx,
+                        missing,
+                        matching_actions,
+                        config,
+                        requirement_type="all_of",
+                        requirement=requirement,
                     )
-                for condition_requirement in all_of:
-                    if condition_requirement in malformed:
-                        continue
-                    if not self._has_condition_requirement(statement, condition_requirement):
-                        issues.append(
-                            self._create_issue(
-                                statement,
-                                statement_idx,
-                                condition_requirement,
-                                matching_actions,
-                                config,
-                                requirement_type="all_of",
-                                requirement=requirement,
-                            )
-                        )
+                )
 
-            # Validate any_of: At least ONE condition must be present
-            if any_of:
-                for entry in self._malformed_condition_requirements(any_of):
-                    issues.append(
-                        self._create_malformed_requirement_issue(
-                            statement, statement_idx, entry, matching_actions, "any_of"
-                        )
+        if any_of:
+            any_present = any(self._has_condition_requirement(statement, cond_req) for cond_req in any_of)
+
+            if not any_present:
+                custom_message = requirement.get("message") if requirement else None
+                custom_suggestion = requirement.get("suggestion") if requirement else None
+                custom_example = requirement.get("example") if requirement else None
+
+                if custom_message:
+                    message = custom_message
+                    suggestion = custom_suggestion or ""
+                    example = custom_example or ""
+                else:
+                    condition_keys_formatted = " OR ".join(self._describe_requirement(c) for c in any_of)
+                    matching_actions_formatted = format_list_with_backticks(matching_actions)
+
+                    message = (
+                        f"Actions {matching_actions_formatted} require at least ONE of these conditions: "
+                        f"{condition_keys_formatted}"
                     )
-                any_present = any(self._has_condition_requirement(statement, cond_req) for cond_req in any_of)
 
-                if not any_present:
-                    # Check if requirement has custom message/suggestion/example
-                    custom_message = requirement.get("message") if requirement else None
-                    custom_suggestion = requirement.get("suggestion") if requirement else None
-                    custom_example = requirement.get("example") if requirement else None
+                    suggestion, example = self._build_any_of_suggestion(any_of)
 
-                    if custom_message:
-                        # Use fully custom message/suggestion/example from requirement
-                        message = custom_message
-                        suggestion = custom_suggestion or ""
-                        example = custom_example or ""
-                    else:
-                        # Generate default message and build suggestion from conditions
-                        condition_keys = []
-                        for cond in any_of:
-                            if "all_of" in cond:
-                                # Nested all_of - collect all condition keys
-                                nested_keys = [c.get("condition_key", "unknown") for c in cond["all_of"]]
-                                condition_keys.append(f"({' + '.join(f'`{k}`' for k in nested_keys)})")
-                            else:
-                                # Simple condition
-                                condition_keys.append(f"`{cond.get('condition_key', 'unknown')}`")
-                        condition_keys_formatted = " OR ".join(condition_keys)
-                        matching_actions_formatted = format_list_with_backticks(matching_actions)
-
-                        message = (
-                            f"Actions {matching_actions_formatted} require at least ONE of these conditions: "
-                            f"{condition_keys_formatted}"
-                        )
-
-                        # Build suggestion and examples from conditions
-                        suggestion, example = self._build_any_of_suggestion(any_of)
-
-                    issues.append(
+                issues.append(
+                    self._with_rule_identity(
                         ValidationIssue(
                             severity=self._resolve_severity(config, requirement),
                             statement_sid=statement.sid,
@@ -1183,32 +1573,24 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             example=example if example else None,
                             line_number=statement.line_number,
                             field_name="condition",
-                        )
+                        ),
+                        "any_of",
+                        any_of,
                     )
+                )
 
-            # Validate none_of: NONE of these conditions should be present
-            if none_of:
-                malformed = self._malformed_condition_requirements(none_of)
-                for entry in malformed:
-                    issues.append(
-                        self._create_malformed_requirement_issue(
-                            statement, statement_idx, entry, matching_actions, "none_of"
-                        )
+        for condition_requirement in none_of:
+            if statement.effect == "Allow" and self._has_condition_requirement(statement, condition_requirement):
+                issues.append(
+                    self._create_none_of_issue(
+                        statement,
+                        statement_idx,
+                        condition_requirement,
+                        matching_actions,
+                        config,
+                        requirement=requirement,
                     )
-                for condition_requirement in none_of:
-                    if condition_requirement in malformed:
-                        continue
-                    if self._has_condition_requirement(statement, condition_requirement):
-                        issues.append(
-                            self._create_none_of_issue(
-                                statement,
-                                statement_idx,
-                                condition_requirement,
-                                matching_actions,
-                                config,
-                                requirement=requirement,
-                            )
-                        )
+                )
 
         return issues
 
@@ -1220,8 +1602,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         condition_key = condition_requirement.get("condition_key")
         if not condition_key:
-            # Unsatisfiable is the safe direction: an enforcement rule that names no key must
-            # never read as satisfied. _malformed_condition_requirements reports it separately.
             return False
 
         operator = condition_requirement.get("operator")
@@ -1229,41 +1609,46 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         return has_condition_key(statement, condition_key, operator, expected_value)
 
+    @classmethod
+    def _requires_evaluable_condition(cls, required_conditions: Any) -> bool:
+        """Whether ``required_conditions`` requires (not only forbids) at least one evaluable entry."""
+        if isinstance(required_conditions, list):
+            return bool(cls._evaluable_requirements(required_conditions))
+        if isinstance(required_conditions, dict):
+            return any(cls._evaluable_requirements(required_conditions.get(g)) for g in ("all_of", "any_of"))
+        return False
+
     @staticmethod
-    def _malformed_condition_requirements(entries: Any) -> list[Any]:
-        """Requirement entries that name no condition key, so they can never be evaluated."""
+    def _evaluable_requirements(entries: Any) -> list[dict[str, Any]]:
+        """The entries of a condition group that can be evaluated; malformed ones are reported once per policy."""
         if not isinstance(entries, list):
             return []
-        return [e for e in entries if not (isinstance(e, dict) and (e.get("condition_key") or e.get("all_of")))]
+        return [e for e in entries if is_evaluable_entry(e)]
 
-    def _create_malformed_requirement_issue(
-        self,
-        statement: Statement,
-        statement_idx: int,
-        entry: Any,
-        matching_actions: list[str],
-        requirement_type: str,
-    ) -> ValidationIssue:
-        matching_actions_str = format_list_with_backticks(matching_actions)
-        # Deliberately not _resolve_severity: a broken requirement's own `severity` must not
-        # downgrade the notice that it enforces nothing.
-        return ValidationIssue(
-            severity="error",
-            statement_sid=statement.sid,
-            statement_index=statement_idx,
-            issue_type="invalid_condition_requirement",
-            message=(
-                f"`action_condition_requirements` entry under `{requirement_type}` names no "
-                f"`condition_key`, so it cannot be enforced for action(s) {matching_actions_str}: `{entry!r}`"
-            ),
-            action=", ".join(matching_actions),
-            suggestion=(
-                "Add a `condition_key` to this entry (or nest the entry under `all_of`). "
-                "Until then the requirement enforces nothing."
-            ),
-            line_number=statement.line_number,
-            field_name="condition",
-        )
+    @staticmethod
+    def _with_rule_identity(issue: ValidationIssue, *rule: Any) -> ValidationIssue:
+        issue._rule_identity = repr(_canonical_rule(rule))
+        return issue
+
+    def _missing_requirements(self, statement: Statement, entry: dict[str, Any]) -> list[dict[str, Any]]:
+        """The leaf requirements of ``entry`` the statement lacks; a nested ``all_of`` passes down its severity, description and example."""
+        if "all_of" not in entry:
+            return [] if self._has_condition_requirement(statement, entry) else [entry]
+        inherited: dict[str, Any] = {k: entry[k] for k in ("severity", "description", "example") if k in entry}
+        return [
+            m
+            for e in entry["all_of"]
+            for m in self._missing_requirements(
+                statement, {**inherited, **{k: v for k, v in e.items() if v is not None}}
+            )
+        ]
+
+    @staticmethod
+    def _describe_requirement(entry: dict[str, Any]) -> str:
+        nested = entry.get("all_of")
+        if nested:
+            return f"({' + '.join(ActionConditionEnforcementCheck._describe_requirement(e) for e in nested)})"
+        return f"`{entry.get('condition_key', 'unknown')}`"
 
     def _resolve_severity(
         self,
@@ -1299,7 +1684,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         description = condition_requirement.get("description", "")
         expected_value = condition_requirement.get("expected_value")
         example = condition_requirement.get("example", "")
-        operator = condition_requirement.get("operator", "StringEquals")
+        operator = condition_requirement.get("operator") or "StringEquals"
 
         message_prefix = "ALL required:" if requirement_type == "all_of" else "Required:"
 
@@ -1310,18 +1695,22 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         )
 
         matching_actions_str = format_list_with_backticks(matching_actions)
-        return ValidationIssue(
-            severity=severity,
-            statement_sid=statement.sid,
-            statement_index=statement_idx,
-            issue_type="missing_required_condition",
-            message=f"{message_prefix} Action(s) {matching_actions_str} require condition `{condition_key}`",
-            action=", ".join(matching_actions),
-            condition_key=condition_key,
-            suggestion=suggestion_text,
-            example=example_code,
-            line_number=statement.line_number,
-            field_name="condition",
+        return self._with_rule_identity(
+            ValidationIssue(
+                severity=severity,
+                statement_sid=statement.sid,
+                statement_index=statement_idx,
+                issue_type="missing_required_condition",
+                message=f"{message_prefix} Action(s) {matching_actions_str} require condition `{condition_key}`",
+                action=", ".join(matching_actions),
+                condition_key=condition_key,
+                suggestion=suggestion_text,
+                example=example_code,
+                line_number=statement.line_number,
+                field_name="condition",
+            ),
+            "all_of" if requirement_type == "required" else requirement_type,
+            condition_requirement,
         )
 
     def _build_suggestion(
@@ -1392,23 +1781,20 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             if "all_of" in cond:
                 # Nested all_of - show all required conditions together
                 all_of_list = cond["all_of"]
-                condition_keys = [c.get("condition_key", "unknown") for c in all_of_list]
-                condition_keys_formatted = format_list_with_backticks(condition_keys, separator=" + ")
+                condition_keys_formatted = " + ".join(self._describe_requirement(c) for c in all_of_list)
 
                 # Check for custom message first
                 custom_message = cond.get("message")
                 if custom_message:
                     suggestions.append(f"\n- {custom_message}")
                 else:
-                    # Use description from first condition or combine them
-                    descriptions = [c.get("description", "") for c in all_of_list if c.get("description")]
+                    descriptions = [c.get("description", "") for c in [cond, *all_of_list] if c.get("description")]
                     if descriptions:
                         suggestions.append(f"\n- {condition_keys_formatted} - {descriptions[0]}")
                     else:
                         suggestions.append(f"\n- {condition_keys_formatted} (both required)")
 
-                # Collect example from first condition that has one
-                for c in all_of_list:
+                for c in [cond, *all_of_list]:
                     if c.get("example"):
                         examples.append(c["example"])
                         break
@@ -1453,28 +1839,33 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         requirement: dict[str, Any] | None = None,
     ) -> ValidationIssue:
         """Create a validation issue for a forbidden condition that is present."""
-        condition_key = condition_requirement.get("condition_key", "unknown")
+        condition_key = None if "all_of" in condition_requirement else condition_requirement.get("condition_key")
+        label = self._describe_requirement(condition_requirement)
         description = condition_requirement.get("description", "")
         expected_value = condition_requirement.get("expected_value")
 
         matching_actions_str = format_list_with_backticks(matching_actions)
-        message = f"FORBIDDEN: Action(s) {matching_actions_str} must NOT have condition `{condition_key}`"
+        message = f"FORBIDDEN: Action(s) {matching_actions_str} must NOT have condition {label}"
         if expected_value is not None:
             message += f" with value `{expected_value}`"
 
-        suggestion = f"Remove the `{condition_key}` condition from the statement"
+        suggestion = f"Remove the {label} condition from the statement"
         if description:
             suggestion += f". {description}"
 
-        return ValidationIssue(
-            severity=self._resolve_severity(config, requirement, condition_requirement),
-            statement_sid=statement.sid,
-            statement_index=statement_idx,
-            issue_type="forbidden_condition_present",
-            message=message,
-            action=", ".join(matching_actions),
-            condition_key=condition_key,
-            suggestion=suggestion,
-            line_number=statement.line_number,
-            field_name="condition",
+        return self._with_rule_identity(
+            ValidationIssue(
+                severity=self._resolve_severity(config, requirement, condition_requirement),
+                statement_sid=statement.sid,
+                statement_index=statement_idx,
+                issue_type="forbidden_condition_present",
+                message=message,
+                action=", ".join(matching_actions),
+                condition_key=condition_key,
+                suggestion=suggestion,
+                line_number=statement.line_number,
+                field_name="condition",
+            ),
+            "none_of",
+            condition_requirement,
         )

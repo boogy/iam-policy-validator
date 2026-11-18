@@ -60,6 +60,209 @@ action_condition_enforcement:
 }
 ```
 
+### Effect- and Resource-Aware Requirements (`if`)
+
+By default a requirement applies only to `Allow` statements. Add an `if:` list to make
+its conditions depend on the statement's `Effect`, `Resource` or `NotResource`. Each
+branch is a predicate plus its own `required_conditions`. A statement that grants one of
+the requirement's actions and matches a branch must satisfy that branch's conditions; a
+statement that matches no branch is skipped. Every matching branch applies (no
+first-match), so two branches can both report on one statement.
+
+Example: allow Bedrock bearer tokens only when they are short-lived, and require any
+`Deny` of the action to block every other token type.
+
+```yaml
+action_condition_enforcement:
+  action_condition_requirements:
+    - actions: ["bedrock:CallWithBearerToken"]
+      severity: critical
+      if:
+        - effect: Allow
+          required_conditions:
+            - condition_key: bedrock:bearerTokenType
+              operator: StringEquals
+              expected_value: SHORT_TERM
+              description: Require an explicit `SHORT_TERM` value to force short-lived API keys only.
+        - effect: Deny
+          severity: high
+          required_conditions:
+            - condition_key: bedrock:bearerTokenType
+              operator: StringNotEquals
+              expected_value: SHORT_TERM
+              description: Deny every token type except `SHORT_TERM`.
+```
+
+A `Deny` branch has its own operator and value; nothing is mirrored or negated. The
+`Deny` branch above uses `StringNotEquals`, because a `Deny` matching `SHORT_TERM` would
+block the tokens the rule wants to allow.
+
+| Key                   | Type                       | Meaning                                                                                                                   |
+| --------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `effect`              | `Allow`, `Deny`, or a list | Any-of, case-insensitive. `["Allow", "Deny"]` means either. Default: `Allow`.                                            |
+| `resource`            | regex string               | Anchored full match against each `Resource` entry; the branch matches if any entry matches. Case-sensitive.               |
+| `not_resource`        | regex string               | Same, against `NotResource` entries. A branch with only `not_resource` applies only to `NotResource` statements.          |
+| `required_conditions` | list, `all_of`, `any_of`, `none_of` | Required and non-empty. Same forms as a requirement's `required_conditions`.                                     |
+| `severity`            | severity string            | Overrides the requirement's `severity` for this branch.                                                                   |
+
+`resource` and `not_resource` are mutually exclusive (a statement has only one of
+`Resource` / `NotResource`); if neither is set, the branch ignores resources. The check
+skips SCPs and RCPs, so `effect: Deny` branches apply to identity, resource and trust
+policies only. A `resource` pattern is not special-cased for `Resource: "*"`:
+`arn:aws:s3:::prod/.*` does not match `"*"`, while `.*` does.
+
+A branch without `effect` applies to `Allow` statements only, in both action forms, as
+a requirement without `if` does. Name `Deny` explicitly to check deny statements. A
+`Deny` branch checks every `Deny` statement granting the actions, including `Action: "*"`,
+`NotAction` and unconditional denies; narrow it with `resource`, `not_resource` or
+`ignore_patterns`.
+
+A top-level `required_conditions` beside `if` acts as one more branch with no predicate:
+it applies to every `Allow` statement granting the requirement's actions. An empty top-level
+`required_conditions` (null, `[]`, `{}` or a mapping whose groups are all empty) beside
+`if` is ignored.
+
+When branches overlap, findings for the same condition entry that differ only in severity
+or suggestion are reported once, at the highest severity. Entries are compared regardless
+of key order, `severity` and `description`. A condition in list form and the same condition
+inside `all_of` are different entries and are reported separately.
+
+With `none_of`, only `Allow` statements are flagged: a `Deny` of a forbidden action is
+compliant, so a `Deny` branch on a `none_of` requirement reports nothing. A branch's
+`required_conditions` does not exempt a forbidden action: every matching `Allow`
+statement is reported.
+
+**Severity precedence:** the condition entry's `severity`, then the branch's, then the
+requirement's, then the check's configured severity. A null `severity` at any level
+counts as unset. An invalid `severity` on a requirement, branch or condition entry is
+reported once per policy as `invalid_condition_requirement` and dropped; the requirement,
+branch or entry is still enforced at the next severity in that order.
+
+**Malformed `required_conditions`** (with or without `if`) are reported once per policy as
+`invalid_condition_requirement` with severity `error` and `statement_index: -1`, even when
+no statement grants the action: a scalar `required_conditions`, an unknown or non-list
+group, or an entry without a string `condition_key` (or with a non-string `operator`).
+The malformed piece enforces nothing; well-formed siblings are still enforced.
+
+**Malformed branches** are reported once per policy as `invalid_condition_requirement`
+with severity `error` and `statement_index: -1`: `if` that is not a list or is empty, a
+branch that is not a mapping, missing or empty `required_conditions` (or an `all_of`/`any_of`/`none_of` that is not a list, or any other key in it), an invalid
+`effect`, an invalid or non-string `resource`/`not_resource` regex, both `resource` and
+`not_resource` in one branch, or an unknown key (so a typo such as `resources:` cannot make a branch match
+every resource). The broken branch enforces nothing; valid branches still run. An unknown
+group key (e.g. a typo such as `allof:`) inside a branch's `required_conditions` drops the
+whole branch, unlike the top-level form, which still enforces its valid groups.
+
+`sensitive_action` defers to this check only for requirements with a branch that applies
+to every `Allow` statement (an `Allow` or omitted `effect`, and no `resource` /
+`not_resource`). A `Deny`-only or resource-scoped requirement does not suppress its
+findings, nor does one whose `required_conditions` holds only `none_of`.
+
+#### More `if` examples
+
+Each pattern below is in
+[`examples/configs/action-condition-branches.yaml`](https://github.com/boogy/iam-policy-validator/blob/main/examples/configs/action-condition-branches.yaml).
+
+**Resource only.** The branch has no `effect`, so it checks `Allow` statements. Deletes
+on prod buckets need MFA. `[^/]*[*?].*` matches any `Resource` with a wildcard in the
+bucket name (`*`, `arn:aws:s3:::*/*`, `arn:aws:s3:::pro?-logs`), since such a glob may grant
+the prod buckets.
+`NotResource` statements are still skipped; add a `not_resource: ".*"` branch for them.
+
+```yaml
+- actions: ["s3:DeleteObject", "s3:DeleteBucket"]
+  severity: high
+  if:
+    - resource: '[^/]*[*?].*|arn:aws:s3:::prod.*'
+      required_conditions:
+        - condition_key: aws:MultiFactorAuthPresent
+          operator: Bool
+          expected_value: "true"
+```
+
+**Effect and resource.** Prod secrets are reachable only through a VPC endpoint. An
+`Allow` must pin the endpoint, and a perimeter `Deny` must deny every other endpoint.
+Statements on other secrets, and wildcard resources such as `Resource: "*"`, are
+skipped; prefix the pattern with `.*[*?].*|` to include them.
+
+```yaml
+- actions: ["secretsmanager:GetSecretValue"]
+  severity: high
+  if:
+    - effect: Allow
+      resource: 'arn:aws:secretsmanager:[^:]+:\d{12}:secret:prod/.*'
+      required_conditions:
+        - condition_key: aws:SourceVpce
+          operator: StringEquals
+    - effect: Deny
+      resource: 'arn:aws:secretsmanager:[^:]+:\d{12}:secret:prod/.*'
+      required_conditions:
+        - condition_key: aws:SourceVpce
+          operator: StringNotEquals
+```
+
+**`not_resource`.** An `Allow` with `NotResource` grants every bucket it does not list,
+including buckets in other accounts, so it must pin the owning account. `.*` matches any
+`NotResource` statement. `Resource` statements are skipped.
+
+```yaml
+- actions: ["s3:GetObject"]
+  if:
+    - not_resource: ".*"
+      required_conditions:
+        - condition_key: s3:ResourceAccount
+```
+
+**Both effects.** Every `RunInstances` statement must name the regions, whether it
+grants or denies.
+
+```yaml
+- actions: ["ec2:RunInstances"]
+  if:
+    - effect: [Allow, Deny]
+      required_conditions:
+        - condition_key: aws:RequestedRegion
+```
+
+**Top-level conditions beside `if`.** `iam:PassedToService` is required on every
+`Allow`. Passing a prod role also needs `iam:AssociatedResourceArn`.
+
+```yaml
+- actions: ["iam:PassRole"]
+  severity: high
+  required_conditions:
+    - condition_key: iam:PassedToService
+  if:
+    - resource: 'arn:aws:iam::\d{12}:role/prod-.*'
+      required_conditions:
+        - condition_key: iam:AssociatedResourceArn
+```
+
+**Condition groups in a branch.** A branch's `required_conditions` takes the same
+`all_of` / `any_of` / `none_of` mapping as a requirement. Uploads to prod buckets must be
+KMS-encrypted, come from the VPC endpoint or the organization, and must not allow a
+`public-read` ACL. `none_of` flags only `Allow` statements.
+
+```yaml
+- actions: ["s3:PutObject"]
+  severity: high
+  if:
+    - effect: Allow
+      resource: 'arn:aws:s3:::prod-.*'
+      required_conditions:
+        all_of:
+          - condition_key: s3:x-amz-server-side-encryption
+            operator: StringEquals
+            expected_value: aws:kms
+        any_of:
+          - condition_key: aws:SourceVpce
+          - condition_key: aws:PrincipalOrgID
+        none_of:
+          - condition_key: s3:x-amz-acl
+            operator: StringEquals
+            expected_value: public-read
+```
+
 ---
 
 ## action_resource_matching

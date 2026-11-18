@@ -4,6 +4,76 @@ All notable changes to IAM Policy Validator are documented in this file.
 
 The format is based on [Common Changelog](https://common-changelog.org/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.0] - Unreleased
+
+### Changed
+
+- Build the MCP Docker images (uvicorn and Lambda) on Python 3.14, taken from `.python-version` via the `PYTHON_VERSION` build argument (was 3.13). ([#240])
+
+### Added
+
+- Add `if:` branches to `action_condition_enforcement` requirements. Each branch scopes its `required_conditions` by statement `effect` (`Allow`, `Deny` or both; `Allow` when omitted), a `resource` or `not_resource` regex (anchored full match), and may override `severity`. Overlapping branches report a finding for the same condition entry once (whatever its key order, `severity` or `description`), at its highest severity; `none_of` flags only `Allow` statements. `resource` and `not_resource` are mutually exclusive in a branch. Malformed branches are reported as `invalid_condition_requirement`; requirements without `if` keep their semantics (see Fixed for malformed-shape handling). ([#240])
+- Add `examples/configs/action-condition-branches.yaml` and worked `if:` examples (resource only, effect and resource, `not_resource`, both effects, top-level conditions beside `if`) to the advanced-checks guide. ([#240])
+- Document `if:` branches in the Claude Code skill and bump the plugin version to 1.33.0 so installs pick it up. ([#240])
+
+### Fixed
+
+- Report a non-mapping entry under `required_conditions.any_of` (e.g. a bare condition key string) or a nested `all_of` that is not a non-empty list of condition entries as `invalid_condition_requirement` instead of crashing `action_condition_enforcement` and losing its findings for the policy. A malformed `any_of` entry is now left out of the evaluation and of the missing-condition message, as in `all_of` and `none_of`. ([#240])
+- Report a `required_conditions` that is neither a list nor a mapping, or an `all_of`/`any_of`/`none_of` group that is not a list, as `invalid_condition_requirement` instead of crashing `action_condition_enforcement`. A null group (an empty YAML key) still counts as empty. Every malformed-config finding of this check is reported once per policy (`statement_index: -1`), and only for a policy with a statement (`Allow` or `Deny`) that names one of the requirement's actions. A shape, entry, `severity` or malformed `if` branch problem is no longer hidden by the requirement's own `ignore_patterns`. ([#240])
+- Ignore an empty top-level `required_conditions` (null, `[]`, `{}` or a mapping whose groups are all empty) beside `if` instead of reporting the requirement as having a malformed `if` branch. ([#240])
+- Keep the `example` of a nested `all_of` entry on each of its missing-key findings; it was dropped when the entry was split per key. A leaf's null `severity` or `example` no longer overrides the enclosing entry's. ([#240])
+- Keep the `example` and `description` of a nested `all_of` entry inside `any_of` in its finding. ([#240])
+- Name a malformed top-level `required_conditions` beside `if` as such, instead of reporting it as a malformed `if` branch. ([#240])
+- Enforce an `action_condition_enforcement` requirement whose `actions` is a single string (`actions: "iam:PassRole"`). It matched no statement, while `sensitive_action` still deferred to it, so neither check reported the action. ([#240])
+- Report a condition entry whose `condition_key` or `operator` is not a string as `invalid_condition_requirement` instead of crashing `action_condition_enforcement` and losing its findings for the policy. ([#240])
+- Report a key in a `required_conditions` mapping other than `all_of`, `any_of` or `none_of` (e.g. a misspelled `allof`) as `invalid_condition_requirement` instead of silently enforcing nothing for it. ([#240])
+- Treat a `required_conditions` mapping whose groups are all empty or null as detection-only (`action_detected`) instead of silently enforcing nothing while `sensitive_action` defers to it. ([#240])
+- Ignore `none_of` conditions on a `Deny` statement in an `if` branch, as documented; a `Deny` carrying a forbidden condition was reported as `forbidden_condition_present`. ([#240])
+- Report a condition entry or `if` branch with an invalid `severity` as `invalid_condition_requirement` instead of crashing `action_condition_enforcement`, and still enforce it at the fallback severity. A null `severity` on an entry or `if` branch falls back to the requirement's severity. ([#240])
+- Name each missing condition key of an `all_of` nested in a list, `all_of` or `none_of` group, instead of `unknown`. ([#240])
+- Name every condition key of an `all_of` nested more than one level inside `any_of` in the missing-condition message and suggestion, instead of `unknown`. ([#240])
+- Report an invalid requirement-level `severity` in `action_condition_requirements` (e.g. `severity: hgih`) as `invalid_condition_requirement` and fall back to the check severity, instead of returning only a `check_execution_error` for the policy. ([#240])
+- Stop `sensitive_action` deferring to an `action_condition_enforcement` requirement (or `if` branch) whose `required_conditions` holds only `none_of`. It enforces no condition, so an unconditional grant of the action was reported by neither check. ([#240])
+- Match a policy-wide `actions: {all_of: [...]}` requirement against an `Allow` + `NotAction` statement that grants all of those actions; a plain `actions: [...]` list already matched it. ([#240])
+- Report a non-mapping entry in `principal_condition_requirements[].required_conditions` (list form, `all_of`, `any_of` or `none_of`; e.g. a bare `- aws:SourceArn`), a group that is not a list, or a `required_conditions` that is neither a list nor a mapping as `invalid_condition_requirement` and skip it, instead of returning only a `check_execution_error` for `principal_validation`. ([#240])
+- Treat a null requirement-level `severity` in `action_condition_requirements` as unset instead of returning only a `check_execution_error` for the policy. ([#240])
+- Report a missing condition once when the same entry is required both by a top-level `required_conditions` list and by an `if` branch's `all_of`; it was reported twice on the statement. ([#240])
+- Let an invalid `severity` (e.g. `Low`) on a leaf of a nested `all_of` in `principal_condition_requirements` fall back to the enclosing entry's severity instead of the check default. ([#240])
+- Leave the `Statement Index` cell of a policy-level finding empty in CSV output instead of writing `0`. ([#240])
+- Render HTML report findings on the first statement under `Statement 1` instead of `Global`. ([#240])
+- Treat a null group in a policy-wide `actions` mapping (e.g. `all_of:` left empty) as empty instead of crashing `action_condition_enforcement`. ([#240])
+- Report a `principal_condition_requirements` entry without a string `condition_key`, or a `required_conditions` key other than `all_of`/`any_of`/`none_of`, as `invalid_condition_requirement` and never treat it as satisfied; a keyless entry satisfied `any_of` unconditionally. A nested `all_of` entry now requires every condition in it. ([#240])
+- Stop `sensitive_action` deferring to an `action_condition_enforcement` requirement (or `if` branch) with no well-formed condition entry (e.g. `required_conditions: {allof: [...]}` or only keyless entries). It enforces nothing, so the action was reported by neither check. ([#240])
+- Report a `principal_condition_requirements` entry whose `operator` is not a string as `invalid_condition_requirement` instead of crashing `principal_validation` when the statement has a `Condition`. ([#240])
+- Fall back to the enclosing or check severity for a null, empty or invalid `severity` in `principal_condition_requirements` (requirement or entry) instead of crashing `principal_validation`. ([#240])
+- Keep the `severity`, `description` and `example` of a nested `all_of` entry in `principal_condition_requirements` on each of its findings; a child's own non-null value wins. ([#240])
+- Describe a malformed nested `all_of` entry in `action_condition_enforcement` as such, instead of suggesting to nest it under `all_of`, and name a non-list group as `required_conditions.<group>`. ([#240])
+- Label a policy-level finding (`statement_index: -1`) `Policy-level` in the default console output instead of `Statement 0`, as the `enhanced` format does. ([#240])
+- Report an `action_condition_requirements` `actions` mapping key other than `all_of`/`any_of`/`none_of` (e.g. `allof`), a non-list group (e.g. `all_of: "iam:PassRole"`) or an `actions` that is neither a string, list nor mapping as `invalid_condition_requirement` instead of silently enforcing nothing. It is reported when a statement names an action listed anywhere in the mapping, or for every policy when it lists none. ([#240])
+- Render an explicit `operator: null` as `StringEquals` in the generated example of `action_condition_enforcement` and `principal_validation` findings, instead of `None`. ([#240])
+- Report a missing condition once when the same entry is required by a top-level `required_conditions` (inheriting a nested `all_of`'s `example`) and by an `if` branch; `example` no longer distinguishes otherwise-identical rules. ([#240])
+- Use a `principal_condition_requirements` `none_of` entry's own `severity` for its `forbidden_principal_condition` finding instead of the requirement's. ([#240])
+- Report an invalid `severity` (e.g. `Critical`, `hgih`) on a `principal_condition_requirements` requirement or entry (including nested `all_of` entries) as `invalid_condition_requirement` instead of silently falling back; the finding still uses the fallback severity. ([#240])
+- Compute the actions `action_condition_enforcement` enforces once per config in `sensitive_action`, instead of once per unconditioned sensitive statement. ([#240])
+- Report a non-string element in an `action_condition_requirements` `actions` list or `all_of`/`any_of`/`none_of` group (e.g. `actions: [null]`) as `invalid_condition_requirement` and enforce the remaining actions, instead of crashing `action_condition_enforcement` (also under `merge_strategy: per_action_override`) and losing its findings for the policy. ([#240])
+- Report a condition entry carrying both a non-null `condition_key` and `all_of` as `invalid_condition_requirement` in `action_condition_enforcement` and `principal_validation`; the `condition_key` was silently dropped. A null `condition_key` beside `all_of` counts as unset and the `all_of` is enforced; a null `all_of` beside `condition_key` counts as unset and the key is enforced. ([#240])
+- Report the config problems of an `action_condition_enforcement` requirement that has only `action_patterns` for a policy granting `Action: "*"`; they were hidden although `*` grants the matched actions. ([#240])
+- Report a missing condition once when a flat entry (with or without a null key such as `expected_value: null`) and the same entry inside a nested `all_of` apply to one statement, in any requirement; null keys no longer distinguish otherwise-identical rules. A requirement without `if` reported it twice. ([#240])
+- Report an identical `invalid_condition_requirement` once per policy in `action_condition_enforcement` (e.g. `actions: [iam:PassRole, null, null]` or a repeated malformed condition entry); it was reported once per occurrence. ([#240])
+- Report every non-string element of an `action_condition_requirements` `actions` list or group, one `invalid_condition_requirement` each, instead of only the first. ([#240])
+- Report a falsy scalar `required_conditions` (`false`, `0`, `""`) as `invalid_condition_requirement` in `action_condition_enforcement` and `principal_validation` instead of treating it as empty (detection-only or skipped). Only null, `[]`, `{}` and a mapping whose groups are all empty or null count as empty. ([#240])
+- Word a malformed top-level `required_conditions` in `action_condition_enforcement` the same way as the same problem in an `if` branch. ([#240])
+- Report an invalid requirement-level `severity` in `principal_condition_requirements` once per policy (`statement_index: -1`) instead of once per matching statement, and only when its principals match a statement `principal_validation` evaluates for condition requirements (not a blocked principal or a `Service: "*"` statement). ([#240])
+- Match a `principal_condition_requirements` entry whose `principals` is a single string (`principals: "arn:aws:iam::123456789012:root"`); it was compared character by character and matched nothing. A `principals` that is neither a string nor a list is reported once per policy as `invalid_condition_requirement`. ([#240])
+- Report a non-string entry in `principal_validation`'s `blocked_principals`, `allowed_principals`, `allowed_service_principals` or a `principal_condition_requirements` entry's `principals` (e.g. an unquoted YAML account id) once per policy as `invalid_condition_requirement` and ignore it, instead of crashing the check. Entries are never converted with `str()`, which would drop an account id's leading zeros. ([#240])
+- Report a `principal_condition_requirements` value that is not a list, or an entry in it that is not a mapping, once per policy as `invalid_condition_requirement` and skip it, instead of crashing `principal_validation`. ([#240])
+- Report a `requirements`, `policy_level_requirements` or `action_condition_requirements` value that is not a list, or an entry in one that is not a mapping (e.g. `- "iam:PassRole"`), once per policy as `invalid_condition_requirement` and skip it, instead of crashing `action_condition_enforcement` and `sensitive_action`. ([#240])
+- Keep `principal_validation`'s `allowed_principals` allow-list in force when it is configured but holds no string entry (e.g. `allowed_principals: [111111111111]`); it was disabled, so every principal was allowed. Such a list now allows no principal, and an `allowed_service_principals` with no string entry allows no service principal. ([#240])
+- Report a `blocked_principals`, `allowed_principals` or `allowed_service_principals` value that is neither a string nor a list (e.g. an unquoted `blocked_principals: 123456789012`) once per policy as `invalid_condition_requirement`; it was silently ignored. ([#240])
+- Ignore a non-string value in a policy's `Principal` or `NotPrincipal` (e.g. `"AWS": [123456789012]`) instead of crashing `principal_validation` and losing its findings for the policy. ([#240])
+
+[#240]: https://github.com/boogy/iam-policy-validator/pull/240
+
 ## [1.32.0] - 2026-10-29
 
 ### Changed

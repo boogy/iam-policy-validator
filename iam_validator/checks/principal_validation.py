@@ -46,12 +46,22 @@ from iam_validator.checks.utils.condition_matching import (
     is_deny,
     is_negated_operator,
 )
+from iam_validator.checks.utils.requirement_branches import (
+    CONDITION_GROUPS,
+    VALID_SEVERITIES,
+    has_no_conditions,
+    is_evaluable_entry,
+    severity_problem,
+    without_null_all_of,
+)
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
 from iam_validator.core.condition_validators import is_operator_supports_wildcards
 from iam_validator.core.config.service_principals import is_aws_service_principal
 from iam_validator.core.constants import ACCOUNT_ID_PATTERN, ARN_PARTITIONS, ROOT_ARN_PATTERN
-from iam_validator.core.models import Statement, ValidationIssue
+from iam_validator.core.models import IAMPolicy, Statement, ValidationIssue
+
+_INHERITED_KEYS = ("severity", "description", "example")
 
 
 def principal_spellings(principal: str) -> list[str]:
@@ -118,33 +128,22 @@ class PrincipalValidationCheck(PolicyCheck):
             issues.extend(self._check_not_principal_carve_out(statement, statement_idx, config))
 
         # Get configuration (defaults match defaults.py)
-        blocked_principals = list(config.config.get("blocked_principals", []))
-        allowed_principals = config.config.get("allowed_principals", [])
-        principal_condition_requirements = config.config.get("principal_condition_requirements", [])
+        blocked_principals = self._blocked_principals(config)
+        raw_allowed = config.config.get("allowed_principals", [])
+        allowlist_configured = raw_allowed is not None and raw_allowed != []
+        allowed_principals = self._string_entries(raw_allowed)
+        principal_condition_requirements = self._requirement_entries(config)
         # Default: "aws:*" allows ALL AWS service principals (*.amazonaws.com)
         # This matches the default in defaults.py
-        allowed_service_principals = config.config.get("allowed_service_principals", ["aws:*"])
-        # Default: block service principal wildcards ({"Service": "*"})
-        # This is extremely dangerous as it allows ANY AWS service to assume the role
-        block_service_principal_wildcard = config.config.get("block_service_principal_wildcard", True)
-        # block_wildcard_principal: Strict mode for Principal: "*"
-        # false (default): Allow wildcard principal but require conditions
-        # true: Block wildcard principal entirely, skip condition checks
-        block_wildcard_principal = config.config.get("block_wildcard_principal", False)
-        if block_wildcard_principal and "*" not in blocked_principals:
-            blocked_principals.append("*")
-
+        allowed_service_principals = self._string_entries(config.config.get("allowed_service_principals", ["aws:*"]))
         # Check for service principal wildcards FIRST (highest priority security issue)
         service_wildcard_issues: list[ValidationIssue] = []
-        if block_service_principal_wildcard:
+        if config.config.get("block_service_principal_wildcard", True):
             service_wildcard_issues = self._check_service_principal_wildcards(statement, statement_idx, config)
             issues.extend(service_wildcard_issues)
 
         # Extract principals from statement
         principals = self._extract_principals(statement)
-
-        # Track blocked principals to skip condition checks for them
-        blocked_principal_values: set[str] = set()
 
         # Skip only the "*" entries of a {"Service": "*"} already reported above
         service_wildcards = self._service_principal_wildcard_count(statement) if service_wildcard_issues else 0
@@ -156,7 +155,6 @@ class PrincipalValidationCheck(PolicyCheck):
 
             # Check if principal is blocked
             if self._is_blocked_principal(principal, blocked_principals):
-                blocked_principal_values.add(principal)
                 issues.append(
                     ValidationIssue(
                         severity=self.get_severity(config),
@@ -174,7 +172,7 @@ class PrincipalValidationCheck(PolicyCheck):
                 continue
 
             # Check if principal is in whitelist (if whitelist is configured)
-            if allowed_principals and not self._is_allowed_principal(
+            if allowlist_configured and not self._is_allowed_principal(
                 principal, allowed_principals, allowed_service_principals
             ):
                 issues.append(
@@ -193,12 +191,8 @@ class PrincipalValidationCheck(PolicyCheck):
                 )
                 continue
 
-        # Check principal_condition_requirements (supports any_of/all_of/none_of)
-        # Skip condition checks for principals that are already blocked, and entirely when
-        # a service-principal wildcard is present: no condition can make {"Service": "*"} safe.
-        if principal_condition_requirements and not service_wildcard_issues:
-            # Filter out blocked principals - they need to be removed, not conditioned
-            principals_to_check = [p for p in principals if p not in blocked_principal_values]
+        if principal_condition_requirements:
+            principals_to_check = self._condition_requirement_principals(statement, config)
             if principals_to_check:
                 condition_issues = self._validate_principal_condition_requirements(
                     statement,
@@ -210,6 +204,116 @@ class PrincipalValidationCheck(PolicyCheck):
                 issues.extend(condition_issues)
 
         return issues
+
+    async def execute_policy(
+        self,
+        policy: IAMPolicy,
+        policy_file: str,
+        fetcher: AWSServiceFetcher,
+        config: CheckConfig,
+        **kwargs: Any,
+    ) -> list[ValidationIssue]:
+        """Report requirement-level config problems once per policy, for policies ``execute`` would evaluate."""
+        del policy_file, fetcher, kwargs
+        issues: list[ValidationIssue] = []
+        if any(self._reaches_principal_rules(statement) for statement in policy.statement or []):
+            issues.extend(
+                self._create_non_string_principal_issue(f"`{key}`", entry, whole_value=not isinstance(value, list))
+                for key in self._PRINCIPAL_LIST_KEYS
+                for value in [config.config.get(key)]
+                for entry in self._non_string_entries(value)
+            )
+        evaluated = [
+            principals
+            for statement in policy.statement or []
+            if (principals := self._condition_requirement_principals(statement, config))
+        ]
+        if not evaluated:
+            return issues
+        raw_requirements = config.config.get("principal_condition_requirements")
+        if raw_requirements is not None and not isinstance(raw_requirements, list):
+            issues.append(self._create_invalid_requirement_entry_issue(raw_requirements, "is not a list"))
+        elif isinstance(raw_requirements, list):
+            issues.extend(
+                self._create_invalid_requirement_entry_issue(entry, "has an entry that is not a mapping")
+                for entry in raw_requirements
+                if not isinstance(entry, dict)
+            )
+        for requirement in self._requirement_entries(config):
+            if self._principal_patterns(requirement) is None:
+                issues.append(self._create_invalid_principals_issue(requirement))
+                continue
+            issues.extend(
+                self._create_non_string_principal_issue("`principal_condition_requirements` `principals`", entry)
+                for entry in self._non_string_entries(requirement.get("principals"))
+            )
+            severity = requirement.get("severity")
+            if severity_problem(severity) is None or has_no_conditions(requirement.get("required_conditions")):
+                continue
+            if any(self._get_matching_principals(principals, requirement) for principals in evaluated):
+                issues.append(self._create_invalid_severity_issue(None, -1, requirement, severity, ""))
+        return issues
+
+    _PRINCIPAL_LIST_KEYS: ClassVar[tuple[str, ...]] = (
+        "blocked_principals",
+        "allowed_principals",
+        "allowed_service_principals",
+    )
+
+    @staticmethod
+    def _string_entries(value: Any) -> list[str]:
+        """A configured principal list's string entries (a string is one entry); ``execute_policy`` reports the rest."""
+        if isinstance(value, str):
+            return [value]
+        return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
+
+    @staticmethod
+    def _non_string_entries(value: Any) -> list[Any]:
+        """A principal list's non-string entries; a non-list, non-string value is one bad entry."""
+        if value is None or isinstance(value, str):
+            return []
+        return [v for v in value if not isinstance(v, str)] if isinstance(value, list) else [value]
+
+    @staticmethod
+    def _requirement_entries(config: CheckConfig) -> list[dict[str, Any]]:
+        """The mapping entries of ``principal_condition_requirements``; ``execute_policy`` reports the rest."""
+        value = config.config.get("principal_condition_requirements")
+        return [r for r in value if isinstance(r, dict)] if isinstance(value, list) else []
+
+    @staticmethod
+    def _reaches_principal_rules(statement: Statement) -> bool:
+        """Whether ``execute`` applies the blocked/allowed principal rules to ``statement``."""
+        if statement.principal is None and statement.not_principal is None:
+            return False
+        return not (is_deny(statement) and statement.not_principal is None)
+
+    @classmethod
+    def _blocked_principals(cls, config: CheckConfig) -> list[str]:
+        blocked = cls._string_entries(config.config.get("blocked_principals", []))
+        if config.config.get("block_wildcard_principal", False) and "*" not in blocked:
+            blocked.append("*")
+        return blocked
+
+    def _condition_requirement_principals(self, statement: Statement, config: CheckConfig) -> list[str]:
+        """Principals ``execute`` checks against ``principal_condition_requirements``; ``[]`` when it skips them."""
+        if not self._reaches_principal_rules(statement):
+            return []
+        if config.config.get("block_service_principal_wildcard", True) and self._service_principal_wildcard_count(
+            statement
+        ):
+            return []
+        blocked = self._blocked_principals(config)
+        return [p for p in self._extract_principals(statement) if not self._is_blocked_principal(p, blocked)]
+
+    @classmethod
+    def _principal_patterns(cls, requirement: dict[str, Any]) -> list[str] | None:
+        """A requirement's string ``principals`` (a string is one pattern); ``None`` when not a string or list."""
+        patterns = requirement.get("principals")
+        if patterns is None:
+            return []
+        if isinstance(patterns, str | list):
+            return cls._string_entries(patterns)
+        return None
 
     #: Condition keys that identify *who* the caller is, as opposed to what they request.
     _PRINCIPAL_CONDITION_KEYS: ClassVar[frozenset[str]] = frozenset(
@@ -384,7 +488,7 @@ class PrincipalValidationCheck(PolicyCheck):
             if isinstance(value, str):
                 principals.append(value)
             elif isinstance(value, list):
-                principals.extend(value)
+                principals.extend(v for v in value if isinstance(v, str))
         return principals
 
     @staticmethod
@@ -569,8 +673,8 @@ class PrincipalValidationCheck(PolicyCheck):
                 continue
 
             # Get required conditions from the requirement
-            required_conditions_config = requirement.get("required_conditions", [])
-            if not required_conditions_config:
+            required_conditions_config = requirement.get("required_conditions")
+            if has_no_conditions(required_conditions_config):
                 continue
 
             # Validate conditions using the same logic as action_condition_enforcement
@@ -597,7 +701,7 @@ class PrincipalValidationCheck(PolicyCheck):
         Returns:
             List of matching principals
         """
-        principal_patterns = requirement.get("principals", [])
+        principal_patterns = self._principal_patterns(requirement)
         if not principal_patterns:
             return []
 
@@ -641,9 +745,46 @@ class PrincipalValidationCheck(PolicyCheck):
         """
         issues: list[ValidationIssue] = []
 
+        def report_bad_severity(node: dict[str, Any], where: str) -> None:
+            severity = node.get("severity")
+            if severity_problem(severity) is not None:
+                issues.append(
+                    self._create_invalid_severity_issue(statement, statement_idx, requirement, severity, where)
+                )
+
+        def report_entry_severities(entry: dict[str, Any], label: str) -> None:
+            report_bad_severity(entry, f"an entry under `{label}`")
+            for nested in entry.get("all_of", []):
+                report_entry_severities(nested, f"{label}.all_of")
+
+        def entries(value: Any, label: str) -> list[dict[str, Any]]:
+            if not isinstance(value, list):
+                if value is not None:
+                    issues.append(self._create_invalid_entry_issue(statement, statement_idx, value, "a list"))
+                return []
+            enforceable: list[dict[str, Any]] = []
+            for item in value:
+                if is_evaluable_entry(item):
+                    item = without_null_all_of(item)
+                    report_entry_severities(item, label)
+                    enforceable.append(item)
+                elif not isinstance(item, dict):
+                    issues.append(self._create_invalid_entry_issue(statement, statement_idx, item, "a mapping"))
+                else:
+                    issues.append(
+                        self._create_invalid_entry_issue(
+                            statement,
+                            statement_idx,
+                            item,
+                            "a mapping with a string `condition_key` (and a string `operator`, if set) "
+                            "or a non-empty `all_of` list of them",
+                        )
+                    )
+            return enforceable
+
         # Handle simple list format (backward compatibility)
         if isinstance(required_conditions_config, list):
-            for condition_requirement in required_conditions_config:
+            for condition_requirement in self._leaves(entries(required_conditions_config, "required_conditions")):
                 if not self._has_condition_requirement(statement, condition_requirement):
                     issues.append(
                         self._create_condition_issue(
@@ -657,68 +798,196 @@ class PrincipalValidationCheck(PolicyCheck):
                     )
             return issues
 
+        if not isinstance(required_conditions_config, dict):
+            issues.append(
+                self._create_invalid_entry_issue(
+                    statement, statement_idx, required_conditions_config, "a list or mapping"
+                )
+            )
+            return issues
+
         # Handle all_of/any_of/none_of format
-        if isinstance(required_conditions_config, dict):
-            all_of = required_conditions_config.get("all_of", [])
-            any_of = required_conditions_config.get("any_of", [])
-            none_of = required_conditions_config.get("none_of", [])
+        for unknown in sorted(required_conditions_config.keys() - set(CONDITION_GROUPS), key=str):
+            issues.append(
+                self._create_invalid_entry_issue(statement, statement_idx, unknown, "`all_of`, `any_of` or `none_of`")
+            )
+        all_of = self._leaves(entries(required_conditions_config.get("all_of"), "all_of"))
+        any_of = entries(required_conditions_config.get("any_of"), "any_of")
+        none_of = entries(required_conditions_config.get("none_of"), "none_of")
 
-            # Validate all_of: ALL conditions must be present
-            if all_of:
-                for condition_requirement in all_of:
-                    if not self._has_condition_requirement(statement, condition_requirement):
-                        issues.append(
-                            self._create_condition_issue(
-                                statement,
-                                statement_idx,
-                                condition_requirement,
-                                matching_principals,
-                                config,
-                                requirement,
-                                requirement_type="all_of",
-                            )
-                        )
-
-            # Validate any_of: At least ONE condition must be present
-            if any_of:
-                any_present = any(self._has_condition_requirement(statement, cond_req) for cond_req in any_of)
-
-                if not any_present:
-                    # Create a combined error for any_of
-                    condition_keys = [cond.get("condition_key", "unknown") for cond in any_of]
-                    severity = requirement.get("severity", self.get_severity(config))
+        if all_of:
+            for condition_requirement in all_of:
+                if not self._has_condition_requirement(statement, condition_requirement):
                     issues.append(
-                        ValidationIssue(
-                            severity=severity,
-                            statement_sid=statement.sid,
-                            statement_index=statement_idx,
-                            issue_type="missing_principal_condition_any_of",
-                            message=(
-                                f"`Principal`s `{', '.join(f'`{p}`' for p in matching_principals)}` require at least ONE of these conditions: "
-                                f"{', '.join(f'`{c}`' for c in condition_keys)}"
-                            ),
-                            suggestion=self._build_any_of_suggestion(any_of),
-                            line_number=statement.line_number,
-                            field_name="principal",
+                        self._create_condition_issue(
+                            statement,
+                            statement_idx,
+                            condition_requirement,
+                            matching_principals,
+                            config,
+                            requirement,
+                            requirement_type="all_of",
                         )
                     )
 
-            # Validate none_of: NONE of these conditions should be present
-            if none_of:
-                for condition_requirement in none_of:
-                    if self._has_condition_requirement(statement, condition_requirement):
-                        issues.append(
-                            self._create_none_of_condition_issue(
-                                statement,
-                                statement_idx,
-                                condition_requirement,
-                                matching_principals,
-                                config,
-                                requirement,
-                            )
+        if any_of:
+            any_present = any(self._has_condition_requirement(statement, cond_req) for cond_req in any_of)
+
+            if not any_present:
+                condition_keys = [self._describe(cond) for cond in any_of]
+                severity = self._severity(config, requirement)
+                issues.append(
+                    ValidationIssue(
+                        severity=severity,
+                        statement_sid=statement.sid,
+                        statement_index=statement_idx,
+                        issue_type="missing_principal_condition_any_of",
+                        message=(
+                            f"`Principal`s `{', '.join(f'`{p}`' for p in matching_principals)}` require at least ONE of these conditions: "
+                            f"{', '.join(f'`{c}`' for c in condition_keys)}"
+                        ),
+                        suggestion=self._build_any_of_suggestion(any_of),
+                        line_number=statement.line_number,
+                        field_name="principal",
+                    )
+                )
+
+        if none_of:
+            for condition_requirement in none_of:
+                if self._has_condition_requirement(statement, condition_requirement):
+                    issues.append(
+                        self._create_none_of_condition_issue(
+                            statement,
+                            statement_idx,
+                            condition_requirement,
+                            matching_principals,
+                            config,
+                            requirement,
                         )
+                    )
 
         return issues
+
+    @staticmethod
+    def _create_invalid_severity_issue(
+        statement: Statement | None, statement_idx: int, requirement: dict[str, Any], severity: Any, where: str
+    ) -> ValidationIssue:
+        patterns = PrincipalValidationCheck._principal_patterns(requirement) or []
+        principals = format_list_with_backticks([str(p) for p in patterns])
+        located = f" in {where}" if where else ""
+        fallback = "the enclosing severity" if where else "the check severity"
+        return ValidationIssue(
+            severity="error",
+            statement_sid=statement.sid if statement else None,
+            statement_index=statement_idx,
+            issue_type="invalid_condition_requirement",
+            message=(
+                f"`principal_condition_requirements` entry for principal(s) {principals} has an invalid "
+                f"`severity` `{severity!r}`{located}; its findings use {fallback} instead"
+            ),
+            suggestion=f"Set `severity` to one of {', '.join(sorted(VALID_SEVERITIES))}, or remove it.",
+            line_number=statement.line_number if statement else None,
+            field_name="principal",
+        )
+
+    @staticmethod
+    def _create_invalid_principals_issue(requirement: dict[str, Any]) -> ValidationIssue:
+        return ValidationIssue(
+            severity="error",
+            statement_sid=None,
+            statement_index=-1,
+            issue_type="invalid_condition_requirement",
+            message=(
+                f"`principal_condition_requirements` entry has a `principals` value `{requirement.get('principals')!r}` "
+                "that is not a string or list, so it matches no principal and is not enforced"
+            ),
+            suggestion='Set `principals` to a principal pattern or a list of them (e.g. `- "*"`).',
+            line_number=None,
+            field_name="principal",
+        )
+
+    @staticmethod
+    def _create_non_string_principal_issue(label: str, entry: Any, *, whole_value: bool = False) -> ValidationIssue:
+        message = (
+            f"{label} is not a string or list: `{entry!r}`; it matches no principal"
+            if whole_value
+            else f"{label} has a non-string entry `{entry!r}`, which matches no principal and is ignored"
+        )
+        return ValidationIssue(
+            severity="error",
+            statement_sid=None,
+            statement_index=-1,
+            issue_type="invalid_condition_requirement",
+            message=message,
+            suggestion=(
+                'Quote the entry as a string (e.g. `"123456789012"`); YAML reads an unquoted account id as a '
+                "number and drops its leading zeros."
+            ),
+            line_number=None,
+            field_name="principal",
+        )
+
+    @staticmethod
+    def _create_invalid_requirement_entry_issue(entry: Any, problem: str) -> ValidationIssue:
+        return ValidationIssue(
+            severity="error",
+            statement_sid=None,
+            statement_index=-1,
+            issue_type="invalid_condition_requirement",
+            message=f"`principal_condition_requirements` {problem}, so it is not enforced: `{entry!r}`",
+            suggestion="Make `principal_condition_requirements` a list of mappings, each with `principals` and "
+            "`required_conditions`.",
+            line_number=None,
+            field_name="principal",
+        )
+
+    @staticmethod
+    def _create_invalid_entry_issue(
+        statement: Statement, statement_idx: int, entry: Any, expected: str
+    ) -> ValidationIssue:
+        return ValidationIssue(
+            severity="error",
+            statement_sid=statement.sid,
+            statement_index=statement_idx,
+            issue_type="invalid_condition_requirement",
+            message=(
+                f"`principal_condition_requirements` has a `required_conditions` value `{entry!r}` that is not "
+                f"{expected}, so it is not enforced"
+            ),
+            suggestion=(
+                "Use a list of mappings (e.g. `- condition_key: aws:SourceArn`), or an `all_of`/`any_of`/`none_of` "
+                "mapping of such lists."
+            ),
+            line_number=statement.line_number,
+            field_name="principal",
+        )
+
+    @classmethod
+    def _leaves(cls, entries: list[dict[str, Any]], inherited: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """``entries`` with each nested ``all_of`` replaced by its leaves, which inherit the parent's presentation."""
+        leaves: list[dict[str, Any]] = []
+        for entry in entries:
+            own = {**(inherited or {}), **{k: entry[k] for k in _INHERITED_KEYS if cls._is_set(k, entry.get(k))}}
+            leaves.extend(cls._leaves(entry["all_of"], own) if "all_of" in entry else [{**entry, **own}])
+        return leaves
+
+    @staticmethod
+    def _is_set(key: str, value: Any) -> bool:
+        return value is not None and (key != "severity" or severity_problem(value) is None)
+
+    def _severity(self, config: CheckConfig, *nodes: dict[str, Any]) -> str:
+        """The first valid ``severity`` among ``nodes``, else the check severity."""
+        for node in nodes:
+            severity = node.get("severity")
+            if severity is not None and severity_problem(severity) is None:
+                return severity
+        return self.get_severity(config)
+
+    @classmethod
+    def _describe(cls, entry: dict[str, Any]) -> str:
+        if "all_of" in entry:
+            return " + ".join(cls._describe(e) for e in entry["all_of"])
+        return entry.get("condition_key", "unknown")
 
     def _has_condition_requirement(self, statement: Statement, condition_requirement: dict[str, Any]) -> bool:
         """Check if statement has the required condition.
@@ -730,9 +999,11 @@ class PrincipalValidationCheck(PolicyCheck):
         Returns:
             True if condition is present and matches requirements
         """
+        if "all_of" in condition_requirement:
+            return all(self._has_condition_requirement(statement, nested) for nested in condition_requirement["all_of"])
         condition_key = condition_requirement.get("condition_key")
-        if not condition_key:
-            return True  # No condition key specified, skip
+        if not isinstance(condition_key, str) or not condition_key:
+            return False
 
         operator = condition_requirement.get("operator")
         expected_value = condition_requirement.get("expected_value")
@@ -772,12 +1043,12 @@ class PrincipalValidationCheck(PolicyCheck):
         description = condition_requirement.get("description", "")
         expected_value = condition_requirement.get("expected_value")
         example = condition_requirement.get("example", "")
-        operator = condition_requirement.get("operator", "StringEquals")
+        operator = condition_requirement.get("operator") or "StringEquals"
 
         message_prefix = "ALL required:" if requirement_type == "all_of" else "Required:"
 
         # Determine severity with precedence: condition > requirement > global
-        severity = condition_requirement.get("severity") or requirement.get("severity") or self.get_severity(config)
+        severity = self._severity(config, condition_requirement, requirement)
 
         suggestion_text, example_code = self._build_condition_suggestion(
             condition_key, description, example, expected_value, operator
@@ -861,7 +1132,7 @@ class PrincipalValidationCheck(PolicyCheck):
         suggestions.append("Add at least ONE of these conditions:")
 
         for i, cond in enumerate(any_of_conditions, 1):
-            condition_key = cond.get("condition_key", "unknown")
+            condition_key = self._describe(cond)
             description = cond.get("description", "")
             expected_value = cond.get("expected_value")
 
@@ -897,7 +1168,7 @@ class PrincipalValidationCheck(PolicyCheck):
         Returns:
             ValidationIssue
         """
-        condition_key = condition_requirement.get("condition_key", "unknown")
+        condition_key = self._describe(condition_requirement)
         description = condition_requirement.get("description", "")
         expected_value = condition_requirement.get("expected_value")
 
@@ -910,7 +1181,7 @@ class PrincipalValidationCheck(PolicyCheck):
         if description:
             suggestion += f". {description}"
 
-        severity = requirement.get("severity", self.get_severity(config))
+        severity = self._severity(config, condition_requirement, requirement)
 
         return ValidationIssue(
             severity=severity,

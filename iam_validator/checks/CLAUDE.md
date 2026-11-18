@@ -166,13 +166,30 @@ that check what it will **actually** enforce, not read its config. `sensitive_ac
 calls `ActionConditionEnforcementCheck.enforced_actions(root_config, policy_file=None)`,
 which resolves the check's own config the way `ValidatorConfig.checks_config` does,
 returns an empty set when the check is disabled, and runs the real
-`_get_merged_requirements` — so a `merge_strategy`, an `ignore_patterns` match or a
+`_get_merged_requirements` — once per `root_config` object (`sensitive_action` caches it) — so a `merge_strategy`, an `ignore_patterns` match or a
 user-supplied `action_condition_requirements` entry moves both checks together. Reading
 `requirements` directly suppressed findings for requirements that were never in play.
 Matching is `action_matches`, not `==`: a requirement may be a glob and IAM action names
 are case-insensitive. Statement-level checks never receive `policy_file`, so a
 requirement carrying `ignore_patterns` counts as unenforced there and the finding is
 kept rather than wrongly suppressed.
+
+## `if:` branches in `action_condition_enforcement` (gotcha)
+
+A requirement carrying the `if` key (even `if: []`) dispatches to `_check_branches`;
+one without it runs the single-requirement path, whose semantics changed only where
+the CHANGELOG `Fixed` entries say. Parsing and matching live in
+`utils/requirement_branches.py`. Each valid branch becomes an ordinary requirement run
+through `_check_per_statement` / `_check_policy_wide` with keyword-only `effects` and
+`statement_filter`. An omitted branch `effect` means `Allow` in both forms; findings
+for the same rule (`ValidationIssue._rule_identity`, key-order independent, ignoring `severity`/`description`/`example` and null-valued keys) differing only in severity, suggestion or message wording are reported once (in every requirement, not only `if` ones) (most severe kept; a list entry and an `all_of` entry share an identity); `none_of` flags only `Allow` statements. Malformed branches yield one `invalid_condition_requirement` (only when a statement matches the requirement's actions)
+(`error`, `statement_index=-1`) per policy. `branch_problem` does not check `severity`:
+an invalid branch severity is reported and dropped by `_prepare_requirement` and the
+branch still enforced (and counted by `enforced_actions`). `enforced_actions` skips a requirement
+whose branches (including a top-level `required_conditions`, treated as an unscoped
+branch) never enforce `Allow` without `resource` / `not_resource`, and any requirement
+or branch whose `required_conditions` holds no evaluable `all_of` / `any_of` / list entry
+(`_requires_evaluable_condition`, e.g. `none_of` alone).
 
 ## `sensitive_action` severity (gotcha)
 
@@ -211,9 +228,56 @@ literally instead of calling `get_severity(config)`:
 - `condition_key_validation` on a `NotAction` statement — `warning`. There is no action
   to resolve per-action keys against, so only global keys are decidable and an unknown
   key is a hint, not a rejection.
-- `action_condition_enforcement` keeps `error` for a **malformed** `any_of`/`none_of`
-  requirement, where the config itself is at fault. For a satisfied-requirement finding
-  the requirement's own `severity` takes precedence over the check default.
+- `action_condition_enforcement` emits `invalid_condition_requirement` at `error` for any
+  **malformed** config (bad `actions` or `required_conditions` shape, unknown or non-list group,
+  non-string `condition_key`/`operator`, invalid requirement, branch or entry
+  `severity`, malformed `if` branch), where the config itself is at fault. All of these
+  except malformed `if` branches (`requirement_branches`, reported by `execute_policy`) come
+  from one pre-pass, `_prepare_requirement`, once per policy at `statement_index=-1`; it
+  returns a copy (never mutate the shared config) with null and invalid severities
+  stripped, so the entry/branch/requirement is still enforced at the fallback severity.
+  The per-statement path skips malformed pieces silently. A requirement's config
+  problems (both kinds) are emitted only for a policy with a statement of either effect
+  matching its actions (`_matches_any_statement`, which also reads strings from a malformed
+  `actions` group and matches every policy when `actions` names none, and a statement granting `Action: "*"` when the requirement has `action_patterns`), and both kinds bypass the
+  requirement's own `ignore_patterns`. `enforced_actions` counts a requirement (or `if`
+  branch) only when its prepared `required_conditions` holds an evaluable `all_of` /
+  `any_of` / list entry (`_requires_evaluable_condition`); detection-only (empty) still
+  counts. Both checks judge an entry with `is_evaluable_entry` (`utils/requirement_branches.py`);
+  an entry with both a non-null `condition_key` and `all_of` (`has_key_and_group`) is not evaluable; a null one of either counts as unset (`without_null_all_of` strips a null `all_of` before evaluation). `execute_policy` runs every finding, config problems included, through `_dedupe_issues`. Null, `[]`, `{}` and a
+  mapping whose groups are all empty or null (`has_no_conditions`) count as an empty,
+  detection-only `required_conditions`; a falsy scalar (`false`, `0`, `""`) is malformed. A
+  non-string element of `actions` (list or group) is reported (one issue each) and dropped. Top-level shape
+  messages come from `conditions_problem`, as for `if` branches. An unknown group key (e.g. a
+  typo) inside an `if` branch's `required_conditions` drops the whole branch, unlike the
+  top-level form, which still enforces its valid groups. A non-list `requirements` /
+  `policy_level_requirements` / `action_condition_requirements`, or a non-mapping entry in one,
+  is dropped in `_merge_requirements` (`_requirement_entries`, so `enforced_actions` and
+  `sensitive_action` never see it) and reported by `execute_policy` once per policy for every
+  policy (`_requirement_list_problems`).
+  `principal_validation` keeps only the string entries of `blocked_principals`,
+  `allowed_principals`, `allowed_service_principals` and a requirement's `principals`
+  (`_string_entries`, never `str()`: YAML mangles leading-zero account ids) and reports each
+  non-string entry once per policy from `execute_policy` (the three lists when a statement
+  reaches the blocked/allowed rules, `_reaches_principal_rules`; `principals` with the
+  requirement checks; a scalar non-string value counts as one bad entry). An `allowed_principals` that is
+  configured (anything but null or `[]`) stays an allow-list even with no string entry, so it
+  then allows nothing; likewise an all-invalid `allowed_service_principals` allows no service.
+  Non-string values in a policy's `Principal`/`NotPrincipal` are dropped by
+  `_flatten_principal_field`. A non-list `principal_condition_requirements` or a non-mapping entry in
+  it is skipped by `execute` (`_requirement_entries`) and reported once per policy there too.
+  It also reports a non-mapping or keyless entry, a
+  non-string `operator`, an invalid entry `severity`, an unknown or non-list group or a scalar `required_conditions`
+  per statement (`statement_index` = that statement, no pre-pass) and skips it (never
+  satisfied); an invalid requirement-level `severity` is reported once per policy by its
+  `execute_policy` (`statement_index=-1`), only when the requirement's principals match a
+  statement that `execute` would evaluate (`_condition_requirement_principals`, shared by both, so
+  blocked principals and `Service: "*"` statements never count); a `principals` that is neither a
+  string (one pattern) nor a list is reported there too and matches nothing; a nested `all_of` entry needs every child, and its leaves inherit the
+  parent's `severity`/`description`/`example` unless they set their own (a null or
+  invalid one counts as unset). A null, empty
+  or invalid `severity` (entry, then requirement) falls back to the next level, then
+  the check default.
 
 ---
 
@@ -283,3 +347,6 @@ Use these instead of reimplementing:
 - `sensitive_action_matcher.py` — `get_sensitive_actions_by_categories()`, `check_sensitive_actions()`
 - `policy_level_checks.py` — `check_policy_level_actions()`, `_check_all_of_pattern()`
 - `formatting.py` — `format_list_with_backticks()`
+- `requirement_branches.py` — `requirement_branches()`, `branch_problem()`, `conditions_problem()`, `severity_problem()`, `branch_effects()`,
+  `branch_matches_resources()`, `branch_enforces_allow_everywhere()`, `is_evaluable_entry()`,
+  `has_key_and_group()`, `without_null_all_of()`

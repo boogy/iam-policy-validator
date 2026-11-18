@@ -1,6 +1,6 @@
 """Dedup must track what action_condition_enforcement actually enforces, not what is configured."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -135,6 +135,51 @@ class TestEnforcedActions:
 
         assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
 
+    @pytest.mark.parametrize(
+        "required_conditions",
+        [
+            {"none_of": [{"condition_key": "aws:SourceIp"}]},
+            {"all_of": [], "none_of": [{"condition_key": "aws:SourceIp"}]},
+        ],
+    )
+    def test_a_none_of_only_requirement_enforces_nothing(self, required_conditions):
+        requirement = {"actions": ["iam:PassRole"], "required_conditions": required_conditions}
+        root = {
+            "action_condition_enforcement": {
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [requirement],
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    def test_a_none_of_only_if_branch_enforces_nothing(self):
+        branch = {"required_conditions": {"none_of": [{"condition_key": "aws:SourceIp"}]}}
+        requirement = {"actions": ["iam:PassRole"], "if": [branch]}
+        root = {
+            "action_condition_enforcement": {
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [requirement],
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    def test_a_none_of_requirement_with_any_of_still_enforces(self):
+        required_conditions = {
+            "any_of": [{"condition_key": "iam:PassedToService"}],
+            "none_of": [{"condition_key": "aws:SourceIp"}],
+        }
+        requirement = {"actions": ["iam:PassRole"], "required_conditions": required_conditions}
+        root = {
+            "action_condition_enforcement": {
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [requirement],
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
+
     def test_an_empty_config_enforces_nothing(self):
         assert ActionConditionEnforcementCheck.enforced_actions({}) == set()
 
@@ -150,3 +195,45 @@ class TestEnforcedActions:
 
         assert ActionConditionEnforcementCheck.enforced_actions(root, "prod/policy.json") == {"iam:PassRole"}
         assert ActionConditionEnforcementCheck.enforced_actions(root, "tests/policy.json") == set()
+
+
+class TestEnforcedActionsComputedOncePerConfig:
+    async def test_many_statements_compute_enforced_actions_once(self, check):
+        config = _config({"requirements": [PASS_ROLE_REQUIREMENT]})
+
+        with patch.object(
+            ActionConditionEnforcementCheck,
+            "enforced_actions",
+            wraps=ActionConditionEnforcementCheck.enforced_actions,
+        ) as spy:
+            for action in ("iam:PassRole", "iam:CreateUser", "iam:PassRole"):
+                await _run(check, config, action)
+
+        assert spy.call_count == 1
+
+    async def test_a_new_root_config_is_recomputed(self, check):
+        assert await _run(check, _config({"requirements": [PASS_ROLE_REQUIREMENT]})) == []
+
+        issues = await _run(check, _config({"enabled": False, "requirements": [PASS_ROLE_REQUIREMENT]}))
+
+        assert [i.issue_type for i in issues] == ["missing_condition"]
+
+    def test_covered_actions_are_the_cached_frozenset_not_a_copy(self, check):
+        config = _config({"requirements": [PASS_ROLE_REQUIREMENT]})
+
+        first = check._get_actions_covered_by_condition_enforcement(config)
+
+        assert isinstance(first, frozenset)
+        assert check._get_actions_covered_by_condition_enforcement(config) is first
+
+
+class TestMalformedRequirementListsDoNotCrash:
+    @pytest.mark.parametrize("key", ["requirements", "policy_level_requirements", "action_condition_requirements"])
+    @pytest.mark.parametrize("value", [["iam:PassRole", 5], {"actions": ["iam:PassRole"]}, "iam:PassRole", 5])
+    async def test_malformed_entries_are_dropped(self, check, key, value):
+        config = _config({"requirements": [PASS_ROLE_REQUIREMENT], key: value})
+
+        issues = await _run(check, config)
+
+        expected = ["missing_condition"] if key == "requirements" else []
+        assert [i.issue_type for i in issues] == expected
