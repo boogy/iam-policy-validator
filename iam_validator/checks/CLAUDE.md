@@ -244,12 +244,25 @@ literally instead of calling `get_severity(config)`:
   branch) only when its prepared `required_conditions` holds an evaluable `all_of` /
   `any_of` / list entry (`_requires_evaluable_condition`); detection-only (empty) still
   counts. Both checks judge an entry with `is_evaluable_entry` (`utils/requirement_branches.py`);
-  an entry with both `condition_key` and `all_of` is not evaluable. Only null, `[]` and `{}`
-  (`has_no_conditions`) count as an empty, detection-only `required_conditions`; a falsy
-  scalar (`false`, `0`, `""`) is malformed. A non-string element of `actions` (list or group)
-  is reported and dropped. Top-level shape messages come from `conditions_problem`, as for
-  `if` branches.
-  `principal_validation` instead reports a non-mapping or keyless entry, a
+  an entry with both `condition_key` and `all_of` is not evaluable. Null, `[]`, `{}` and a
+  mapping whose groups are all empty or null (`has_no_conditions`) count as an empty,
+  detection-only `required_conditions`; a falsy scalar (`false`, `0`, `""`) is malformed. A
+  non-string element of `actions` (list or group) is reported and dropped. Top-level shape
+  messages come from `conditions_problem`, as for `if` branches. An unknown group key (e.g. a
+  typo) inside an `if` branch's `required_conditions` drops the whole branch, unlike the
+  top-level form, which still enforces its valid groups. A non-list `requirements` /
+  `policy_level_requirements` / `action_condition_requirements`, or a non-mapping entry in one,
+  is dropped in `_merge_requirements` (`_requirement_entries`, so `enforced_actions` and
+  `sensitive_action` never see it) and reported by `execute_policy` once per policy for every
+  policy (`_requirement_list_problems`).
+  `principal_validation` keeps only the string entries of `blocked_principals`,
+  `allowed_principals`, `allowed_service_principals` and a requirement's `principals`
+  (`_string_entries`, never `str()`: YAML mangles leading-zero account ids) and reports each
+  non-string entry once per policy from `execute_policy` (the three lists when a statement
+  reaches the blocked/allowed rules, `_reaches_principal_rules`; `principals` with the
+  requirement checks). A non-list `principal_condition_requirements` or a non-mapping entry in
+  it is skipped by `execute` (`_requirement_entries`) and reported once per policy there too.
+  It also reports a non-mapping or keyless entry, a
   non-string `operator`, an invalid entry `severity`, an unknown or non-list group or a scalar `required_conditions`
   per statement (`statement_index` = that statement, no pre-pass) and skips it (never
   satisfied); an invalid requirement-level `severity` is reported once per policy by its

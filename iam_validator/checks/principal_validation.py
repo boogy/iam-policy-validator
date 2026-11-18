@@ -128,11 +128,11 @@ class PrincipalValidationCheck(PolicyCheck):
 
         # Get configuration (defaults match defaults.py)
         blocked_principals = self._blocked_principals(config)
-        allowed_principals = config.config.get("allowed_principals", [])
-        principal_condition_requirements = config.config.get("principal_condition_requirements", [])
+        allowed_principals = self._string_entries(config.config.get("allowed_principals", []))
+        principal_condition_requirements = self._requirement_entries(config)
         # Default: "aws:*" allows ALL AWS service principals (*.amazonaws.com)
         # This matches the default in defaults.py
-        allowed_service_principals = config.config.get("allowed_service_principals", ["aws:*"])
+        allowed_service_principals = self._string_entries(config.config.get("allowed_service_principals", ["aws:*"]))
         # Check for service principal wildcards FIRST (highest priority security issue)
         service_wildcard_issues: list[ValidationIssue] = []
         if config.config.get("block_service_principal_wildcard", True):
@@ -212,20 +212,37 @@ class PrincipalValidationCheck(PolicyCheck):
     ) -> list[ValidationIssue]:
         """Report requirement-level config problems once per policy, for policies ``execute`` would evaluate."""
         del policy_file, fetcher, kwargs
+        issues: list[ValidationIssue] = []
+        if any(self._reaches_principal_rules(statement) for statement in policy.statement or []):
+            issues.extend(
+                self._create_non_string_principal_issue(f"`{key}`", entry)
+                for key in self._PRINCIPAL_LIST_KEYS
+                for entry in self._non_string_entries(config.config.get(key))
+            )
         evaluated = [
             principals
             for statement in policy.statement or []
             if (principals := self._condition_requirement_principals(statement, config))
         ]
         if not evaluated:
-            return []
-        issues: list[ValidationIssue] = []
-        for requirement in config.config.get("principal_condition_requirements") or []:
-            if not isinstance(requirement, dict):
-                continue
+            return issues
+        raw_requirements = config.config.get("principal_condition_requirements")
+        if raw_requirements is not None and not isinstance(raw_requirements, list):
+            issues.append(self._create_invalid_requirement_entry_issue(raw_requirements, "is not a list"))
+        elif isinstance(raw_requirements, list):
+            issues.extend(
+                self._create_invalid_requirement_entry_issue(entry, "has an entry that is not a mapping")
+                for entry in raw_requirements
+                if not isinstance(entry, dict)
+            )
+        for requirement in self._requirement_entries(config):
             if self._principal_patterns(requirement) is None:
                 issues.append(self._create_invalid_principals_issue(requirement))
                 continue
+            issues.extend(
+                self._create_non_string_principal_issue("`principal_condition_requirements` `principals`", entry)
+                for entry in self._non_string_entries(requirement.get("principals"))
+            )
             severity = requirement.get("severity")
             if severity_problem(severity) is None or has_no_conditions(requirement.get("required_conditions")):
                 continue
@@ -233,18 +250,46 @@ class PrincipalValidationCheck(PolicyCheck):
                 issues.append(self._create_invalid_severity_issue(None, -1, requirement, severity, ""))
         return issues
 
+    _PRINCIPAL_LIST_KEYS: ClassVar[tuple[str, ...]] = (
+        "blocked_principals",
+        "allowed_principals",
+        "allowed_service_principals",
+    )
+
     @staticmethod
-    def _blocked_principals(config: CheckConfig) -> list[str]:
-        blocked = list(config.config.get("blocked_principals", []))
+    def _string_entries(value: Any) -> list[str]:
+        """A configured principal list's string entries (a string is one entry); ``execute_policy`` reports the rest."""
+        if isinstance(value, str):
+            return [value]
+        return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
+
+    @staticmethod
+    def _non_string_entries(value: Any) -> list[Any]:
+        return [v for v in value if not isinstance(v, str)] if isinstance(value, list) else []
+
+    @staticmethod
+    def _requirement_entries(config: CheckConfig) -> list[dict[str, Any]]:
+        """The mapping entries of ``principal_condition_requirements``; ``execute_policy`` reports the rest."""
+        value = config.config.get("principal_condition_requirements")
+        return [r for r in value if isinstance(r, dict)] if isinstance(value, list) else []
+
+    @staticmethod
+    def _reaches_principal_rules(statement: Statement) -> bool:
+        """Whether ``execute`` applies the blocked/allowed principal rules to ``statement``."""
+        if statement.principal is None and statement.not_principal is None:
+            return False
+        return not (is_deny(statement) and statement.not_principal is None)
+
+    @classmethod
+    def _blocked_principals(cls, config: CheckConfig) -> list[str]:
+        blocked = cls._string_entries(config.config.get("blocked_principals", []))
         if config.config.get("block_wildcard_principal", False) and "*" not in blocked:
             blocked.append("*")
         return blocked
 
     def _condition_requirement_principals(self, statement: Statement, config: CheckConfig) -> list[str]:
         """Principals ``execute`` checks against ``principal_condition_requirements``; ``[]`` when it skips them."""
-        if statement.principal is None and statement.not_principal is None:
-            return []
-        if is_deny(statement) and statement.not_principal is None:
+        if not self._reaches_principal_rules(statement):
             return []
         if config.config.get("block_service_principal_wildcard", True) and self._service_principal_wildcard_count(
             statement
@@ -253,15 +298,15 @@ class PrincipalValidationCheck(PolicyCheck):
         blocked = self._blocked_principals(config)
         return [p for p in self._extract_principals(statement) if not self._is_blocked_principal(p, blocked)]
 
-    @staticmethod
-    def _principal_patterns(requirement: dict[str, Any]) -> list[Any] | None:
-        """A requirement's ``principals`` as a list (a string is one pattern); ``None`` when malformed."""
+    @classmethod
+    def _principal_patterns(cls, requirement: dict[str, Any]) -> list[str] | None:
+        """A requirement's string ``principals`` (a string is one pattern); ``None`` when not a string or list."""
         patterns = requirement.get("principals")
         if patterns is None:
             return []
-        if isinstance(patterns, str):
-            return [patterns]
-        return patterns if isinstance(patterns, list) else None
+        if isinstance(patterns, str | list):
+            return cls._string_entries(patterns)
+        return None
 
     #: Condition keys that identify *who* the caller is, as opposed to what they request.
     _PRINCIPAL_CONDITION_KEYS: ClassVar[frozenset[str]] = frozenset(
@@ -849,6 +894,36 @@ class PrincipalValidationCheck(PolicyCheck):
                 "that is not a string or list, so it matches no principal and is not enforced"
             ),
             suggestion='Set `principals` to a principal pattern or a list of them (e.g. `- "*"`).',
+            line_number=None,
+            field_name="principal",
+        )
+
+    @staticmethod
+    def _create_non_string_principal_issue(label: str, entry: Any) -> ValidationIssue:
+        return ValidationIssue(
+            severity="error",
+            statement_sid=None,
+            statement_index=-1,
+            issue_type="invalid_condition_requirement",
+            message=f"{label} has a non-string entry `{entry!r}`, which matches no principal and is ignored",
+            suggestion=(
+                'Quote the entry as a string (e.g. `"123456789012"`); YAML reads an unquoted account id as a '
+                "number and drops its leading zeros."
+            ),
+            line_number=None,
+            field_name="principal",
+        )
+
+    @staticmethod
+    def _create_invalid_requirement_entry_issue(entry: Any, problem: str) -> ValidationIssue:
+        return ValidationIssue(
+            severity="error",
+            statement_sid=None,
+            statement_index=-1,
+            issue_type="invalid_condition_requirement",
+            message=f"`principal_condition_requirements` {problem}, so it is not enforced: `{entry!r}`",
+            suggestion="Make `principal_condition_requirements` a list of mappings, each with `principals` and "
+            "`required_conditions`.",
             line_number=None,
             field_name="principal",
         )

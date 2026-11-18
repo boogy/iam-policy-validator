@@ -149,7 +149,9 @@ with severity `error` and `statement_index: -1`: `if` that is not a list or is e
 branch that is not a mapping, missing or empty `required_conditions` (or an `all_of`/`any_of`/`none_of` that is not a list, or any other key in it), an invalid
 `effect`, an invalid or non-string `resource`/`not_resource` regex, both `resource` and
 `not_resource` in one branch, or an unknown key (so a typo such as `resources:` cannot make a branch match
-every resource). The broken branch enforces nothing; valid branches still run.
+every resource). The broken branch enforces nothing; valid branches still run. An unknown
+group key (e.g. a typo such as `allof:`) inside a branch's `required_conditions` drops the
+whole branch, unlike the top-level form, which still enforces its valid groups.
 
 `sensitive_action` defers to this check only for requirements with a branch that applies
 to every `Allow` statement (an `Allow` or omitted `effect`, and no `resource` /

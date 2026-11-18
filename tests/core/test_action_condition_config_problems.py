@@ -479,3 +479,35 @@ class TestTopLevelShapeWording:
         issues = await _run(check, _config({"actions": [ACTION], "required_conditions": required_conditions}))
 
         assert len(issues) == 3
+
+
+class TestMalformedRequirementLists:
+    _VALID = {"actions": [ACTION], "required_conditions": [{"condition_key": KEY}]}
+
+    @pytest.mark.parametrize("key", ["requirements", "policy_level_requirements", "action_condition_requirements"])
+    async def test_non_dict_entries_reported_once_and_valid_entries_enforced(self, check, key):
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            config={"merge_strategy": "append", key: ["iam:PassRole", 5, self._VALID]},
+        )
+
+        issues = await _run(check, config, _stmt("One"), _stmt("Two"))
+
+        assert _types(issues) == [
+            ("invalid_condition_requirement", -1),
+            ("invalid_condition_requirement", -1),
+            ("missing_required_condition", 0),
+            ("missing_required_condition", 1),
+        ]
+        assert key in issues[0].message
+
+    @pytest.mark.parametrize("key", ["requirements", "policy_level_requirements", "action_condition_requirements"])
+    @pytest.mark.parametrize("value", [{"actions": [ACTION]}, "iam:PassRole", 5])
+    async def test_non_list_value_reported_once(self, check, key, value):
+        config = CheckConfig(check_id="action_condition_enforcement", enabled=True, config={key: value})
+
+        issues = await _run(check, config, _stmt("One"), _stmt("Two"))
+
+        assert _types(issues) == [("invalid_condition_requirement", -1)]
+        assert key in issues[0].message

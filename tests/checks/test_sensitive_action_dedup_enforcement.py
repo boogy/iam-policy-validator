@@ -225,3 +225,15 @@ class TestEnforcedActionsComputedOncePerConfig:
 
         assert isinstance(first, frozenset)
         assert check._get_actions_covered_by_condition_enforcement(config) is first
+
+
+class TestMalformedRequirementListsDoNotCrash:
+    @pytest.mark.parametrize("key", ["requirements", "policy_level_requirements", "action_condition_requirements"])
+    @pytest.mark.parametrize("value", [["iam:PassRole", 5], {"actions": ["iam:PassRole"]}, "iam:PassRole", 5])
+    async def test_malformed_entries_are_dropped(self, check, key, value):
+        config = _config({"requirements": [PASS_ROLE_REQUIREMENT], key: value})
+
+        issues = await _run(check, config)
+
+        expected = ["missing_condition"] if key == "requirements" else []
+        assert [i.issue_type for i in issues] == expected

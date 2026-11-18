@@ -113,7 +113,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             List of ValidationIssue objects found by this check
         """
         del kwargs  # Not used in current implementation
-        issues: list[ValidationIssue] = []
+        issues: list[ValidationIssue] = self._requirement_list_problems(config)
 
         # Get action condition requirements using configurable merge strategy
         requirements = self._get_merged_requirements(config, policy_file)
@@ -541,8 +541,47 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     ) -> list[dict[str, Any]]:
         """Merged requirements, with a single-string ``actions`` normalized to a list."""
         return [
-            {**r, "actions": [r["actions"]]} if isinstance(r, dict) and isinstance(r.get("actions"), str) else r
+            {**r, "actions": [r["actions"]]} if isinstance(r.get("actions"), str) else r
             for r in self._merge_requirements(config, policy_file)
+        ]
+
+    _REQUIREMENT_LIST_KEYS: ClassVar[tuple[str, ...]] = (
+        "requirements",
+        "policy_level_requirements",
+        "action_condition_requirements",
+    )
+
+    @staticmethod
+    def _requirement_entries(config: CheckConfig, key: str) -> list[dict[str, Any]]:
+        """The mapping entries of the requirement list under ``key``; ``execute_policy`` reports the rest."""
+        value = config.config.get(key)
+        return [r for r in value if isinstance(r, dict)] if isinstance(value, list) else []
+
+    @classmethod
+    def _requirement_list_problems(cls, config: CheckConfig) -> list[ValidationIssue]:
+        """A non-list requirement list, or a non-mapping entry in one, each reported once per policy."""
+        problems: list[tuple[str, Any, str]] = []
+        for key in cls._REQUIREMENT_LIST_KEYS:
+            value = config.config.get(key)
+            if value is None:
+                continue
+            if not isinstance(value, list):
+                problems.append((key, value, "is not a list"))
+            else:
+                problems.extend(
+                    (key, entry, "has an entry that is not a mapping") for entry in value if not isinstance(entry, dict)
+                )
+        return [
+            ValidationIssue(
+                severity="error",
+                statement_sid=None,
+                statement_index=-1,
+                issue_type="invalid_condition_requirement",
+                message=f"`{key}` {problem}, so it is not enforced: `{entry!r}`",
+                suggestion=f"Make `{key}` a list of mappings, each with `actions` and `required_conditions`.",
+                field_name="condition",
+            )
+            for key, entry, problem in problems
         ]
 
     def _merge_requirements(
@@ -573,10 +612,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # defaults always set `requirements`, so entries a user added there were
         # silently ignored.
         default_requirements = [
-            *(config.config.get("requirements") or []),
-            *(config.config.get("policy_level_requirements") or []),
+            *self._requirement_entries(config, "requirements"),
+            *self._requirement_entries(config, "policy_level_requirements"),
         ]
-        user_requirements = config.config.get("action_condition_requirements")
+        user_requirements = self._requirement_entries(config, "action_condition_requirements")
 
         # Get merge strategy (default: append - both defaults and user requirements apply)
         merge_strategy = config.config.get("merge_strategy", "append")
@@ -611,9 +650,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             # Non-matching defaults are kept
             # Note: We use the ORIGINAL user_requirements to determine which actions
             # are "user-defined" (even if filtered out by ignore_patterns)
-            return self._merge_per_action_override(
-                default_requirements, user_requirements or [], active_user_requirements
-            )
+            return self._merge_per_action_override(default_requirements, user_requirements, active_user_requirements)
 
         else:  # "append" (default)
             # Both defaults AND user requirements apply
