@@ -128,7 +128,9 @@ class PrincipalValidationCheck(PolicyCheck):
 
         # Get configuration (defaults match defaults.py)
         blocked_principals = self._blocked_principals(config)
-        allowed_principals = self._string_entries(config.config.get("allowed_principals", []))
+        raw_allowed = config.config.get("allowed_principals", [])
+        allowlist_configured = raw_allowed is not None and raw_allowed != []
+        allowed_principals = self._string_entries(raw_allowed)
         principal_condition_requirements = self._requirement_entries(config)
         # Default: "aws:*" allows ALL AWS service principals (*.amazonaws.com)
         # This matches the default in defaults.py
@@ -169,7 +171,7 @@ class PrincipalValidationCheck(PolicyCheck):
                 continue
 
             # Check if principal is in whitelist (if whitelist is configured)
-            if allowed_principals and not self._is_allowed_principal(
+            if allowlist_configured and not self._is_allowed_principal(
                 principal, allowed_principals, allowed_service_principals
             ):
                 issues.append(
@@ -215,9 +217,10 @@ class PrincipalValidationCheck(PolicyCheck):
         issues: list[ValidationIssue] = []
         if any(self._reaches_principal_rules(statement) for statement in policy.statement or []):
             issues.extend(
-                self._create_non_string_principal_issue(f"`{key}`", entry)
+                self._create_non_string_principal_issue(f"`{key}`", entry, whole_value=not isinstance(value, list))
                 for key in self._PRINCIPAL_LIST_KEYS
-                for entry in self._non_string_entries(config.config.get(key))
+                for value in [config.config.get(key)]
+                for entry in self._non_string_entries(value)
             )
         evaluated = [
             principals
@@ -265,7 +268,10 @@ class PrincipalValidationCheck(PolicyCheck):
 
     @staticmethod
     def _non_string_entries(value: Any) -> list[Any]:
-        return [v for v in value if not isinstance(v, str)] if isinstance(value, list) else []
+        """A principal list's non-string entries; a non-list, non-string value is one bad entry."""
+        if value is None or isinstance(value, str):
+            return []
+        return [v for v in value if not isinstance(v, str)] if isinstance(value, list) else [value]
 
     @staticmethod
     def _requirement_entries(config: CheckConfig) -> list[dict[str, Any]]:
@@ -481,7 +487,7 @@ class PrincipalValidationCheck(PolicyCheck):
             if isinstance(value, str):
                 principals.append(value)
             elif isinstance(value, list):
-                principals.extend(value)
+                principals.extend(v for v in value if isinstance(v, str))
         return principals
 
     @staticmethod
@@ -899,13 +905,18 @@ class PrincipalValidationCheck(PolicyCheck):
         )
 
     @staticmethod
-    def _create_non_string_principal_issue(label: str, entry: Any) -> ValidationIssue:
+    def _create_non_string_principal_issue(label: str, entry: Any, *, whole_value: bool = False) -> ValidationIssue:
+        message = (
+            f"{label} is not a string or list: `{entry!r}`; it matches no principal"
+            if whole_value
+            else f"{label} has a non-string entry `{entry!r}`, which matches no principal and is ignored"
+        )
         return ValidationIssue(
             severity="error",
             statement_sid=None,
             statement_index=-1,
             issue_type="invalid_condition_requirement",
-            message=f"{label} has a non-string entry `{entry!r}`, which matches no principal and is ignored",
+            message=message,
             suggestion=(
                 'Quote the entry as a string (e.g. `"123456789012"`); YAML reads an unquoted account id as a '
                 "number and drops its leading zeros."

@@ -260,7 +260,11 @@ literally instead of calling `get_severity(config)`:
   (`_string_entries`, never `str()`: YAML mangles leading-zero account ids) and reports each
   non-string entry once per policy from `execute_policy` (the three lists when a statement
   reaches the blocked/allowed rules, `_reaches_principal_rules`; `principals` with the
-  requirement checks). A non-list `principal_condition_requirements` or a non-mapping entry in
+  requirement checks; a scalar non-string value counts as one bad entry). An `allowed_principals` that is
+  configured (anything but null or `[]`) stays an allow-list even with no string entry, so it
+  then allows nothing; likewise an all-invalid `allowed_service_principals` allows no service.
+  Non-string values in a policy's `Principal`/`NotPrincipal` are dropped by
+  `_flatten_principal_field`. A non-list `principal_condition_requirements` or a non-mapping entry in
   it is skipped by `execute` (`_requirement_entries`) and reported once per policy there too.
   It also reports a non-mapping or keyless entry, a
   non-string `operator`, an invalid entry `severity`, an unknown or non-list group or a scalar `required_conditions`

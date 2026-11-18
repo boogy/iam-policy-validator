@@ -1612,6 +1612,65 @@ class TestPrincipalListConfigRobustness:
             ("missing_principal_condition", 0),
         ]
 
+    @pytest.mark.parametrize("allowed", [[111111111111], 111111111111, {"AWS": "x"}, True])
+    async def test_allowlist_with_no_string_entries_stays_restrictive(self, check, allowed):
+        issues = await self._run(check, {"allowed_principals": allowed}, {"AWS": "arn:aws:iam::999999999999:root"})
+
+        assert [(i.issue_type, i.statement_index) for i in issues] == [
+            ("invalid_condition_requirement", -1),
+            ("unauthorized_principal", 0),
+        ]
+
+    async def test_empty_allowlist_is_disabled(self, check):
+        issues = await self._run(check, {"allowed_principals": []}, {"AWS": "arn:aws:iam::999999999999:root"})
+
+        assert issues == []
+
+    @pytest.mark.parametrize("services", [[5], 5, {"a": 1}, False])
+    async def test_service_allowlist_with_no_string_entries_allows_no_service(self, check, services):
+        options = {"allowed_principals": ["arn:aws:iam::*:root"], "allowed_service_principals": services}
+        issues = await self._run(check, options, {"Service": "s3.amazonaws.com"})
+
+        assert [(i.issue_type, i.statement_index) for i in issues] == [
+            ("invalid_condition_requirement", -1),
+            ("unauthorized_principal", 0),
+        ]
+
+    @pytest.mark.parametrize("key", ["blocked_principals", "allowed_principals", "allowed_service_principals"])
+    @pytest.mark.parametrize("value", [123456789012, {"AWS": "*"}, True])
+    async def test_scalar_non_string_list_value_reported_once(self, check, key, value):
+        issues = await self._run(check, {key: value}, {"AWS": "arn:aws:iam::123456789012:root"})
+
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert [(i.statement_index, i.severity) for i in invalid] == [(-1, "error")]
+        assert key in invalid[0].message and repr(value) in invalid[0].message
+        assert "not a string or list" in invalid[0].message
+
+    async def test_scalar_non_string_requirement_principals_reported_once(self, check):
+        requirement = {"principals": 123, "required_conditions": [{"condition_key": "aws:SourceArn"}]}
+        issues = await self._run(check, {"principal_condition_requirements": [requirement]}, "*")
+
+        assert [(i.issue_type, i.statement_index) for i in issues] == [("invalid_condition_requirement", -1)]
+
+    @pytest.mark.parametrize(
+        ("principal", "expected"),
+        [
+            ({"AWS": [123456789012]}, []),
+            ({"AWS": 123}, []),
+            ({"AWS": [None, "*"]}, ["unauthorized_principal", "missing_principal_condition"]),
+        ],
+    )
+    async def test_non_string_policy_principal_does_not_raise(self, check, principal, expected):
+        requirement = {"principals": ["*"], "required_conditions": [{"condition_key": "aws:SourceArn"}]}
+        options = {
+            "allowed_principals": ["arn:aws:iam::*:root"],
+            "blocked_principals": ["arn:aws:iam::999999999999:root"],
+            "principal_condition_requirements": [requirement],
+        }
+        issues = await self._run(check, options, principal)
+
+        assert [i.issue_type for i in issues] == expected
+
     @pytest.mark.parametrize("requirements", [["oops", 5], {"principals": ["*"]}, "oops", 5])
     async def test_malformed_requirement_entries_reported_once_not_raised(self, check, requirements):
         issues = await self._run(check, {"principal_condition_requirements": requirements}, "*")
