@@ -539,6 +539,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             ) and not cls._requires_evaluable_condition(required):
                 continue
             configured = requirement.get("actions", [])
+            if isinstance(configured, dict):
+                configured = configured.get("any_of")
             if isinstance(configured, list):
                 actions.update(a for a in configured if isinstance(a, str))
         return actions

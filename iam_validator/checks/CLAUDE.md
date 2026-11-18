@@ -170,7 +170,8 @@ returns an empty set when the check is disabled, and runs the real
 user-supplied `action_condition_requirements` entry moves both checks together. Reading
 `requirements` directly suppressed findings for requirements that were never in play.
 Matching is `action_matches`, not `==`: a requirement may be a glob and IAM action names
-are case-insensitive. Statement-level checks never receive `policy_file`, so a
+are case-insensitive. Mapping-form `actions` count only their `any_of` entries: `all_of`
+flags only statements granting every action, and `none_of` is a separate rule. Statement-level checks never receive `policy_file`, so a
 requirement carrying `ignore_patterns` counts as unenforced there and the finding is
 kept rather than wrongly suppressed.
 
@@ -262,7 +263,7 @@ literally instead of calling `get_severity(config)`:
   reaches the blocked/allowed rules, `_reaches_principal_rules`; `principals` with the
   requirement checks; a scalar non-string value counts as one bad entry). An `allowed_principals` that is
   configured (anything but null or `[]`) stays an allow-list even with no string entry, so it
-  then allows nothing; likewise an all-invalid `allowed_service_principals` allows no service.
+  then allows nothing; likewise an all-invalid `allowed_service_principals` allows no service (a null one keeps the default `aws:*`).
   Non-string values in a policy's `Principal`/`NotPrincipal` are dropped by
   `_flatten_principal_field`. A non-list `principal_condition_requirements` or a non-mapping entry in
   it is skipped by `execute` (`_requirement_entries`) and reported once per policy there too.

@@ -135,7 +135,8 @@ class PrincipalValidationCheck(PolicyCheck):
         principal_condition_requirements = self._requirement_entries(config)
         # Default: "aws:*" allows ALL AWS service principals (*.amazonaws.com)
         # This matches the default in defaults.py
-        allowed_service_principals = self._string_entries(config.config.get("allowed_service_principals", ["aws:*"]))
+        raw_services = config.config.get("allowed_service_principals")
+        allowed_service_principals = self._string_entries(["aws:*"] if raw_services is None else raw_services)
         # Check for service principal wildcards FIRST (highest priority security issue)
         service_wildcard_issues: list[ValidationIssue] = []
         if config.config.get("block_service_principal_wildcard", True):

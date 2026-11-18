@@ -1652,6 +1652,12 @@ class TestPrincipalListConfigRobustness:
             ("unauthorized_principal", 0),
         ]
 
+    async def test_null_service_allowlist_uses_default(self, check):
+        options = {"allowed_principals": ["arn:aws:iam::*:root"], "allowed_service_principals": None}
+        issues = await self._run(check, options, {"Service": "s3.amazonaws.com"})
+
+        assert issues == []
+
     @pytest.mark.parametrize("key", ["blocked_principals", "allowed_principals", "allowed_service_principals"])
     @pytest.mark.parametrize("value", [123456789012, {"AWS": "*"}, True])
     async def test_scalar_non_string_list_value_reported_once(self, check, key, value):
