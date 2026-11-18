@@ -27,7 +27,7 @@ def is_evaluable_entry(entry: Any) -> bool:
     if not isinstance(entry, dict):
         return False
     if "all_of" in entry:
-        if "condition_key" in entry:
+        if entry.get("condition_key") is not None:
             return False
         nested = entry["all_of"]
         return isinstance(nested, list) and bool(nested) and all(is_evaluable_entry(e) for e in nested)

@@ -54,9 +54,13 @@ _PRESENTATION_KEYS = frozenset({"severity", "description", "example"})
 
 
 def _canonical_rule(value: Any) -> Any:
-    """Key-order-independent form of a rule, without the keys that only change how it is reported."""
+    """Key-order-independent form of a rule, without null keys or the keys that only change how it is reported."""
     if isinstance(value, dict):
-        return tuple(sorted((repr(k), _canonical_rule(v)) for k, v in value.items() if k not in _PRESENTATION_KEYS))
+        return tuple(
+            sorted(
+                (repr(k), _canonical_rule(v)) for k, v in value.items() if k not in _PRESENTATION_KEYS and v is not None
+            )
+        )
     if isinstance(value, (list, tuple)):
         return tuple(_canonical_rule(v) for v in value)
     return repr(value)
@@ -170,6 +174,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             return True
         probe = {**requirement, "actions": actions}
         for statement in policy.statement or []:
+            if requirement.get("action_patterns") and "*" in statement.get_actions():
+                return True
             matched, _ = await self._check_action_match(self._granted_actions(statement, actions), probe, fetcher)
             if matched:
                 return True
@@ -296,10 +302,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     def _string_actions(
         self, requirement: dict[str, Any], actions: list[Any], label: str, issues: list[ValidationIssue]
     ) -> list[str]:
-        bad = [a for a in actions if not isinstance(a, str)]
-        if bad:
-            problem = f"`{label}` element must be an action string"
-            issues.append(self._create_malformed_requirement_issue(requirement, problem, bad[0]))
+        problem = f"`{label}` element must be an action string"
+        issues.extend(
+            self._create_malformed_requirement_issue(requirement, problem, a) for a in actions if not isinstance(a, str)
+        )
         return [a for a in actions if isinstance(a, str)]
 
     def _without_bad_severity(
@@ -418,7 +424,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 f"{actions_str}: `{entry!r}`"
             )
             suggestion = "Fix its shape. Until then it enforces nothing."
-        elif isinstance(entry, dict) and "all_of" in entry and "condition_key" in entry:
+        elif isinstance(entry, dict) and "all_of" in entry and entry.get("condition_key") is not None:
             message = (
                 f"`action_condition_requirements` entry under `{label}` has both `condition_key` and `all_of`, "
                 f"so it cannot be enforced for action(s) {actions_str}: `{entry!r}`"

@@ -182,7 +182,7 @@ the CHANGELOG `Fixed` entries say. Parsing and matching live in
 `utils/requirement_branches.py`. Each valid branch becomes an ordinary requirement run
 through `_check_per_statement` / `_check_policy_wide` with keyword-only `effects` and
 `statement_filter`. An omitted branch `effect` means `Allow` in both forms; findings
-for the same rule (`ValidationIssue._rule_identity`, key-order independent, ignoring `severity`/`description`/`example`) differing only in severity, suggestion or message wording are reported once (most severe kept; a list entry and an `all_of` entry share an identity); `none_of` flags only `Allow` statements. Malformed branches yield one `invalid_condition_requirement` (only when a statement matches the requirement's actions)
+for the same rule (`ValidationIssue._rule_identity`, key-order independent, ignoring `severity`/`description`/`example` and null-valued keys) differing only in severity, suggestion or message wording are reported once (most severe kept; a list entry and an `all_of` entry share an identity); `none_of` flags only `Allow` statements. Malformed branches yield one `invalid_condition_requirement` (only when a statement matches the requirement's actions)
 (`error`, `statement_index=-1`) per policy. `branch_problem` does not check `severity`:
 an invalid branch severity is reported and dropped by `_prepare_requirement` and the
 branch still enforced (and counted by `enforced_actions`). `enforced_actions` skips a requirement
@@ -239,15 +239,15 @@ literally instead of calling `get_severity(config)`:
   The per-statement path skips malformed pieces silently. A requirement's config
   problems (both kinds) are emitted only for a policy with a statement of either effect
   matching its actions (`_matches_any_statement`, which also reads strings from a malformed
-  `actions` group and matches every policy when `actions` names none), and both kinds bypass the
+  `actions` group and matches every policy when `actions` names none, and a statement granting `Action: "*"` when the requirement has `action_patterns`), and both kinds bypass the
   requirement's own `ignore_patterns`. `enforced_actions` counts a requirement (or `if`
   branch) only when its prepared `required_conditions` holds an evaluable `all_of` /
   `any_of` / list entry (`_requires_evaluable_condition`); detection-only (empty) still
   counts. Both checks judge an entry with `is_evaluable_entry` (`utils/requirement_branches.py`);
-  an entry with both `condition_key` and `all_of` is not evaluable. Null, `[]`, `{}` and a
+  an entry with both a non-null `condition_key` and `all_of` is not evaluable (a null one counts as unset). Null, `[]`, `{}` and a
   mapping whose groups are all empty or null (`has_no_conditions`) count as an empty,
   detection-only `required_conditions`; a falsy scalar (`false`, `0`, `""`) is malformed. A
-  non-string element of `actions` (list or group) is reported and dropped. Top-level shape
+  non-string element of `actions` (list or group) is reported (one issue each) and dropped. Top-level shape
   messages come from `conditions_problem`, as for `if` branches. An unknown group key (e.g. a
   typo) inside an `if` branch's `required_conditions` drops the whole branch, unlike the
   top-level form, which still enforces its valid groups. A non-list `requirements` /

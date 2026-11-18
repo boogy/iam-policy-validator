@@ -511,3 +511,76 @@ class TestMalformedRequirementLists:
 
         assert _types(issues) == [("invalid_condition_requirement", -1)]
         assert key in issues[0].message
+
+
+class TestPatternOnlyRequirementOnFullWildcard:
+    async def test_config_error_reported_for_action_star(self, check):
+        config = _config({"action_patterns": ["^iam:Pass.*"], "required_conditions": [{"condition_key": 5}]})
+
+        issues = await _run(check, config, _stmt("One", action="*"))
+
+        assert ("invalid_condition_requirement", -1) in _types(issues)
+
+
+class TestNullKeysShareRuleIdentity:
+    MFA = "aws:MultiFactorAuthPresent"
+
+    @pytest.mark.parametrize(
+        "requirement",
+        [
+            {
+                "actions": [ACTION],
+                "if": [
+                    {"required_conditions": [{"condition_key": MFA, "expected_value": None}]},
+                    {"required_conditions": [{"all_of": [{"condition_key": MFA, "expected_value": None}]}]},
+                ],
+            },
+            {
+                "actions": [ACTION],
+                "required_conditions": [{"condition_key": MFA, "expected_value": None}],
+                "if": [{"required_conditions": [{"all_of": [{"condition_key": MFA, "expected_value": None}]}]}],
+            },
+        ],
+    )
+    async def test_flat_and_nested_entry_reported_once(self, check, requirement):
+        issues = await _run(check, _config(requirement))
+
+        assert _types(issues) == [("missing_required_condition", 0)]
+
+
+class TestNullConditionKeyBesideAllOf:
+    async def test_enforced_and_not_reported(self, check):
+        entry = {"condition_key": None, "all_of": [{"condition_key": KEY}]}
+
+        issues = await _run(check, _config({"actions": [ACTION], "required_conditions": [entry]}))
+
+        assert _types(issues) == [("missing_required_condition", 0)]
+
+    async def test_non_null_condition_key_beside_all_of_still_reported(self, check):
+        entry = {"condition_key": KEY, "all_of": [{"condition_key": KEY}]}
+
+        issues = await _run(check, _config({"actions": [ACTION], "required_conditions": [entry]}))
+
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert len(invalid) == 1
+        assert "has both `condition_key` and `all_of`" in invalid[0].message
+
+    async def test_null_condition_key_beside_empty_all_of_reports_all_of(self, check):
+        entry = {"condition_key": None, "all_of": []}
+
+        issues = await _run(check, _config({"actions": [ACTION], "required_conditions": [entry]}))
+
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert len(invalid) == 1
+        assert "nested `all_of`" in invalid[0].message
+
+
+class TestEveryNonStringActionReported:
+    async def test_one_issue_per_bad_entry(self, check):
+        config = _config({"actions": ["s3:GetObject", 1, True], "required_conditions": [{"condition_key": KEY}]})
+
+        issues = await _run(check, config, _stmt("One", action="s3:GetObject"))
+
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert len(invalid) == 2
+        assert {"`1`", "`True`"} == {i.message.rsplit(": ", 1)[1] for i in invalid}

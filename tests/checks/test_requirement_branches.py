@@ -177,3 +177,7 @@ def test_falsy_scalar_required_conditions_is_a_shape_problem(value):
     assert branch_problem({"required_conditions": value}) == (
         "`required_conditions` must be a list or a mapping of `all_of`/`any_of`/`none_of`"
     )
+
+
+def test_null_condition_key_beside_all_of_is_evaluable():
+    assert is_evaluable_entry({"condition_key": None, "all_of": [{"condition_key": "aws:SourceVpc"}]})
