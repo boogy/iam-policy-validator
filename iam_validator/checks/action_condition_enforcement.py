@@ -544,7 +544,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 single = all_of if isinstance(all_of, list) and len(all_of) == 1 else []
                 configured = [*(configured.get("any_of") or []), *single]
             if isinstance(configured, list):
-                actions.update(a for a in configured if isinstance(a, str))
+                actions.update(configured)
         return actions
 
     def _get_merged_requirements(
@@ -778,8 +778,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         for req in all_user_requirements:
             actions = req.get("actions", [])
             if isinstance(actions, str):
-                user_actions.add(actions)
-            elif isinstance(actions, list):
+                actions = [actions]
+            elif isinstance(actions, dict):
+                actions = [a for group in actions.values() if isinstance(group, list) for a in group]
+            if isinstance(actions, list):
                 user_actions.update(a for a in actions if isinstance(a, str))
 
         # Start with ACTIVE user requirements (filtered by ignore_patterns)

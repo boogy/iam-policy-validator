@@ -843,9 +843,8 @@ class PrincipalValidationCheck(PolicyCheck):
                         statement_sid=statement.sid,
                         statement_index=statement_idx,
                         issue_type="missing_principal_condition_any_of",
-                        condition_key="|".join(self._raw_key(cond) for cond in any_of),
                         message=(
-                            f"`Principal`s {', '.join(f'`{p}`' for p in matching_principals)} require at least ONE of these conditions: "
+                            f"`Principal`s {format_list_with_backticks(matching_principals)} require at least ONE of these conditions: "
                             f"{', '.join(condition_keys)}"
                         ),
                         suggestion=self._build_any_of_suggestion(any_of),
@@ -986,12 +985,6 @@ class PrincipalValidationCheck(PolicyCheck):
         return self.get_severity(config)
 
     @classmethod
-    def _raw_key(cls, entry: dict[str, Any]) -> str:
-        if "all_of" in entry:
-            return "+".join(cls._raw_key(e) for e in entry["all_of"])
-        return entry.get("condition_key", "unknown")
-
-    @classmethod
     def _describe(cls, entry: dict[str, Any]) -> str:
         if "all_of" in entry:
             return f"({' + '.join(cls._describe(e) for e in entry['all_of'])})"
@@ -1068,7 +1061,7 @@ class PrincipalValidationCheck(PolicyCheck):
             statement_index=statement_idx,
             issue_type="missing_principal_condition",
             condition_key=condition_key,
-            message=f"{message_prefix} Principal(s) {', '.join(f'`{p}`' for p in matching_principals)} require condition `{condition_key}`",
+            message=f"{message_prefix} Principal(s) {format_list_with_backticks(matching_principals)} require condition `{condition_key}`",
             suggestion=suggestion_text,
             example=example_code,
             line_number=statement.line_number,
@@ -1142,13 +1135,15 @@ class PrincipalValidationCheck(PolicyCheck):
 
         for i, cond in enumerate(any_of_conditions, 1):
             condition_key = self._describe(cond)
-            children = cond.get("all_of") or []
-            description = next((c["description"] for c in [cond, *children] if c.get("description")), "")
-            expected_value = cond.get("expected_value")
+            leaves = self._leaves(cond["all_of"]) if "all_of" in cond else []
+            description = cond.get("description") or next(
+                (leaf["description"] for leaf in leaves if leaf.get("description")), ""
+            )
+            expected_value = None if leaves else cond.get("expected_value")
             child_values = [
-                f"`{c['condition_key']}`: `{c['expected_value']}`"
-                for c in children
-                if c.get("expected_value") is not None and c.get("condition_key")
+                f"`{leaf['condition_key']}`: `{leaf['expected_value']}`"
+                for leaf in leaves
+                if leaf.get("expected_value") is not None
             ]
 
             option = f"\n- **Option {i}**: {condition_key}"
@@ -1205,7 +1200,7 @@ class PrincipalValidationCheck(PolicyCheck):
             statement_sid=statement.sid,
             statement_index=statement_idx,
             issue_type="forbidden_principal_condition",
-            condition_key=self._raw_key(condition_requirement),
+            condition_key=condition_requirement.get("condition_key"),
             message=message,
             suggestion=suggestion,
             line_number=statement.line_number,

@@ -451,6 +451,26 @@ class TestNonStringActionElements:
         assert ("invalid_condition_requirement", -1) in _types(issues)
 
 
+class TestPerActionOverrideMappingActions:
+    @pytest.mark.parametrize("group", ["any_of", "all_of", "none_of"])
+    async def test_a_mapping_requirement_replaces_the_default(self, check, group):
+        default = {"actions": [ACTION], "required_conditions": [{"condition_key": "iam:PassedToService"}]}
+        user = {"actions": {group: [ACTION]}, "required_conditions": [{"condition_key": KEY}]}
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            config={
+                "merge_strategy": "per_action_override",
+                "requirements": [default],
+                "action_condition_requirements": [user],
+            },
+        )
+
+        merged = check._get_merged_requirements(config, "policy.json")
+
+        assert default not in merged
+
+
 class TestFalsyScalarRequiredConditions:
     @pytest.mark.parametrize("required_conditions", [False, 0, ""])
     async def test_reported_as_malformed(self, check, required_conditions):

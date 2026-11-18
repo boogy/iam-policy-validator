@@ -1793,3 +1793,16 @@ class TestNestedAllOfMessages:
             )
             == 2
         )
+
+    async def test_nested_option_shows_deep_leaf_values_not_group_value(self):
+        deep = {"all_of": [{"condition_key": "aws:SourceVpc", "expected_value": "vpc-1"}]}
+        nested = {"expected_value": "ignored", "all_of": [deep, {"condition_key": "aws:SourceIp"}]}
+        issues = await self._issues({"any_of": [nested]}, None)
+        assert "(values: `aws:SourceVpc`: `vpc-1`)" in issues[0].suggestion
+        assert "ignored" not in issues[0].suggestion
+
+    async def test_any_of_and_nested_none_of_findings_carry_no_synthetic_key(self):
+        any_of = await self._issues({"any_of": [self.NESTED, {"condition_key": "aws:SourceArn"}]}, None)
+        condition = {"IpAddress": {"aws:SourceIp": "10.0.0.0/8"}, "StringEquals": {"aws:SourceVpc": "vpc-1"}}
+        none_of = await self._issues({"none_of": [self.NESTED]}, condition)
+        assert [i.condition_key for i in any_of + none_of] == [None, None]
