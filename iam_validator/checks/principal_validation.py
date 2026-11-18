@@ -845,7 +845,7 @@ class PrincipalValidationCheck(PolicyCheck):
                         issue_type="missing_principal_condition_any_of",
                         message=(
                             f"`Principal`s `{', '.join(f'`{p}`' for p in matching_principals)}` require at least ONE of these conditions: "
-                            f"{', '.join(f'`{c}`' for c in condition_keys)}"
+                            f"{', '.join(condition_keys)}"
                         ),
                         suggestion=self._build_any_of_suggestion(any_of),
                         line_number=statement.line_number,
@@ -987,8 +987,8 @@ class PrincipalValidationCheck(PolicyCheck):
     @classmethod
     def _describe(cls, entry: dict[str, Any]) -> str:
         if "all_of" in entry:
-            return " + ".join(cls._describe(e) for e in entry["all_of"])
-        return entry.get("condition_key", "unknown")
+            return f"({' + '.join(cls._describe(e) for e in entry['all_of'])})"
+        return f"`{entry.get('condition_key', 'unknown')}`"
 
     def _has_condition_requirement(self, statement: Statement, condition_requirement: dict[str, Any]) -> bool:
         """Check if statement has the required condition.
@@ -1137,7 +1137,7 @@ class PrincipalValidationCheck(PolicyCheck):
             description = cond.get("description", "")
             expected_value = cond.get("expected_value")
 
-            option = f"\n- **Option {i}**: `{condition_key}`"
+            option = f"\n- **Option {i}**: {condition_key}"
             if description:
                 option += f" - {description}"
             if expected_value is not None:
@@ -1174,11 +1174,11 @@ class PrincipalValidationCheck(PolicyCheck):
         expected_value = condition_requirement.get("expected_value")
 
         matching_principals_str = format_list_with_backticks(matching_principals)
-        message = f"FORBIDDEN: `Principal`s `{matching_principals_str}` must NOT have `Condition` `{condition_key}`"
+        message = f"FORBIDDEN: `Principal`s `{matching_principals_str}` must NOT have `Condition` {condition_key}"
         if expected_value is not None:
             message += f" with value `{expected_value}`"
 
-        suggestion = f"Remove the `{condition_key}` `Condition` from the statement"
+        suggestion = f"Remove the {condition_key} `Condition` from the statement"
         if description:
             suggestion += f". {description}"
 

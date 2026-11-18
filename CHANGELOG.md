@@ -18,6 +18,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Fixed
 
+- Render a nested `all_of` group in `principal_validation` `any_of` and `none_of` messages as ``(`aws:SourceIp` + `aws:SourceVpc`)``, quoting each key, instead of one backticked string with literal `+` signs. ([#240])
 - Report a non-mapping entry under `required_conditions.any_of` (e.g. a bare condition key string) or a nested `all_of` that is not a non-empty list of condition entries as `invalid_condition_requirement` instead of crashing `action_condition_enforcement` and losing its findings for the policy. A malformed `any_of` entry is now left out of the evaluation and of the missing-condition message, as in `all_of` and `none_of`. ([#240])
 - Report a `required_conditions` that is neither a list nor a mapping, or an `all_of`/`any_of`/`none_of` group that is not a list, as `invalid_condition_requirement` instead of crashing `action_condition_enforcement`. A null group (an empty YAML key) still counts as empty. Every malformed-config finding of this check is reported once per policy (`statement_index: -1`), and only for a policy with a statement (`Allow` or `Deny`) that names one of the requirement's actions. A shape, entry, `severity` or malformed `if` branch problem is no longer hidden by the requirement's own `ignore_patterns`. ([#240])
 - Ignore an empty top-level `required_conditions` (null, `[]`, `{}` or a mapping whose groups are all empty) beside `if` instead of reporting the requirement as having a malformed `if` branch. ([#240])

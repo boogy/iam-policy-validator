@@ -1708,3 +1708,32 @@ class TestPrincipalListConfigRobustness:
             ("invalid_condition_requirement", -1),
             ("missing_principal_condition", 0),
         ]
+
+
+class TestNestedAllOfMessages:
+    NESTED = {"all_of": [{"condition_key": "aws:SourceIp"}, {"condition_key": "aws:SourceVpc"}]}
+
+    async def _issues(self, required_conditions: dict, condition: dict | None) -> list:
+        requirement = {"principals": ["*"], "required_conditions": required_conditions}
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={"blocked_principals": [], "principal_condition_requirements": [requirement]},
+        )
+        statement = Statement(
+            Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal="*", Condition=condition
+        )
+        return await PrincipalValidationCheck().execute(statement, 0, None, config)
+
+    async def test_any_of_message_quotes_each_nested_key(self):
+        issues = await self._issues({"any_of": [self.NESTED, {"condition_key": "aws:SourceArn"}]}, None)
+
+        assert "(`aws:SourceIp` + `aws:SourceVpc`), `aws:SourceArn`" in issues[0].message
+        assert "**Option 1**: (`aws:SourceIp` + `aws:SourceVpc`)" in issues[0].suggestion
+
+    async def test_none_of_message_quotes_each_nested_key(self):
+        condition = {"IpAddress": {"aws:SourceIp": "10.0.0.0/8"}, "StringEquals": {"aws:SourceVpc": "vpc-1"}}
+        issues = await self._issues({"none_of": [self.NESTED]}, condition)
+
+        assert "`Condition` (`aws:SourceIp` + `aws:SourceVpc`)" in issues[0].message
+        assert "Remove the (`aws:SourceIp` + `aws:SourceVpc`) `Condition`" in issues[0].suggestion
