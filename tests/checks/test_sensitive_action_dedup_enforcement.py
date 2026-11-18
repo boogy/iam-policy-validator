@@ -68,6 +68,13 @@ class TestSuppressionRequiresActualEnforcement:
 
         assert [i.issue_type for i in issues] == ["missing_condition"]
 
+    @pytest.mark.parametrize("actions", [{"any_of": ["iam:PassRole"]}, {"all_of": ["iam:PassRole"]}])
+    async def test_a_mapping_form_requirement_suppresses(self, check, actions):
+        requirement = {**PASS_ROLE_REQUIREMENT, "actions": actions}
+        config = _config({"merge_strategy": "user_only", "action_condition_requirements": [requirement]})
+
+        assert await _run(check, config) == []
+
     async def test_a_disabled_enforcement_check_suppresses_nothing(self, check):
         config = _config({"enabled": False, "requirements": [PASS_ROLE_REQUIREMENT]})
 

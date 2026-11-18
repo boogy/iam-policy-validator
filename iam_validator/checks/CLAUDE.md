@@ -170,7 +170,7 @@ returns an empty set when the check is disabled, and runs the real
 user-supplied `action_condition_requirements` entry moves both checks together. Reading
 `requirements` directly suppressed findings for requirements that were never in play.
 Matching is `action_matches`, not `==`: a requirement may be a glob and IAM action names
-are case-insensitive. Mapping-form `actions` count only their `any_of` entries: `all_of`
+are case-insensitive. Mapping-form `actions` count their `any_of` entries and a single-entry `all_of`: a longer `all_of`
 flags only statements granting every action, and `none_of` is a separate rule. Statement-level checks never receive `policy_file`, so a
 requirement carrying `ignore_patterns` counts as unenforced there and the finding is
 kept rather than wrongly suppressed.

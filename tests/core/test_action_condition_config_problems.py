@@ -254,10 +254,12 @@ class TestEnforcedActionsNeedAnEvaluableEntry:
         [
             ({"any_of": [ACTION, None]}, {ACTION}),
             ({"all_of": [ACTION, "iam:CreateRole"]}, set()),
+            ({"all_of": [ACTION]}, {ACTION}),
+            ({"any_of": ["iam:CreateRole"], "all_of": [ACTION]}, {ACTION, "iam:CreateRole"}),
             ({"none_of": [ACTION]}, set()),
         ],
     )
-    def test_only_any_of_mapping_actions_are_enforced(self, actions, expected):
+    def test_mapping_actions_count_any_of_and_single_all_of(self, actions, expected):
         root = _root({"actions": actions, "required_conditions": [{"condition_key": KEY}]})
 
         assert ActionConditionEnforcementCheck.enforced_actions(root) == expected

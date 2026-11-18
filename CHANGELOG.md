@@ -18,6 +18,9 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Fixed
 
+- Count a single-entry mapping-form `actions.all_of` in `action_condition_enforcement`'s enforced actions, so `sensitive_action` no longer duplicates its findings. ([#240])
+- Set `condition_key` on `principal_validation` condition findings so findings for different keys on one statement get distinct finding ids; ignoring one no longer ignores the others. Ids of these findings change, so re-ignore them if needed. ([#240])
+- Quote each principal once in `principal_validation` `any_of` and `none_of` messages, and show nested `all_of` child descriptions and expected values in `any_of` suggestions. ([#240])
 - Render a nested `all_of` group in `principal_validation` `any_of` and `none_of` messages as ``(`aws:SourceIp` + `aws:SourceVpc`)``, quoting each key, instead of one backticked string with literal `+` signs. ([#240])
 - Report a non-mapping entry under `required_conditions.any_of` (e.g. a bare condition key string) or a nested `all_of` that is not a non-empty list of condition entries as `invalid_condition_requirement` instead of crashing `action_condition_enforcement` and losing its findings for the policy. A malformed `any_of` entry is now left out of the evaluation and of the missing-condition message, as in `all_of` and `none_of`. ([#240])
 - Report a `required_conditions` that is neither a list nor a mapping, or an `all_of`/`any_of`/`none_of` group that is not a list, as `invalid_condition_requirement` instead of crashing `action_condition_enforcement`. A null group (an empty YAML key) still counts as empty. Every malformed-config finding of this check is reported once per policy (`statement_index: -1`), and only for a policy with a statement (`Allow` or `Deny`) that names one of the requirement's actions. A shape, entry, `severity` or malformed `if` branch problem is no longer hidden by the requirement's own `ignore_patterns`. ([#240])

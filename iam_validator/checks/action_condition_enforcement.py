@@ -540,7 +540,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 continue
             configured = requirement.get("actions", [])
             if isinstance(configured, dict):
-                configured = configured.get("any_of")
+                all_of = configured.get("all_of")
+                single = all_of if isinstance(all_of, list) and len(all_of) == 1 else []
+                configured = [*(configured.get("any_of") or []), *single]
             if isinstance(configured, list):
                 actions.update(a for a in configured if isinstance(a, str))
         return actions

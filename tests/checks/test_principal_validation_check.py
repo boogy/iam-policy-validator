@@ -5,6 +5,7 @@ import pytest
 from iam_validator.checks.principal_validation import PrincipalValidationCheck
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig
+from iam_validator.core.finding_fingerprint import compute_finding_hash
 from iam_validator.core.models import IAMPolicy, Statement
 
 
@@ -1737,3 +1738,58 @@ class TestNestedAllOfMessages:
 
         assert "`Condition` (`aws:SourceIp` + `aws:SourceVpc`)" in issues[0].message
         assert "Remove the (`aws:SourceIp` + `aws:SourceVpc`) `Condition`" in issues[0].suggestion
+
+    async def test_any_of_message_quotes_each_principal_once(self):
+        issues = await self._issues({"any_of": [{"condition_key": "aws:SourceArn"}]}, None)
+        assert "`Principal`s `*` require" in issues[0].message
+
+    async def test_none_of_message_quotes_each_principal_once(self):
+        issues = await self._issues(
+            {"none_of": [{"condition_key": "aws:SourceIp"}]}, {"IpAddress": {"aws:SourceIp": "10.0.0.0/8"}}
+        )
+        assert "`Principal`s `*` must NOT" in issues[0].message
+
+    async def test_nested_option_shows_child_values(self):
+        nested = {
+            "all_of": [
+                {"condition_key": "aws:SourceVpc", "expected_value": "vpc-1", "description": "vpc d"},
+                {"condition_key": "aws:SourceIp"},
+            ]
+        }
+        issues = await self._issues({"any_of": [nested]}, None)
+        assert (
+            "**Option 1**: (`aws:SourceVpc` + `aws:SourceIp`) - vpc d (values: `aws:SourceVpc`: `vpc-1`)"
+            in issues[0].suggestion
+        )
+
+    @pytest.mark.parametrize(
+        ("required_conditions", "condition"),
+        [
+            (
+                {"none_of": [{"condition_key": "aws:SourceIp"}, {"condition_key": "aws:SourceArn"}]},
+                {"IpAddress": {"aws:SourceIp": "10.0.0.0/8"}, "ArnLike": {"aws:SourceArn": "arn:aws:s3:::b"}},
+            ),
+            ({"all_of": [{"condition_key": "aws:SourceIp"}, {"condition_key": "aws:SourceArn"}]}, None),
+        ],
+    )
+    async def test_findings_for_different_keys_get_distinct_ids(self, required_conditions, condition):
+        issues = await self._issues(required_conditions, condition)
+        assert [i.condition_key for i in issues] == ["aws:SourceIp", "aws:SourceArn"]
+        assert (
+            len(
+                {
+                    compute_finding_hash(
+                        "p.json",
+                        "principal_validation",
+                        i.issue_type,
+                        i.statement_sid,
+                        i.statement_index,
+                        i.action,
+                        i.resource,
+                        i.condition_key,
+                    )
+                    for i in issues
+                }
+            )
+            == 2
+        )
