@@ -124,8 +124,8 @@ it applies to every `Allow` statement granting the requirement's actions. An emp
 
 When branches overlap, findings for the same condition entry that differ only in severity
 or suggestion are reported once, at the highest severity. Entries are compared regardless
-of key order, `severity` and `description`. A condition in list form and the same condition
-inside `all_of` are different entries and are reported separately.
+of key order, `severity`, `description`, `example` and null-valued keys. A condition in list
+form and the same condition inside `all_of` are the same entry and are reported once.
 
 With `none_of`, only `Allow` statements are flagged: a `Deny` of a forbidden action is
 compliant, so a `Deny` branch on a `none_of` requirement reports nothing. A branch's
@@ -139,8 +139,8 @@ reported once per policy as `invalid_condition_requirement` and dropped; the req
 branch or entry is still enforced at the next severity in that order.
 
 **Malformed `required_conditions`** (with or without `if`) are reported once per policy as
-`invalid_condition_requirement` with severity `error` and `statement_index: -1`, even when
-no statement grants the action: a scalar `required_conditions`, an unknown or non-list
+`invalid_condition_requirement` with severity `error` and `statement_index: -1`, only when
+a statement (`Allow` or `Deny`) names one of the requirement's actions: a scalar `required_conditions`, an unknown or non-list
 group, or an entry without a string `condition_key` (or with a non-string `operator`).
 The malformed piece enforces nothing; well-formed siblings are still enforced.
 

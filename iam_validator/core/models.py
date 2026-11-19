@@ -365,7 +365,7 @@ class ValidationIssue(BaseModel):
         parts.append("")
 
         # Build statement context for better navigation
-        statement_context = f"Statement[{self.statement_index}]"
+        statement_context = "Policy-level" if self.statement_index == -1 else f"Statement[{self.statement_index}]"
         if self.statement_sid:
             safe_sid = sanitize(self.statement_sid, neutralize_backticks=True)
             statement_context = f"`{safe_sid}` ({statement_context})"

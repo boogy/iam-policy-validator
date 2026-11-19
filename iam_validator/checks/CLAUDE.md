@@ -267,11 +267,10 @@ literally instead of calling `get_severity(config)`:
   Non-string values in a policy's `Principal`/`NotPrincipal` are dropped by
   `_flatten_principal_field`. A non-list `principal_condition_requirements` or a non-mapping entry in
   it is skipped by `execute` (`_requirement_entries`) and reported once per policy there too.
-  It also reports a non-mapping or keyless entry, a
-  non-string `operator`, an invalid entry `severity`, an unknown or non-list group or a scalar `required_conditions`
-  per statement (`statement_index` = that statement, no pre-pass) and skips it (never
-  satisfied); an invalid requirement-level `severity` is reported once per policy by its
-  `execute_policy` (`statement_index=-1`), only when the requirement's principals match a
+  A non-mapping or keyless entry, a non-string `operator`, an invalid entry `severity`, an
+  unknown or non-list group or a scalar `required_conditions` (`_prepare_conditions`) is skipped
+  by `execute` (never satisfied); it and an invalid requirement-level `severity` are reported
+  once per policy by `execute_policy` (`statement_index=-1`), only when the requirement's principals match a
   statement that `execute` would evaluate (`_condition_requirement_principals`, shared by both, so
   blocked principals and `Service: "*"` statements never count); a `principals` that is neither a
   string (one pattern) nor a list is reported there too and matches nothing; a nested `all_of` entry needs every child, and its leaves inherit the

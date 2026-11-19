@@ -248,11 +248,15 @@ class PrincipalValidationCheck(PolicyCheck):
                 self._create_non_string_principal_issue("`principal_condition_requirements` `principals`", entry)
                 for entry in self._non_string_entries(requirement.get("principals"))
             )
-            severity = requirement.get("severity")
-            if severity_problem(severity) is None or has_no_conditions(requirement.get("required_conditions")):
+            conditions = requirement.get("required_conditions")
+            if has_no_conditions(conditions) or not any(
+                self._get_matching_principals(principals, requirement) for principals in evaluated
+            ):
                 continue
-            if any(self._get_matching_principals(principals, requirement) for principals in evaluated):
+            severity = requirement.get("severity")
+            if severity_problem(severity) is not None:
                 issues.append(self._create_invalid_severity_issue(None, -1, requirement, severity, ""))
+            issues.extend(self._prepare_conditions(conditions, requirement)[1])
         return issues
 
     _PRINCIPAL_LIST_KEYS: ClassVar[tuple[str, ...]] = (
@@ -745,76 +749,23 @@ class PrincipalValidationCheck(PolicyCheck):
             List of validation issues
         """
         issues: list[ValidationIssue] = []
+        groups, _ = self._prepare_conditions(required_conditions_config, requirement)
 
-        def report_bad_severity(node: dict[str, Any], where: str) -> None:
-            severity = node.get("severity")
-            if severity_problem(severity) is not None:
+        for condition_requirement in groups.get("required", []):
+            if not self._has_condition_requirement(statement, condition_requirement):
                 issues.append(
-                    self._create_invalid_severity_issue(statement, statement_idx, requirement, severity, where)
-                )
-
-        def report_entry_severities(entry: dict[str, Any], label: str) -> None:
-            report_bad_severity(entry, f"an entry under `{label}`")
-            for nested in entry.get("all_of", []):
-                report_entry_severities(nested, f"{label}.all_of")
-
-        def entries(value: Any, label: str) -> list[dict[str, Any]]:
-            if not isinstance(value, list):
-                if value is not None:
-                    issues.append(self._create_invalid_entry_issue(statement, statement_idx, value, "a list"))
-                return []
-            enforceable: list[dict[str, Any]] = []
-            for item in value:
-                if is_evaluable_entry(item):
-                    item = without_null_all_of(item)
-                    report_entry_severities(item, label)
-                    enforceable.append(item)
-                elif not isinstance(item, dict):
-                    issues.append(self._create_invalid_entry_issue(statement, statement_idx, item, "a mapping"))
-                else:
-                    issues.append(
-                        self._create_invalid_entry_issue(
-                            statement,
-                            statement_idx,
-                            item,
-                            "a mapping with a string `condition_key` (and a string `operator`, if set) "
-                            "or a non-empty `all_of` list of them",
-                        )
+                    self._create_condition_issue(
+                        statement,
+                        statement_idx,
+                        condition_requirement,
+                        matching_principals,
+                        config,
+                        requirement,
                     )
-            return enforceable
-
-        # Handle simple list format (backward compatibility)
-        if isinstance(required_conditions_config, list):
-            for condition_requirement in self._leaves(entries(required_conditions_config, "required_conditions")):
-                if not self._has_condition_requirement(statement, condition_requirement):
-                    issues.append(
-                        self._create_condition_issue(
-                            statement,
-                            statement_idx,
-                            condition_requirement,
-                            matching_principals,
-                            config,
-                            requirement,
-                        )
-                    )
-            return issues
-
-        if not isinstance(required_conditions_config, dict):
-            issues.append(
-                self._create_invalid_entry_issue(
-                    statement, statement_idx, required_conditions_config, "a list or mapping"
                 )
-            )
-            return issues
-
-        # Handle all_of/any_of/none_of format
-        for unknown in sorted(required_conditions_config.keys() - set(CONDITION_GROUPS), key=str):
-            issues.append(
-                self._create_invalid_entry_issue(statement, statement_idx, unknown, "`all_of`, `any_of` or `none_of`")
-            )
-        all_of = self._leaves(entries(required_conditions_config.get("all_of"), "all_of"))
-        any_of = entries(required_conditions_config.get("any_of"), "any_of")
-        none_of = entries(required_conditions_config.get("none_of"), "none_of")
+        all_of = groups.get("all_of", [])
+        any_of = groups.get("any_of", [])
+        none_of = groups.get("none_of", [])
 
         if all_of:
             for condition_requirement in all_of:
@@ -868,6 +819,60 @@ class PrincipalValidationCheck(PolicyCheck):
                     )
 
         return issues
+
+    def _prepare_conditions(
+        self, required_conditions_config: Any, requirement: dict[str, Any]
+    ) -> tuple[dict[str, list[dict[str, Any]]], list[ValidationIssue]]:
+        """Split ``required_conditions`` into evaluable groups and the config problems found in it."""
+        problems: list[ValidationIssue] = []
+
+        def report_entry_severities(entry: dict[str, Any], label: str) -> None:
+            severity = entry.get("severity")
+            if severity_problem(severity) is not None:
+                problems.append(
+                    self._create_invalid_severity_issue(None, -1, requirement, severity, f"an entry under `{label}`")
+                )
+            for nested in entry.get("all_of", []):
+                report_entry_severities(nested, f"{label}.all_of")
+
+        def entries(value: Any, label: str) -> list[dict[str, Any]]:
+            if not isinstance(value, list):
+                if value is not None:
+                    problems.append(self._create_invalid_entry_issue(value, "a list"))
+                return []
+            enforceable: list[dict[str, Any]] = []
+            for item in value:
+                if is_evaluable_entry(item):
+                    item = without_null_all_of(item)
+                    report_entry_severities(item, label)
+                    enforceable.append(item)
+                elif not isinstance(item, dict):
+                    problems.append(self._create_invalid_entry_issue(item, "a mapping"))
+                else:
+                    problems.append(
+                        self._create_invalid_entry_issue(
+                            item,
+                            "a mapping with a string `condition_key` (and a string `operator`, if set) "
+                            "or a non-empty `all_of` list of them",
+                        )
+                    )
+            return enforceable
+
+        if isinstance(required_conditions_config, list):
+            return {"required": self._leaves(entries(required_conditions_config, "required_conditions"))}, problems
+        if not isinstance(required_conditions_config, dict):
+            problems.append(self._create_invalid_entry_issue(required_conditions_config, "a list or mapping"))
+            return {}, problems
+        problems.extend(
+            self._create_invalid_entry_issue(unknown, "`all_of`, `any_of` or `none_of`")
+            for unknown in sorted(required_conditions_config.keys() - set(CONDITION_GROUPS), key=str)
+        )
+        groups = {
+            "all_of": self._leaves(entries(required_conditions_config.get("all_of"), "all_of")),
+            "any_of": entries(required_conditions_config.get("any_of"), "any_of"),
+            "none_of": entries(required_conditions_config.get("none_of"), "none_of"),
+        }
+        return groups, problems
 
     @staticmethod
     def _create_invalid_severity_issue(
@@ -943,13 +948,11 @@ class PrincipalValidationCheck(PolicyCheck):
         )
 
     @staticmethod
-    def _create_invalid_entry_issue(
-        statement: Statement, statement_idx: int, entry: Any, expected: str
-    ) -> ValidationIssue:
+    def _create_invalid_entry_issue(entry: Any, expected: str) -> ValidationIssue:
         return ValidationIssue(
             severity="error",
-            statement_sid=statement.sid,
-            statement_index=statement_idx,
+            statement_sid=None,
+            statement_index=-1,
             issue_type="invalid_condition_requirement",
             message=(
                 f"`principal_condition_requirements` has a `required_conditions` value `{entry!r}` that is not "
@@ -959,7 +962,7 @@ class PrincipalValidationCheck(PolicyCheck):
                 "Use a list of mappings (e.g. `- condition_key: aws:SourceArn`), or an `all_of`/`any_of`/`none_of` "
                 "mapping of such lists."
             ),
-            line_number=statement.line_number,
+            line_number=None,
             field_name="principal",
         )
 

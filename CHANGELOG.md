@@ -12,12 +12,15 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Added
 
-- Add `if:` branches to `action_condition_enforcement` requirements. Each branch scopes its `required_conditions` by statement `effect` (`Allow`, `Deny` or both; `Allow` when omitted), a `resource` or `not_resource` regex (anchored full match), and may override `severity`. Overlapping branches report a finding for the same condition entry once (whatever its key order, `severity` or `description`), at its highest severity; `none_of` flags only `Allow` statements. `resource` and `not_resource` are mutually exclusive in a branch. Malformed branches are reported as `invalid_condition_requirement`; requirements without `if` keep their semantics (see Fixed for malformed-shape handling). ([#240])
+- Add `if:` branches to `action_condition_enforcement` requirements. Each branch scopes its `required_conditions` by statement `effect` (`Allow`, `Deny` or both; `Allow` when omitted), a `resource` or `not_resource` regex (anchored full match), and may override `severity`. Overlapping branches report a finding for the same condition entry once (whatever its key order, `severity`, `description`, `example` or null-valued keys), at its highest severity; `none_of` flags only `Allow` statements. `resource` and `not_resource` are mutually exclusive in a branch. Malformed branches are reported as `invalid_condition_requirement`; requirements without `if` keep their semantics (see Fixed for malformed-shape handling). ([#240])
 - Add `examples/configs/action-condition-branches.yaml` and worked `if:` examples (resource only, effect and resource, `not_resource`, both effects, top-level conditions beside `if`) to the advanced-checks guide. ([#240])
 - Document `if:` branches in the Claude Code skill and bump the plugin version to 1.33.0 so installs pick it up. ([#240])
 
 ### Fixed
 
+- Report a malformed entry, unknown or non-list group, scalar `required_conditions` or invalid entry `severity` in `principal_condition_requirements` once per policy (`statement_index: -1`), like `action_condition_enforcement`; it was reported once per evaluated statement. ([#240])
+- Label a policy-level finding (`statement_index: -1`) as `Policy-level` in PR comments instead of `Statement[-1]`. ([#240])
+- Correct the advanced-checks guide: a list-form condition and the same condition under `all_of` are one entry and reported once, and malformed `required_conditions` are reported only for a policy with a statement naming one of the requirement's actions. ([#240])
 - Count a single-entry mapping-form `actions.all_of` in `action_condition_enforcement`'s enforced actions, so `sensitive_action` no longer duplicates its findings. ([#240])
 - Set `condition_key` on `principal_validation` findings for a single condition key (not on `any_of` or nested `all_of` findings, so ignore rules see only real keys) so findings for different keys on one statement get distinct finding ids; ignoring one no longer ignores the others. Ids of these findings change, so re-ignore them if needed. ([#240])
 - Quote each principal once in `principal_validation` `any_of` and `none_of` messages, and show nested `all_of` leaf descriptions and expected values, at any depth, in `any_of` suggestions. ([#240])
