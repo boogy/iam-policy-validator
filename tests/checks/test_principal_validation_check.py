@@ -1980,6 +1980,48 @@ class TestPrincipalFindingIdentity:
 
         assert len(set(_finding_ids(issues))) == 2
 
+    async def test_same_key_required_by_requirements_for_different_principals_has_distinct_ids(self, check):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [
+                    {"principals": ["111111111111"], "required_conditions": [{"condition_key": "aws:SourceArn"}]},
+                    {
+                        "principals": ["arn:aws:iam::*:role/*"],
+                        "required_conditions": [{"condition_key": "aws:SourceArn"}],
+                    },
+                ],
+            },
+        )
+        statement = _principal_statement(["111111111111", "arn:aws:iam::222222222222:role/x"])
+
+        issues = await _run_both(check, statement, None, config)
+
+        assert len(issues) == 2
+        assert len(set(_finding_ids(issues))) == 2
+
+    async def test_forbidden_leaves_differing_in_value_have_distinct_ids(self, check):
+        required = {
+            "none_of": [
+                {"condition_key": "aws:SourceIp", "expected_value": "0.0.0.0/0"},
+                {"condition_key": "aws:SourceIp", "expected_value": "::/0"},
+            ]
+        }
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:::b/*"],
+            Principal={"AWS": "*"},
+            Condition={"IpAddress": {"aws:SourceIp": "0.0.0.0/0"}, "StringEquals": {"aws:SourceIp": "::/0"}},
+        )
+
+        issues = await _run_both(check, statement, None, _requirement_config(["*"], required))
+
+        assert len(issues) == 2
+        assert len(set(_finding_ids(issues))) == 2
+
     async def test_nested_none_of_groups_have_distinct_ids(self, check):
         required = {
             "none_of": [
@@ -2018,3 +2060,15 @@ class TestPrincipalFindingIdentity:
         issues = await _run_both(check, _principal_statement("*"), None, _requirement_config(["*"], required))
 
         assert sorted(i.condition_key for i in issues) == ["aws:PrincipalOrgID", "aws:SourceAccount", "aws:SourceArn"]
+
+    async def test_shared_leaf_keeps_the_most_severe_finding(self, check):
+        required = {
+            "all_of": [
+                {"all_of": [{"condition_key": "aws:SourceVpc", "severity": "low"}]},
+                {"all_of": [{"condition_key": "aws:SourceVpc", "severity": "critical"}]},
+            ]
+        }
+
+        issues = await _run_both(check, _principal_statement("*"), None, _requirement_config(["*"], required))
+
+        assert [i.severity for i in issues] == ["critical"]

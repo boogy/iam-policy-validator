@@ -231,7 +231,7 @@ class ValidationIssue(BaseModel):
     action: str | None = None
     resource: str | None = None
     condition_key: str | None = None
-    finding_key: str | None = Field(default=None, exclude=True)  # extra finding-id identity; never rendered
+    finding_key: str | None = Field(default=None, exclude_if=lambda v: v is None)  # extra finding-id identity
     suggestion: str | None = None
     example: str | None = None  # Code example (JSON/YAML) - formatted separately for GitHub
     line_number: int | None = None  # Line number in the policy file (if available)

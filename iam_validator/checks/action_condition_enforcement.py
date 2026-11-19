@@ -230,6 +230,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """Collapse findings that differ only in severity or suggestion, keeping the most severe."""
         unique: dict[tuple[Any, ...], ValidationIssue] = {}
         for issue in issues:
+            if issue.issue_type == "invalid_condition_requirement":
+                issue = issue.model_copy(update={"finding_key": issue.message})
             key = (
                 issue.issue_type,
                 issue.statement_index,
@@ -550,13 +552,15 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
     @staticmethod
     def _owned_actions(configured: Any) -> list[str]:
-        """Actions a requirement enforces on its own: list entries, ``any_of`` and a single-entry ``all_of``."""
+        """Actions a requirement enforces on its own: list entries, a lone ``any_of`` or single-entry ``all_of``."""
         if isinstance(configured, str):
             configured = [configured]
         elif isinstance(configured, dict):
-            all_of = configured.get("all_of")
+            all_of = configured.get("all_of") or []
+            any_of = configured.get("any_of") or []
+            if all_of and any_of:
+                return []
             single = all_of if isinstance(all_of, list) and len(all_of) == 1 else []
-            any_of = configured.get("any_of")
             configured = [*(any_of if isinstance(any_of, list) else []), *single]
         if not isinstance(configured, list):
             return []

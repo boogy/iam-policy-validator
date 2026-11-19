@@ -62,7 +62,7 @@ Policies are validated concurrently under an `asyncio.Semaphore` bounded by
 only a direct `validate_policies()` call can override it). Within a
 policy, statements are gathered concurrently and unbounded; statement order is preserved
 because `ignore_patterns` and PR-comment fingerprints anchor to it.
-`ValidationIssue.finding_key` (never serialized) is an optional extra `compute_finding_hash`
+`ValidationIssue.finding_key` (serialized only when set, so JSON reports keep ids) is an optional extra `compute_finding_hash`
 component for findings that share every located field; unset, ids are unchanged.
 
 `PRCommenter` resolves a finding's line through `PolicyLoader.find_statement_line_numbers`

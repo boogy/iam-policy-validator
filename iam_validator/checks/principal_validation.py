@@ -65,11 +65,13 @@ _INHERITED_KEYS = ("severity", "description", "example")
 
 
 def _dedupe(issues: list[ValidationIssue]) -> list[ValidationIssue]:
-    """``issues`` without repeats of the same finding, first occurrence kept."""
+    """``issues`` without repeats of the same finding, the most severe kept."""
     seen: dict[tuple[Any, ...], ValidationIssue] = {}
     for issue in issues:
         key = (issue.issue_type, issue.statement_index, issue.condition_key, issue.finding_key, issue.message)
-        seen.setdefault(key, issue)
+        kept = seen.get(key)
+        if kept is None or issue.get_severity_rank() > kept.get_severity_rank():
+            seen[key] = issue
     return list(seen.values())
 
 
@@ -211,7 +213,7 @@ class PrincipalValidationCheck(PolicyCheck):
                     principal_condition_requirements,
                     config,
                 )
-                issues.extend(condition_issues)
+                issues.extend(issue.model_copy(update={"finding_key": issue.message}) for issue in condition_issues)
 
         return _dedupe(issues)
 
@@ -264,7 +266,7 @@ class PrincipalValidationCheck(PolicyCheck):
                 continue
             severity = requirement.get("severity")
             if severity_problem(severity) is not None:
-                issues.append(self._create_invalid_severity_issue(None, -1, requirement, severity, ""))
+                issues.append(self._create_invalid_severity_issue(requirement, severity, ""))
             issues.extend(self._prepare_conditions(conditions, requirement)[1])
         return _dedupe([issue.model_copy(update={"finding_key": issue.message}) for issue in issues])
 
@@ -797,7 +799,6 @@ class PrincipalValidationCheck(PolicyCheck):
                         statement_sid=statement.sid,
                         statement_index=statement_idx,
                         issue_type="missing_principal_condition_any_of",
-                        finding_key=", ".join(condition_keys),
                         message=(
                             f"`Principal`s {format_list_with_backticks(matching_principals)} require at least ONE of these conditions: "
                             f"{', '.join(condition_keys)}"
@@ -833,9 +834,7 @@ class PrincipalValidationCheck(PolicyCheck):
         def report_entry_severities(entry: dict[str, Any], label: str) -> None:
             severity = entry.get("severity")
             if severity_problem(severity) is not None:
-                problems.append(
-                    self._create_invalid_severity_issue(None, -1, requirement, severity, f"an entry under `{label}`")
-                )
+                problems.append(self._create_invalid_severity_issue(requirement, severity, f"an entry under `{label}`"))
             for nested in entry.get("all_of", []):
                 report_entry_severities(nested, f"{label}.all_of")
 
@@ -882,24 +881,21 @@ class PrincipalValidationCheck(PolicyCheck):
         return groups, problems
 
     @staticmethod
-    def _create_invalid_severity_issue(
-        statement: Statement | None, statement_idx: int, requirement: dict[str, Any], severity: Any, where: str
-    ) -> ValidationIssue:
+    def _create_invalid_severity_issue(requirement: dict[str, Any], severity: Any, where: str) -> ValidationIssue:
         patterns = PrincipalValidationCheck._principal_patterns(requirement) or []
         principals = format_list_with_backticks([str(p) for p in patterns])
         located = f" in {where}" if where else ""
         fallback = "the enclosing severity" if where else "the check severity"
         return ValidationIssue(
             severity="error",
-            statement_sid=statement.sid if statement else None,
-            statement_index=statement_idx,
+            statement_sid=None,
+            statement_index=-1,
             issue_type="invalid_condition_requirement",
             message=(
                 f"`principal_condition_requirements` entry for principal(s) {principals} has an invalid "
                 f"`severity` `{severity!r}`{located}; its findings use {fallback} instead"
             ),
             suggestion=f"Set `severity` to one of {', '.join(sorted(VALID_SEVERITIES))}, or remove it.",
-            line_number=statement.line_number if statement else None,
             field_name="principal",
         )
 
@@ -1213,7 +1209,6 @@ class PrincipalValidationCheck(PolicyCheck):
             statement_index=statement_idx,
             issue_type="forbidden_principal_condition",
             condition_key=condition_requirement.get("condition_key"),
-            finding_key=condition_key if "all_of" in condition_requirement else None,
             message=message,
             suggestion=suggestion,
             line_number=statement.line_number,

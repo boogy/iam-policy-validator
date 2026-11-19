@@ -6,6 +6,7 @@ import pytest
 
 from iam_validator.checks.action_condition_enforcement import ActionConditionEnforcementCheck
 from iam_validator.core.check_registry import CheckConfig
+from iam_validator.core.finding_fingerprint import compute_finding_hash
 from iam_validator.core.models import IAMPolicy, Statement
 
 ACTION = "iam:PassRole"
@@ -196,6 +197,32 @@ class TestMalformedConfigReportedOncePerPolicy:
             assert [i.issue_type for i in issues].count("invalid_condition_requirement") == 2
 
 
+class TestPolicyLevelFindingIdentity:
+    async def test_config_problems_of_one_requirement_have_distinct_ids(self, check):
+        config = _config(
+            {"actions": [ACTION], "severity": "urgent", "required_conditions": [{"condition_key": KEY, "severity": 1}]}
+        )
+
+        issues = await _run(check, config)
+
+        ids = {
+            compute_finding_hash(
+                "policy.json",
+                "action_condition_enforcement",
+                i.issue_type,
+                i.statement_sid,
+                i.statement_index,
+                i.action,
+                i.resource,
+                i.condition_key,
+                i.finding_key,
+            )
+            for i in issues
+        }
+        assert len(issues) >= 2
+        assert len(ids) == len(issues)
+
+
 class TestNestedNullOverride:
     async def test_null_leaf_severity_and_example_inherit_from_enclosing_entry(self, check):
         entry = {
@@ -255,7 +282,7 @@ class TestEnforcedActionsNeedAnEvaluableEntry:
             ({"any_of": [ACTION, None]}, {ACTION}),
             ({"all_of": [ACTION, "iam:CreateRole"]}, set()),
             ({"all_of": [ACTION]}, {ACTION}),
-            ({"any_of": ["iam:CreateRole"], "all_of": [ACTION]}, {ACTION, "iam:CreateRole"}),
+            ({"any_of": ["iam:CreateRole"], "all_of": [ACTION]}, set()),
             ({"none_of": [ACTION]}, set()),
         ],
     )
@@ -475,7 +502,12 @@ class TestPerActionOverrideMappingActions:
 
     @pytest.mark.parametrize(
         "user_actions",
-        [{"all_of": [ACTION, "lambda:CreateFunction"]}, {"none_of": [ACTION]}],
+        [
+            {"all_of": [ACTION, "lambda:CreateFunction"]},
+            {"none_of": [ACTION]},
+            {"all_of": [ACTION], "any_of": ["ec2:RunInstances"]},
+            {"any_of": [ACTION], "all_of": ["ec2:RunInstances"]},
+        ],
     )
     async def test_narrower_or_forbid_rule_keeps_the_default(self, check, user_actions):
         default, merged = _override_merge(check, user_actions)

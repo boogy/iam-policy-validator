@@ -331,5 +331,13 @@ class TestFindingKey:
 
         assert first != second
 
-    def test_finding_key_is_not_serialized(self):
-        assert "finding_key" not in self._issue("a").model_dump()
+    def test_finding_key_survives_a_json_round_trip(self):
+        issue = self._issue("a")
+        restored = ValidationIssue.model_validate_json(issue.model_dump_json())
+
+        assert FindingFingerprint.from_issue(restored, "p.json").to_hash() == (
+            FindingFingerprint.from_issue(issue, "p.json").to_hash()
+        )
+
+    def test_unset_finding_key_is_not_serialized(self):
+        assert "finding_key" not in self._issue(None).model_dump()

@@ -170,8 +170,8 @@ returns an empty set when the check is disabled, and runs the real
 user-supplied `action_condition_requirements` entry moves both checks together. Reading
 `requirements` directly suppressed findings for requirements that were never in play.
 Matching is `action_matches`, not `==`: a requirement may be a glob and IAM action names
-are case-insensitive. Mapping-form `actions` count their `any_of` entries and a single-entry `all_of`: a longer `all_of`
-flags only statements granting every action, and `none_of` is a separate rule. `per_action_override` uses the same rule (`_owned_actions`): a user requirement replaces a default when one of its owned actions, as an IAM glob, covers the default's action (case-insensitive; `iam:Pass*` replaces `iam:PassRole`, not the reverse), and only when the user requirement has no `if` or a branch enforcing every `Allow` statement (`_enforces_allow_everywhere`). Statement-level checks never receive `policy_file`, so a
+are case-insensitive. Mapping-form `actions` count their `any_of` entries or a single-entry `all_of`, and nothing when both groups are set (they are ANDed): a longer `all_of`
+flags only statements granting every action, and `none_of` is a separate rule. `per_action_override` uses the same rule (`_owned_actions`): a user requirement replaces a default when one of its owned actions, as an IAM glob, covers the default's action (case-insensitive; `iam:Pass*` replaces `iam:PassRole`, not the reverse), and only when the user requirement has no `if` or a branch enforcing every `Allow` statement (`_enforces_allow_everywhere`); a `none_of`-only user rule still replaces it (deliberate opt-out). Policy-level `invalid_condition_requirement` findings carry their message as `finding_key` (`_dedupe_issues`). Statement-level checks never receive `policy_file`, so a
 requirement carrying `ignore_patterns` counts as unenforced there and the finding is
 kept rather than wrongly suppressed.
 
@@ -267,8 +267,8 @@ literally instead of calling `get_severity(config)`:
   Non-string values in a policy's `Principal`/`NotPrincipal` are dropped by
   `_flatten_principal_field`. A non-list `principal_condition_requirements` or a non-mapping entry in
   it is skipped by `execute` (`_requirement_entries`) and reported once per policy there too.
-  Policy-level issues carry their message as `finding_key` (distinct finding ids) and are deduped
-  (`_dedupe`), as are statement issues; `any_of` and nested `none_of` findings key on their described groups.
+  Policy-level and requirement findings carry their message as `finding_key` (distinct finding ids)
+  and are deduped (`_dedupe`), keeping the most severe.
   A non-mapping or keyless entry, a non-string `operator`, an invalid entry `severity`, an
   unknown or non-list group or a scalar `required_conditions` (`_prepare_conditions`) is skipped
   by `execute` (never satisfied); it and an invalid requirement-level `severity` are reported
