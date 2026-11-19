@@ -1852,3 +1852,56 @@ class TestPrincipalEntryProblemsReportedOncePerPolicy:
 
         invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
         assert [i.statement_index for i in invalid] == [-1]
+
+
+def _requirement_config(principals: list[str], required_conditions) -> CheckConfig:
+    return CheckConfig(
+        check_id="principal_validation",
+        enabled=True,
+        config={
+            "blocked_principals": [],
+            "principal_condition_requirements": [
+                {"principals": principals, "required_conditions": required_conditions}
+            ],
+        },
+    )
+
+
+def _principal_statement(principal) -> Statement:
+    return Statement(
+        Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal={"AWS": principal}
+    )
+
+
+class TestPrincipalRequirementMatching:
+    @pytest.mark.parametrize(
+        ("requirement_principal", "statement_principal"),
+        [
+            ("arn:aws:iam::*:root", "123456789012"),
+            ("123456789012", "arn:aws:iam::123456789012:root"),
+        ],
+    )
+    async def test_account_id_and_root_arn_are_the_same_principal(
+        self, check, requirement_principal, statement_principal
+    ):
+        config = _requirement_config([requirement_principal], [{"condition_key": "aws:SourceArn"}])
+
+        issues = await _run_both(check, _principal_statement(statement_principal), None, config)
+
+        assert [i.issue_type for i in issues] == ["missing_principal_condition"]
+
+    @pytest.mark.parametrize("group", ["any_of", "none_of"])
+    async def test_principal_matched_by_several_patterns_is_quoted_once(self, check, group):
+        condition = {"condition_key": "aws:SourceArn"}
+        required = {group: [condition, {"condition_key": "aws:SourceAccount"}]}
+        config = _requirement_config(["arn:aws:iam::123456789012:*", "arn:aws:iam::*:root"], required)
+        statement = _principal_statement(["arn:aws:iam::123456789012:root", "arn:aws:iam::123456789012:root"])
+        if group == "none_of":
+            statement = Statement(
+                **{**statement.model_dump(by_alias=True), "Condition": {"ArnLike": {"aws:SourceArn": "x"}}}
+            )
+
+        issues = await _run_both(check, statement, None, config)
+
+        assert len(issues) == 1
+        assert issues[0].message.count("123456789012:root") == 1

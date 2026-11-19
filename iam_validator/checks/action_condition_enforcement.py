@@ -538,14 +538,22 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 required := requirement.get("required_conditions")
             ) and not cls._requires_evaluable_condition(required):
                 continue
-            configured = requirement.get("actions", [])
-            if isinstance(configured, dict):
-                all_of = configured.get("all_of")
-                single = all_of if isinstance(all_of, list) and len(all_of) == 1 else []
-                configured = [*(configured.get("any_of") or []), *single]
-            if isinstance(configured, list):
-                actions.update(configured)
+            actions.update(cls._owned_actions(requirement.get("actions", [])))
         return actions
+
+    @staticmethod
+    def _owned_actions(configured: Any) -> list[str]:
+        """Actions a requirement enforces on its own: list entries, ``any_of`` and a single-entry ``all_of``."""
+        if isinstance(configured, str):
+            configured = [configured]
+        elif isinstance(configured, dict):
+            all_of = configured.get("all_of")
+            single = all_of if isinstance(all_of, list) and len(all_of) == 1 else []
+            any_of = configured.get("any_of")
+            configured = [*(any_of if isinstance(any_of, list) else []), *single]
+        if not isinstance(configured, list):
+            return []
+        return [a for a in configured if isinstance(a, str)]
 
     def _get_merged_requirements(
         self,
@@ -774,15 +782,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """
         # Build a set of actions that user has customized (from ALL user requirements)
         # This determines which defaults to exclude
-        user_actions: set[str] = set()
-        for req in all_user_requirements:
-            actions = req.get("actions", [])
-            if isinstance(actions, str):
-                actions = [actions]
-            elif isinstance(actions, dict):
-                actions = [a for group in actions.values() if isinstance(group, list) for a in group]
-            if isinstance(actions, list):
-                user_actions.update(a for a in actions if isinstance(a, str))
+        user_actions = {a for req in all_user_requirements for a in self._owned_actions(req.get("actions", []))}
 
         # Start with ACTIVE user requirements (filtered by ignore_patterns)
         merged = list(active_user_requirements)
@@ -795,7 +795,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 default_actions = [default_actions]
 
             # Check if any of the default actions are customized by user
-            has_overlap = any(action in user_actions for action in default_actions)
+            has_overlap = any(
+                isinstance(action, str) and iam_glob_match(user, action)
+                for action in default_actions
+                for user in user_actions
+            )
 
             if not has_overlap:
                 # No overlap - keep this default requirement

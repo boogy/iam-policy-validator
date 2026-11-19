@@ -459,6 +459,10 @@ principal_validation:
           - condition_key: "aws:SourceAccount"
 ```
 
+`blocked_principals`, `allowed_principals` and `principal_condition_requirements` patterns
+match a bare account id (`123456789012`) and its root ARN
+(`arn:aws:iam::123456789012:root`) alike, since AWS treats them as the same principal.
+
 ### Fail Examples
 
 **Critical - Service Principal Wildcard:**

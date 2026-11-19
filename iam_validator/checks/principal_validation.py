@@ -710,18 +710,12 @@ class PrincipalValidationCheck(PolicyCheck):
         if not principal_patterns:
             return []
 
-        matching: list[str] = []
+        def matches(principal: str, pattern: str) -> bool:
+            if pattern == "*":
+                return principal == "*"
+            return any(fnmatch.fnmatch(spelling, pattern) for spelling in principal_spellings(principal))
 
-        for principal in principals:
-            for pattern in principal_patterns:
-                # Special case: "*" pattern should only match literal "*"
-                if pattern == "*":
-                    if principal == "*":
-                        matching.append(principal)
-                elif fnmatch.fnmatch(principal, pattern):
-                    matching.append(principal)
-
-        return matching
+        return list(dict.fromkeys(p for p in principals if any(matches(p, pattern) for pattern in principal_patterns)))
 
     def _validate_conditions(
         self,

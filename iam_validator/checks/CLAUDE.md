@@ -171,7 +171,7 @@ user-supplied `action_condition_requirements` entry moves both checks together. 
 `requirements` directly suppressed findings for requirements that were never in play.
 Matching is `action_matches`, not `==`: a requirement may be a glob and IAM action names
 are case-insensitive. Mapping-form `actions` count their `any_of` entries and a single-entry `all_of`: a longer `all_of`
-flags only statements granting every action, and `none_of` is a separate rule. `per_action_override`, by contrast, treats every action named in any group as user-owned. Statement-level checks never receive `policy_file`, so a
+flags only statements granting every action, and `none_of` is a separate rule. `per_action_override` uses the same rule (`_owned_actions`): a user requirement replaces a default when one of its owned actions, as an IAM glob, covers the default's action (case-insensitive; `iam:Pass*` replaces `iam:PassRole`, not the reverse). Statement-level checks never receive `policy_file`, so a
 requirement carrying `ignore_patterns` counts as unenforced there and the finding is
 kept rather than wrongly suppressed.
 

@@ -451,24 +451,60 @@ class TestNonStringActionElements:
         assert ("invalid_condition_requirement", -1) in _types(issues)
 
 
+def _override_merge(check, user_actions):
+    default = {"actions": [ACTION], "required_conditions": [{"condition_key": "iam:PassedToService"}]}
+    user = {"actions": user_actions, "required_conditions": [{"condition_key": KEY}]}
+    config = CheckConfig(
+        check_id="action_condition_enforcement",
+        enabled=True,
+        config={
+            "merge_strategy": "per_action_override",
+            "requirements": [default],
+            "action_condition_requirements": [user],
+        },
+    )
+    return default, check._get_merged_requirements(config, "policy.json")
+
+
 class TestPerActionOverrideMappingActions:
-    @pytest.mark.parametrize("group", ["any_of", "all_of", "none_of"])
+    @pytest.mark.parametrize("group", ["any_of", "all_of"])
     async def test_a_mapping_requirement_replaces_the_default(self, check, group):
-        default = {"actions": [ACTION], "required_conditions": [{"condition_key": "iam:PassedToService"}]}
-        user = {"actions": {group: [ACTION]}, "required_conditions": [{"condition_key": KEY}]}
+        default, merged = _override_merge(check, {group: [ACTION]})
+
+        assert default not in merged
+
+    @pytest.mark.parametrize(
+        "user_actions",
+        [{"all_of": [ACTION, "lambda:CreateFunction"]}, {"none_of": [ACTION]}],
+    )
+    async def test_narrower_or_forbid_rule_keeps_the_default(self, check, user_actions):
+        default, merged = _override_merge(check, user_actions)
+
+        assert default in merged
+
+
+class TestPerActionOverrideMatching:
+    @pytest.mark.parametrize("user_action", [ACTION.upper(), ACTION.split(":")[0] + ":*"])
+    async def test_user_pattern_covering_the_default_action_replaces_it(self, check, user_action):
+        default, merged = _override_merge(check, [user_action])
+
+        assert default not in merged
+
+    async def test_user_action_narrower_than_default_glob_keeps_it(self, check):
+        default = {"actions": ["iam:Pass*"], "required_conditions": [{"condition_key": "iam:PassedToService"}]}
         config = CheckConfig(
             check_id="action_condition_enforcement",
             enabled=True,
             config={
                 "merge_strategy": "per_action_override",
                 "requirements": [default],
-                "action_condition_requirements": [user],
+                "action_condition_requirements": [
+                    {"actions": ["iam:PassRole"], "required_conditions": [{"condition_key": KEY}]}
+                ],
             },
         )
 
-        merged = check._get_merged_requirements(config, "policy.json")
-
-        assert default not in merged
+        assert default in check._get_merged_requirements(config, "policy.json")
 
 
 class TestFalsyScalarRequiredConditions:
