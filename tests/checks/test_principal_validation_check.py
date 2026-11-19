@@ -1905,3 +1905,116 @@ class TestPrincipalRequirementMatching:
 
         assert len(issues) == 1
         assert issues[0].message.count("123456789012:root") == 1
+
+
+def _finding_ids(issues: list[ValidationIssue]) -> list[str]:
+    return [
+        compute_finding_hash(
+            "policy.json",
+            "principal_validation",
+            i.issue_type,
+            i.statement_sid,
+            i.statement_index,
+            i.action,
+            i.resource,
+            i.condition_key,
+            i.finding_key,
+        )
+        for i in issues
+    ]
+
+
+class TestPrincipalFindingIdentity:
+    async def test_config_problems_in_different_requirements_have_distinct_ids(self, check):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [
+                    {"principals": ["*"], "required_conditions": [{"condition_key": 5}]},
+                    {"principals": ["*"], "required_conditions": [{"condition_key": 6}]},
+                ],
+            },
+        )
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        ids = _finding_ids([i for i in issues if i.issue_type == "invalid_condition_requirement"])
+        assert len(ids) == 2
+        assert len(set(ids)) == 2
+
+    async def test_config_problem_names_the_requirement_principals(self, check):
+        config = _requirement_config(["arn:aws:iam::*:root"], [{"condition_key": 5}])
+
+        issues = await _run_both(check, _principal_statement("arn:aws:iam::123456789012:root"), None, config)
+
+        assert "`arn:aws:iam::*:root`" in issues[0].message
+
+    async def test_identical_config_problems_are_reported_once(self, check):
+        requirement = {"principals": ["*"], "required_conditions": [{"condition_key": 5}]}
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={"blocked_principals": [], "principal_condition_requirements": [requirement, dict(requirement)]},
+        )
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+
+    async def test_any_of_findings_from_different_requirements_have_distinct_ids(self, check):
+        config = CheckConfig(
+            check_id="principal_validation",
+            enabled=True,
+            config={
+                "blocked_principals": [],
+                "principal_condition_requirements": [
+                    {"principals": ["*"], "required_conditions": {"any_of": [{"condition_key": "aws:SourceArn"}]}},
+                    {"principals": ["*"], "required_conditions": {"any_of": [{"condition_key": "aws:PrincipalOrgID"}]}},
+                ],
+            },
+        )
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        assert len(set(_finding_ids(issues))) == 2
+
+    async def test_nested_none_of_groups_have_distinct_ids(self, check):
+        required = {
+            "none_of": [
+                {"all_of": [{"condition_key": "aws:SourceIp"}, {"condition_key": "aws:SourceVpc"}]},
+                {"all_of": [{"condition_key": "aws:SourceArn"}, {"condition_key": "aws:SourceAccount"}]},
+            ]
+        }
+        statement = Statement(
+            Effect="Allow",
+            Action=["s3:GetObject"],
+            Resource=["arn:aws:s3:::b/*"],
+            Principal="*",
+            Condition={
+                "StringEquals": {
+                    "aws:SourceIp": "x",
+                    "aws:SourceVpc": "x",
+                    "aws:SourceArn": "x",
+                    "aws:SourceAccount": "x",
+                }
+            },
+        )
+
+        issues = await _run_both(check, statement, None, _requirement_config(["*"], required))
+
+        assert len(issues) == 2
+        assert len(set(_finding_ids(issues))) == 2
+
+    async def test_leaf_shared_by_nested_all_of_groups_is_reported_once(self, check):
+        required = {
+            "all_of": [
+                {"all_of": [{"condition_key": "aws:SourceArn"}, {"condition_key": "aws:SourceAccount"}]},
+                {"all_of": [{"condition_key": "aws:SourceArn"}, {"condition_key": "aws:PrincipalOrgID"}]},
+            ]
+        }
+
+        issues = await _run_both(check, _principal_statement("*"), None, _requirement_config(["*"], required))
+
+        assert sorted(i.condition_key for i in issues) == ["aws:PrincipalOrgID", "aws:SourceAccount", "aws:SourceArn"]

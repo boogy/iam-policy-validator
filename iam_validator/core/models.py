@@ -231,6 +231,7 @@ class ValidationIssue(BaseModel):
     action: str | None = None
     resource: str | None = None
     condition_key: str | None = None
+    finding_key: str | None = Field(default=None, exclude=True)  # extra finding-id identity; never rendered
     suggestion: str | None = None
     example: str | None = None  # Code example (JSON/YAML) - formatted separately for GitHub
     line_number: int | None = None  # Line number in the policy file (if available)
@@ -357,6 +358,7 @@ class ValidationIssue(BaseModel):
                     action=self.action,
                     resource=self.resource,
                     condition_key=self.condition_key,
+                    finding_key=self.finding_key,
                 )
                 parts.append(constants.FINDING_ID_MARKER_FORMAT.format(finding_id=finding_hash) + "\n")
 

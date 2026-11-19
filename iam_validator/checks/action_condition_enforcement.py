@@ -541,6 +541,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             actions.update(cls._owned_actions(requirement.get("actions", [])))
         return actions
 
+    def _enforces_allow_everywhere(self, requirement: dict[str, Any]) -> bool:
+        """False for a requirement whose ``if`` branches all skip some ``Allow`` statements."""
+        if "if" not in requirement:
+            return True
+        prepared, _ = self._prepare_requirement(requirement)
+        return any(branch_enforces_allow_everywhere(b) for b in requirement_branches(prepared)[0])
+
     @staticmethod
     def _owned_actions(configured: Any) -> list[str]:
         """Actions a requirement enforces on its own: list entries, ``any_of`` and a single-entry ``all_of``."""
@@ -782,22 +789,21 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """
         # Build a set of actions that user has customized (from ALL user requirements)
         # This determines which defaults to exclude
-        user_actions = {a for req in all_user_requirements for a in self._owned_actions(req.get("actions", []))}
+        user_actions = {
+            a
+            for req in all_user_requirements
+            if self._enforces_allow_everywhere(req)
+            for a in self._owned_actions(req.get("actions", []))
+        }
 
         # Start with ACTIVE user requirements (filtered by ignore_patterns)
         merged = list(active_user_requirements)
 
         # Add defaults that don't conflict with user requirements
         for default_req in default_requirements:
-            default_actions = default_req.get("actions", [])
-            # Handle both single action and list of actions
-            if isinstance(default_actions, str):
-                default_actions = [default_actions]
-
-            # Check if any of the default actions are customized by user
             has_overlap = any(
-                isinstance(action, str) and iam_glob_match(user, action)
-                for action in default_actions
+                iam_glob_match(user, action)
+                for action in self._owned_actions(default_req.get("actions", []))
                 for user in user_actions
             )
 

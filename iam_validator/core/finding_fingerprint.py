@@ -24,6 +24,7 @@ def compute_finding_hash(
     action: str | None = None,
     resource: str | None = None,
     condition_key: str | None = None,
+    finding_key: str | None = None,
 ) -> str:
     """Compute a deterministic 16-character hash for a finding.
 
@@ -39,6 +40,7 @@ def compute_finding_hash(
         action: Specific action (optional)
         resource: Specific resource (optional)
         condition_key: Condition key (optional)
+        finding_key: Extra identity, appended only when set so existing ids are unchanged
 
     Returns:
         16-character hex string uniquely identifying this finding
@@ -55,6 +57,8 @@ def compute_finding_hash(
         resource or "",
         condition_key or "",
     ]
+    if finding_key:
+        components.append(finding_key)
     combined = "|".join(components)
     return hashlib.sha256(combined.encode()).hexdigest()[:16]
 
@@ -86,6 +90,7 @@ class FindingFingerprint:
     action: str | None
     resource: str | None
     condition_key: str | None
+    finding_key: str | None = None
 
     def to_hash(self) -> str:
         """Generate deterministic 16-character hash for storage.
@@ -106,6 +111,7 @@ class FindingFingerprint:
             action=self.action,
             resource=self.resource,
             condition_key=self.condition_key,
+            finding_key=self.finding_key,
         )
 
     @classmethod
@@ -128,4 +134,5 @@ class FindingFingerprint:
             action=issue.action,
             resource=issue.resource,
             condition_key=issue.condition_key,
+            finding_key=issue.finding_key,
         )

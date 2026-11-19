@@ -490,6 +490,41 @@ class TestPerActionOverrideMatching:
 
         assert default not in merged
 
+    @pytest.mark.parametrize(
+        "branch",
+        [{"effect": "Deny"}, {"resource": "arn:aws:iam::*:role/admin/*"}],
+    )
+    async def test_user_rule_scoped_by_if_keeps_the_default(self, check, branch):
+        default = {"actions": [ACTION], "required_conditions": [{"condition_key": "iam:PassedToService"}]}
+        user = {"actions": [ACTION], "if": [{**branch, "required_conditions": [{"condition_key": KEY}]}]}
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            config={
+                "merge_strategy": "per_action_override",
+                "requirements": [default],
+                "action_condition_requirements": [user],
+            },
+        )
+
+        assert default in check._get_merged_requirements(config, "policy.json")
+
+    async def test_mapping_form_default_is_replaced(self, check):
+        default = {"actions": {"any_of": [ACTION]}, "required_conditions": [{"condition_key": "iam:PassedToService"}]}
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            config={
+                "merge_strategy": "per_action_override",
+                "requirements": [default],
+                "action_condition_requirements": [
+                    {"actions": [ACTION], "required_conditions": [{"condition_key": KEY}]}
+                ],
+            },
+        )
+
+        assert default not in check._get_merged_requirements(config, "policy.json")
+
     async def test_user_action_narrower_than_default_glob_keeps_it(self, check):
         default = {"actions": ["iam:Pass*"], "required_conditions": [{"condition_key": "iam:PassedToService"}]}
         config = CheckConfig(

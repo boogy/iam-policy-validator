@@ -461,7 +461,8 @@ principal_validation:
 
 `blocked_principals`, `allowed_principals` and `principal_condition_requirements` patterns
 match a bare account id (`123456789012`) and its root ARN
-(`arn:aws:iam::123456789012:root`) alike, since AWS treats them as the same principal.
+(`arn:aws:iam::123456789012:root`) alike, since AWS treats them as the same principal. A bare
+account id carries no partition, so it matches a root-ARN pattern in any partition.
 
 ### Fail Examples
 
