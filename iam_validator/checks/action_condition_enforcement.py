@@ -25,6 +25,12 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.checks.utils.aws_matching import action_matches, iam_glob_match
 from iam_validator.checks.utils.condition_matching import has_condition_key
+from iam_validator.checks.utils.finding_identity import (
+    PRESENTATION_KEYS,
+    keep_most_severe,
+    rule_key,
+    severity_problem_key,
+)
 from iam_validator.checks.utils.requirement_branches import (
     CONDITION_GROUPS,
     DEFAULT_EFFECTS,
@@ -51,20 +57,6 @@ if TYPE_CHECKING:
     from iam_validator.core.models import IAMPolicy
 
 ACTIONS_SHAPE_PROBLEM = "`actions` must be a string, a list or a mapping of `all_of`/`any_of`/`none_of`"
-_PRESENTATION_KEYS = frozenset({"severity", "description", "example"})
-
-
-def _canonical_rule(value: Any) -> Any:
-    """Key-order-independent form of a rule, without null keys or the keys that only change how it is reported."""
-    if isinstance(value, dict):
-        return tuple(
-            sorted(
-                (repr(k), _canonical_rule(v)) for k, v in value.items() if k not in _PRESENTATION_KEYS and v is not None
-            )
-        )
-    if isinstance(value, (list, tuple)):
-        return tuple(_canonical_rule(v) for v in value)
-    return repr(value)
 
 
 class ActionConditionEnforcementCheck(PolicyCheck):
@@ -228,25 +220,22 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     @staticmethod
     def _dedupe_issues(issues: list[ValidationIssue]) -> list[ValidationIssue]:
         """Collapse findings that differ only in severity or suggestion, keeping the most severe."""
-        unique: dict[tuple[Any, ...], ValidationIssue] = {}
-        for issue in issues:
-            if issue.issue_type == "invalid_condition_requirement":
-                issue = issue.model_copy(update={"finding_key": issue.message})
-            key = (
+
+        def key(issue: ValidationIssue) -> tuple[Any, ...]:
+            unidentified = issue.finding_key is None
+            return (
                 issue.issue_type,
                 issue.statement_index,
                 issue.field_name,
                 issue.action,
                 issue.condition_key,
                 issue.line_number,
-                issue.message if issue._rule_identity is None else None,
-                issue.example if issue._rule_identity is None else None,
-                issue._rule_identity,
+                issue.finding_key,
+                issue.message if unidentified else None,
+                issue.example if unidentified else None,
             )
-            kept = unique.get(key)
-            if kept is None or issue.get_severity_rank() > kept.get_severity_rank():
-                unique[key] = issue
-        return list(unique.values())
+
+        return keep_most_severe(issues, key)
 
     def _prepare_requirement(self, requirement: dict[str, Any]) -> tuple[dict[str, Any], list[ValidationIssue]]:
         """A copy of ``requirement`` without null or invalid severities, and one issue per config problem."""
@@ -317,7 +306,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         cleaned = {k: v for k, v in node.items() if k != "severity"}
         severity = node.get("severity")
         if severity_problem(severity):
-            issues.append(self._create_invalid_severity_issue(requirement, severity, where))
+            issues.append(self._create_invalid_severity_issue(requirement, severity, where, node))
         elif severity is not None:
             cleaned["severity"] = severity
         return cleaned
@@ -397,7 +386,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             return f"`{actions!r}`", ", ".join(named) or None
         return f"`{actions!r}`", None
 
-    def _create_invalid_severity_issue(self, requirement: dict[str, Any], severity: Any, where: str) -> ValidationIssue:
+    def _create_invalid_severity_issue(
+        self, requirement: dict[str, Any], severity: Any, where: str, node: dict[str, Any]
+    ) -> ValidationIssue:
         actions_str, action = self._actions_label(requirement)
         located = (
             f" has an invalid `severity` `{severity!r}` in {where}"
@@ -417,6 +408,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             action=action,
             suggestion=f"Set `severity` to one of {', '.join(sorted(VALID_SEVERITIES))}, or remove it.",
             field_name="condition",
+            finding_key=rule_key(
+                "severity",
+                requirement.get("actions"),
+                where,
+                severity,
+                severity_problem_key(node),
+            ),
         )
 
     def _create_malformed_requirement_issue(
@@ -459,6 +457,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             action=action,
             suggestion=suggestion,
             field_name="condition",
+            finding_key=rule_key("malformed", requirement.get("actions"), problem, label, repr(entry)),
         )
 
     def _create_malformed_branch_issue(self, requirement: dict[str, Any], problem: str) -> ValidationIssue:
@@ -482,6 +481,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 "(`Allow`/`Deny`), `resource`, `not_resource` (regex) and `severity`."
             ),
             field_name="condition",
+            finding_key=rule_key("branch", requirement.get("actions"), problem),
         )
 
     @classmethod
@@ -552,14 +552,12 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
     @staticmethod
     def _owned_actions(configured: Any) -> list[str]:
-        """Actions a requirement enforces on its own: list entries, a lone ``any_of`` or single-entry ``all_of``."""
+        """Actions a requirement enforces on its own: list entries, ``any_of`` entries and a single-entry ``all_of``."""
         if isinstance(configured, str):
             configured = [configured]
         elif isinstance(configured, dict):
             all_of = configured.get("all_of") or []
             any_of = configured.get("any_of") or []
-            if all_of and any_of:
-                return []
             single = all_of if isinstance(all_of, list) and len(all_of) == 1 else []
             configured = [*(any_of if isinstance(any_of, list) else []), *single]
         if not isinstance(configured, list):
@@ -612,6 +610,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 message=f"`{key}` {problem}, so it is not enforced: `{entry!r}`",
                 suggestion=f"Make `{key}` a list of mappings, each with `actions` and `required_conditions`.",
                 field_name="condition",
+                finding_key=rule_key("requirement_list", key, problem, repr(entry)),
             )
             for key, entry, problem in problems
         ]
@@ -1647,14 +1646,14 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
     @staticmethod
     def _with_rule_identity(issue: ValidationIssue, *rule: Any) -> ValidationIssue:
-        issue._rule_identity = repr(_canonical_rule(rule))
+        issue.finding_key = rule_key(*rule)
         return issue
 
     def _missing_requirements(self, statement: Statement, entry: dict[str, Any]) -> list[dict[str, Any]]:
         """The leaf requirements of ``entry`` the statement lacks; a nested ``all_of`` passes down its severity, description and example."""
         if "all_of" not in entry:
             return [] if self._has_condition_requirement(statement, entry) else [entry]
-        inherited: dict[str, Any] = {k: entry[k] for k in ("severity", "description", "example") if k in entry}
+        inherited: dict[str, Any] = {k: entry[k] for k in PRESENTATION_KEYS if k in entry}
         return [
             m
             for e in entry["all_of"]

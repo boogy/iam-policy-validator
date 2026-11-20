@@ -222,6 +222,18 @@ class TestPolicyLevelFindingIdentity:
         assert len(issues) >= 2
         assert len(ids) == len(issues)
 
+    async def test_config_problem_id_does_not_depend_on_message_wording(self, check, monkeypatch):
+        config = _config({"actions": [ACTION], "severity": "urgent", "required_conditions": [{"condition_key": KEY}]})
+        before = [i.finding_key for i in await _run(check, config)]
+        monkeypatch.setattr(
+            ActionConditionEnforcementCheck, "_actions_label", lambda self, requirement: ("`reworded`", ACTION)
+        )
+
+        after = await _run(check, config)
+
+        assert "reworded" in after[0].message
+        assert [i.finding_key for i in after] == before
+
 
 class TestNestedNullOverride:
     async def test_null_leaf_severity_and_example_inherit_from_enclosing_entry(self, check):
@@ -282,7 +294,8 @@ class TestEnforcedActionsNeedAnEvaluableEntry:
             ({"any_of": [ACTION, None]}, {ACTION}),
             ({"all_of": [ACTION, "iam:CreateRole"]}, set()),
             ({"all_of": [ACTION]}, {ACTION}),
-            ({"any_of": ["iam:CreateRole"], "all_of": [ACTION]}, set()),
+            ({"any_of": ["iam:CreateRole"], "all_of": [ACTION]}, {"iam:CreateRole", ACTION}),
+            ({"any_of": [ACTION], "all_of": ["iam:CreateRole", "iam:DeleteRole"]}, {ACTION}),
             ({"none_of": [ACTION]}, set()),
         ],
     )
@@ -503,10 +516,39 @@ class TestPerActionOverrideMappingActions:
     @pytest.mark.parametrize(
         "user_actions",
         [
-            {"all_of": [ACTION, "lambda:CreateFunction"]},
-            {"none_of": [ACTION]},
             {"all_of": [ACTION], "any_of": ["ec2:RunInstances"]},
             {"any_of": [ACTION], "all_of": ["ec2:RunInstances"]},
+            {"any_of": [ACTION], "all_of": ["s3:GetObject", "s3:PutObject"]},
+        ],
+    )
+    async def test_each_group_of_a_two_group_rule_replaces_the_default(self, check, user_actions):
+        default, merged = _override_merge(check, user_actions)
+
+        assert default not in merged
+
+
+class TestTwoGroupActionsOwnership:
+    REQUIREMENT: dict[str, Any] = {
+        "actions": {"all_of": ["s3:GetObject", "s3:PutObject"], "any_of": [ACTION]},
+        "required_conditions": [{"condition_key": KEY}],
+    }
+
+    async def test_any_of_group_is_enforced_alone(self, check):
+        issues = await _run(check, _config(self.REQUIREMENT))
+
+        assert [i.issue_type for i in issues] == ["missing_required_condition"]
+
+    def test_enforced_actions_match_what_is_enforced(self):
+        root = {"action_condition_enforcement": {"action_condition_requirements": [self.REQUIREMENT]}}
+
+        assert ACTION in ActionConditionEnforcementCheck.enforced_actions(root)
+
+    @pytest.mark.parametrize(
+        "user_actions",
+        [
+            {"all_of": [ACTION, "lambda:CreateFunction"]},
+            {"none_of": [ACTION]},
+            {"all_of": [ACTION, "lambda:CreateFunction"], "any_of": ["ec2:RunInstances"]},
         ],
     )
     async def test_narrower_or_forbid_rule_keeps_the_default(self, check, user_actions):
@@ -792,3 +834,83 @@ class TestEveryNonStringActionReported:
         invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
         assert len(invalid) == 2
         assert {"`1`", "`True`"} == {i.message.rsplit(": ", 1)[1] for i in invalid}
+
+
+class TestConfigProblemsDifferingInPresentationKept:
+    async def test_malformed_entries_differing_in_description(self, check):
+        required_conditions = [{"condition_key": 5, "description": "a"}, {"condition_key": 5, "description": "b"}]
+
+        issues = await _run(check, _config({"actions": [ACTION], "required_conditions": required_conditions}))
+
+        assert _types(issues) == [("invalid_condition_requirement", -1), ("invalid_condition_requirement", -1)]
+
+    async def test_non_mapping_requirement_entries_differing_in_description(self, check):
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            config={
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [[{"description": "a"}], [{"description": "b"}]],
+            },
+        )
+
+        issues = await _run(check, config)
+
+        assert _types(issues) == [("invalid_condition_requirement", -1), ("invalid_condition_requirement", -1)]
+
+
+class TestInvalidSeverityFindingIdentity:
+    async def test_entries_with_the_same_invalid_severity_are_reported_separately(self, check):
+        config = _config(
+            {
+                "actions": [ACTION],
+                "required_conditions": {
+                    "all_of": [
+                        {"condition_key": KEY, "severity": "urgent"},
+                        {"condition_key": "aws:SourceIp", "severity": "urgent"},
+                    ]
+                },
+            }
+        )
+
+        issues = await _run(check, config)
+
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert len({i.finding_key for i in invalid}) == 2
+
+
+def _ace_ids(issues) -> list[str]:
+    return [
+        compute_finding_hash(
+            "policy.json",
+            "action_condition_enforcement",
+            i.issue_type,
+            i.statement_sid,
+            i.statement_index,
+            i.action,
+            i.resource,
+            i.condition_key,
+            i.finding_key,
+        )
+        for i in issues
+    ]
+
+
+class TestRequirementFindingIds:
+    PASSED_TO = "iam:PassedToService"
+
+    def _requirement(self, value: str, **presentation: Any) -> dict[str, Any]:
+        entry = {"condition_key": self.PASSED_TO, "expected_value": value, **presentation}
+        return {"actions": [ACTION], "required_conditions": [entry]}
+
+    async def test_rules_differing_in_expected_value_have_distinct_ids(self, check):
+        issues = await _run(check, _config(self._requirement("ec2"), self._requirement("lambda")))
+
+        assert len(issues) == 2
+        assert len(set(_ace_ids(issues))) == 2
+
+    async def test_id_ignores_severity_and_description(self, check):
+        plain = await _run(check, _config(self._requirement("ec2")))
+        reworded = await _run(check, _config(self._requirement("ec2", severity="critical", description="other")))
+
+        assert _ace_ids(plain) == _ace_ids(reworded)

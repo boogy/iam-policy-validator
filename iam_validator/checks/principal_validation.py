@@ -38,6 +38,8 @@ Supports: any_of, all_of, none_of, and expected_value (single value or list)
 """
 
 import fnmatch
+from collections.abc import Callable
+from functools import partial
 from typing import Any, ClassVar
 
 from iam_validator.checks.utils import format_list_with_backticks
@@ -45,6 +47,13 @@ from iam_validator.checks.utils.condition_matching import (
     has_condition_key,
     is_deny,
     is_negated_operator,
+)
+from iam_validator.checks.utils.finding_identity import (
+    PRESENTATION_KEYS,
+    canonical_rule,
+    keep_most_severe,
+    rule_key,
+    severity_problem_key,
 )
 from iam_validator.checks.utils.requirement_branches import (
     CONDITION_GROUPS,
@@ -61,18 +70,21 @@ from iam_validator.core.config.service_principals import is_aws_service_principa
 from iam_validator.core.constants import ACCOUNT_ID_PATTERN, ARN_PARTITIONS, ROOT_ARN_PATTERN
 from iam_validator.core.models import IAMPolicy, Statement, ValidationIssue
 
-_INHERITED_KEYS = ("severity", "description", "example")
+_Render = Callable[[list[str]], ValidationIssue]
 
 
 def _dedupe(issues: list[ValidationIssue]) -> list[ValidationIssue]:
     """``issues`` without repeats of the same finding, the most severe kept."""
-    seen: dict[tuple[Any, ...], ValidationIssue] = {}
-    for issue in issues:
-        key = (issue.issue_type, issue.statement_index, issue.condition_key, issue.finding_key, issue.message)
-        kept = seen.get(key)
-        if kept is None or issue.get_severity_rank() > kept.get_severity_rank():
-            seen[key] = issue
-    return list(seen.values())
+    return keep_most_severe(
+        issues,
+        lambda i: (
+            i.issue_type,
+            i.statement_index,
+            i.condition_key,
+            i.finding_key,
+            i.message if i.finding_key is None else None,
+        ),
+    )
 
 
 def principal_spellings(principal: str) -> list[str]:
@@ -179,6 +191,7 @@ class PrincipalValidationCheck(PolicyCheck):
                         suggestion=f"Remove the `Principal` `{principal}` or add appropriate `Condition`s to restrict access. "
                         "Consider using more specific `Principal`s instead of `*` (wildcard).",
                         field_name="principal",
+                        finding_key=principal,
                     )
                 )
                 continue
@@ -199,6 +212,7 @@ class PrincipalValidationCheck(PolicyCheck):
                         suggestion=f"Add `{principal}` to the `allowed_principals` list in your config, "
                         "or use a `Principal` that matches an allowed pattern.",
                         field_name="principal",
+                        finding_key=principal,
                     )
                 )
                 continue
@@ -213,7 +227,7 @@ class PrincipalValidationCheck(PolicyCheck):
                     principal_condition_requirements,
                     config,
                 )
-                issues.extend(issue.model_copy(update={"finding_key": issue.message}) for issue in condition_issues)
+                issues.extend(condition_issues)
 
         return _dedupe(issues)
 
@@ -227,6 +241,9 @@ class PrincipalValidationCheck(PolicyCheck):
     ) -> list[ValidationIssue]:
         """Report requirement-level config problems once per policy, for policies ``execute`` would evaluate."""
         del policy_file, fetcher, kwargs
+        return _dedupe(self._policy_problems(policy, config))
+
+    def _policy_problems(self, policy: IAMPolicy, config: CheckConfig) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
         if any(self._reaches_principal_rules(statement) for statement in policy.statement or []):
             issues.extend(
@@ -266,9 +283,9 @@ class PrincipalValidationCheck(PolicyCheck):
                 continue
             severity = requirement.get("severity")
             if severity_problem(severity) is not None:
-                issues.append(self._create_invalid_severity_issue(requirement, severity, ""))
+                issues.append(self._create_invalid_severity_issue(requirement, severity, "", requirement))
             issues.extend(self._prepare_conditions(conditions, requirement)[1])
-        return _dedupe([issue.model_copy(update={"finding_key": issue.message}) for issue in issues])
+        return issues
 
     _PRINCIPAL_LIST_KEYS: ClassVar[tuple[str, ...]] = (
         "blocked_principals",
@@ -320,6 +337,11 @@ class PrincipalValidationCheck(PolicyCheck):
             return []
         blocked = self._blocked_principals(config)
         return [p for p in self._extract_principals(statement) if not self._is_blocked_principal(p, blocked)]
+
+    @classmethod
+    def _rule_key(cls, kind: str, requirement: dict[str, Any], *parts: Any) -> str:
+        """A ``finding_key`` for a requirement rule, independent of message wording and matching principals."""
+        return rule_key(kind, sorted(set(cls._principal_patterns(requirement) or [])), *parts)
 
     @classmethod
     def _principal_patterns(cls, requirement: dict[str, Any]) -> list[str] | None:
@@ -678,9 +700,8 @@ class PrincipalValidationCheck(PolicyCheck):
         Returns:
             List of validation issues
         """
-        issues: list[ValidationIssue] = []
+        groups: dict[tuple[Any, ...], tuple[list[_Render], set[str], list[ValidationIssue]]] = {}
 
-        # Check each requirement rule
         for requirement in requirements:
             # Check if any principal matches this requirement
             matching_principals = self._get_matching_principals(principals, requirement)
@@ -693,18 +714,25 @@ class PrincipalValidationCheck(PolicyCheck):
             if has_no_conditions(required_conditions_config):
                 continue
 
-            # Validate conditions using the same logic as action_condition_enforcement
-            condition_issues = self._validate_conditions(
-                statement,
-                statement_idx,
-                required_conditions_config,
-                matching_principals,
-                config,
-                requirement,
-            )
+            for render in self._validate_conditions(
+                statement, statement_idx, required_conditions_config, config, requirement
+            ):
+                sample = render(matching_principals)
+                if sample.severity == "none":
+                    continue
+                key = (sample.issue_type, sample.condition_key, sample.finding_key)
+                renders, matched, samples = groups.setdefault(key, ([], set(), []))
+                renders.append(render)
+                matched.update(matching_principals)
+                samples.append(sample)
 
-            issues.extend(condition_issues)
-
+        issues: list[ValidationIssue] = []
+        for renders, matched, samples in groups.values():
+            top = max(range(len(samples)), key=lambda n: samples[n].get_severity_rank())
+            issue = renders[top]([p for p in dict.fromkeys(principals) if p in matched])
+            if "*" in matched:
+                issue.finding_key = rule_key(issue.finding_key, "public")
+            issues.append(issue)
         return issues
 
     def _get_matching_principals(self, principals: list[str], requirement: dict[str, Any]) -> list[str]:
@@ -733,97 +761,69 @@ class PrincipalValidationCheck(PolicyCheck):
         statement: Statement,
         statement_idx: int,
         required_conditions_config: Any,
-        matching_principals: list[str],
         config: CheckConfig,
         requirement: dict[str, Any],
-    ) -> list[ValidationIssue]:
-        """Validate that required conditions are present.
+    ) -> list[_Render]:
+        """One renderer per unmet condition requirement, taking the matched principals to name.
 
         Supports: simple list, all_of, any_of, none_of formats.
-        Similar to action_condition_enforcement logic.
-
-        Args:
-            statement: The statement to validate
-            statement_idx: Index of the statement
-            required_conditions_config: Condition requirements config
-            matching_principals: Principals that matched
-            config: Check configuration
-            requirement: Parent requirement for severity override
-
-        Returns:
-            List of validation issues
         """
-        issues: list[ValidationIssue] = []
+        renders: list[_Render] = []
         groups, _ = self._prepare_conditions(required_conditions_config, requirement)
 
-        for condition_requirement in groups.get("required", []):
-            if not self._has_condition_requirement(statement, condition_requirement):
-                issues.append(
-                    self._create_condition_issue(
+        for requirement_type in ("required", "all_of"):
+            for condition_requirement in groups.get(requirement_type, []):
+                if not self._has_condition_requirement(statement, condition_requirement):
+                    renders.append(
+                        partial(
+                            self._create_condition_issue,
+                            statement,
+                            statement_idx,
+                            condition_requirement,
+                            config=config,
+                            requirement=requirement,
+                            requirement_type=requirement_type,
+                        )
+                    )
+
+        any_of = groups.get("any_of", [])
+        if any_of and not any(self._has_condition_requirement(statement, cond_req) for cond_req in any_of):
+            condition_keys = ", ".join(self._describe(cond) for cond in any_of)
+            severity = self._severity(config, requirement)
+            suggestion = self._build_any_of_suggestion(any_of)
+
+            def render_any_of(matching_principals: list[str]) -> ValidationIssue:
+                return ValidationIssue(
+                    severity=severity,
+                    statement_sid=statement.sid,
+                    statement_index=statement_idx,
+                    issue_type="missing_principal_condition_any_of",
+                    message=(
+                        f"`Principal`s {format_list_with_backticks(matching_principals)} require at least ONE of "
+                        f"these conditions: {condition_keys}"
+                    ),
+                    suggestion=suggestion,
+                    line_number=statement.line_number,
+                    field_name="principal",
+                    finding_key=rule_key("any_of", sorted({repr(canonical_rule(c)) for c in any_of})),
+                )
+
+            renders.append(render_any_of)
+
+        for condition_requirement in groups.get("none_of", []):
+            if self._has_condition_requirement(statement, condition_requirement):
+                renders.append(
+                    partial(
+                        self._create_none_of_condition_issue,
                         statement,
                         statement_idx,
                         condition_requirement,
-                        matching_principals,
-                        config,
-                        requirement,
-                    )
-                )
-        all_of = groups.get("all_of", [])
-        any_of = groups.get("any_of", [])
-        none_of = groups.get("none_of", [])
-
-        if all_of:
-            for condition_requirement in all_of:
-                if not self._has_condition_requirement(statement, condition_requirement):
-                    issues.append(
-                        self._create_condition_issue(
-                            statement,
-                            statement_idx,
-                            condition_requirement,
-                            matching_principals,
-                            config,
-                            requirement,
-                            requirement_type="all_of",
-                        )
-                    )
-
-        if any_of:
-            any_present = any(self._has_condition_requirement(statement, cond_req) for cond_req in any_of)
-
-            if not any_present:
-                condition_keys = [self._describe(cond) for cond in any_of]
-                severity = self._severity(config, requirement)
-                issues.append(
-                    ValidationIssue(
-                        severity=severity,
-                        statement_sid=statement.sid,
-                        statement_index=statement_idx,
-                        issue_type="missing_principal_condition_any_of",
-                        message=(
-                            f"`Principal`s {format_list_with_backticks(matching_principals)} require at least ONE of these conditions: "
-                            f"{', '.join(condition_keys)}"
-                        ),
-                        suggestion=self._build_any_of_suggestion(any_of),
-                        line_number=statement.line_number,
-                        field_name="principal",
+                        config=config,
+                        requirement=requirement,
                     )
                 )
 
-        if none_of:
-            for condition_requirement in none_of:
-                if self._has_condition_requirement(statement, condition_requirement):
-                    issues.append(
-                        self._create_none_of_condition_issue(
-                            statement,
-                            statement_idx,
-                            condition_requirement,
-                            matching_principals,
-                            config,
-                            requirement,
-                        )
-                    )
-
-        return issues
+        return renders
 
     def _prepare_conditions(
         self, required_conditions_config: Any, requirement: dict[str, Any]
@@ -834,14 +834,18 @@ class PrincipalValidationCheck(PolicyCheck):
         def report_entry_severities(entry: dict[str, Any], label: str) -> None:
             severity = entry.get("severity")
             if severity_problem(severity) is not None:
-                problems.append(self._create_invalid_severity_issue(requirement, severity, f"an entry under `{label}`"))
+                problems.append(
+                    self._create_invalid_severity_issue(requirement, severity, f"an entry under `{label}`", entry)
+                )
             for nested in entry.get("all_of", []):
                 report_entry_severities(nested, f"{label}.all_of")
 
         def entries(value: Any, label: str) -> list[dict[str, Any]]:
             if not isinstance(value, list):
                 if value is not None:
-                    problems.append(self._create_invalid_entry_issue(requirement, value, "a list"))
+                    problems.append(
+                        self._create_invalid_entry_issue(requirement, value, "a list", kind="group", where=label)
+                    )
                 return []
             enforceable: list[dict[str, Any]] = []
             for item in value:
@@ -850,7 +854,7 @@ class PrincipalValidationCheck(PolicyCheck):
                     report_entry_severities(item, label)
                     enforceable.append(item)
                 elif not isinstance(item, dict):
-                    problems.append(self._create_invalid_entry_issue(requirement, item, "a mapping"))
+                    problems.append(self._create_invalid_entry_issue(requirement, item, "a mapping", where=label))
                 else:
                     problems.append(
                         self._create_invalid_entry_issue(
@@ -858,6 +862,7 @@ class PrincipalValidationCheck(PolicyCheck):
                             item,
                             "a mapping with a string `condition_key` (and a string `operator`, if set) "
                             "or a non-empty `all_of` list of them",
+                            where=label,
                         )
                     )
             return enforceable
@@ -866,11 +871,13 @@ class PrincipalValidationCheck(PolicyCheck):
             return {"required": self._leaves(entries(required_conditions_config, "required_conditions"))}, problems
         if not isinstance(required_conditions_config, dict):
             problems.append(
-                self._create_invalid_entry_issue(requirement, required_conditions_config, "a list or mapping")
+                self._create_invalid_entry_issue(
+                    requirement, required_conditions_config, "a list or mapping", kind="conditions"
+                )
             )
             return {}, problems
         problems.extend(
-            self._create_invalid_entry_issue(requirement, unknown, "`all_of`, `any_of` or `none_of`")
+            self._create_invalid_entry_issue(requirement, unknown, "`all_of`, `any_of` or `none_of`", kind="group_key")
             for unknown in sorted(required_conditions_config.keys() - set(CONDITION_GROUPS), key=str)
         )
         groups = {
@@ -881,7 +888,9 @@ class PrincipalValidationCheck(PolicyCheck):
         return groups, problems
 
     @staticmethod
-    def _create_invalid_severity_issue(requirement: dict[str, Any], severity: Any, where: str) -> ValidationIssue:
+    def _create_invalid_severity_issue(
+        requirement: dict[str, Any], severity: Any, where: str, node: dict[str, Any]
+    ) -> ValidationIssue:
         patterns = PrincipalValidationCheck._principal_patterns(requirement) or []
         principals = format_list_with_backticks([str(p) for p in patterns])
         located = f" in {where}" if where else ""
@@ -897,6 +906,9 @@ class PrincipalValidationCheck(PolicyCheck):
             ),
             suggestion=f"Set `severity` to one of {', '.join(sorted(VALID_SEVERITIES))}, or remove it.",
             field_name="principal",
+            finding_key=PrincipalValidationCheck._rule_key(
+                "severity", requirement, where, severity, severity_problem_key(node)
+            ),
         )
 
     @staticmethod
@@ -913,6 +925,7 @@ class PrincipalValidationCheck(PolicyCheck):
             suggestion='Set `principals` to a principal pattern or a list of them (e.g. `- "*"`).',
             line_number=None,
             field_name="principal",
+            finding_key=rule_key("principals", repr(requirement.get("principals"))),
         )
 
     @staticmethod
@@ -934,6 +947,7 @@ class PrincipalValidationCheck(PolicyCheck):
             ),
             line_number=None,
             field_name="principal",
+            finding_key=rule_key("non_string_principal", label, repr(entry), whole_value),
         )
 
     @staticmethod
@@ -948,12 +962,16 @@ class PrincipalValidationCheck(PolicyCheck):
             "`required_conditions`.",
             line_number=None,
             field_name="principal",
+            finding_key=rule_key("requirement_entry", problem, repr(entry)),
         )
 
     @staticmethod
-    def _create_invalid_entry_issue(requirement: dict[str, Any], entry: Any, expected: str) -> ValidationIssue:
+    def _create_invalid_entry_issue(
+        requirement: dict[str, Any], entry: Any, expected: str, *, kind: str = "entry", where: str | None = None
+    ) -> ValidationIssue:
         patterns = PrincipalValidationCheck._principal_patterns(requirement) or []
         principals = format_list_with_backticks([str(p) for p in patterns])
+        field = "required_conditions" if where in (None, "required_conditions") else f"required_conditions.{where}"
         return ValidationIssue(
             severity="error",
             statement_sid=None,
@@ -961,7 +979,7 @@ class PrincipalValidationCheck(PolicyCheck):
             issue_type="invalid_condition_requirement",
             message=(
                 f"`principal_condition_requirements` entry for principal(s) {principals} has a "
-                f"`required_conditions` value `{entry!r}` that is not {expected}, so it is not enforced"
+                f"`{field}` value `{entry!r}` that is not {expected}, so it is not enforced"
             ),
             suggestion=(
                 "Use a list of mappings (e.g. `- condition_key: aws:SourceArn`), or an `all_of`/`any_of`/`none_of` "
@@ -969,6 +987,7 @@ class PrincipalValidationCheck(PolicyCheck):
             ),
             line_number=None,
             field_name="principal",
+            finding_key=PrincipalValidationCheck._rule_key(kind, requirement, where, repr(entry)),
         )
 
     @classmethod
@@ -976,7 +995,7 @@ class PrincipalValidationCheck(PolicyCheck):
         """``entries`` with each nested ``all_of`` replaced by its leaves, which inherit the parent's presentation."""
         leaves: list[dict[str, Any]] = []
         for entry in entries:
-            own = {**(inherited or {}), **{k: entry[k] for k in _INHERITED_KEYS if cls._is_set(k, entry.get(k))}}
+            own = {**(inherited or {}), **{k: entry[k] for k in PRESENTATION_KEYS if cls._is_set(k, entry.get(k))}}
             leaves.extend(cls._leaves(entry["all_of"], own) if "all_of" in entry else [{**entry, **own}])
         return leaves
 
@@ -1025,6 +1044,7 @@ class PrincipalValidationCheck(PolicyCheck):
         statement_idx: int,
         condition_requirement: dict[str, Any],
         matching_principals: list[str],
+        *,
         config: CheckConfig,
         requirement: dict[str, Any],
         requirement_type: str = "required",
@@ -1074,6 +1094,7 @@ class PrincipalValidationCheck(PolicyCheck):
             example=example_code,
             line_number=statement.line_number,
             field_name="principal",
+            finding_key=rule_key("required", condition_requirement),
         )
 
     def _build_condition_suggestion(
@@ -1172,6 +1193,7 @@ class PrincipalValidationCheck(PolicyCheck):
         statement_idx: int,
         condition_requirement: dict[str, Any],
         matching_principals: list[str],
+        *,
         config: CheckConfig,
         requirement: dict[str, Any],
     ) -> ValidationIssue:
@@ -1213,4 +1235,5 @@ class PrincipalValidationCheck(PolicyCheck):
             suggestion=suggestion,
             line_number=statement.line_number,
             field_name="principal",
+            finding_key=rule_key("none_of", condition_requirement),
         )

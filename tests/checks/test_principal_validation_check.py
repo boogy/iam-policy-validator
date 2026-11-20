@@ -1980,28 +1980,6 @@ class TestPrincipalFindingIdentity:
 
         assert len(set(_finding_ids(issues))) == 2
 
-    async def test_same_key_required_by_requirements_for_different_principals_has_distinct_ids(self, check):
-        config = CheckConfig(
-            check_id="principal_validation",
-            enabled=True,
-            config={
-                "blocked_principals": [],
-                "principal_condition_requirements": [
-                    {"principals": ["111111111111"], "required_conditions": [{"condition_key": "aws:SourceArn"}]},
-                    {
-                        "principals": ["arn:aws:iam::*:role/*"],
-                        "required_conditions": [{"condition_key": "aws:SourceArn"}],
-                    },
-                ],
-            },
-        )
-        statement = _principal_statement(["111111111111", "arn:aws:iam::222222222222:role/x"])
-
-        issues = await _run_both(check, statement, None, config)
-
-        assert len(issues) == 2
-        assert len(set(_finding_ids(issues))) == 2
-
     async def test_forbidden_leaves_differing_in_value_have_distinct_ids(self, check):
         required = {
             "none_of": [
@@ -2072,3 +2050,304 @@ class TestPrincipalFindingIdentity:
         issues = await _run_both(check, _principal_statement("*"), None, _requirement_config(["*"], required))
 
         assert [i.severity for i in issues] == ["critical"]
+
+
+def _requirements_config(*requirements: dict, **extra) -> CheckConfig:
+    return CheckConfig(
+        check_id="principal_validation",
+        enabled=True,
+        config={"blocked_principals": [], "principal_condition_requirements": list(requirements), **extra},
+    )
+
+
+class TestPrincipalStableFindingKey:
+    async def test_entries_with_the_same_invalid_severity_are_reported_separately(self, check):
+        config = _requirement_config(
+            ["*"],
+            [
+                {"condition_key": "aws:SourceArn", "severity": "urgent"},
+                {"condition_key": "aws:SourceAccount", "severity": "urgent"},
+            ],
+        )
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert len({i.finding_key for i in invalid}) == 2
+
+    async def test_requirement_finding_key_does_not_depend_on_message_wording(self, check, monkeypatch):
+        config = _requirement_config(["*"], {"any_of": [{"condition_key": "aws:SourceArn"}]})
+        before = [i.finding_key for i in await _run_both(check, _principal_statement("*"), None, config)]
+        monkeypatch.setattr(
+            "iam_validator.checks.principal_validation.format_list_with_backticks", lambda items: "reworded"
+        )
+
+        after = await _run_both(check, _principal_statement("*"), None, config)
+
+        assert "reworded" in after[0].message
+        assert [i.finding_key for i in after] == before
+
+    async def test_requirement_finding_id_does_not_depend_on_matching_principals(self, check):
+        config = _requirement_config(["arn:aws:iam::*:root"], [{"condition_key": "aws:SourceArn"}])
+        one = _principal_statement("arn:aws:iam::111111111111:root")
+        two = _principal_statement(["arn:aws:iam::111111111111:root", "arn:aws:iam::222222222222:root"])
+
+        ids_one = _finding_ids(await _run_both(check, one, None, config))
+        ids_two = _finding_ids(await _run_both(check, two, None, config))
+
+        assert ids_one == ids_two
+
+    async def test_config_problem_finding_key_does_not_depend_on_message_wording(self, check, monkeypatch):
+        config = _requirement_config(["*"], [{"condition_key": 5}])
+        before = [i.finding_key for i in await _run_both(check, _principal_statement("*"), None, config)]
+        monkeypatch.setattr(
+            "iam_validator.checks.principal_validation.format_list_with_backticks", lambda items: "reworded"
+        )
+
+        after = await _run_both(check, _principal_statement("*"), None, config)
+
+        assert "reworded" in after[0].message
+        assert [i.finding_key for i in after] == before
+
+    async def test_requirements_rendering_the_same_message_are_both_reported(self, check):
+        config = _requirements_config(
+            {
+                "principals": ["*"],
+                "required_conditions": [{"condition_key": "aws:SourceAccount", "expected_value": "1"}],
+            },
+            {
+                "principals": ["*"],
+                "required_conditions": [{"condition_key": "aws:SourceAccount", "expected_value": "2"}],
+            },
+        )
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        assert len(issues) == 2
+        assert len(set(_finding_ids(issues))) == 2
+
+    async def test_list_and_all_of_forms_of_one_entry_are_reported_once(self, check):
+        entry = {"condition_key": "aws:SourceArn"}
+        config = _requirements_config(
+            {"principals": ["*"], "required_conditions": [entry]},
+            {"principals": ["*"], "required_conditions": {"all_of": [dict(entry)]}},
+        )
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        assert [i.issue_type for i in issues] == ["missing_principal_condition"]
+
+    async def test_config_problems_are_finalized_when_no_statement_reaches_condition_rules(self, check):
+        config = _requirements_config(blocked_principals=["*", 5, 5])
+
+        issues = await check.execute_policy(
+            IAMPolicy(Version="2012-10-17", Statement=[_principal_statement("*")]), "policy.json", None, config
+        )
+
+        assert [i.issue_type for i in issues] == ["invalid_condition_requirement"]
+        assert issues[0].finding_key
+
+    async def test_principal_findings_in_one_statement_have_distinct_ids(self, check):
+        config = _requirements_config(blocked_principals=["111111111111", "222222222222"])
+        statement = _principal_statement(["111111111111", "222222222222"])
+
+        issues = await check.execute(statement, 0, None, config)
+
+        assert [i.issue_type for i in issues] == ["blocked_principal", "blocked_principal"]
+        assert len(set(_finding_ids(issues))) == 2
+
+
+class TestPrincipalFindingCollapse:
+    async def test_invalid_entries_differing_in_description_are_both_reported(self, check):
+        config = _requirement_config(
+            ["*"],
+            [{"operator": "StringEquals", "description": "x"}, {"operator": "StringEquals", "description": "y"}],
+        )
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        assert [i.issue_type for i in issues] == ["invalid_condition_requirement"] * 2
+
+    async def test_overlapping_requirements_with_the_same_missing_condition_are_reported_once(self, check):
+        required = [{"condition_key": "aws:SourceArn"}]
+        config = _requirements_config(
+            {"principals": ["*"], "required_conditions": required, "severity": "medium"},
+            {"principals": ["*", "arn:aws:iam::*:root"], "required_conditions": required, "severity": "critical"},
+        )
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        assert [(i.issue_type, i.severity) for i in issues] == [("missing_principal_condition", "critical")]
+
+    async def test_requirements_differing_only_in_operator_are_both_reported(self, check):
+        def requirement(operator: str) -> dict:
+            entry = {"condition_key": "aws:SourceArn", "operator": operator, "example": "same"}
+            return {"principals": ["*"], "required_conditions": [entry]}
+
+        config = _requirements_config(requirement("ArnEquals"), requirement("ArnLike"))
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        assert len(issues) == 2
+        assert len(set(_finding_ids(issues))) == 2
+
+    async def test_list_and_all_of_forms_with_different_patterns_are_reported_once(self, check):
+        entry = {"condition_key": "aws:SourceArn"}
+        config = _requirements_config(
+            {"principals": ["*"], "required_conditions": [entry]},
+            {"principals": ["*", "arn:aws:iam::*:root"], "required_conditions": {"all_of": [dict(entry)]}},
+        )
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        assert [i.issue_type for i in issues] == ["missing_principal_condition"]
+
+    async def test_principals_matched_by_different_requirements_share_one_finding(self, check):
+        required = [{"condition_key": "aws:SourceArn"}]
+        first, second = "arn:aws:iam::111111111111:root", "arn:aws:iam::222222222222:root"
+        config = _requirements_config(
+            {"principals": [first], "required_conditions": required},
+            {"principals": [second], "required_conditions": required},
+        )
+
+        issues = await _run_both(check, _principal_statement([first, second]), None, config)
+
+        assert len(issues) == 1
+        assert first in issues[0].message and second in issues[0].message
+
+    async def test_merged_finding_id_does_not_depend_on_severity_and_text_follows_it(self, check):
+        def run(first_severity: str, second_severity: str):
+            config = _requirements_config(
+                {
+                    "principals": ["*"],
+                    "severity": first_severity,
+                    "required_conditions": [{"condition_key": "aws:SourceArn", "description": "first"}],
+                },
+                {
+                    "principals": ["*", "arn:aws:iam::*:root"],
+                    "severity": second_severity,
+                    "required_conditions": [{"condition_key": "aws:SourceArn", "description": "second"}],
+                },
+            )
+            return _run_both(check, _principal_statement("*"), None, config)
+
+        low_first = await run("low", "critical")
+        high_first = await run("critical", "low")
+
+        assert len(low_first) == len(high_first) == 1
+        assert _finding_ids(low_first) == _finding_ids(high_first)
+        assert [i.severity for i in low_first] == [i.severity for i in high_first] == ["critical"]
+        assert (low_first[0].suggestion, high_first[0].suggestion) == ("second", "first")
+
+    async def test_suppressed_requirement_does_not_add_its_principals(self, check):
+        suppressed, enforced = "arn:aws:iam::111111111111:root", "arn:aws:iam::222222222222:root"
+        config = _requirements_config(
+            {
+                "principals": [suppressed],
+                "severity": "none",
+                "required_conditions": [{"condition_key": "aws:SourceArn"}],
+            },
+            {
+                "principals": [enforced],
+                "severity": "high",
+                "required_conditions": [{"condition_key": "aws:SourceArn"}],
+            },
+        )
+
+        issues = await _run_both(check, _principal_statement([suppressed, enforced]), None, config)
+
+        assert [i.severity for i in issues] == ["high"]
+        assert enforced in issues[0].message and suppressed not in issues[0].message
+
+    async def test_any_of_in_a_different_order_is_one_finding(self, check):
+        arn, account = {"condition_key": "aws:SourceArn"}, {"condition_key": "aws:SourceAccount"}
+        config = _requirements_config(
+            {"principals": ["*"], "required_conditions": {"any_of": [arn, account]}},
+            {"principals": ["*"], "required_conditions": {"any_of": [account, arn]}},
+        )
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        assert len(issues) == 1
+
+
+ROOT = "arn:aws:iam::111111111111:root"
+
+
+def _source_arn_requirement(principals: list[str], severity: str, description: str | None = None) -> dict:
+    entry = {"condition_key": "aws:SourceArn"}
+    if description is not None:
+        entry["description"] = description
+    return {"principals": principals, "severity": severity, "required_conditions": [entry]}
+
+
+class TestPrincipalMergedFindingText:
+    async def test_text_comes_from_the_most_severe_requirement(self, check):
+        config = _requirements_config(
+            _source_arn_requirement(["*"], "low", "optional hardening"),
+            _source_arn_requirement(["*"], "critical", "STRONG"),
+        )
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        assert [(i.severity, i.suggestion) for i in issues] == [("critical", "STRONG")]
+
+    async def test_equal_severity_text_comes_from_the_first_requirement(self, check):
+        config = _requirements_config(
+            _source_arn_requirement(["*"], "high", "first"),
+            _source_arn_requirement(["*"], "high", "second"),
+        )
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        assert [(i.severity, i.suggestion) for i in issues] == [("high", "first")]
+
+
+class TestPrincipalPublicWildcardId:
+    def _config(self) -> CheckConfig:
+        return _requirements_config(
+            _source_arn_requirement(["arn:aws:iam::*:root"], "medium"),
+            _source_arn_requirement(["*"], "critical"),
+        )
+
+    async def test_adding_the_public_wildcard_changes_the_id(self, check):
+        without = await _run_both(check, _principal_statement([ROOT]), None, self._config())
+        with_public = await _run_both(check, _principal_statement([ROOT, "*"]), None, self._config())
+
+        assert len(without) == len(with_public) == 1
+        assert _finding_ids(without) != _finding_ids(with_public)
+
+    @pytest.mark.parametrize("principal", ["*", {"AWS": "*"}])
+    async def test_public_wildcard_spellings_share_the_key(self, check, principal):
+        public = Statement(Effect="Allow", Action=["s3:GetObject"], Resource=["arn:aws:s3:::b/*"], Principal=principal)
+        mixed = _principal_statement(["*", ROOT])
+
+        first = await _run_both(check, public, None, self._config())
+        second = await _run_both(check, mixed, None, self._config())
+
+        assert [i.finding_key for i in first] == [i.finding_key for i in second]
+
+
+class TestPrincipalMalformedGroupNamed:
+    async def test_groups_with_the_same_bad_value_are_reported_separately(self, check):
+        config = _requirement_config(["*"], {"any_of": "aws:SourceArn", "none_of": "aws:SourceArn"})
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert len(set(_finding_ids(invalid))) == 2
+        assert sorted("required_conditions.any_of" in i.message for i in invalid) == [False, True]
+        assert sorted("required_conditions.none_of" in i.message for i in invalid) == [False, True]
+
+
+class TestPrincipalAnyOfDuplicates:
+    async def test_duplicate_any_of_entries_share_the_id(self, check):
+        arn = {"condition_key": "aws:SourceArn"}
+        config = _requirements_config(
+            {"principals": ["*"], "required_conditions": {"any_of": [arn, dict(arn)]}},
+            {"principals": ["*"], "required_conditions": {"any_of": [dict(arn)]}},
+        )
+
+        issues = await _run_both(check, _principal_statement("*"), None, config)
+
+        assert len(issues) == 1
