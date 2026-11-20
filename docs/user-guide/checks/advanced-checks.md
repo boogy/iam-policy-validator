@@ -128,7 +128,8 @@ of key order, `severity`, `description`, `example` and null-valued keys. A condi
 form and the same condition inside `all_of` are the same entry and are reported once.
 
 With `none_of`, only `Allow` statements are flagged: a `Deny` of a forbidden action is
-compliant, so a `Deny` branch on a `none_of` requirement reports nothing. A branch's
+compliant, so a `Deny` branch on a `none_of` requirement reports nothing. A `Deny`-only
+branch whose only group is `none_of` is reported as `invalid_condition_requirement`. A branch's
 `required_conditions` does not exempt a forbidden action: every matching `Allow`
 statement is reported.
 

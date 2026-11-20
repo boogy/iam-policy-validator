@@ -80,6 +80,18 @@ def _effect_problem(effect: Any) -> str | None:
     return None
 
 
+def _deny_only_none_of(branch: dict[str, Any]) -> bool:
+    effects = branch.get("effect", "Allow")
+    conditions = branch.get("required_conditions")
+    return (
+        all(e.lower() == "deny" for e in (effects if isinstance(effects, list) else [effects]))
+        and isinstance(conditions, dict)
+        and bool(conditions.get("none_of"))
+        and not conditions.get("all_of")
+        and not conditions.get("any_of")
+    )
+
+
 def _regex_problem(key: str, pattern: Any) -> str | None:
     if not isinstance(pattern, str):
         return f"`{key}` must be a regex string, got `{pattern!r}`"
@@ -105,6 +117,8 @@ def branch_problem(branch: Any) -> str | None:
         return problem
     if "effect" in branch and (problem := _effect_problem(branch["effect"])):
         return problem
+    if _deny_only_none_of(branch):
+        return "`none_of` only flags `Allow` statements, so a `Deny`-only branch carrying just `none_of` never fires"
     for key in ("resource", "not_resource"):
         if key in branch and (problem := _regex_problem(key, branch[key])):
             return problem

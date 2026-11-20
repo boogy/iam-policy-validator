@@ -965,64 +965,15 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # Now find statements that have ALL of them (not just some)
         statements_with_all_actions: list[tuple[int, Statement, list[str]]] = []
 
-        # Check each statement to see if it contains ALL required actions
-        for statement in statements_by_action.get(list(found_actions_mapping.values())[0], []):
-            stmt_idx, stmt = statement
-            stmt_actions = self._granted_actions(stmt, all_of_actions)
-
-            # Check if this statement has ALL required actions
-            has_all_actions = True
-            matched_actions = []
-
-            for req_action in all_of_actions:
-                req_action_found = False
-                for stmt_action in stmt_actions:
-                    if await self._action_matches(
-                        stmt_action, req_action, requirement.get("action_patterns", []), fetcher
-                    ):
-                        req_action_found = True
-                        if stmt_action not in matched_actions:
-                            matched_actions.append(stmt_action)
-                        break
-
-                if not req_action_found:
-                    has_all_actions = False
-                    break
-
-            if has_all_actions:
+        first_list = statements_by_action.get(next(iter(found_actions_mapping.values())), [])
+        seen: set[int] = set()
+        for stmt_idx, stmt in [*first_list, *(s for lst in statements_by_action.values() for s in lst)]:
+            if stmt_idx in seen:
+                continue
+            seen.add(stmt_idx)
+            matched_actions = await self._all_of_matches(stmt, all_of_actions, requirement, fetcher)
+            if matched_actions is not None:
                 statements_with_all_actions.append((stmt_idx, stmt, matched_actions))
-
-        # Also check other statements not in the first action's list
-        checked_indices = {s[0] for s in statements_with_all_actions}
-        for policy_action, stmt_list in statements_by_action.items():
-            for stmt_idx, stmt in stmt_list:
-                if stmt_idx in checked_indices:
-                    continue
-
-                stmt_actions = self._granted_actions(stmt, all_of_actions)
-
-                # Check if this statement has ALL required actions
-                has_all_actions = True
-                matched_actions = []
-
-                for req_action in all_of_actions:
-                    req_action_found = False
-                    for stmt_action in stmt_actions:
-                        if await self._action_matches(
-                            stmt_action, req_action, requirement.get("action_patterns", []), fetcher
-                        ):
-                            req_action_found = True
-                            if stmt_action not in matched_actions:
-                                matched_actions.append(stmt_action)
-                            break
-
-                    if not req_action_found:
-                        has_all_actions = False
-                        break
-
-                if has_all_actions:
-                    statements_with_all_actions.append((stmt_idx, stmt, matched_actions))
-                    checked_indices.add(stmt_idx)
 
         # If no statements have ALL actions, no issue to report
         if not statements_with_all_actions:
@@ -1036,6 +987,27 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             config,
             "all_of",
         )
+
+    async def _all_of_matches(
+        self,
+        stmt: Statement,
+        all_of_actions: list[str],
+        requirement: dict[str, Any],
+        fetcher: AWSServiceFetcher,
+    ) -> list[str] | None:
+        """The statement actions matching every ``all_of`` action, or ``None`` when one is missing."""
+        stmt_actions = self._granted_actions(stmt, all_of_actions)
+        patterns = requirement.get("action_patterns", [])
+        matched: list[str] = []
+        for req_action in all_of_actions:
+            for stmt_action in stmt_actions:
+                if await self._action_matches(stmt_action, req_action, patterns, fetcher):
+                    if stmt_action not in matched:
+                        matched.append(stmt_action)
+                    break
+            else:
+                return None
+        return matched
 
     async def _check_any_of_policy_wide(
         self,

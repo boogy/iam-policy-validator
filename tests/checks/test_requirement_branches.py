@@ -54,6 +54,8 @@ def test_well_formed_branch_has_no_problem():
         ({"resource": ["arn:.*"], "required_conditions": CONDS}, "must be a regex string"),
         ({"not_resource": 5, "required_conditions": CONDS}, "must be a regex string"),
         ({"resource": "a", "not_resource": "b", "required_conditions": CONDS}, "mutually exclusive"),
+        ({"effect": "Deny", "required_conditions": {"none_of": CONDS}}, "never fires"),
+        ({"effect": ["deny"], "required_conditions": {"none_of": CONDS, "all_of": []}}, "never fires"),
     ],
 )
 def test_branch_problem_reports(branch, fragment):
@@ -208,3 +210,16 @@ def test_null_all_of_without_key_is_not_evaluable(entry):
 )
 def test_has_key_and_group(entry, expected):
     assert has_key_and_group(entry) is expected
+
+
+@pytest.mark.parametrize(
+    "branch",
+    [
+        {"effect": ["Allow", "Deny"], "required_conditions": {"none_of": CONDS}},
+        {"required_conditions": {"none_of": CONDS}},
+        {"effect": "Deny", "required_conditions": {"none_of": CONDS, "all_of": CONDS}},
+        {"effect": "Deny", "required_conditions": CONDS},
+    ],
+)
+def test_branch_that_can_fire_with_none_of_has_no_problem(branch):
+    assert branch_problem(branch) is None
