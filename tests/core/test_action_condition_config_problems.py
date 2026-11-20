@@ -616,6 +616,68 @@ class TestPerActionOverrideMatching:
         assert default in check._get_merged_requirements(config, "policy.json")
 
 
+def _override_config(user: dict[str, Any]) -> tuple[dict[str, Any], CheckConfig]:
+    default = {"actions": [ACTION], "required_conditions": [{"condition_key": "iam:PassedToService"}]}
+    return default, CheckConfig(
+        check_id="action_condition_enforcement",
+        enabled=True,
+        config={
+            "merge_strategy": "per_action_override",
+            "requirements": [default],
+            "action_condition_requirements": [user],
+        },
+    )
+
+
+class TestPerActionOverrideNonEnforcingUserRule:
+    @pytest.mark.parametrize(
+        "user",
+        [
+            {"actions": [ACTION], "required_conditions": {"none_of": [{"condition_key": KEY}]}},
+            {"actions": [ACTION], "required_conditions": [{"operator": "Bool"}]},
+            {
+                "actions": [ACTION],
+                "required_conditions": [{"condition_key": KEY, "all_of": [{"condition_key": "aws:SourceIp"}]}],
+            },
+            {"actions": [ACTION], "if": [{"required_conditions": {"none_of": [{"condition_key": KEY}]}}]},
+        ],
+    )
+    async def test_keeps_the_default_and_matches_enforced_actions(self, check, user):
+        default, config = _override_config(user)
+
+        assert default in check._get_merged_requirements(config, "policy.json")
+        assert check._owned_enforced_actions(user) == []
+
+    async def test_none_of_only_user_rule_still_reports_the_default_requirement(self, check):
+        _, config = _override_config(
+            {"actions": [ACTION], "required_conditions": {"none_of": [{"condition_key": KEY}]}}
+        )
+
+        issues = await _run(check, config)
+
+        assert [i.condition_key for i in issues if i.issue_type == "missing_required_condition"] == [
+            "iam:PassedToService"
+        ]
+
+
+class TestAnyOfIdentityIgnoresOrder:
+    async def test_reordered_any_of_in_overlapping_branches_is_reported_once(self, check):
+        keys = [{"condition_key": "aws:SourceIp"}, {"condition_key": KEY}]
+        config = _config(
+            {
+                "actions": [ACTION],
+                "if": [
+                    {"required_conditions": {"any_of": keys}},
+                    {"severity": "critical", "required_conditions": {"any_of": keys[::-1]}},
+                ],
+            }
+        )
+
+        issues = await _run(check, config)
+
+        assert [(i.issue_type, i.severity) for i in issues] == [("missing_required_condition_any_of", "critical")]
+
+
 class TestFalsyScalarRequiredConditions:
     @pytest.mark.parametrize("required_conditions", [False, 0, ""])
     async def test_reported_as_malformed(self, check, required_conditions):

@@ -24,6 +24,11 @@ def canonical_rule(value: Any) -> Any:
     return repr(value)
 
 
+def unordered(entries: Any) -> list[str]:
+    """Order- and duplicate-independent form of ``entries`` (e.g. an ``any_of`` set) for ``rule_key``."""
+    return sorted({repr(canonical_rule(e)) for e in entries})
+
+
 def rule_key(*parts: Any) -> str:
     """A short stable digest of ``parts`` in canonical form, for use as a ``finding_key``."""
     return hashlib.sha256(repr(canonical_rule(parts)).encode()).hexdigest()[:16]

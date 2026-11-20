@@ -30,6 +30,7 @@ from iam_validator.checks.utils.finding_identity import (
     keep_most_severe,
     rule_key,
     severity_problem_key,
+    unordered,
 )
 from iam_validator.checks.utils.requirement_branches import (
     CONDITION_GROUPS,
@@ -527,28 +528,20 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             policy_file,
         )
 
-        actions: set[str] = set()
-        for raw_requirement in requirements:
-            requirement, _ = check._prepare_requirement(raw_requirement)
-            if "if" in requirement:
-                if not any(
-                    branch_enforces_allow_everywhere(b) and cls._requires_evaluable_condition(b["required_conditions"])
-                    for b in requirement_branches(requirement)[0]
-                ):
-                    continue
-            elif not has_no_conditions(
-                required := requirement.get("required_conditions")
-            ) and not cls._requires_evaluable_condition(required):
-                continue
-            actions.update(cls._owned_actions(requirement.get("actions", [])))
-        return actions
+        return {a for raw_requirement in requirements for a in check._owned_enforced_actions(raw_requirement)}
 
-    def _enforces_allow_everywhere(self, requirement: dict[str, Any]) -> bool:
-        """False for a requirement whose ``if`` branches all skip some ``Allow`` statements."""
-        if "if" not in requirement:
-            return True
-        prepared, _ = self._prepare_requirement(requirement)
-        return any(branch_enforces_allow_everywhere(b) for b in requirement_branches(prepared)[0])
+    def _owned_enforced_actions(self, raw_requirement: dict[str, Any]) -> list[str]:
+        """The owned actions of a requirement that enforces an evaluable condition (or detection) on every ``Allow``."""
+        requirement, _ = self._prepare_requirement(raw_requirement)
+        if "if" in requirement:
+            enforces = any(
+                branch_enforces_allow_everywhere(b) and self._requires_evaluable_condition(b["required_conditions"])
+                for b in requirement_branches(requirement)[0]
+            )
+        else:
+            required = requirement.get("required_conditions")
+            enforces = has_no_conditions(required) or self._requires_evaluable_condition(required)
+        return self._owned_actions(requirement.get("actions", [])) if enforces else []
 
     @staticmethod
     def _owned_actions(configured: Any) -> list[str]:
@@ -792,12 +785,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """
         # Build a set of actions that user has customized (from ALL user requirements)
         # This determines which defaults to exclude
-        user_actions = {
-            a
-            for req in all_user_requirements
-            if self._enforces_allow_everywhere(req)
-            for a in self._owned_actions(req.get("actions", []))
-        }
+        user_actions = {a for req in all_user_requirements for a in self._owned_enforced_actions(req)}
 
         # Start with ACTIVE user requirements (filtered by ignore_patterns)
         merged = list(active_user_requirements)
@@ -1594,7 +1582,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             field_name="condition",
                         ),
                         "any_of",
-                        any_of,
+                        unordered(any_of),
                     )
                 )
 

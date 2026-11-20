@@ -171,7 +171,7 @@ user-supplied `action_condition_requirements` entry moves both checks together. 
 `requirements` directly suppressed findings for requirements that were never in play.
 Matching is `action_matches`, not `==`: a requirement may be a glob and IAM action names
 are case-insensitive. Mapping-form `actions` count their `any_of` entries and a single-entry `all_of`, each group on its own as `_check_policy_wide` enforces them: a longer `all_of`
-flags only statements granting every action, and `none_of` is a separate rule. `per_action_override` uses the same rule (`_owned_actions`): a user requirement replaces a default when one of its owned actions, as an IAM glob, covers the default's action (case-insensitive; `iam:Pass*` replaces `iam:PassRole`, not the reverse), and only when the user requirement has no `if` or a branch enforcing every `Allow` statement (`_enforces_allow_everywhere`); a `none_of`-only user rule owns no actions and keeps the default. Policy-level `invalid_condition_requirement` findings carry a `finding_key` digest (`rule_key`, never the message) of the problem text and `repr` of the raw entry, so entries differing only in presentation keys stay distinct; `_dedupe_issues` keys on it. Statement-level checks never receive `policy_file`, so a
+flags only statements granting every action, and `none_of` is a separate rule. `per_action_override` uses the same rule (`_owned_actions`): a user requirement replaces a default when one of its owned actions, as an IAM glob, covers the default's action (case-insensitive; `iam:Pass*` replaces `iam:PassRole`, not the reverse), and only when it enforces on every `Allow` exactly as `enforced_actions` counts it (`_owned_enforced_actions`, shared by both); a user rule whose `required_conditions` holds no evaluable entry (e.g. `none_of` only) owns no actions and keeps the default. Policy-level `invalid_condition_requirement` findings carry a `finding_key` digest (`rule_key`, never the message) of the problem text and `repr` of the raw entry, so entries differing only in presentation keys stay distinct; `_dedupe_issues` keys on it. Statement-level checks never receive `policy_file`, so a
 requirement carrying `ignore_patterns` counts as unenforced there and the finding is
 kept rather than wrongly suppressed.
 
@@ -269,7 +269,7 @@ literally instead of calling `get_severity(config)`:
   it is skipped by `execute` (`_requirement_entries`) and reported once per policy there too.
   Every finding of this check that can repeat in one statement or policy carries a `finding_key`: the principal
   for `blocked_principal`/`unauthorized_principal`; for a requirement finding `rule_key` over its group
-  (`required` for a list or `all_of` leaf, `any_of`, `none_of`) and canonical entry (an `any_of` set in any order, duplicates ignored), never the principal patterns;
+  (`required` for a list or `all_of` leaf, `any_of`, `none_of`) and canonical entry (an `any_of` set in any order, duplicates ignored, via `finding_identity.unordered`, as in `action_condition_enforcement`), never the principal patterns;
   for a config problem `rule_key` over the problem, the group label (`_create_invalid_entry_issue(where=)`, also named in the message) and `repr` of the offending entry (an invalid `severity` includes
   the entry without its severity, `severity_problem_key`); never the message or the matching principals.
   `_validate_principal_condition_requirements` merges a statement's requirement findings sharing type, condition key and
@@ -277,7 +277,7 @@ literally instead of calling `get_severity(config)`:
   when `"*"` is among the matched principals, so a public escalation gets a new id; a requirement at severity `none` is skipped before merging.
   Otherwise ids ignore matched principals and severity, so an ignore also covers a later escalation of the same statement and entry
   (e.g. a higher-severity requirement matching a newly added principal). `_dedupe` (`finding_identity.keep_most_severe`, shared with `action_condition_enforcement`) keys on `finding_key` on
-  every return path, keeping the most severe.
+  every multi-finding return path (the `Deny` carve-out path yields at most one), keeping the most severe.
   A non-mapping or keyless entry, a non-string `operator`, an invalid entry `severity`, an
   unknown or non-list group or a scalar `required_conditions` (`_prepare_conditions`) is skipped
   by `execute` (never satisfied); it and an invalid requirement-level `severity` are reported
@@ -358,7 +358,7 @@ Use these instead of reimplementing:
 - `sensitive_action_matcher.py` — `get_sensitive_actions_by_categories()`, `check_sensitive_actions()`
 - `policy_level_checks.py` — `check_policy_level_actions()`, `_check_all_of_pattern()`
 - `formatting.py` — `format_list_with_backticks()`
-- `finding_identity.py` — `PRESENTATION_KEYS`, `canonical_rule()`, `rule_key()`, `severity_problem_key()`, `keep_most_severe()`
+- `finding_identity.py` — `PRESENTATION_KEYS`, `canonical_rule()`, `unordered()`, `rule_key()`, `severity_problem_key()`, `keep_most_severe()`
 - `requirement_branches.py` — `requirement_branches()`, `branch_problem()`, `conditions_problem()`, `severity_problem()`, `branch_effects()`,
   `branch_matches_resources()`, `branch_enforces_allow_everywhere()`, `is_evaluable_entry()`,
   `has_key_and_group()`, `without_null_all_of()`

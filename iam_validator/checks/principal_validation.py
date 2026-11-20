@@ -50,10 +50,10 @@ from iam_validator.checks.utils.condition_matching import (
 )
 from iam_validator.checks.utils.finding_identity import (
     PRESENTATION_KEYS,
-    canonical_rule,
     keep_most_severe,
     rule_key,
     severity_problem_key,
+    unordered,
 )
 from iam_validator.checks.utils.requirement_branches import (
     CONDITION_GROUPS,
@@ -700,7 +700,7 @@ class PrincipalValidationCheck(PolicyCheck):
         Returns:
             List of validation issues
         """
-        groups: dict[tuple[Any, ...], tuple[list[_Render], set[str], list[ValidationIssue]]] = {}
+        best: dict[tuple[Any, ...], tuple[_Render, int, set[str]]] = {}
 
         for requirement in requirements:
             # Check if any principal matches this requirement
@@ -721,15 +721,18 @@ class PrincipalValidationCheck(PolicyCheck):
                 if sample.severity == "none":
                     continue
                 key = (sample.issue_type, sample.condition_key, sample.finding_key)
-                renders, matched, samples = groups.setdefault(key, ([], set(), []))
-                renders.append(render)
-                matched.update(matching_principals)
-                samples.append(sample)
+                rank = sample.get_severity_rank()
+                current = best.get(key)
+                if current is None:
+                    best[key] = (render, rank, set(matching_principals))
+                    continue
+                current[2].update(matching_principals)
+                if rank > current[1]:
+                    best[key] = (render, rank, current[2])
 
         issues: list[ValidationIssue] = []
-        for renders, matched, samples in groups.values():
-            top = max(range(len(samples)), key=lambda n: samples[n].get_severity_rank())
-            issue = renders[top]([p for p in dict.fromkeys(principals) if p in matched])
+        for render, _, matched in best.values():
+            issue = render([p for p in dict.fromkeys(principals) if p in matched])
             if "*" in matched:
                 issue.finding_key = rule_key(issue.finding_key, "public")
             issues.append(issue)
@@ -805,7 +808,7 @@ class PrincipalValidationCheck(PolicyCheck):
                     suggestion=suggestion,
                     line_number=statement.line_number,
                     field_name="principal",
-                    finding_key=rule_key("any_of", sorted({repr(canonical_rule(c)) for c in any_of})),
+                    finding_key=rule_key("any_of", unordered(any_of)),
                 )
 
             renders.append(render_any_of)
