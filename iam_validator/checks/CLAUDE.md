@@ -183,7 +183,7 @@ the CHANGELOG `Fixed` entries say. Parsing and matching live in
 `utils/requirement_branches.py`. Each valid branch becomes an ordinary requirement run
 through `_check_per_statement` / `_check_policy_wide` with keyword-only `effects` and
 `statement_filter`. An omitted branch `effect` means `Allow` in both forms; findings
-for the same rule (`finding_key = rule_key(*rule)` set by `_with_rule_identity`, so also part of the finding id; key-order independent, ignoring `severity`/`description`/`example` and null-valued keys) differing only in severity, suggestion or message wording are reported once (in every requirement, not only `if` ones) (most severe kept; a list entry and an `all_of` entry share an identity); `none_of` flags only `Allow` statements (`branch_problem` rejects a `Deny`-only branch whose only non-empty group is `none_of`). Malformed branches yield one `invalid_condition_requirement` (only when a statement matches the requirement's actions)
+for the same rule (`finding_key = rule_key(*rule)` set by `_with_rule_identity`, so also part of the finding id; key-order independent, ignoring `severity`/`description`/`example` and null-valued keys) differing only in severity, suggestion or message wording are reported once (in every requirement, not only `if` ones) (most severe kept; a list entry and an `all_of` entry share an identity; a `forbidden_action` keys on its unordered `none_of` action set); `none_of` flags only `Allow` statements (`branch_problem` rejects a `Deny`-only branch whose only non-empty group is `none_of`; `requirement_branches` rejects any `Deny`-only branch of a requirement whose only non-empty `actions` group is `none_of`). Malformed branches yield one `invalid_condition_requirement` (only when a statement matches the requirement's actions)
 (`error`, `statement_index=-1`) per policy. `branch_problem` does not check `severity`:
 an invalid branch severity is reported and dropped by `_prepare_requirement` and the
 branch still enforced (and counted by `enforced_actions`). `enforced_actions` skips a requirement
@@ -253,7 +253,7 @@ literally instead of calling `get_severity(config)`:
   typo) inside an `if` branch's `required_conditions` drops the whole branch, unlike the
   top-level form, which still enforces its valid groups. A non-list `requirements` /
   `policy_level_requirements` / `action_condition_requirements`, or a non-mapping entry in one,
-  is dropped in `_merge_requirements` (`_requirement_entries`, so `enforced_actions` and
+  is dropped in `_merge_requirements` (`_requirement_entries`, which also makes a string `actions` a list before any merge strategy runs, so `enforced_actions` and
   `sensitive_action` never see it) and reported by `execute_policy` once per policy for every
   policy (`_requirement_list_problems`).
   `principal_validation` keeps only the string entries of `blocked_principals`,
@@ -261,7 +261,7 @@ literally instead of calling `get_severity(config)`:
   (`_string_entries`, never `str()`: YAML mangles leading-zero account ids) and reports each
   non-string entry once per policy from `execute_policy` (the three lists when a statement
   reaches the blocked/allowed rules, `_reaches_principal_rules`; `principals` with the
-  requirement checks; a scalar non-string value counts as one bad entry). An `allowed_principals` that is
+  requirement checks, only when the requirement's string patterns match an evaluated statement; a scalar non-string value counts as one bad entry). An `allowed_principals` that is
   configured (anything but null or `[]`) stays an allow-list even with no string entry, so it
   then allows nothing; likewise an all-invalid `allowed_service_principals` allows no service (a null one keeps the default `aws:*`).
   Non-string values in a policy's `Principal`/`NotPrincipal` are dropped by

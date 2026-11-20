@@ -80,16 +80,22 @@ def _effect_problem(effect: Any) -> str | None:
     return None
 
 
-def _deny_only_none_of(branch: dict[str, Any]) -> bool:
-    effects = branch.get("effect", "Allow")
-    conditions = branch.get("required_conditions")
+def _only_none_of(groups: Any) -> bool:
     return (
-        all(e.lower() == "deny" for e in (effects if isinstance(effects, list) else [effects]))
-        and isinstance(conditions, dict)
-        and bool(conditions.get("none_of"))
-        and not conditions.get("all_of")
-        and not conditions.get("any_of")
+        isinstance(groups, dict)
+        and bool(groups.get("none_of"))
+        and not groups.get("all_of")
+        and not groups.get("any_of")
     )
+
+
+def _deny_only(branch: dict[str, Any]) -> bool:
+    effects = branch.get("effect", "Allow")
+    return all(e.lower() == "deny" for e in (effects if isinstance(effects, list) else [effects]))
+
+
+def _deny_only_none_of(branch: dict[str, Any]) -> bool:
+    return _deny_only(branch) and _only_none_of(branch.get("required_conditions"))
 
 
 def _regex_problem(key: str, pattern: Any) -> str | None:
@@ -136,8 +142,11 @@ def requirement_branches(requirement: dict[str, Any]) -> tuple[list[dict[str, An
     if not isinstance(raw, list) or not raw:
         problems.append(f"`if` must be a non-empty list of branches, got `{raw!r}`")
         raw = []
+    forbids_only = _only_none_of(requirement.get("actions"))
     for index, branch in enumerate(raw):
         problem = branch_problem(branch)
+        if problem is None and forbids_only and _deny_only(branch):
+            problem = "`actions.none_of` only flags `Allow` statements, so a `Deny`-only branch never fires"
         if problem:
             problems.append(f"`if[{index}]`: {problem}")
         else:

@@ -563,10 +563,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         policy_file: str | None,
     ) -> list[dict[str, Any]]:
         """Merged requirements, with a single-string ``actions`` normalized to a list."""
-        return [
-            {**r, "actions": [r["actions"]]} if isinstance(r.get("actions"), str) else r
-            for r in self._merge_requirements(config, policy_file)
-        ]
+        return self._merge_requirements(config, policy_file)
 
     _REQUIREMENT_LIST_KEYS: ClassVar[tuple[str, ...]] = (
         "requirements",
@@ -576,9 +573,15 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
     @staticmethod
     def _requirement_entries(config: CheckConfig, key: str) -> list[dict[str, Any]]:
-        """The mapping entries of the requirement list under ``key``; ``execute_policy`` reports the rest."""
+        """The mapping entries of the requirement list under ``key``, a string ``actions`` made a list; ``execute_policy`` reports the rest."""
         value = config.config.get(key)
-        return [r for r in value if isinstance(r, dict)] if isinstance(value, list) else []
+        if not isinstance(value, list):
+            return []
+        return [
+            {**r, "actions": [r["actions"]]} if isinstance(r.get("actions"), str) else r
+            for r in value
+            if isinstance(r, dict)
+        ]
 
     @classmethod
     def _requirement_list_problems(cls, config: CheckConfig) -> list[ValidationIssue]:
@@ -1102,16 +1105,20 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             ]
 
             issues.append(
-                ValidationIssue(
-                    severity=severity,
-                    statement_sid=stmt.sid,
-                    statement_index=stmt_idx,
-                    issue_type="forbidden_action",
-                    message=f"Forbidden actions {actions_formatted} found. {description}",
-                    action=", ".join(actions),
-                    suggestion=f"Remove these forbidden actions. Found in: {', '.join(statement_refs)}. {description}",
-                    line_number=stmt.line_number,
-                    field_name="action",
+                self._with_rule_identity(
+                    ValidationIssue(
+                        severity=severity,
+                        statement_sid=stmt.sid,
+                        statement_index=stmt_idx,
+                        issue_type="forbidden_action",
+                        message=f"Forbidden actions {actions_formatted} found. {description}",
+                        action=", ".join(actions),
+                        suggestion=f"Remove these forbidden actions. Found in: {', '.join(statement_refs)}. {description}",
+                        line_number=stmt.line_number,
+                        field_name="action",
+                    ),
+                    "none_of",
+                    unordered(none_of_actions),
                 )
             )
 

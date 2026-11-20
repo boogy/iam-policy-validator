@@ -976,3 +976,34 @@ class TestRequirementFindingIds:
         reworded = await _run(check, _config(self._requirement("ec2", severity="critical", description="other")))
 
         assert _ace_ids(plain) == _ace_ids(reworded)
+
+
+class TestPerActionOverrideStringActions:
+    async def test_string_actions_user_rule_replaces_the_default(self, check):
+        default, config = _override_config({"actions": ACTION, "required_conditions": [{"condition_key": KEY}]})
+
+        assert default not in check._get_merged_requirements(config, "policy.json")
+        assert [i.condition_key for i in await _run(check, config)] == [KEY]
+
+
+class TestForbiddenActionRuleIdentity:
+    async def test_distinct_forbidden_sets_get_distinct_finding_ids(self, check):
+        config = _config(
+            {"actions": {"none_of": [ACTION]}, "severity": "high", "description": "A"},
+            {"actions": {"none_of": [ACTION, "iam:DeleteUser"]}, "severity": "low", "description": "B"},
+        )
+
+        issues = await _run(check, config)
+
+        assert [i.issue_type for i in issues] == ["forbidden_action", "forbidden_action"]
+        assert len(set(_ace_ids(issues))) == 2
+
+    async def test_same_forbidden_set_in_any_order_is_reported_once(self, check):
+        config = _config(
+            {"actions": {"none_of": [ACTION, "iam:DeleteUser"]}, "description": "A"},
+            {"actions": {"none_of": ["iam:DeleteUser", ACTION]}, "severity": "critical", "description": "B"},
+        )
+
+        issues = await _run(check, config)
+
+        assert [(i.issue_type, i.severity) for i in issues] == [("forbidden_action", "critical")]

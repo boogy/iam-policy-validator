@@ -272,14 +272,14 @@ class PrincipalValidationCheck(PolicyCheck):
             if self._principal_patterns(requirement) is None:
                 issues.append(self._create_invalid_principals_issue(requirement))
                 continue
+            if not any(self._get_matching_principals(principals, requirement) for principals in evaluated):
+                continue
             issues.extend(
                 self._create_non_string_principal_issue("`principal_condition_requirements` `principals`", entry)
                 for entry in self._non_string_entries(requirement.get("principals"))
             )
             conditions = requirement.get("required_conditions")
-            if has_no_conditions(conditions) or not any(
-                self._get_matching_principals(principals, requirement) for principals in evaluated
-            ):
+            if has_no_conditions(conditions):
                 continue
             severity = requirement.get("severity")
             if severity_problem(severity) is not None:

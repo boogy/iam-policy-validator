@@ -1637,6 +1637,17 @@ class TestPrincipalListConfigRobustness:
             ("missing_principal_condition", 0),
         ]
 
+    async def test_non_string_requirement_principal_not_reported_when_requirement_matches_nothing(self, check):
+        requirement = {
+            "principals": ["arn:aws:iam::111111111111:root", 123],
+            "required_conditions": [{"condition_key": "aws:SourceArn"}],
+        }
+        issues = await self._run(
+            check, {"principal_condition_requirements": [requirement]}, {"AWS": "arn:aws:iam::222222222222:root"}
+        )
+
+        assert [i.issue_type for i in issues if i.issue_type == "invalid_condition_requirement"] == []
+
     @pytest.mark.parametrize("allowed", [[111111111111], 111111111111, {"AWS": "x"}, True])
     async def test_allowlist_with_no_string_entries_stays_restrictive(self, check, allowed):
         issues = await self._run(check, {"allowed_principals": allowed}, {"AWS": "arn:aws:iam::999999999999:root"})

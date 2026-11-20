@@ -223,3 +223,28 @@ def test_has_key_and_group(entry, expected):
 )
 def test_branch_that_can_fire_with_none_of_has_no_problem(branch):
     assert branch_problem(branch) is None
+
+
+@pytest.mark.parametrize("effect", ["Deny", ["deny"]])
+def test_deny_only_branch_on_forbidden_actions_is_reported(effect):
+    requirement = {"actions": {"none_of": ["iam:CreateUser"]}, "if": [{"effect": effect, "required_conditions": CONDS}]}
+
+    branches, problems = requirement_branches(requirement)
+
+    assert branches == []
+    assert problems and "never fires" in problems[0]
+
+
+@pytest.mark.parametrize(
+    "requirement",
+    [
+        {
+            "actions": {"none_of": ["iam:CreateUser"]},
+            "if": [{"effect": ["Allow", "Deny"], "required_conditions": CONDS}],
+        },
+        {"actions": {"none_of": ["a:B"], "any_of": ["c:D"]}, "if": [{"effect": "Deny", "required_conditions": CONDS}]},
+        {"actions": ["iam:CreateUser"], "if": [{"effect": "Deny", "required_conditions": CONDS}]},
+    ],
+)
+def test_branch_that_can_fire_on_forbidden_actions_is_kept(requirement):
+    assert requirement_branches(requirement) == (requirement["if"], [])
