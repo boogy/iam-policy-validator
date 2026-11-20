@@ -6,7 +6,7 @@ from typing import Any
 
 from iam_validator.core.models import ValidationIssue
 
-PRESENTATION_KEYS = frozenset({"severity", "description", "example"})
+PRESENTATION_KEYS = frozenset({"severity", "description", "example", "message"})
 
 
 def canonical_rule(value: Any) -> Any:
@@ -35,8 +35,8 @@ def rule_key(*parts: Any) -> str:
 
 
 def severity_problem_key(node: dict[str, Any]) -> str:
-    """``repr`` of a config node without its ``severity``, identifying an invalid-severity problem."""
-    return repr({k: v for k, v in node.items() if k != "severity"})
+    """Key-order-independent form of a config node without its presentation keys, identifying an invalid-severity problem."""
+    return repr(canonical_rule(node))
 
 
 def keep_most_severe(

@@ -12,12 +12,13 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Added
 
-- Add `if:` branches to `action_condition_enforcement` requirements. Each branch scopes its `required_conditions` by statement `effect` (`Allow`, `Deny` or both; `Allow` when omitted), a `resource` or `not_resource` regex (anchored full match), and may override `severity`. Overlapping branches report a finding for the same condition entry once (whatever its key order, `severity`, `description`, `example` or null-valued keys), at its highest severity; `none_of` flags only `Allow` statements. `resource` and `not_resource` are mutually exclusive in a branch. Malformed branches are reported as `invalid_condition_requirement`; requirements without `if` keep their semantics (see Fixed for malformed-shape handling). ([#240])
+- Add `if:` branches to `action_condition_enforcement` requirements. Each branch scopes its `required_conditions` by statement `effect` (`Allow`, `Deny` or both; `Allow` when omitted), a `resource` or `not_resource` regex (anchored full match), and may override `severity`. Overlapping branches report a finding for the same condition entry once (whatever its key order, `severity`, `description`, `example`, `message` or null-valued keys), at its highest severity; `none_of` flags only `Allow` statements. `resource` and `not_resource` are mutually exclusive in a branch. Malformed branches are reported as `invalid_condition_requirement`; requirements without `if` keep their semantics (see Fixed for malformed-shape handling). ([#240])
 - Add `examples/configs/action-condition-branches.yaml` and worked `if:` examples (resource only, effect and resource, `not_resource`, both effects, top-level conditions beside `if`) to the advanced-checks guide. ([#240])
 - Document `if:` branches in the Claude Code skill and bump the plugin version to 1.33.0 so installs pick it up. ([#240])
 
 ### Fixed
 
+- Ignore a condition entry's custom `message` in `action_condition_enforcement` and `principal_validation` finding ids, like `severity`, `description` and `example`, so rewording it no longer changes ids and breaks ignores; and report an invalid entry `severity` once for entries differing only in key order. ([#240])
 - Report a malformed entry, unknown or non-list group, scalar `required_conditions` or invalid entry `severity` in `principal_condition_requirements` once per policy (`statement_index: -1`), like `action_condition_enforcement`; it was reported once per evaluated statement. ([#240])
 - Label a policy-level finding (`statement_index: -1`) as `Policy-level` in PR comments instead of `Statement[-1]`. ([#240])
 - Keep the default requirement under `merge_strategy: per_action_override` when the user rule is a multi-action `all_of` or a `none_of`; the narrower rule dropped enforcement of the default's action. ([#240])

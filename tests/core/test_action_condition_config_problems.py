@@ -940,6 +940,15 @@ class TestInvalidSeverityFindingIdentity:
         invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
         assert len({i.finding_key for i in invalid}) == 2
 
+    async def test_entries_differing_only_in_key_order_are_reported_once(self, check):
+        entry = {"condition_key": KEY, "severity": "urgent", "expected_value": "ec2"}
+        reordered = dict(reversed(entry.items()))
+        config = _config({"actions": [ACTION], "required_conditions": {"all_of": [entry, reordered]}})
+
+        issues = await _run(check, config)
+
+        assert [i.issue_type for i in issues].count("invalid_condition_requirement") == 1
+
 
 def _ace_ids(issues) -> list[str]:
     return [
@@ -976,6 +985,12 @@ class TestRequirementFindingIds:
         reworded = await _run(check, _config(self._requirement("ec2", severity="critical", description="other")))
 
         assert _ace_ids(plain) == _ace_ids(reworded)
+
+    async def test_id_ignores_custom_message(self, check):
+        first = await _run(check, _config(self._requirement("ec2", message="Pass only to EC2")))
+        reworded = await _run(check, _config(self._requirement("ec2", message="EC2 only, please")))
+
+        assert _ace_ids(first) == _ace_ids(reworded)
 
 
 class TestPerActionOverrideStringActions:

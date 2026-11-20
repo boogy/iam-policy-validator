@@ -183,7 +183,7 @@ the CHANGELOG `Fixed` entries say. Parsing and matching live in
 `utils/requirement_branches.py`. Each valid branch becomes an ordinary requirement run
 through `_check_per_statement` / `_check_policy_wide` with keyword-only `effects` and
 `statement_filter`. An omitted branch `effect` means `Allow` in both forms; findings
-for the same rule (`finding_key = rule_key(*rule)` set by `_with_rule_identity`, so also part of the finding id; key-order independent, ignoring `severity`/`description`/`example` and null-valued keys) differing only in severity, suggestion or message wording are reported once (in every requirement, not only `if` ones) (most severe kept; a list entry and an `all_of` entry share an identity; a `forbidden_action` keys on its unordered `none_of` action set); `none_of` flags only `Allow` statements (`branch_problem` rejects a `Deny`-only branch whose only non-empty group is `none_of`; `requirement_branches` rejects any `Deny`-only branch of a requirement whose only non-empty `actions` group is `none_of`). Malformed branches yield one `invalid_condition_requirement` (only when a statement matches the requirement's actions)
+for the same rule (`finding_key = rule_key(*rule)` set by `_with_rule_identity`, so also part of the finding id; key-order independent, ignoring `severity`/`description`/`example`/`message` and null-valued keys) differing only in severity, suggestion or message wording are reported once (in every requirement, not only `if` ones) (most severe kept; a list entry and an `all_of` entry share an identity; a `forbidden_action` keys on its unordered `none_of` action set); `none_of` flags only `Allow` statements (`branch_problem` rejects a `Deny`-only branch whose only non-empty group is `none_of`; `requirement_branches` rejects any `Deny`-only branch of a requirement whose only non-empty `actions` group is `none_of`). Malformed branches yield one `invalid_condition_requirement` (only when a statement matches the requirement's actions)
 (`error`, `statement_index=-1`) per policy. `branch_problem` does not check `severity`:
 an invalid branch severity is reported and dropped by `_prepare_requirement` and the
 branch still enforced (and counted by `enforced_actions`). `enforced_actions` skips a requirement
@@ -271,7 +271,7 @@ literally instead of calling `get_severity(config)`:
   for `blocked_principal`/`unauthorized_principal`; for a requirement finding `rule_key` over its group
   (`required` for a list or `all_of` leaf, `any_of`, `none_of`) and canonical entry (an `any_of` set in any order, duplicates ignored, via `finding_identity.unordered`, as in `action_condition_enforcement`), never the principal patterns;
   for a config problem `rule_key` over the problem, the group label (`_create_invalid_entry_issue(where=)`, also named in the message) and `repr` of the offending entry (an invalid `severity` includes
-  the entry without its severity, `severity_problem_key`); never the message or the matching principals.
+  the entry in canonical form without its presentation keys, `severity_problem_key`, so key order does not matter); never the message or the matching principals.
   `_validate_principal_condition_requirements` merges a statement's requirement findings sharing type, condition key and
   `finding_key`: matched principals unioned in statement order, severity the max, text from the most severe requirement (first in config order on a tie); `rule_key(finding_key, "public")`
   when `"*"` is among the matched principals, so a public escalation gets a new id; a requirement at severity `none` is skipped before merging.
@@ -285,7 +285,7 @@ literally instead of calling `get_severity(config)`:
   statement that `execute` would evaluate (`_condition_requirement_principals`, shared by both, so
   blocked principals and `Service: "*"` statements never count); a `principals` that is neither a
   string (one pattern) nor a list is reported there too and matches nothing; a nested `all_of` entry needs every child, and its leaves inherit the
-  parent's `severity`/`description`/`example` unless they set their own (a null or
+  parent's `severity`/`description`/`example`/`message` unless they set their own (a null or
   invalid one counts as unset). A null, empty
   or invalid `severity` (entry, then requirement) falls back to the next level, then
   the check default.

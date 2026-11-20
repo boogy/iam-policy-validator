@@ -124,7 +124,7 @@ it applies to every `Allow` statement granting the requirement's actions. An emp
 
 When branches overlap, findings for the same condition entry that differ only in severity
 or suggestion are reported once, at the highest severity. Entries are compared regardless
-of key order, `severity`, `description`, `example` and null-valued keys. A condition in list
+of key order, `severity`, `description`, `example`, `message` and null-valued keys. A condition in list
 form and the same condition inside `all_of` are the same entry and are reported once.
 
 With `none_of`, only `Allow` statements are flagged: a `Deny` of a forbidden action is
