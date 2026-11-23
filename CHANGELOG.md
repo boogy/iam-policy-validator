@@ -53,7 +53,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Ignore `none_of` conditions on a `Deny` statement in an `if` branch, as documented; a `Deny` carrying a forbidden condition was reported as `forbidden_condition_present`. ([#240])
 - Report a `Deny`-only `if` branch whose only condition group is `none_of`, or any `Deny`-only branch of a requirement whose only `actions` group is `none_of`, as `invalid_condition_requirement`; it could never fire and was silently ignored. ([#240])
 - Replace a default requirement under `merge_strategy: per_action_override` when the user rule writes `actions` as a single string; both rules applied. ([#240])
-- Give `forbidden_action` findings a rule-based finding id over the forbidden action set (in any order), so two requirements forbidding different sets no longer share an id, and the same set in two requirements is reported once at its highest severity; the reported actions follow statement order, so the id no longer depends on the `none_of` config order. ([#240])
+- Give `forbidden_action` findings a rule-based finding id over the forbidden action set (in any order), so two requirements forbidding different sets no longer share an id, and the same set in two requirements is reported once at its highest severity; the id ignores the `none_of` config order and action case. ([#240])
 - Report a non-string `principals` entry of a `principal_validation` condition requirement only when the requirement matches an evaluated statement, like its other config problems; a requirement with no string `principals` entry (e.g. an unquoted account id) can never match and is always reported. ([#240])
 - Report a condition entry or `if` branch with an invalid `severity` as `invalid_condition_requirement` instead of crashing `action_condition_enforcement`, and still enforce it at the fallback severity. A null `severity` on an entry or `if` branch falls back to the requirement's severity. ([#240])
 - Name each missing condition key of an `all_of` nested in a list, `all_of` or `none_of` group, instead of `unknown`. ([#240])
@@ -99,7 +99,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Treat a null `allowed_service_principals` (an empty YAML key) as unset, keeping the default `aws:*`; it was read as an empty allowlist, so every service principal was reported as unauthorized. ([#240])
 - Report a `blocked_principals`, `allowed_principals` or `allowed_service_principals` value that is neither a string nor a list (e.g. an unquoted `blocked_principals: 123456789012`) once per policy as `invalid_condition_requirement`; it was silently ignored. ([#240])
 - Ignore a non-string value in a policy's `Principal` or `NotPrincipal` (e.g. `"AWS": [123456789012]`) instead of crashing `principal_validation` and losing its findings for the policy. ([#240])
-- List the actions of a policy-wide `any_of` / `all_of` / `none_of` finding in policy order instead of a run-dependent order, and report a list-form requirement and a group requirement over the same actions once. ([#240])
+- List the actions of a policy-wide `any_of` / `all_of` / `none_of` finding in the statement's own `Action` order (alphabetical for `NotAction`), with findings and their statement references in statement order, instead of a run-, config- or neighbour-dependent order, and report a list-form requirement and a group requirement over the same actions once. ([#240])
 
 [#240]: https://github.com/boogy/iam-policy-validator/pull/240
 

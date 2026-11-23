@@ -969,15 +969,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # Now find statements that have ALL of them (not just some)
         statements_with_all_actions: list[tuple[int, Statement, list[str]]] = []
 
-        first_list = statements_by_action.get(next(iter(found_actions_mapping.values())), [])
-        seen: set[int] = set()
-        for stmt_idx, stmt in [*first_list, *(s for lst in statements_by_action.values() for s in lst)]:
-            if stmt_idx in seen:
-                continue
-            seen.add(stmt_idx)
+        for stmt_idx, stmt in sorted({i: st for lst in statements_by_action.values() for i, st in lst}.items()):
             matched_actions = await self._all_of_matches(stmt, all_of_actions, requirement, fetcher)
             if matched_actions is not None:
-                statements_with_all_actions.append((stmt_idx, stmt, matched_actions))
+                statements_with_all_actions.append((stmt_idx, stmt, self._in_statement_order(stmt, matched_actions)))
 
         # If no statements have ALL actions, no issue to report
         if not statements_with_all_actions:
@@ -1013,6 +1008,39 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 return None
         return matched
 
+    async def _statements_granting(
+        self,
+        candidates: list[str],
+        policy_wide_actions: dict[str, None],
+        statements_by_action: dict[str, list[tuple[int, Statement]]],
+        requirement: dict[str, Any],
+        fetcher: AWSServiceFetcher,
+    ) -> tuple[list[str], list[tuple[int, Statement, list[str]]]]:
+        """Policy actions matching any of ``candidates``, and each granting statement (by index) with its matches."""
+        patterns = requirement.get("action_patterns", [])
+        found: list[str] = []
+        for policy_action in policy_wide_actions:
+            for candidate in candidates:
+                if await self._action_matches(policy_action, candidate, patterns, fetcher):
+                    found.append(policy_action)
+                    break
+        by_statement: dict[int, tuple[Statement, list[str]]] = {}
+        for action in found:
+            for idx, stmt in statements_by_action.get(action, []):
+                by_statement.setdefault(idx, (stmt, []))[1].append(action)
+        return found, [
+            (idx, stmt, self._in_statement_order(stmt, actions))
+            for idx, (stmt, actions) in sorted(by_statement.items())
+        ]
+
+    @staticmethod
+    def _in_statement_order(stmt: Statement, actions: list[str]) -> list[str]:
+        """``actions`` in the order ``stmt`` lists them; alphabetical for ``NotAction`` statements."""
+        rank: dict[str, int] = {}
+        for i, action in enumerate(stmt.get_actions()):
+            rank.setdefault(action, i)
+        return sorted(set(actions), key=lambda a: (rank.get(a, len(rank)), a))
+
     async def _check_any_of_policy_wide(
         self,
         any_of_actions: list[str],
@@ -1023,33 +1051,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         config: CheckConfig,
     ) -> list[ValidationIssue]:
         """Check if at least ONE required action exists anywhere in the policy."""
-        issues: list[ValidationIssue] = []
-        found_actions: list[str] = []
-        statements_with_required_actions: list[tuple[int, Statement, list[str]]] = []
-
-        for req_action in any_of_actions:
-            for policy_action in policy_wide_actions:
-                if await self._action_matches(
-                    policy_action, req_action, requirement.get("action_patterns", []), fetcher
-                ):
-                    found_actions.append(policy_action)
-
-                    # Track statements that have this action
-                    if policy_action in statements_by_action:
-                        for stmt_idx, stmt in statements_by_action[policy_action]:
-                            existing = next(
-                                (s for s in statements_with_required_actions if s[0] == stmt_idx),
-                                None,
-                            )
-                            if existing:
-                                if policy_action not in existing[2]:
-                                    existing[2].append(policy_action)
-                            else:
-                                statements_with_required_actions.append((stmt_idx, stmt, [policy_action]))
-
-        # If no actions found, no issue
+        found_actions, statements_with_required_actions = await self._statements_granting(
+            any_of_actions, policy_wide_actions, statements_by_action, requirement, fetcher
+        )
         if not found_actions:
-            return issues
+            return []
 
         # At least one action found - validate conditions
         return self._generate_policy_wide_issues(
@@ -1071,28 +1077,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     ) -> list[ValidationIssue]:
         """Check if any forbidden actions exist in the policy."""
         issues: list[ValidationIssue] = []
-        forbidden_found: list[str] = []
-        statements_with_forbidden: list[tuple[int, Statement, list[str]]] = []
-
-        for policy_action in policy_wide_actions:
-            for forbidden_action in none_of_actions:
-                if await self._action_matches(
-                    policy_action, forbidden_action, requirement.get("action_patterns", []), fetcher
-                ):
-                    forbidden_found.append(policy_action)
-
-                    # Track statements with forbidden actions
-                    if policy_action in statements_by_action:
-                        for stmt_idx, stmt in statements_by_action[policy_action]:
-                            existing = next((s for s in statements_with_forbidden if s[0] == stmt_idx), None)
-                            if existing:
-                                if policy_action not in existing[2]:
-                                    existing[2].append(policy_action)
-                            else:
-                                statements_with_forbidden.append((stmt_idx, stmt, [policy_action]))
-                    break
-
-        # If forbidden actions found, create issues
+        forbidden_found, statements_with_forbidden = await self._statements_granting(
+            none_of_actions, policy_wide_actions, statements_by_action, requirement, fetcher
+        )
         if not forbidden_found:
             return issues
 
@@ -1120,7 +1107,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                         field_name="action",
                     ),
                     "none_of",
-                    unordered(none_of_actions),
+                    unordered([a.lower() if isinstance(a, str) else a for a in none_of_actions]),
                 )
             )
 

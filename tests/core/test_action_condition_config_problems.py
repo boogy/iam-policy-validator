@@ -1139,3 +1139,75 @@ class TestActionDetectedPerStatement:
 
         detected = [(i.statement_index, i.statement_sid, i.action) for i in issues if i.issue_type == "action_detected"]
         assert detected == [(1, "PassA", ACTION), (2, "PassB", ACTION)]
+
+
+def _multi(sid: str, *actions: str) -> Statement:
+    return Statement(sid=sid, effect="Allow", action=list(actions), resource="*")
+
+
+class TestPolicyWideFindingsFollowStatements:
+    async def test_none_of_action_order_ignores_other_statements(self, check):
+        config = _config({"actions": {"none_of": ["iam:CreateUser", "iam:DeleteUser"]}})
+        target = _multi("Target", "iam:CreateUser", "iam:DeleteUser")
+
+        alone = await _run(check, config, target)
+        after_insert = await _run(check, config, _multi("First", "iam:DeleteUser"), target)
+
+        assert alone[0].action == after_insert[1].action == "iam:CreateUser, iam:DeleteUser"
+        assert _ace_ids(alone)[0] == _ace_ids(after_insert)[1]
+
+    async def test_none_of_findings_and_refs_in_statement_order(self, check):
+        config = _config({"actions": {"none_of": ["iam:CreateUser", "iam:DeleteUser"]}})
+
+        issues = await _run(
+            check,
+            config,
+            _multi("A", "iam:CreateUser"),
+            _multi("B", "iam:DeleteUser"),
+            _multi("C", "iam:CreateUser"),
+        )
+
+        assert [i.statement_index for i in issues] == [0, 1, 2]
+        assert "Statement #1 (SID: A), Statement #2 (SID: B), Statement #3 (SID: C)" in issues[0].suggestion
+
+    async def test_none_of_finding_id_ignores_config_case(self, check):
+        statement = _multi("S", ACTION)
+
+        ids = [
+            _ace_ids(await _run(check, _config({"actions": {"none_of": [action]}}), statement))
+            for action in (ACTION, ACTION.upper())
+        ]
+
+        assert ids[0] == ids[1] and ids[0]
+
+    async def test_any_of_action_order_ignores_config_order(self, check):
+        statement = _multi("S", "s3:PutObject", "s3:GetObject")
+
+        actions = [
+            [
+                i.action
+                for i in await _run(
+                    check,
+                    _config({"actions": {"any_of": any_of}, "required_conditions": [{"condition_key": KEY}]}),
+                    statement,
+                )
+            ]
+            for any_of in (["s3:GetObject", "s3:PutObject"], ["s3:PutObject", "s3:GetObject"])
+        ]
+
+        assert actions[0] == actions[1] == ["s3:PutObject, s3:GetObject"]
+
+    async def test_all_of_findings_in_statement_order(self, check):
+        config = _config(
+            {"actions": {"all_of": ["s3:Get*", "s3:Put*"]}, "required_conditions": [{"condition_key": KEY}]}
+        )
+
+        issues = await _run(
+            check,
+            config,
+            _multi("GetOnly", "s3:GetObject"),
+            _multi("Both", "s3:GetObjectAcl", "s3:PutObject"),
+            _multi("BothAgain", "s3:GetObject", "s3:PutObject"),
+        )
+
+        assert [i.statement_index for i in issues] == [1, 2]
