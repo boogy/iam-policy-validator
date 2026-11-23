@@ -1052,3 +1052,27 @@ class TestPolicyWideActionOrder:
         issues = await _run(check, config, Statement(sid="One", effect="Allow", action=GRANTED[:2], resource="*"))
 
         assert _types(issues) == [("missing_required_condition", 0)]
+
+
+class TestPerActionOverrideKeepsUncoveredDefaultActions:
+    async def test_list_default_keeps_actions_the_user_rule_does_not_cover(self, check):
+        default = {"actions": ["s3:GetObject", "s3:PutObject"], "required_conditions": [{"condition_key": KEY}]}
+        user = {"actions": ["s3:Put*"], "required_conditions": [{"condition_key": KEY}]}
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            config={
+                "merge_strategy": "per_action_override",
+                "requirements": [default],
+                "action_condition_requirements": [user],
+            },
+        )
+
+        merged = check._get_merged_requirements(config, "policy.json")
+
+        assert [r["actions"] for r in merged] == [["s3:Put*"], ["s3:GetObject"]]
+
+    async def test_fully_covered_list_default_is_dropped(self, check):
+        default, merged = _override_merge(check, ["iam:Pass*"])
+
+        assert [r["actions"] for r in merged] == [["iam:Pass*"]]

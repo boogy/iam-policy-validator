@@ -171,7 +171,7 @@ user-supplied `action_condition_requirements` entry moves both checks together. 
 `requirements` directly suppressed findings for requirements that were never in play.
 Matching is `action_matches`, not `==`: a requirement may be a glob and IAM action names
 are case-insensitive. Mapping-form `actions` count their `any_of` entries and a single-entry `all_of`, each group on its own as `_check_policy_wide` enforces them: a longer `all_of`
-flags only statements granting every action, and `none_of` is a separate rule. `per_action_override` uses the same rule (`_owned_actions`): a user requirement replaces a default when one of its owned actions, as an IAM glob, covers the default's action (case-insensitive; `iam:Pass*` replaces `iam:PassRole`, not the reverse), and only when it enforces on every `Allow` exactly as `enforced_actions` counts it (`_owned_enforced_actions`, shared by both); a user rule whose `required_conditions` holds no evaluable entry (e.g. `none_of` only) owns no actions and keeps the default. Policy-level `invalid_condition_requirement` findings carry a `finding_key` digest (`rule_key`, never the message) of the problem text and `repr` of the raw entry, so entries differing only in presentation keys stay distinct; `_dedupe_issues` keys on it. Statement-level checks never receive `policy_file`, so a
+flags only statements granting every action, and `none_of` is a separate rule. `per_action_override` uses the same rule (`_owned_actions`): a user requirement replaces a default when one of its owned actions, as an IAM glob, covers the default's action (case-insensitive; `iam:Pass*` replaces `iam:PassRole`, not the reverse; a list-form default keeps its uncovered actions and is dropped only when none remain, a mapping-form default is dropped on any overlap), and only when it enforces on every `Allow` exactly as `enforced_actions` counts it (`_owned_enforced_actions`, shared by both); a user rule whose `required_conditions` holds no evaluable entry (e.g. `none_of` only) owns no actions and keeps the default. Policy-level `invalid_condition_requirement` findings carry a `finding_key` digest (`rule_key`, never the message) of the problem text and `repr` of the raw entry, so entries differing only in presentation keys stay distinct; `_dedupe_issues` keys on it. Statement-level checks never receive `policy_file`, so a
 requirement carrying `ignore_patterns` counts as unenforced there and the finding is
 kept rather than wrongly suppressed.
 
@@ -261,7 +261,7 @@ literally instead of calling `get_severity(config)`:
   (`_string_entries`, never `str()`: YAML mangles leading-zero account ids) and reports each
   non-string entry once per policy from `execute_policy` (the three lists when a statement
   reaches the blocked/allowed rules, `_reaches_principal_rules`; `principals` with the
-  requirement checks, only when the requirement's string patterns match an evaluated statement; a scalar non-string value counts as one bad entry). An `allowed_principals` that is
+  requirement checks, only when the requirement's string patterns match an evaluated statement or it has none, since such a requirement can never fire; a scalar non-string value counts as one bad entry). An `allowed_principals` that is
   configured (anything but null or `[]`) stays an allow-list even with no string entry, so it
   then allows nothing; likewise an all-invalid `allowed_service_principals` allows no service (a null one keeps the default `aws:*`).
   Non-string values in a policy's `Principal`/`NotPrincipal` are dropped by

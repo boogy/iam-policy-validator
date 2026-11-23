@@ -90,8 +90,7 @@ def _only_none_of(groups: Any) -> bool:
 
 
 def _deny_only(branch: dict[str, Any]) -> bool:
-    effects = branch.get("effect", "Allow")
-    return all(e.lower() == "deny" for e in (effects if isinstance(effects, list) else [effects]))
+    return branch_effects(branch) == frozenset({"Deny"})
 
 
 def _deny_only_none_of(branch: dict[str, Any]) -> bool:

@@ -269,15 +269,21 @@ class PrincipalValidationCheck(PolicyCheck):
                 if not isinstance(entry, dict)
             )
         for requirement in self._requirement_entries(config):
-            if self._principal_patterns(requirement) is None:
+            patterns = self._principal_patterns(requirement)
+            if patterns is None:
                 issues.append(self._create_invalid_principals_issue(requirement))
                 continue
-            if not any(self._get_matching_principals(principals, requirement) for principals in evaluated):
+            non_string = self._non_string_entries(requirement.get("principals"))
+            if (patterns or not non_string) and not any(
+                self._get_matching_principals(principals, requirement) for principals in evaluated
+            ):
                 continue
             issues.extend(
                 self._create_non_string_principal_issue("`principal_condition_requirements` `principals`", entry)
-                for entry in self._non_string_entries(requirement.get("principals"))
+                for entry in non_string
             )
+            if not patterns and non_string:
+                continue
             conditions = requirement.get("required_conditions")
             if has_no_conditions(conditions):
                 continue

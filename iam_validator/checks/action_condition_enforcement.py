@@ -546,9 +546,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     @staticmethod
     def _owned_actions(configured: Any) -> list[str]:
         """Actions a requirement enforces on its own: list entries, ``any_of`` entries and a single-entry ``all_of``."""
-        if isinstance(configured, str):
-            configured = [configured]
-        elif isinstance(configured, dict):
+        if isinstance(configured, dict):
             all_of = configured.get("all_of") or []
             any_of = configured.get("any_of") or []
             single = all_of if isinstance(all_of, list) and len(all_of) == 1 else []
@@ -761,7 +759,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         Merge user requirements with defaults on a per-action basis.
 
         User requirements override defaults for matching actions.
-        Defaults are kept for actions not specified by user.
+        A list-form default keeps its uncovered actions; a mapping-form default is dropped on any overlap.
 
         Key behavior with ignore_patterns:
         - If user defines a requirement for action X with ignore_patterns
@@ -785,16 +783,18 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # Start with ACTIVE user requirements (filtered by ignore_patterns)
         merged = list(active_user_requirements)
 
-        # Add defaults that don't conflict with user requirements
-        for default_req in default_requirements:
-            has_overlap = any(
-                iam_glob_match(user, action)
-                for action in self._owned_actions(default_req.get("actions", []))
-                for user in user_actions
-            )
+        def covered(action: Any) -> bool:
+            return isinstance(action, str) and any(iam_glob_match(user, action) for user in user_actions)
 
-            if not has_overlap:
-                # No overlap - keep this default requirement
+        for default_req in default_requirements:
+            actions = default_req.get("actions", [])
+            if isinstance(actions, list):
+                remaining = [a for a in actions if not covered(a)]
+                if len(remaining) == len(actions):
+                    merged.append(default_req)
+                elif any(isinstance(a, str) for a in remaining):
+                    merged.append({**default_req, "actions": remaining})
+            elif not any(covered(a) for a in self._owned_actions(actions)):
                 merged.append(default_req)
 
         return merged
