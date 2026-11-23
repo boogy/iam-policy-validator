@@ -1124,3 +1124,18 @@ class TestForbiddenActionIdIgnoresConfigOrder:
         ]
 
         assert ids[0] == ids[1] and ids[0]
+
+
+class TestActionDetectedPerStatement:
+    @pytest.mark.parametrize("actions", [[ACTION], {"any_of": [ACTION]}])
+    async def test_each_matching_statement_gets_its_own_finding(self, check, actions):
+        issues = await _run(
+            check,
+            _config({"actions": actions}),
+            _stmt("Read", action="s3:GetObject"),
+            _stmt("PassA"),
+            _stmt("PassB"),
+        )
+
+        detected = [(i.statement_index, i.statement_sid, i.action) for i in issues if i.issue_type == "action_detected"]
+        assert detected == [(1, "PassA", ACTION), (2, "PassB", ACTION)]

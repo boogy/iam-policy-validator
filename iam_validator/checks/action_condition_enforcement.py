@@ -1126,6 +1126,30 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         return issues
 
+    @staticmethod
+    def _action_detected_issues(
+        matching: list[tuple[int, Statement, list[str]]], description: str, severity: str, scope: str = ""
+    ) -> list[ValidationIssue]:
+        """One ``action_detected`` issue per matching statement, naming that statement's actions."""
+        refs = [f"Statement #{idx + 1}{f' (SID: {stmt.sid})' if stmt.sid else ''}" for idx, stmt, _ in matching]
+        issues = []
+        for idx, stmt, actions in matching:
+            found = sorted(set(actions))
+            issues.append(
+                ValidationIssue(
+                    severity=severity,
+                    statement_sid=stmt.sid,
+                    statement_index=idx,
+                    issue_type="action_detected",
+                    message=f"Actions {format_list_with_backticks(found)} found{scope}. {description}",
+                    action=", ".join(found),
+                    suggestion=f"Review these statements: {', '.join(refs)}. {description}",
+                    line_number=stmt.line_number,
+                    field_name="action",
+                )
+            )
+        return issues
+
     def _generate_policy_wide_issues(
         self,
         statements_with_actions: list[tuple[int, Statement, list[str]]],
@@ -1141,28 +1165,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         severity = self._resolve_severity(config, requirement)
 
         if has_no_conditions(required_conditions_config):
-            # No conditions specified, just report that actions were found
-            all_actions_formatted = format_list_with_backticks(sorted(set(found_actions)))
-            statement_refs = [
-                f"Statement #{idx + 1}{' (SID: ' + stmt.sid + ')' if stmt.sid else ''}"
-                for idx, stmt, _ in statements_with_actions
-            ]
-
-            first_idx, first_stmt, _ = statements_with_actions[0]
-            issues.append(
-                ValidationIssue(
-                    severity=severity,
-                    statement_sid=first_stmt.sid,
-                    statement_index=first_idx,
-                    issue_type="action_detected",
-                    message=f"Actions {all_actions_formatted} found across {len(statements_with_actions)} statement(s) ({operator_type}). {description}",
-                    action=", ".join(sorted(set(found_actions))),
-                    suggestion=f"Review these statements: {', '.join(statement_refs)}. {description}",
-                    line_number=first_stmt.line_number,
-                    field_name="action",
-                )
-            )
-            return issues
+            return self._action_detected_issues(statements_with_actions, description, severity, f" ({operator_type})")
 
         # Validate conditions for each statement
         for idx, statement, matching_actions in statements_with_actions:
@@ -1225,36 +1228,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         # Now validate that ALL matching statements have the required conditions
         required_conditions_config = requirement.get("required_conditions", [])
         if has_no_conditions(required_conditions_config):
-            # No conditions specified, just report that actions were found
-            description = requirement.get("description", "")
-            severity = self._resolve_severity(config, requirement)
-
-            # Create a summary issue for all matching statements
-            all_actions = set()
-            statement_refs = []
-            for idx, stmt, actions in matching_statements:
-                all_actions.update(actions)
-                sid_info = f" (SID: {stmt.sid})" if stmt.sid else ""
-                statement_refs.append(f"Statement #{idx + 1}{sid_info}")
-
-            # Use the first matching statement's index for the issue
-            first_idx, first_stmt, _ = matching_statements[0]
-            all_actions_formatted = format_list_with_backticks(sorted(all_actions))
-
-            issues.append(
-                ValidationIssue(
-                    severity=severity,
-                    statement_sid=first_stmt.sid,
-                    statement_index=first_idx,
-                    issue_type="action_detected",
-                    message=f"Actions {all_actions_formatted} found in {len(matching_statements)} statement(s). {description}",
-                    action=", ".join(sorted(all_actions)),
-                    suggestion=f"Review these statements: {', '.join(statement_refs)}. {description}",
-                    line_number=first_stmt.line_number,
-                    field_name="action",
-                )
+            return self._action_detected_issues(
+                matching_statements,
+                requirement.get("description", ""),
+                self._resolve_severity(config, requirement),
             )
-            return issues
 
         # Validate conditions for each matching statement
         for idx, statement, matching_actions in matching_statements:
