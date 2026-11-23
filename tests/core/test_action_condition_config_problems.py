@@ -1076,3 +1076,51 @@ class TestPerActionOverrideKeepsUncoveredDefaultActions:
         default, merged = _override_merge(check, ["iam:Pass*"])
 
         assert [r["actions"] for r in merged] == [["iam:Pass*"]]
+
+
+def _override_with_default(check, default: dict[str, Any]) -> list[dict[str, Any]]:
+    config = CheckConfig(
+        check_id="action_condition_enforcement",
+        enabled=True,
+        config={
+            "merge_strategy": "per_action_override",
+            "requirements": [default],
+            "action_condition_requirements": [{"actions": [ACTION], "required_conditions": [{"condition_key": KEY}]}],
+        },
+    )
+    return check._get_merged_requirements(config, "policy.json")
+
+
+class TestPerActionOverrideTrimsOverlappingDefaults:
+    async def test_mapping_default_keeps_uncovered_any_of_actions(self, check):
+        default = {
+            "actions": {"any_of": [ACTION, "iam:CreateRole"]},
+            "required_conditions": [{"condition_key": "iam:PassedToService"}],
+        }
+
+        merged = _override_with_default(check, default)
+
+        assert [r["actions"] for r in merged] == [[ACTION], {"any_of": ["iam:CreateRole"]}]
+
+    async def test_default_with_action_patterns_is_dropped_on_overlap(self, check):
+        default = {
+            "actions": [ACTION, "iam:CreateRole"],
+            "action_patterns": ["^iam:Pass.*"],
+            "required_conditions": [{"condition_key": "iam:PassedToService"}],
+        }
+
+        merged = _override_with_default(check, default)
+
+        assert [r["actions"] for r in merged] == [[ACTION]]
+
+
+class TestForbiddenActionIdIgnoresConfigOrder:
+    async def test_none_of_order_does_not_change_finding_id(self, check):
+        statement = Statement(sid="S", effect="Allow", action=["s3:PutObject", "s3:GetObject"], resource="*")
+
+        ids = [
+            _ace_ids(await _run(check, _config({"actions": {"none_of": none_of}}), statement))
+            for none_of in (["s3:PutObject", "s3:GetObject"], ["s3:GetObject", "s3:PutObject"])
+        ]
+
+        assert ids[0] == ids[1] and ids[0]

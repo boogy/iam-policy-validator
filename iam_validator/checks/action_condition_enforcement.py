@@ -759,7 +759,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         Merge user requirements with defaults on a per-action basis.
 
         User requirements override defaults for matching actions.
-        A list-form default keeps its uncovered actions; a mapping-form default is dropped on any overlap.
+        An overlapping default keeps its uncovered list or ``any_of`` actions; one with ``action_patterns`` is dropped.
 
         Key behavior with ignore_patterns:
         - If user defines a requirement for action X with ignore_patterns
@@ -788,16 +788,25 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         for default_req in default_requirements:
             actions = default_req.get("actions", [])
-            if isinstance(actions, list):
-                remaining = [a for a in actions if not covered(a)]
-                if len(remaining) == len(actions):
-                    merged.append(default_req)
-                elif any(isinstance(a, str) for a in remaining):
-                    merged.append({**default_req, "actions": remaining})
-            elif not any(covered(a) for a in self._owned_actions(actions)):
+            if not any(covered(a) for a in self._owned_actions(actions)):
                 merged.append(default_req)
+            elif not default_req.get("action_patterns"):
+                trimmed = self._without_covered_actions(actions, covered)
+                if trimmed is not None:
+                    merged.append({**default_req, "actions": trimmed})
 
         return merged
+
+    def _without_covered_actions(self, actions: Any, covered: Callable[[Any], bool]) -> Any:
+        """``actions`` minus the covered list or ``any_of`` entries, or ``None`` when nothing enforceable remains."""
+        if isinstance(actions, list):
+            remaining = [a for a in actions if not covered(a)]
+            return remaining if any(isinstance(a, str) for a in remaining) else None
+        if any(covered(a) for a in self._owned_actions({**actions, "any_of": []})):
+            return None
+        any_of = [a for a in actions.get("any_of") or [] if not covered(a)]
+        trimmed = {k: v for k, v in actions.items() if k != "any_of"} | ({"any_of": any_of} if any_of else {})
+        return trimmed if any(trimmed.get(group) for group in ("all_of", "any_of", "none_of")) else None
 
     def _filter_requirement_issues(
         self,
@@ -1065,8 +1074,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         forbidden_found: list[str] = []
         statements_with_forbidden: list[tuple[int, Statement, list[str]]] = []
 
-        for forbidden_action in none_of_actions:
-            for policy_action in policy_wide_actions:
+        for policy_action in policy_wide_actions:
+            for forbidden_action in none_of_actions:
                 if await self._action_matches(
                     policy_action, forbidden_action, requirement.get("action_patterns", []), fetcher
                 ):
@@ -1081,6 +1090,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                                     existing[2].append(policy_action)
                             else:
                                 statements_with_forbidden.append((stmt_idx, stmt, [policy_action]))
+                    break
 
         # If forbidden actions found, create issues
         if not forbidden_found:
