@@ -887,7 +887,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         if all_of:
             all_of_result = await self._check_all_of_policy_wide(
                 all_of,
-                policy_wide_actions,
                 statements_by_action,
                 requirement,
                 fetcher,
@@ -929,7 +928,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     async def _check_all_of_policy_wide(
         self,
         all_of_actions: list[str],
-        policy_wide_actions: dict[str, None],
         statements_by_action: dict[str, list[tuple[int, Statement]]],
         requirement: dict[str, Any],
         fetcher: AWSServiceFetcher,
@@ -942,31 +940,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         not statements that contain just some of them. This is useful for detecting
         overly permissive individual statements.
         """
-        issues: list[ValidationIssue] = []
-
-        # First, check if ALL required actions exist somewhere in the policy
-        found_actions_mapping: dict[str, str] = {}  # req_action -> matched_policy_action
-        missing_actions: list[str] = []
-
-        for req_action in all_of_actions:
-            action_found = False
-            for policy_action in policy_wide_actions:
-                if await self._action_matches(
-                    policy_action, req_action, requirement.get("action_patterns", []), fetcher
-                ):
-                    action_found = True
-                    found_actions_mapping[req_action] = policy_action
-                    break
-
-            if not action_found:
-                missing_actions.append(req_action)
-
-        # If not all actions exist in the policy, no issue
-        if missing_actions:
-            return issues
-
-        # ALL required actions exist in the policy
-        # Now find statements that have ALL of them (not just some)
         statements_with_all_actions: list[tuple[int, Statement, list[str]]] = []
 
         for stmt_idx, stmt in sorted({i: st for lst in statements_by_action.values() for i, st in lst}.items()):
@@ -974,14 +947,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             if matched_actions is not None:
                 statements_with_all_actions.append((stmt_idx, stmt, self._in_statement_order(stmt, matched_actions)))
 
-        # If no statements have ALL actions, no issue to report
         if not statements_with_all_actions:
-            return issues
+            return []
 
-        # Report statements that have ALL the dangerous actions
         return self._generate_policy_wide_issues(
             statements_with_all_actions,
-            list(found_actions_mapping.values()),
             requirement,
             config,
             "all_of",
@@ -1051,16 +1021,14 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         config: CheckConfig,
     ) -> list[ValidationIssue]:
         """Check if at least ONE required action exists anywhere in the policy."""
-        found_actions, statements_with_required_actions = await self._statements_granting(
+        _, statements_with_required_actions = await self._statements_granting(
             any_of_actions, policy_wide_actions, statements_by_action, requirement, fetcher
         )
-        if not found_actions:
+        if not statements_with_required_actions:
             return []
 
-        # At least one action found - validate conditions
         return self._generate_policy_wide_issues(
             statements_with_required_actions,
-            found_actions,
             requirement,
             config,
             "any_of",
@@ -1085,13 +1053,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         description = requirement.get("description", "These actions should not be used")
         severity = self._resolve_severity(config, requirement)
+        statement_refs = ", ".join(self._statement_refs(statements_with_forbidden))
+        patterns = requirement.get("action_patterns") or []
 
         for stmt_idx, stmt, actions in statements_with_forbidden:
             actions_formatted = format_list_with_backticks(actions)
-            statement_refs = [
-                f"Statement #{idx + 1}{' (SID: ' + s.sid + ')' if s.sid else ''}"
-                for idx, s, _ in statements_with_forbidden
-            ]
 
             issues.append(
                 self._with_rule_identity(
@@ -1102,26 +1068,32 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                         issue_type="forbidden_action",
                         message=f"Forbidden actions {actions_formatted} found. {description}",
                         action=", ".join(actions),
-                        suggestion=f"Remove these forbidden actions. Found in: {', '.join(statement_refs)}. {description}",
+                        suggestion=f"Remove these forbidden actions. Found in: {statement_refs}. {description}",
                         line_number=stmt.line_number,
                         field_name="action",
                     ),
                     "none_of",
                     unordered([a.lower() if isinstance(a, str) else a for a in none_of_actions]),
+                    *([unordered(patterns)] if patterns else []),
                 )
             )
 
         return issues
 
     @staticmethod
+    def _statement_refs(matching: list[tuple[int, Statement, list[str]]]) -> list[str]:
+        """``Statement #n (SID: x)`` for each matching statement."""
+        return [f"Statement #{idx + 1}{f' (SID: {stmt.sid})' if stmt.sid else ''}" for idx, stmt, _ in matching]
+
+    @classmethod
     def _action_detected_issues(
-        matching: list[tuple[int, Statement, list[str]]], description: str, severity: str, scope: str = ""
+        cls, matching: list[tuple[int, Statement, list[str]]], description: str, severity: str, scope: str = ""
     ) -> list[ValidationIssue]:
-        """One ``action_detected`` issue per matching statement, naming that statement's actions."""
-        refs = [f"Statement #{idx + 1}{f' (SID: {stmt.sid})' if stmt.sid else ''}" for idx, stmt, _ in matching]
+        """One ``action_detected`` issue per matching statement, naming its actions in the statement's own order."""
+        refs = cls._statement_refs(matching)
         issues = []
         for idx, stmt, actions in matching:
-            found = sorted(set(actions))
+            found = cls._in_statement_order(stmt, actions)
             issues.append(
                 ValidationIssue(
                     severity=severity,
@@ -1140,7 +1112,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     def _generate_policy_wide_issues(
         self,
         statements_with_actions: list[tuple[int, Statement, list[str]]],
-        found_actions: list[str],
         requirement: dict[str, Any],
         config: CheckConfig,
         operator_type: str,

@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from iam_validator.checks.action_condition_enforcement import ActionConditionEnforcementCheck
+from iam_validator.checks.utils.finding_identity import rule_key, unordered
 from iam_validator.core.check_registry import CheckConfig
 from iam_validator.core.finding_fingerprint import compute_finding_hash
 from iam_validator.core.models import IAMPolicy, Statement
@@ -1211,3 +1212,38 @@ class TestPolicyWideFindingsFollowStatements:
         )
 
         assert [i.statement_index for i in issues] == [1, 2]
+
+
+class TestActionDetectedFollowsStatementOrder:
+    @pytest.mark.parametrize(
+        "actions",
+        [
+            ["iam:PassRole", "s3:PutObject"],
+            {"any_of": ["iam:PassRole", "s3:PutObject"]},
+            {"all_of": ["iam:PassRole", "s3:PutObject"]},
+        ],
+    )
+    async def test_actions_listed_in_statement_order(self, check, actions):
+        issues = await _run(check, _config({"actions": actions}), _multi("S", "s3:PutObject", "iam:PassRole"))
+
+        assert [i.action for i in issues if i.issue_type == "action_detected"] == ["s3:PutObject, iam:PassRole"]
+
+
+class TestForbiddenActionIdIncludesPatterns:
+    async def test_same_none_of_with_different_patterns_gets_distinct_ids(self, check):
+        statement = _multi("S", "s3:DeleteBucket", "s3:DeleteObject")
+        plain = {"actions": {"none_of": ["s3:DeleteBucket"]}, "description": "A"}
+        patterned = {**plain, "action_patterns": ["^s3:Delete.*"], "description": "B"}
+
+        issues = await _run(check, _config(plain, patterned), statement)
+
+        forbidden = [i for i in issues if i.issue_type == "forbidden_action"]
+        assert len(forbidden) == 2
+        assert len({i.finding_key for i in forbidden}) == 2
+
+    async def test_id_without_patterns_is_unchanged(self, check):
+        issues = await _run(
+            check, _config({"actions": {"none_of": ["s3:DeleteBucket"]}}), _multi("S", "s3:DeleteBucket")
+        )
+
+        assert issues[0].finding_key == rule_key("none_of", unordered(["s3:deletebucket"]))
