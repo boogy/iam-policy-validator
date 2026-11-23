@@ -253,7 +253,7 @@ literally instead of calling `get_severity(config)`:
   typo) inside an `if` branch's `required_conditions` drops the whole branch, unlike the
   top-level form, which still enforces its valid groups. A non-list `requirements` /
   `policy_level_requirements` / `action_condition_requirements`, or a non-mapping entry in one,
-  is dropped in `_merge_requirements` (`_requirement_entries`, which also makes a string `actions` a list before any merge strategy runs, so `enforced_actions` and
+  is dropped in `_get_merged_requirements` (`_requirement_entries`, which also makes a string `actions` a list before any merge strategy runs, so `enforced_actions` and
   `sensitive_action` never see it) and reported by `execute_policy` once per policy for every
   policy (`_requirement_list_problems`).
   `principal_validation` keeps only the string entries of `blocked_principals`,

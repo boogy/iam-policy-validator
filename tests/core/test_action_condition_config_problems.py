@@ -1022,3 +1022,33 @@ class TestForbiddenActionRuleIdentity:
         issues = await _run(check, config)
 
         assert [(i.issue_type, i.severity) for i in issues] == [("forbidden_action", "critical")]
+
+
+GRANTED = ["iam:PassRole", "iam:GetRole", "iam:DeleteRole", "iam:CreateRole", "iam:TagRole", "iam:ListRoles"]
+
+
+class TestPolicyWideActionOrder:
+    async def test_glob_any_of_lists_actions_in_statement_order(self, check):
+        config = _config({"actions": {"any_of": ["iam:*"]}, "required_conditions": [{"condition_key": KEY}]})
+
+        issues = await _run(check, config, Statement(sid="One", effect="Allow", action=GRANTED, resource="*"))
+
+        assert [i.action for i in issues] == [", ".join(GRANTED)]
+
+    async def test_glob_none_of_lists_actions_in_statement_order(self, check):
+        config = _config({"actions": {"none_of": ["iam:*"]}})
+
+        issues = await _run(check, config, Statement(sid="One", effect="Allow", action=GRANTED, resource="*"))
+
+        assert [i.action for i in issues] == [", ".join(GRANTED)]
+
+    async def test_list_and_any_of_over_same_actions_reported_once(self, check):
+        required_conditions = [{"condition_key": KEY}]
+        config = _config(
+            {"actions": GRANTED[:2], "required_conditions": required_conditions},
+            {"actions": {"any_of": GRANTED[1::-1]}, "required_conditions": required_conditions},
+        )
+
+        issues = await _run(check, config, Statement(sid="One", effect="Allow", action=GRANTED[:2], resource="*"))
+
+        assert _types(issues) == [("missing_required_condition", 0)]

@@ -99,6 +99,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Treat a null `allowed_service_principals` (an empty YAML key) as unset, keeping the default `aws:*`; it was read as an empty allowlist, so every service principal was reported as unauthorized. ([#240])
 - Report a `blocked_principals`, `allowed_principals` or `allowed_service_principals` value that is neither a string nor a list (e.g. an unquoted `blocked_principals: 123456789012`) once per policy as `invalid_condition_requirement`; it was silently ignored. ([#240])
 - Ignore a non-string value in a policy's `Principal` or `NotPrincipal` (e.g. `"AWS": [123456789012]`) instead of crashing `principal_validation` and losing its findings for the policy. ([#240])
+- List the actions of a policy-wide `any_of` / `all_of` / `none_of` finding in policy order instead of a run-dependent order, and report a list-form requirement and a group requirement over the same actions once. ([#240])
 
 [#240]: https://github.com/boogy/iam-policy-validator/pull/240
 

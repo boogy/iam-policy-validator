@@ -228,7 +228,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 issue.issue_type,
                 issue.statement_index,
                 issue.field_name,
-                issue.action,
+                issue.action if unidentified else frozenset((issue.action or "").split(", ")),
                 issue.condition_key,
                 issue.line_number,
                 issue.finding_key,
@@ -557,14 +557,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             return []
         return [a for a in configured if isinstance(a, str)]
 
-    def _get_merged_requirements(
-        self,
-        config: CheckConfig,
-        policy_file: str | None,
-    ) -> list[dict[str, Any]]:
-        """Merged requirements, with a single-string ``actions`` normalized to a list."""
-        return self._merge_requirements(config, policy_file)
-
     _REQUIREMENT_LIST_KEYS: ClassVar[tuple[str, ...]] = (
         "requirements",
         "policy_level_requirements",
@@ -611,7 +603,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             for key, entry, problem in problems
         ]
 
-    def _merge_requirements(
+    def _get_merged_requirements(
         self,
         config: CheckConfig,
         policy_file: str | None,
@@ -866,7 +858,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         none_of = actions_config.get("none_of") or []
 
         # Collect all actions across the entire policy
-        policy_wide_actions: set[str] = set()
+        policy_wide_actions: dict[str, None] = {}
         statements_by_action: dict[str, list[tuple[int, Statement]]] = {}
 
         for idx, statement in enumerate(policy.statement or []):
@@ -874,7 +866,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 continue
 
             statement_actions = self._granted_actions(statement, [*all_of, *any_of, *none_of])
-            policy_wide_actions.update(statement_actions)
+            policy_wide_actions.update(dict.fromkeys(statement_actions))
 
             # Track which statements grant which actions
             for action in statement_actions:
@@ -915,7 +907,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             }
             none_of_result = await self._check_none_of_policy_wide(
                 none_of,
-                set(allowed_by_action),
+                dict.fromkeys(allowed_by_action),
                 allowed_by_action,
                 requirement,
                 config,
@@ -928,7 +920,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     async def _check_all_of_policy_wide(
         self,
         all_of_actions: list[str],
-        policy_wide_actions: set[str],
+        policy_wide_actions: dict[str, None],
         statements_by_action: dict[str, list[tuple[int, Statement]]],
         requirement: dict[str, Any],
         fetcher: AWSServiceFetcher,
@@ -1015,7 +1007,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     async def _check_any_of_policy_wide(
         self,
         any_of_actions: list[str],
-        policy_wide_actions: set[str],
+        policy_wide_actions: dict[str, None],
         statements_by_action: dict[str, list[tuple[int, Statement]]],
         requirement: dict[str, Any],
         fetcher: AWSServiceFetcher,
@@ -1062,7 +1054,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     async def _check_none_of_policy_wide(
         self,
         none_of_actions: list[str],
-        policy_wide_actions: set[str],
+        policy_wide_actions: dict[str, None],
         statements_by_action: dict[str, list[tuple[int, Statement]]],
         requirement: dict[str, Any],
         config: CheckConfig,
