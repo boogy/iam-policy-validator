@@ -447,6 +447,26 @@ class TestActionPatternsShape:
         assert unrelated == []
         assert _types(matching) == [("missing_required_condition", 0)]
 
+    @pytest.mark.parametrize("effect", ["Allow", "Deny"])
+    async def test_config_problem_is_reported_for_a_not_action_statement(self, check, effect):
+        requirement = {
+            "actions": [],
+            "action_patterns": ["^iam:Pass.*"],
+            "required_conditions": [{"condition_key": KEY, "operator": 5}],
+        }
+        statement = Statement(Effect=effect, NotAction=["s3:*"], Resource=["*"])
+
+        issues = await _run(check, _config(requirement), statement)
+
+        assert ("invalid_condition_requirement", -1) in _types(issues)
+
+    async def test_pattern_only_requirement_fires_on_a_full_wildcard(self, check):
+        requirement = {"actions": [], "action_patterns": ["^iam:PassRole$"], "required_conditions": [{"condition_key": KEY}]}
+
+        issues = await _run(check, _config(requirement), _stmt("All", action="*"))
+
+        assert _types(issues) == [("missing_required_condition", 0)]
+
     @pytest.mark.parametrize("patterns", [5, {"a": "^iam:.*"}, [5, "^iam:Pass.*"]])
     async def test_non_string_patterns_are_reported_and_dropped(self, check, patterns):
         requirement = {

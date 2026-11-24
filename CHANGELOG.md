@@ -18,6 +18,8 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Fixed
 
+- `action_condition_enforcement` enforces a requirement with only `action_patterns` on a statement granting `Action: "*"`, as it already did for one with `actions`; such a statement got no finding. ([#240])
+- Report an `action_patterns` requirement's config problems for a policy whose statement uses `NotAction`, as for one granting `Action: "*"`; they were suppressed there. ([#240])
 - `sensitive_action` recomputes the actions `action_condition_enforcement` enforces on every statement instead of caching them per config object, so a requirement added in place to an SDK `ValidatorConfig` dict no longer leaves `sensitive_action` reporting an action that is now enforced. ([#240])
 - Treat a string `action_condition_enforcement` `action_patterns` as one regex, like a string `actions`; it was split per character, so `^` matched every action. Report a non-list `action_patterns`, a non-string element in it or a regex that does not compile as `invalid_condition_requirement` instead of failing the check. ([#240])
 - Require every `action_condition_enforcement` `all_of` action to be granted by name; with `action_patterns` set, one pattern match filled every `all_of` slot, so a statement granting only `iam:PassRole` was reported as granting all of them. ([#240])

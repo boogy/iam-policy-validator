@@ -216,7 +216,7 @@ keeping its `Deny` findings.
 `get_actions()` is empty for a `NotAction` statement. `action_condition_enforcement`
 treats an `Allow` + `NotAction` statement as granting every requirement action no
 `NotAction` glob covers (`_granted_actions`); regex `action_patterns` cannot be
-enumerated and are not matched there. `sensitive_action` skips it, as it skips
+enumerated and are not matched there (a statement granting `Action: "*"` does match them). `sensitive_action` skips it, as it skips
 `Action: "*"`: `not_action_not_resource` owns that finding.
 
 ## Hardcoded severities (gotcha)
@@ -240,7 +240,7 @@ literally instead of calling `get_severity(config)`:
   The per-statement path skips malformed pieces silently. A requirement's config
   problems (both kinds) are emitted only for a policy with a statement of either effect
   matching its actions (`_matches_any_statement`, which also reads strings from a malformed
-  `actions` group and matches every policy when `actions` names none, and a statement granting `Action: "*"` when the requirement has `action_patterns`), and both kinds bypass the
+  `actions` group and matches every policy when `actions` names none, and a statement granting `Action: "*"` or using `NotAction` when the requirement has `action_patterns`), and both kinds bypass the
   requirement's own `ignore_patterns`. `enforced_actions` counts a requirement (or `if`
   branch) only when its prepared `required_conditions` holds an evaluable `all_of` /
   `any_of` / list entry (`_requires_evaluable_condition`); detection-only (empty) still

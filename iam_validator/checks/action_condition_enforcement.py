@@ -173,7 +173,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             return True
         probe = {**requirement, "actions": actions, "action_patterns": patterns}
         for statement in policy.statement or []:
-            if patterns and "*" in statement.get_actions():
+            if patterns and (statement.not_action is not None or "*" in statement.get_actions()):
                 return True
             matched, _ = await self._check_action_match(self._granted_actions(statement, actions), probe, fetcher)
             if matched:
@@ -648,10 +648,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         Returns:
             Merged list of requirements based on strategy
         """
-        # The default layer is `requirements` plus `policy_level_requirements`. The
-        # latter used to be read only when `requirements` was absent, but the shipped
-        # defaults always set `requirements`, so entries a user added there were
-        # silently ignored.
+        # The default layer is `requirements` plus `policy_level_requirements`.
         default_requirements = [
             *self._requirement_entries(config, "requirements"),
             *self._requirement_entries(config, "policy_level_requirements"),
@@ -732,8 +729,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 active_reqs.append(req)
                 continue
 
-            # Without a file the pattern cannot be tested; treat the requirement as
-            # possibly ignored so `enforced_actions` never over-reports enforcement.
+            # Untestable without a file: assume ignored so `enforced_actions` never over-reports.
             if policy_file is None:
                 continue
 
@@ -1298,7 +1294,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
                 # Full wildcard "*" matches any required action
                 if stmt_action == "*":
-                    if actions_config:
+                    if actions_config or action_patterns:
                         matched = True
                 else:
                     # Check against configured actions
