@@ -35,6 +35,14 @@ def without_null_all_of(entry: dict[str, Any]) -> dict[str, Any]:
     return {**entry, "all_of": [without_null_all_of(e) for e in nested]}
 
 
+def describe_entry(entry: dict[str, Any]) -> str:
+    """A condition entry as `` `key` `` or ``(`a` + `b`)`` for a nested ``all_of``."""
+    nested = entry.get("all_of")
+    if nested:
+        return f"({' + '.join(describe_entry(e) for e in nested)})"
+    return f"`{entry.get('condition_key', 'unknown')}`"
+
+
 def is_evaluable_entry(entry: Any) -> bool:
     """Whether a condition entry has a non-empty string ``condition_key`` (and string ``operator``, if set), or a non-empty ``all_of`` of such entries; a null key or group counts as unset."""
     if not isinstance(entry, dict) or has_key_and_group(entry):

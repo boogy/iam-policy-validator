@@ -1247,3 +1247,24 @@ class TestForbiddenActionIdIncludesPatterns:
         )
 
         assert issues[0].finding_key == rule_key("none_of", unordered(["s3:deletebucket"]))
+
+
+class TestActionDetectedRuleIdentity:
+    async def test_same_detection_rule_reported_once_at_highest_severity(self, check):
+        low = {"actions": ["iam:PassRole"], "severity": "low", "description": "A"}
+        high = {"actions": ["IAM:PassRole"], "severity": "high", "description": "B"}
+
+        issues = await _run(check, _config(low, high), _multi("S", "iam:PassRole"))
+
+        detected = [i for i in issues if i.issue_type == "action_detected"]
+        assert [(i.severity, i.message.endswith("B")) for i in detected] == [("high", True)]
+
+    async def test_different_detection_rules_get_distinct_ids(self, check):
+        listed = {"actions": ["iam:PassRole"], "description": "A"}
+        grouped = {"actions": {"any_of": ["iam:PassRole", "s3:PutObject"]}, "description": "B"}
+
+        issues = await _run(check, _config(listed, grouped), _multi("S", "iam:PassRole"))
+
+        detected = [i for i in issues if i.issue_type == "action_detected"]
+        assert len(detected) == 2
+        assert len(set(_ace_ids(detected))) == 2

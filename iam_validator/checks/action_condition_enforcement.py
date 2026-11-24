@@ -42,6 +42,7 @@ from iam_validator.checks.utils.requirement_branches import (
     branch_matches_resources,
     branch_problem,
     conditions_problem,
+    describe_entry,
     has_key_and_group,
     has_no_conditions,
     is_evaluable_entry,
@@ -1085,26 +1086,51 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """``Statement #n (SID: x)`` for each matching statement."""
         return [f"Statement #{idx + 1}{f' (SID: {stmt.sid})' if stmt.sid else ''}" for idx, stmt, _ in matching]
 
+    @staticmethod
+    def _detection_identity(requirement: dict[str, Any], scope: str) -> tuple[Any, ...]:
+        """Rule identity of a detection-only requirement: its action spec (any order or case), patterns and scope."""
+
+        def actions_key(actions: Any) -> list[str]:
+            return unordered([a.lower() if isinstance(a, str) else a for a in actions or []])
+
+        actions = requirement.get("actions")
+        spec = (
+            {k: actions_key(v) for k, v in actions.items() if v}
+            if isinstance(actions, dict)
+            else actions_key(actions if isinstance(actions, list) else [actions])
+        )
+        patterns = requirement.get("action_patterns") or []
+        return ("detected", spec, scope, *([unordered(patterns)] if patterns else []))
+
     @classmethod
     def _action_detected_issues(
-        cls, matching: list[tuple[int, Statement, list[str]]], description: str, severity: str, scope: str = ""
+        cls,
+        matching: list[tuple[int, Statement, list[str]]],
+        requirement: dict[str, Any],
+        severity: str,
+        scope: str = "",
     ) -> list[ValidationIssue]:
         """One ``action_detected`` issue per matching statement, naming its actions in the statement's own order."""
         refs = cls._statement_refs(matching)
+        description = requirement.get("description", "")
+        identity = cls._detection_identity(requirement, scope)
         issues = []
         for idx, stmt, actions in matching:
             found = cls._in_statement_order(stmt, actions)
             issues.append(
-                ValidationIssue(
-                    severity=severity,
-                    statement_sid=stmt.sid,
-                    statement_index=idx,
-                    issue_type="action_detected",
-                    message=f"Actions {format_list_with_backticks(found)} found{scope}. {description}",
-                    action=", ".join(found),
-                    suggestion=f"Review these statements: {', '.join(refs)}. {description}",
-                    line_number=stmt.line_number,
-                    field_name="action",
+                cls._with_rule_identity(
+                    ValidationIssue(
+                        severity=severity,
+                        statement_sid=stmt.sid,
+                        statement_index=idx,
+                        issue_type="action_detected",
+                        message=f"Actions {format_list_with_backticks(found)} found{scope}. {description}",
+                        action=", ".join(found),
+                        suggestion=f"Review these statements: {', '.join(refs)}. {description}",
+                        line_number=stmt.line_number,
+                        field_name="action",
+                    ),
+                    *identity,
                 )
             )
         return issues
@@ -1119,11 +1145,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """Generate validation issues for policy-wide checks."""
         issues = []
         required_conditions_config = requirement.get("required_conditions", [])
-        description = requirement.get("description", "")
         severity = self._resolve_severity(config, requirement)
 
         if has_no_conditions(required_conditions_config):
-            return self._action_detected_issues(statements_with_actions, description, severity, f" ({operator_type})")
+            return self._action_detected_issues(statements_with_actions, requirement, severity, f" ({operator_type})")
 
         # Validate conditions for each statement
         for idx, statement, matching_actions in statements_with_actions:
@@ -1188,7 +1213,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         if has_no_conditions(required_conditions_config):
             return self._action_detected_issues(
                 matching_statements,
-                requirement.get("description", ""),
+                requirement,
                 self._resolve_severity(config, requirement),
             )
 
@@ -1474,7 +1499,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     suggestion = custom_suggestion or ""
                     example = custom_example or ""
                 else:
-                    condition_keys_formatted = " OR ".join(self._describe_requirement(c) for c in any_of)
+                    condition_keys_formatted = " OR ".join(describe_entry(c) for c in any_of)
                     matching_actions_formatted = format_list_with_backticks(matching_actions)
 
                     message = (
@@ -1566,13 +1591,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 statement, {**inherited, **{k: v for k, v in e.items() if v is not None}}
             )
         ]
-
-    @staticmethod
-    def _describe_requirement(entry: dict[str, Any]) -> str:
-        nested = entry.get("all_of")
-        if nested:
-            return f"({' + '.join(ActionConditionEnforcementCheck._describe_requirement(e) for e in nested)})"
-        return f"`{entry.get('condition_key', 'unknown')}`"
 
     def _resolve_severity(
         self,
@@ -1705,7 +1723,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             if "all_of" in cond:
                 # Nested all_of - show all required conditions together
                 all_of_list = cond["all_of"]
-                condition_keys_formatted = " + ".join(self._describe_requirement(c) for c in all_of_list)
+                condition_keys_formatted = " + ".join(describe_entry(c) for c in all_of_list)
 
                 # Check for custom message first
                 custom_message = cond.get("message")
@@ -1764,7 +1782,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
     ) -> ValidationIssue:
         """Create a validation issue for a forbidden condition that is present."""
         condition_key = None if "all_of" in condition_requirement else condition_requirement.get("condition_key")
-        label = self._describe_requirement(condition_requirement)
+        label = describe_entry(condition_requirement)
         description = condition_requirement.get("description", "")
         expected_value = condition_requirement.get("expected_value")
 

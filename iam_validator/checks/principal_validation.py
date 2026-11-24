@@ -58,6 +58,7 @@ from iam_validator.checks.utils.finding_identity import (
 from iam_validator.checks.utils.requirement_branches import (
     CONDITION_GROUPS,
     VALID_SEVERITIES,
+    describe_entry,
     has_no_conditions,
     is_evaluable_entry,
     severity_problem,
@@ -797,7 +798,7 @@ class PrincipalValidationCheck(PolicyCheck):
 
         any_of = groups.get("any_of", [])
         if any_of and not any(self._has_condition_requirement(statement, cond_req) for cond_req in any_of):
-            condition_keys = ", ".join(self._describe(cond) for cond in any_of)
+            condition_keys = ", ".join(describe_entry(cond) for cond in any_of)
             severity = self._severity(config, requirement)
             suggestion = self._build_any_of_suggestion(any_of)
 
@@ -1020,12 +1021,6 @@ class PrincipalValidationCheck(PolicyCheck):
                 return severity
         return self.get_severity(config)
 
-    @classmethod
-    def _describe(cls, entry: dict[str, Any]) -> str:
-        if "all_of" in entry:
-            return f"({' + '.join(cls._describe(e) for e in entry['all_of'])})"
-        return f"`{entry.get('condition_key', 'unknown')}`"
-
     def _has_condition_requirement(self, statement: Statement, condition_requirement: dict[str, Any]) -> bool:
         """Check if statement has the required condition.
 
@@ -1172,7 +1167,7 @@ class PrincipalValidationCheck(PolicyCheck):
         suggestions.append("Add at least ONE of these conditions:")
 
         for i, cond in enumerate(any_of_conditions, 1):
-            condition_key = self._describe(cond)
+            condition_key = describe_entry(cond)
             leaves = self._leaves(cond["all_of"]) if "all_of" in cond else []
             description = cond.get("description") or next(
                 (leaf["description"] for leaf in leaves if leaf.get("description")), ""
@@ -1219,7 +1214,7 @@ class PrincipalValidationCheck(PolicyCheck):
         Returns:
             ValidationIssue
         """
-        condition_key = self._describe(condition_requirement)
+        condition_key = describe_entry(condition_requirement)
         description = condition_requirement.get("description", "")
         expected_value = condition_requirement.get("expected_value")
 
