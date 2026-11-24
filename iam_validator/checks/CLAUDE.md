@@ -248,12 +248,12 @@ literally instead of calling `get_severity(config)`:
   an entry with both a non-null `condition_key` and `all_of` (`has_key_and_group`) is not evaluable; a null one of either counts as unset (`without_null_all_of` strips a null `all_of` before evaluation). `execute_policy` runs every finding, config problems included, through `_dedupe_issues`. Null, `[]`, `{}` and a
   mapping whose groups are all empty or null (`has_no_conditions`) count as an empty,
   detection-only `required_conditions`; a falsy scalar (`false`, `0`, `""`) is malformed. A
-  non-string element of `actions` (list or group) is reported (one issue each) and dropped. Top-level shape
+  non-string element of `actions` (list or group) or `action_patterns` is reported (one issue each) and dropped; a non-list `action_patterns` is reported and treated as empty. Top-level shape
   messages come from `conditions_problem`, as for `if` branches. An unknown group key (e.g. a
   typo) inside an `if` branch's `required_conditions` drops the whole branch, unlike the
   top-level form, which still enforces its valid groups. A non-list `requirements` /
   `policy_level_requirements` / `action_condition_requirements`, or a non-mapping entry in one,
-  is dropped in `_get_merged_requirements` (`_requirement_entries`, which also makes a string `actions` a list before any merge strategy runs, so `enforced_actions` and
+  is dropped in `_get_merged_requirements` (`_requirement_entries`, which also makes a string `actions` or `action_patterns` a list before any merge strategy runs, so `enforced_actions` and
   `sensitive_action` never see it) and reported by `execute_policy` once per policy for every
   policy (`_requirement_list_problems`).
   `principal_validation` keeps only the string entries of `blocked_principals`,

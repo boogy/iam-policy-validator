@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from iam_validator.core.models import IAMPolicy
 
 ACTIONS_SHAPE_PROBLEM = "`actions` must be a string, a list or a mapping of `all_of`/`any_of`/`none_of`"
+ACTION_PATTERNS_SHAPE_PROBLEM = "`action_patterns` must be a string or a list of regex strings"
 
 
 class ActionConditionEnforcementCheck(PolicyCheck):
@@ -165,11 +166,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         if isinstance(configured, dict):
             configured = [a for v in configured.values() for a in (v if isinstance(v, list) else [v])]
         actions = [a for a in configured if isinstance(a, str)] if isinstance(configured, list) else []
-        if not actions and not requirement.get("action_patterns"):
+        raw_patterns = requirement.get("action_patterns")
+        patterns = [p for p in raw_patterns if isinstance(p, str)] if isinstance(raw_patterns, list) else []
+        if not actions and not patterns:
             return True
-        probe = {**requirement, "actions": actions}
+        probe = {**requirement, "actions": actions, "action_patterns": patterns}
         for statement in policy.statement or []:
-            if requirement.get("action_patterns") and "*" in statement.get_actions():
+            if patterns and "*" in statement.get_actions():
                 return True
             matched, _ = await self._check_action_match(self._granted_actions(statement, actions), probe, fetcher)
             if matched:
@@ -244,6 +247,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         issues: list[ValidationIssue] = []
         cleaned = self._without_bad_severity(requirement, requirement, "", issues)
         self._prepare_actions(requirement, cleaned, issues)
+        self._prepare_action_patterns(requirement, cleaned, issues)
         if "if" not in cleaned:
             if "required_conditions" in cleaned:
                 cleaned["required_conditions"] = self._prepare_conditions(
@@ -292,6 +296,18 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 continue
             issues.append(self._create_malformed_requirement_issue(requirement, problem, value))
         cleaned["actions"] = kept
+
+    def _prepare_action_patterns(
+        self, requirement: dict[str, Any], cleaned: dict[str, Any], issues: list[ValidationIssue]
+    ) -> None:
+        patterns = cleaned.get("action_patterns")
+        if patterns is None:
+            return
+        if isinstance(patterns, list):
+            cleaned["action_patterns"] = self._string_actions(requirement, patterns, "action_patterns", issues)
+            return
+        issues.append(self._create_malformed_requirement_issue(requirement, ACTION_PATTERNS_SHAPE_PROBLEM, patterns))
+        cleaned["action_patterns"] = []
 
     def _string_actions(
         self, requirement: dict[str, Any], actions: list[Any], label: str, issues: list[ValidationIssue]
@@ -564,12 +580,12 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
     @staticmethod
     def _requirement_entries(config: CheckConfig, key: str) -> list[dict[str, Any]]:
-        """The mapping entries of the requirement list under ``key``, a string ``actions`` made a list; ``execute_policy`` reports the rest."""
+        """The mapping entries of the requirement list under ``key``, a string ``actions`` or ``action_patterns`` made a list; ``execute_policy`` reports the rest."""
         value = config.config.get(key)
         if not isinstance(value, list):
             return []
         return [
-            {**r, "actions": [r["actions"]]} if isinstance(r.get("actions"), str) else r
+            {**r, **{k: [r[k]] for k in ("actions", "action_patterns") if isinstance(r.get(k), str)}}
             for r in value
             if isinstance(r, dict)
         ]

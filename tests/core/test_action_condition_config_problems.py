@@ -437,6 +437,29 @@ class TestMalformedActions:
         ) == {ACTION}
 
 
+class TestActionPatternsShape:
+    async def test_bare_string_pattern_matches_like_a_list(self, check):
+        requirement = {"actions": [], "action_patterns": "^iam:Pass.*", "required_conditions": [{"condition_key": KEY}]}
+
+        unrelated = await _run(check, _config(requirement), _stmt("One", action="s3:GetObject"))
+        matching = await _run(check, _config(requirement))
+
+        assert unrelated == []
+        assert _types(matching) == [("missing_required_condition", 0)]
+
+    @pytest.mark.parametrize("patterns", [5, {"a": "^iam:.*"}, [5, "^iam:Pass.*"]])
+    async def test_non_string_patterns_are_reported_and_dropped(self, check, patterns):
+        requirement = {
+            "actions": [ACTION],
+            "action_patterns": patterns,
+            "required_conditions": [{"condition_key": KEY}],
+        }
+
+        issues = await _run(check, _config(requirement))
+
+        assert _types(issues) == [("invalid_condition_requirement", -1), ("missing_required_condition", 0)]
+
+
 class TestNullOperator:
     async def test_example_renders_default_operator(self, check):
         config = _config({"actions": [ACTION], "required_conditions": [{"condition_key": KEY, "operator": None}]})

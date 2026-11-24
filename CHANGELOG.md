@@ -18,6 +18,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Fixed
 
+- Treat a string `action_condition_enforcement` `action_patterns` as one regex, like a string `actions`; it was split per character, so `^` matched every action. Report a non-list `action_patterns` or a non-string element in it as `invalid_condition_requirement` instead of failing the check. ([#240])
 - Ignore a condition entry's custom `message` in `action_condition_enforcement` and `principal_validation` finding ids, like `severity`, `description` and `example`, so rewording it no longer changes ids and breaks ignores; and report an invalid entry `severity` once for entries differing only in key order. ([#240])
 - Report a malformed entry, unknown or non-list group, scalar `required_conditions` or invalid entry `severity` in `principal_condition_requirements` once per policy (`statement_index: -1`), like `action_condition_enforcement`; it was reported once per evaluated statement. ([#240])
 - Label a policy-level finding (`statement_index: -1`) as `Policy-level` in PR comments instead of `Statement[-1]`. ([#240])
