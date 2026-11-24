@@ -1,6 +1,6 @@
 """Dedup must track what action_condition_enforcement actually enforces, not what is configured."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -204,20 +204,7 @@ class TestEnforcedActions:
         assert ActionConditionEnforcementCheck.enforced_actions(root, "tests/policy.json") == set()
 
 
-class TestEnforcedActionsComputedOncePerConfig:
-    async def test_many_statements_compute_enforced_actions_once(self, check):
-        config = _config({"requirements": [PASS_ROLE_REQUIREMENT]})
-
-        with patch.object(
-            ActionConditionEnforcementCheck,
-            "enforced_actions",
-            wraps=ActionConditionEnforcementCheck.enforced_actions,
-        ) as spy:
-            for action in ("iam:PassRole", "iam:CreateUser", "iam:PassRole"):
-                await _run(check, config, action)
-
-        assert spy.call_count == 1
-
+class TestCoverageTracksTheLiveConfig:
     async def test_a_new_root_config_is_recomputed(self, check):
         assert await _run(check, _config({"requirements": [PASS_ROLE_REQUIREMENT]})) == []
 
@@ -225,13 +212,14 @@ class TestEnforcedActionsComputedOncePerConfig:
 
         assert [i.issue_type for i in issues] == ["missing_condition"]
 
-    def test_covered_actions_are_the_cached_frozenset_not_a_copy(self, check):
-        config = _config({"requirements": [PASS_ROLE_REQUIREMENT]})
+    async def test_a_requirement_added_in_place_is_seen(self, check):
+        requirements: list = []
+        config = _config({"requirements": requirements})
+        assert [i.issue_type for i in await _run(check, config)] == ["missing_condition"]
 
-        first = check._get_actions_covered_by_condition_enforcement(config)
+        requirements.append(PASS_ROLE_REQUIREMENT)
 
-        assert isinstance(first, frozenset)
-        assert check._get_actions_covered_by_condition_enforcement(config) is first
+        assert await _run(check, config) == []
 
 
 class TestMalformedRequirementListsDoNotCrash:

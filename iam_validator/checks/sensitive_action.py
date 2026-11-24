@@ -120,8 +120,6 @@ class SensitiveActionCheck(PolicyCheck):
         "credential_exposure": "medium",
     }
 
-    _covered_cache: tuple[dict[str, Any], frozenset[str]] | None = None
-
     def _get_severity_for_action(self, action: str, config: CheckConfig, resource_scoped: bool = False) -> str:
         """
         Get severity for a specific action.
@@ -178,13 +176,7 @@ class SensitiveActionCheck(PolicyCheck):
         Returns:
             Frozen set of action strings that are covered by condition requirements
         """
-        root_config = config.root_config
-        cached = self._covered_cache
-        # The cache holds root_config itself, so `is` cannot match a reused id.
-        if cached is None or cached[0] is not root_config:
-            cached = (root_config, frozenset(ActionConditionEnforcementCheck.enforced_actions(root_config)))
-            self._covered_cache = cached
-        return cached[1]
+        return frozenset(ActionConditionEnforcementCheck.enforced_actions(config.root_config))
 
     def _get_category_specific_suggestion(self, action: str, config: CheckConfig) -> tuple[str, str]:
         """

@@ -18,6 +18,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Fixed
 
+- `sensitive_action` recomputes the actions `action_condition_enforcement` enforces on every statement instead of caching them per config object, so a requirement added in place to an SDK `ValidatorConfig` dict no longer leaves `sensitive_action` reporting an action that is now enforced. ([#240])
 - Treat a string `action_condition_enforcement` `action_patterns` as one regex, like a string `actions`; it was split per character, so `^` matched every action. Report a non-list `action_patterns`, a non-string element in it or a regex that does not compile as `invalid_condition_requirement` instead of failing the check. ([#240])
 - Require every `action_condition_enforcement` `all_of` action to be granted by name; with `action_patterns` set, one pattern match filled every `all_of` slot, so a statement granting only `iam:PassRole` was reported as granting all of them. ([#240])
 - Disable the `principal_validation` allowlist when `allowed_principals` is `""`, as before; it flagged every principal as unauthorized without reporting a config problem. ([#240])

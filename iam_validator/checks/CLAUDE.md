@@ -166,7 +166,7 @@ that check what it will **actually** enforce, not read its config. `sensitive_ac
 calls `ActionConditionEnforcementCheck.enforced_actions(root_config, policy_file=None)`,
 which resolves the check's own config the way `ValidatorConfig.checks_config` does,
 returns an empty set when the check is disabled, and runs the real
-`_get_merged_requirements` — once per `root_config` object (`sensitive_action` caches it) — so a `merge_strategy`, an `ignore_patterns` match or a
+`_get_merged_requirements` — on every call, never cached, so a `root_config` edited in place is seen — so a `merge_strategy`, an `ignore_patterns` match or a
 user-supplied `action_condition_requirements` entry moves both checks together. Reading
 `requirements` directly suppressed findings for requirements that were never in play.
 Matching is `action_matches`, not `==`: a requirement may be a glob and IAM action names
