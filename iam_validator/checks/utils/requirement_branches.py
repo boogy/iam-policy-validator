@@ -105,7 +105,8 @@ def _deny_only_none_of(branch: dict[str, Any]) -> bool:
     return _deny_only(branch) and _only_none_of(branch.get("required_conditions"))
 
 
-def _regex_problem(key: str, pattern: Any) -> str | None:
+def regex_problem(key: str, pattern: Any) -> str | None:
+    """Why ``pattern`` under ``key`` is not a usable regex, or ``None``."""
     if not isinstance(pattern, str):
         return f"`{key}` must be a regex string, got `{pattern!r}`"
     try:
@@ -133,7 +134,7 @@ def branch_problem(branch: Any) -> str | None:
     if _deny_only_none_of(branch):
         return "`none_of` only flags `Allow` statements, so a `Deny`-only branch carrying just `none_of` never fires"
     for key in ("resource", "not_resource"):
-        if key in branch and (problem := _regex_problem(key, branch[key])):
+        if key in branch and (problem := regex_problem(key, branch[key])):
             return problem
     return None
 

@@ -1663,8 +1663,9 @@ class TestPrincipalListConfigRobustness:
             ("unauthorized_principal", 0),
         ]
 
-    async def test_empty_allowlist_is_disabled(self, check):
-        issues = await self._run(check, {"allowed_principals": []}, {"AWS": "arn:aws:iam::999999999999:root"})
+    @pytest.mark.parametrize("allowed", [[], ""])
+    async def test_empty_allowlist_is_disabled(self, check, allowed):
+        issues = await self._run(check, {"allowed_principals": allowed}, {"AWS": "arn:aws:iam::999999999999:root"})
 
         assert issues == []
 

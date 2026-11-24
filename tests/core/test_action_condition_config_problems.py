@@ -459,6 +459,35 @@ class TestActionPatternsShape:
 
         assert _types(issues) == [("invalid_condition_requirement", -1), ("missing_required_condition", 0)]
 
+    async def test_uncompilable_pattern_is_reported_and_dropped(self, check):
+        requirement = {
+            "actions": [],
+            "action_patterns": ["^iam:(Create", "^iam:Pass.*"],
+            "required_conditions": [{"condition_key": KEY}],
+        }
+
+        issues = await _run(check, _config(requirement))
+
+        assert _types(issues) == [("invalid_condition_requirement", -1), ("missing_required_condition", 0)]
+        assert "not a valid regex" in issues[0].message
+
+    @pytest.mark.parametrize("branched", [False, True])
+    async def test_pattern_does_not_fill_every_all_of_slot(self, check, branched):
+        conditions = [{"condition_key": KEY}]
+        requirement: dict[str, Any] = {
+            "actions": {"all_of": [ACTION, "iam:CreateRole"]},
+            "action_patterns": ["^iam:Pass.*"],
+        }
+        requirement.update(
+            {"if": [{"required_conditions": conditions}]} if branched else {"required_conditions": conditions}
+        )
+
+        only_pass = await _run(check, _config(requirement))
+        both = await _run(check, _config(requirement), _multi("Both", ACTION, "iam:CreateRole"))
+
+        assert only_pass == []
+        assert [i.issue_type for i in both] == ["missing_required_condition"]
+
 
 class TestNullOperator:
     async def test_example_renders_default_operator(self, check):

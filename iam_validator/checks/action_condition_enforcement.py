@@ -46,6 +46,7 @@ from iam_validator.checks.utils.requirement_branches import (
     has_key_and_group,
     has_no_conditions,
     is_evaluable_entry,
+    regex_problem,
     requirement_branches,
     severity_problem,
 )
@@ -304,7 +305,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         if patterns is None:
             return
         if isinstance(patterns, list):
-            cleaned["action_patterns"] = self._string_actions(requirement, patterns, "action_patterns", issues)
+            kept = []
+            for pattern in self._string_actions(requirement, patterns, "action_patterns", issues):
+                if problem := regex_problem("action_patterns", pattern):
+                    issues.append(self._create_malformed_requirement_issue(requirement, problem, pattern))
+                else:
+                    kept.append(pattern)
+            cleaned["action_patterns"] = kept
             return
         issues.append(self._create_malformed_requirement_issue(requirement, ACTION_PATTERNS_SHAPE_PROBLEM, patterns))
         cleaned["action_patterns"] = []
@@ -960,7 +967,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         statements_with_all_actions: list[tuple[int, Statement, list[str]]] = []
 
         for stmt_idx, stmt in sorted({i: st for lst in statements_by_action.values() for i, st in lst}.items()):
-            matched_actions = await self._all_of_matches(stmt, all_of_actions, requirement, fetcher)
+            matched_actions = await self._all_of_matches(stmt, all_of_actions, fetcher)
             if matched_actions is not None:
                 statements_with_all_actions.append((stmt_idx, stmt, self._in_statement_order(stmt, matched_actions)))
 
@@ -978,16 +985,14 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         self,
         stmt: Statement,
         all_of_actions: list[str],
-        requirement: dict[str, Any],
         fetcher: AWSServiceFetcher,
     ) -> list[str] | None:
-        """The statement actions matching every ``all_of`` action, or ``None`` when one is missing."""
+        """The statement actions matching every ``all_of`` action by name, or ``None`` when one is missing."""
         stmt_actions = self._granted_actions(stmt, all_of_actions)
-        patterns = requirement.get("action_patterns", [])
         matched: list[str] = []
         for req_action in all_of_actions:
             for stmt_action in stmt_actions:
-                if await self._action_matches(stmt_action, req_action, patterns, fetcher):
+                if await self._action_matches(stmt_action, req_action, [], fetcher):
                     if stmt_action not in matched:
                         matched.append(stmt_action)
                     break
@@ -1324,7 +1329,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 for req_action in all_of:
                     found = False
                     for stmt_action in statement_actions:
-                        if await self._action_matches(stmt_action, req_action, action_patterns, fetcher):
+                        if await self._action_matches(stmt_action, req_action, [], fetcher):
                             found = True
                             break
                     if not found:
@@ -1337,7 +1342,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 # Collect matching actions
                 for stmt_action in statement_actions:
                     for req_action in all_of:
-                        if await self._action_matches(stmt_action, req_action, action_patterns, fetcher):
+                        if await self._action_matches(stmt_action, req_action, [], fetcher):
                             if stmt_action not in matching_actions:
                                 matching_actions.append(stmt_action)
 

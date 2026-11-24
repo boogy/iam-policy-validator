@@ -154,7 +154,7 @@ class PrincipalValidationCheck(PolicyCheck):
         # Get configuration (defaults match defaults.py)
         blocked_principals = self._blocked_principals(config)
         raw_allowed = config.config.get("allowed_principals", [])
-        allowlist_configured = raw_allowed is not None and raw_allowed != []
+        allowlist_configured = raw_allowed not in (None, [], "")
         allowed_principals = self._string_entries(raw_allowed)
         principal_condition_requirements = self._requirement_entries(config)
         # Default: "aws:*" allows ALL AWS service principals (*.amazonaws.com)

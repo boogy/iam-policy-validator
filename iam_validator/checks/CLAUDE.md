@@ -248,7 +248,7 @@ literally instead of calling `get_severity(config)`:
   an entry with both a non-null `condition_key` and `all_of` (`has_key_and_group`) is not evaluable; a null one of either counts as unset (`without_null_all_of` strips a null `all_of` before evaluation). `execute_policy` runs every finding, config problems included, through `_dedupe_issues`. Null, `[]`, `{}` and a
   mapping whose groups are all empty or null (`has_no_conditions`) count as an empty,
   detection-only `required_conditions`; a falsy scalar (`false`, `0`, `""`) is malformed. A
-  non-string element of `actions` (list or group) or `action_patterns` is reported (one issue each) and dropped; a non-list `action_patterns` is reported and treated as empty. Top-level shape
+  non-string element of `actions` (list or group) or `action_patterns`, and an `action_patterns` regex that does not compile (`regex_problem`), is reported (one issue each) and dropped; a non-list `action_patterns` is reported and treated as empty. `action_patterns` never fills an `all_of` slot: each `all_of` action must be granted by name. Top-level shape
   messages come from `conditions_problem`, as for `if` branches. An unknown group key (e.g. a
   typo) inside an `if` branch's `required_conditions` drops the whole branch, unlike the
   top-level form, which still enforces its valid groups. A non-list `requirements` /
@@ -262,7 +262,7 @@ literally instead of calling `get_severity(config)`:
   non-string entry once per policy from `execute_policy` (the three lists when a statement
   reaches the blocked/allowed rules, `_reaches_principal_rules`; `principals` with the
   requirement checks, only when the requirement's string patterns match an evaluated statement or it has none, since such a requirement can never fire; a scalar non-string value counts as one bad entry). An `allowed_principals` that is
-  configured (anything but null or `[]`) stays an allow-list even with no string entry, so it
+  configured (anything but null, `[]` or `""`) stays an allow-list even with no string entry, so it
   then allows nothing; likewise an all-invalid `allowed_service_principals` allows no service (a null one keeps the default `aws:*`).
   Non-string values in a policy's `Principal`/`NotPrincipal` are dropped by
   `_flatten_principal_field`. A non-list `principal_condition_requirements` or a non-mapping entry in
@@ -359,6 +359,6 @@ Use these instead of reimplementing:
 - `policy_level_checks.py` — `check_policy_level_actions()`, `_check_all_of_pattern()`
 - `formatting.py` — `format_list_with_backticks()`
 - `finding_identity.py` — `PRESENTATION_KEYS`, `canonical_rule()`, `unordered()`, `rule_key()`, `severity_problem_key()`, `keep_most_severe()`
-- `requirement_branches.py` — `requirement_branches()`, `branch_problem()`, `conditions_problem()`, `severity_problem()`, `branch_effects()`,
+- `requirement_branches.py` — `requirement_branches()`, `branch_problem()`, `conditions_problem()`, `severity_problem()`, `regex_problem()`, `branch_effects()`,
   `branch_matches_resources()`, `branch_enforces_allow_everywhere()`, `is_evaluable_entry()`,
   `has_key_and_group()`, `without_null_all_of()`
