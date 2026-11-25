@@ -1408,3 +1408,35 @@ class TestMalformedBranchesOfDistinctRequirementsKept:
         issues = await _run(check, config)
 
         assert [i.issue_type for i in issues].count("invalid_condition_requirement") == 2
+
+
+class TestActionPatternsWithoutServiceData:
+    @pytest.fixture
+    def failing_fetcher(self):
+        from unittest.mock import MagicMock
+
+        fetcher = MagicMock()
+        fetcher.parse_action.side_effect = ValueError("no service data")
+        return fetcher
+
+    @pytest.mark.parametrize(
+        ("pattern", "action", "flagged"),
+        [
+            ("^iam:Create.*", "iam:*", True),
+            ("^iam:Create.*", "iam:C*", True),
+            ("^iam:Create.*", "IAM:Cr*", True),
+            ("^iam:Create.*", "iam:D*", False),
+            ("^iam:Create.*", "s3:*", False),
+            ("^iam:Ab?", "iam:Ac*", True),
+            ("^s3:Get.*|^iam:Create.*", "iam:*", True),
+        ],
+    )
+    async def test_wildcard_statement_matches_compatible_pattern(
+        self, check, failing_fetcher, pattern, action, flagged
+    ):
+        config = _config({"action_patterns": [pattern], "required_conditions": [{"condition_key": KEY}]})
+        policy = IAMPolicy(version="2012-10-17", statement=[_stmt("One", action=action)])
+
+        issues = await check.execute_policy(policy, "policy.json", failing_fetcher, config)
+
+        assert any(i.issue_type == "missing_required_condition" for i in issues) is flagged

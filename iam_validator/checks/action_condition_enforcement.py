@@ -68,6 +68,20 @@ ACTION_PATTERNS_SHAPE_PROBLEM = "`action_patterns` must be a string or a list of
 IGNORE_PATTERNS_SHAPE_PROBLEM = "`ignore_patterns` must be a list of mappings"
 
 
+_LITERAL_RUN = re.compile(r"\^?([A-Za-z0-9:_-]*)")
+
+
+def _literal_prefix(pattern: str) -> str:
+    """The text every match of ``pattern`` starts with, as far as a plain scan can tell; ``""`` when unsure."""
+    if "|" in pattern:
+        return ""
+    run = _LITERAL_RUN.match(pattern)
+    if run is None:
+        return ""
+    literal = run.group(1)
+    return literal[:-1] if pattern[run.end() : run.end() + 1] in ("?", "*", "{") else literal
+
+
 def _ignore_patterns(requirement: dict[str, Any]) -> list[dict[str, Any]]:
     """The mapping entries of a requirement's ``ignore_patterns``; anything else ignores nothing."""
     value = requirement.get("ignore_patterns")
@@ -576,7 +590,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             severity=own_config.get("severity"),
             config=own_config,
             root_config=root_config,
-            hide_severities=frozenset(hidden) if isinstance(hidden, list) else None,
+            hide_severities=frozenset(hidden) if isinstance(hidden, (list, tuple, set, frozenset)) else None,
         )
         requirements = check._filter_requirements_by_filepath(
             check._get_merged_requirements(config, policy_file), policy_file
@@ -1499,14 +1513,11 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     logger.debug("Falling back to prefix matching for %s: %r", statement_action, exc)
-                    stmt_prefix = statement_action.rstrip("*")
+                    stmt_prefix = statement_action.split("*", 1)[0].lower()
                     for pattern in patterns:
-                        try:
-                            compiled_pattern = compile_and_cache(pattern)
-                            if compiled_pattern.match(stmt_prefix):
-                                return True
-                        except re.error:
-                            continue
+                        literal = _literal_prefix(pattern).lower()
+                        if literal.startswith(stmt_prefix) or stmt_prefix.startswith(literal):
+                            return True
 
         # Regex pattern match (from action_patterns config)
         for pattern in patterns:

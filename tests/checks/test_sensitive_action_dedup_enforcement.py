@@ -280,12 +280,18 @@ class TestEnforcedActions:
         [
             {"action_condition_enforcement": {"hide_severities": ["high"], "requirements": [PASS_ROLE_REQUIREMENT]}},
             {"action_condition_enforcement": {"hide_severities": "high", "requirements": [PASS_ROLE_REQUIREMENT]}},
+            {"action_condition_enforcement": {"hide_severities": ("high",), "requirements": [PASS_ROLE_REQUIREMENT]}},
+            {"action_condition_enforcement": {"hide_severities": {"high"}, "requirements": [PASS_ROLE_REQUIREMENT]}},
             {
                 "settings": {"hide_severities": ["high"]},
                 "action_condition_enforcement": {"requirements": [PASS_ROLE_REQUIREMENT]},
             },
+            {
+                "settings": {"hide_severities": frozenset({"high"})},
+                "action_condition_enforcement": {"requirements": [PASS_ROLE_REQUIREMENT]},
+            },
         ],
-        ids=["check", "check-scalar", "global"],
+        ids=["check", "check-scalar", "check-tuple", "check-set", "global", "global-frozenset"],
     )
     def test_a_hidden_severity_enforces_nothing(self, root):
         assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
