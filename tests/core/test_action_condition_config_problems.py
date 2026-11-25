@@ -31,9 +31,9 @@ def _stmt(sid: str, action: str = ACTION, effect: str = "Allow", condition: dict
     return Statement(sid=sid, effect=effect, action=action, resource="*", condition=condition)
 
 
-async def _run(check, config, *statements: Statement):
+async def _run(check, config, *statements: Statement, path: str = "policy.json"):
     policy = IAMPolicy(version="2012-10-17", statement=list(statements or [_stmt("One")]))
-    return await check.execute_policy(policy, "policy.json", None, config)
+    return await check.execute_policy(policy, path, None, config)
 
 
 def _types(issues) -> list[tuple[str, int]]:
@@ -494,6 +494,110 @@ class TestActionPatternsShape:
 
         assert _types(issues) == [("invalid_condition_requirement", -1), ("missing_required_condition", 0)]
         assert "not a valid regex" in issues[0].message
+
+    async def test_only_uncompilable_patterns_are_reported(self, check):
+        requirement = {"action_patterns": ["^iam:(Create"], "required_conditions": [{"condition_key": KEY}]}
+
+        issues = await _run(check, _config(requirement), _stmt("One", "iam:CreateUser"))
+
+        assert _types(issues) == [("invalid_condition_requirement", -1)]
+
+    async def test_pattern_only_requirement_problem_names_its_valid_patterns(self, check):
+        requirement = {
+            "action_patterns": ["^iam:Pass", "^iam:(Create"],
+            "required_conditions": [{"condition_key": KEY}],
+        }
+
+        issues = await _run(check, _config(requirement))
+
+        assert "in the requirement for action(s) `^iam:Pass`:" in issues[0].message
+
+    async def test_same_bad_entry_in_two_pattern_only_requirements_reported_twice(self, check):
+        config = _config(
+            *(
+                {
+                    "action_patterns": [p],
+                    "required_conditions": [{"condition_key": KEY}],
+                    "ignore_patterns": [{"filepath": ""}],
+                }
+                for p in ("^s3:Delete", "^iam:Create")
+            )
+        )
+
+        issues = await _run(check, config, _stmt("One", "s3:DeleteObject"), _stmt("Two", "iam:CreateUser"))
+
+        invalid = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert len(invalid) == 2
+
+    async def test_same_invalid_severity_in_two_pattern_only_requirements_reported_twice(self, check):
+        config = _config(
+            *(
+                {
+                    "action_patterns": [p],
+                    "if": [{"effect": "Allow", "severity": "urgent", "required_conditions": [{"condition_key": KEY}]}],
+                }
+                for p in ("^s3:Delete", "^iam:Create")
+            )
+        )
+
+        issues = await _run(check, config, _stmt("One", "s3:DeleteObject"), _stmt("Two", "iam:CreateUser"))
+
+        assert [i.issue_type for i in issues].count("invalid_condition_requirement") == 2
+
+    async def test_malformed_entry_key_survives_unrelated_requirement_edits(self, check):
+        def requirement(**extra):
+            return {
+                "actions": [ACTION],
+                "required_conditions": [{"condition_key": KEY}],
+                "ignore_patterns": [{"filepath": ""}],
+                **extra,
+            }
+
+        before = await _run(check, _config(requirement()))
+        after = await _run(check, _config(requirement(not_resource="^arn:aws:iam::123456789012:role/x$")))
+
+        keys = [[i.finding_key for i in r if i.issue_type == "invalid_condition_requirement"] for r in (before, after)]
+        assert keys[0] and keys[0] == keys[1]
+
+    async def test_skipped_entry_suggestion_is_generic(self, check):
+        requirement = {
+            "actions": [ACTION],
+            "required_conditions": [{"condition_key": KEY}],
+            "ignore_patterns": [{"filepath": ""}],
+        }
+
+        issues = await _run(check, _config(requirement))
+
+        assert [i.suggestion for i in issues if i.issue_type == "invalid_condition_requirement"] == [
+            "Fix or remove it."
+        ]
+
+    async def test_overflowing_pattern_is_reported(self, check):
+        requirement = {"action_patterns": ["a{99999999999}"], "required_conditions": [{"condition_key": KEY}]}
+
+        issues = await _run(check, _config(requirement))
+
+        assert _types(issues) == [("invalid_condition_requirement", -1)]
+
+    async def test_pattern_matches_action_case_insensitively(self, check):
+        requirement = {"action_patterns": ["^iam:passrole$"], "required_conditions": [{"condition_key": KEY}]}
+
+        issues = await _run(check, _config(requirement))
+
+        assert _types(issues) == [("missing_required_condition", 0)]
+
+    async def test_bad_pattern_beside_valid_actions_reported_only_where_they_match(self, check):
+        requirement = {
+            "actions": [ACTION],
+            "action_patterns": ["^s3:(Put", "^ec2:Run"],
+            "required_conditions": [{"condition_key": KEY}],
+        }
+
+        unrelated = await _run(check, _config(requirement), _stmt("Get", "s3:GetObject"))
+        matching = await _run(check, _config(requirement), _stmt("Pass"))
+
+        assert _types(unrelated) == []
+        assert _types(matching) == [("invalid_condition_requirement", -1), ("missing_required_condition", 0)]
 
     @pytest.mark.parametrize("branched", [False, True])
     async def test_pattern_does_not_fill_every_all_of_slot(self, check, branched):
@@ -1396,6 +1500,117 @@ class TestMalformedIgnorePatterns:
         }
 
         assert ACTION in ActionConditionEnforcementCheck.enforced_actions(root, "policy.json")
+
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            {"filepath": "v5(/"},
+            {"filepath_regex": 5},
+            {"filepath": ""},
+            {"filepath": ["v5", "("]},
+            {"filepath": "(", "filepath_regex": "v5"},
+            {"filepath": "a{99999999999}"},
+        ],
+    )
+    async def test_bad_filepath_regex_reported_and_requirement_enforced(self, check, entry):
+        config = _config(
+            {"actions": [ACTION], "required_conditions": [{"condition_key": KEY}], "ignore_patterns": [entry]}
+        )
+
+        issues = await _run(check, config, path="v5/policy.json")
+
+        assert _types(issues) == [("invalid_condition_requirement", -1), ("missing_required_condition", 0)]
+        problem = next(i for i in issues if i.issue_type == "invalid_condition_requirement")
+        assert "`ignore_patterns.filepath" in problem.message
+        assert "is ignored" in problem.message
+
+    @pytest.mark.parametrize(
+        ("entry", "ignored"),
+        [
+            ({"filepath": ["nomatch", "v5/"]}, True),
+            ({"filepath": "nomatch", "filepath_regex": "v5"}, False),
+            ({"filepath": "v5", "filepath_regex": "policy"}, True),
+            ({"filepath": "^v5/", "reason": "reviewed"}, True),
+            ({"filepath": "^v5/", "description": "legacy"}, True),
+            ({"filepath": "^v5/", "actions": ACTION}, False),
+            ({}, False),
+        ],
+    )
+    async def test_valid_filepath_entry_matches_like_finding_filter(self, check, entry, ignored):
+        config = _config(
+            {"actions": [ACTION], "required_conditions": [{"condition_key": KEY}], "ignore_patterns": [entry]}
+        )
+
+        issues = await _run(check, config, path="v5/policy.json")
+
+        assert _types(issues) == ([] if ignored else [("missing_required_condition", 0)])
+
+    async def test_filepath_entry_with_other_fields_does_not_drop_requirement(self, check):
+        requirement = {
+            "actions": [ACTION, "iam:CreateRole"],
+            "required_conditions": [{"condition_key": KEY}],
+            "ignore_patterns": [{"filepath": "prod/", "action": ACTION}],
+        }
+
+        issues = await _run(check, _config(requirement), _stmt("Create", "iam:CreateRole"), path="prod/p.json")
+
+        assert _types(issues) == [("missing_required_condition", 0)]
+
+    @pytest.mark.parametrize(("ignore", "enforced"), [("test/", False), ("Test/", False), ("other/", True)])
+    async def test_enforced_actions_matches_filepath_case_insensitively(self, ignore, enforced):
+        root = {
+            "action_condition_enforcement": {
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [
+                    {
+                        "actions": [ACTION],
+                        "required_conditions": [{"condition_key": KEY}],
+                        "ignore_patterns": [{"filepath": ignore}],
+                    }
+                ],
+            }
+        }
+
+        assert (ACTION in ActionConditionEnforcementCheck.enforced_actions(root, "test/policy.json")) is enforced
+
+    async def test_enforced_actions_skips_bad_filepath_regex(self):
+        root = {
+            "action_condition_enforcement": {
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [
+                    {
+                        "actions": [ACTION],
+                        "required_conditions": [{"condition_key": KEY}],
+                        "ignore_patterns": [{"filepath": "("}],
+                    }
+                ],
+            }
+        }
+
+        assert ACTION in ActionConditionEnforcementCheck.enforced_actions(root, "policy.json")
+
+    @pytest.mark.parametrize(
+        ("entry", "enforced"),
+        [
+            ({"sid": "Legacy"}, False),
+            ({"bogus": "x"}, False),
+            ({}, True),
+            ({"reason": "reviewed"}, True),
+            ({"filepath": "^v5/"}, False),
+            ({"filepath": "^v5/", "reason": "reviewed"}, False),
+        ],
+    )
+    async def test_enforced_actions_without_file_counts_annotation_only_entries_as_enforced(self, entry, enforced):
+        root = {
+            "action_condition_enforcement": {
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [
+                    {"actions": [ACTION], "required_conditions": [{"condition_key": KEY}], "ignore_patterns": [entry]}
+                ],
+            }
+        }
+
+        assert (ACTION in ActionConditionEnforcementCheck.enforced_actions(root)) is enforced
 
 
 class TestMalformedBranchesOfDistinctRequirementsKept:

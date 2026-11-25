@@ -54,7 +54,7 @@ from iam_validator.checks.utils.requirement_branches import (
 )
 from iam_validator.core.aws_service import AWSServiceFetcher
 from iam_validator.core.check_registry import CheckConfig, PolicyCheck
-from iam_validator.core.ignore_patterns import IgnorePatternMatcher
+from iam_validator.core.ignore_patterns import IgnorePatternMatcher, compile_pattern
 from iam_validator.core.models import Statement, ValidationIssue
 from iam_validator.utils.regex import compile_and_cache
 
@@ -101,10 +101,33 @@ def _literal_prefix(pattern: str) -> str:
     return literal[:-1] if pattern[run.end() : run.end() + 1] in ("?", "*", "{") else literal
 
 
+_FILEPATH_KEYS = ("filepath", "filepath_regex")
+_DROP_KEYS = frozenset(_FILEPATH_KEYS) | IgnorePatternMatcher.ANNOTATION_KEYS
+
+
+def _as_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else [value]
+
+
+def _drops_requirement(entry: dict[str, Any]) -> bool:
+    """Whether an ignore entry holds a filepath key and otherwise only annotation keys."""
+    return any(k in entry for k in _FILEPATH_KEYS) and entry.keys() <= _DROP_KEYS
+
+
+def _filepath_problem(key: str, value: Any) -> str | None:
+    """Why an ignore entry's ``filepath``/``filepath_regex`` value is unusable, or ``None``."""
+    label = f"ignore_patterns.{key}"
+    values = _as_list(value)
+    if not values or "" in values:
+        return f"`{label}` must be a non-empty regex or list of regexes, got `{value!r}`"
+    return next((problem for v in values if (problem := regex_problem(label, v))), None)
+
+
 def _ignore_patterns(requirement: dict[str, Any]) -> list[dict[str, Any]]:
-    """The mapping entries of a requirement's ``ignore_patterns``; anything else ignores nothing."""
+    """The mapping entries of a requirement's ``ignore_patterns`` with usable filepath values; the rest ignore nothing."""
     value = requirement.get("ignore_patterns")
-    return [entry for entry in value if isinstance(entry, dict)] if isinstance(value, list) else []
+    entries = [entry for entry in value if isinstance(entry, dict)] if isinstance(value, list) else []
+    return [e for e in entries if not any(_filepath_problem(k, e[k]) for k in _FILEPATH_KEYS if k in e)]
 
 
 class ActionConditionEnforcementCheck(PolicyCheck):
@@ -213,6 +236,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         actions = [a for a in configured if isinstance(a, str)] if isinstance(configured, list) else []
         raw_patterns = requirement.get("action_patterns")
         patterns = [p for p in raw_patterns if isinstance(p, str)] if isinstance(raw_patterns, list) else []
+        patterns = [p for p in patterns if not regex_problem("action_patterns", p)]
         if not actions and not patterns:
             return True
         probe = {**requirement, "actions": actions, "action_patterns": patterns}
@@ -369,6 +393,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         issues.extend(
             self._create_malformed_requirement_issue(requirement, IGNORE_PATTERNS_SHAPE_PROBLEM, entry) for entry in bad
         )
+        for entry in value if isinstance(value, list) else []:
+            for key in _FILEPATH_KEYS:
+                if isinstance(entry, dict) and key in entry and (problem := _filepath_problem(key, entry[key])):
+                    issues.append(self._create_malformed_requirement_issue(requirement, problem, entry))
 
     def _string_actions(
         self, requirement: dict[str, Any], actions: list[Any], label: str, issues: list[ValidationIssue]
@@ -418,7 +446,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         if not isinstance(required_conditions, dict):
             problem = conditions_problem(required_conditions)
             if problem:
-                issues.append(self._create_malformed_requirement_issue(requirement, problem, required_conditions))
+                issues.append(
+                    self._create_malformed_requirement_issue(requirement, problem, required_conditions, skipped=False)
+                )
             return
         for key in sorted(required_conditions, key=str):
             value = required_conditions[key]
@@ -426,7 +456,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 continue
             problem = conditions_problem({key: value})
             if problem:
-                issues.append(self._create_malformed_requirement_issue(requirement, problem, value))
+                issues.append(self._create_malformed_requirement_issue(requirement, problem, value, skipped=False))
 
     def _prepare_entries(
         self, requirement: dict[str, Any], entries: list[Any], label: str, issues: list[ValidationIssue]
@@ -453,11 +483,21 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         return cleaned
 
     @staticmethod
+    def _requirement_identity(requirement: dict[str, Any]) -> tuple[Any, Any]:
+        """The fields naming which actions a requirement covers, used in its config-problem finding keys."""
+        return requirement.get("actions"), requirement.get("action_patterns")
+
+    @staticmethod
     def _actions_label(requirement: dict[str, Any]) -> tuple[str, str | None]:
         """The requirement's actions as backticked text, and as the issue's ``action`` field."""
         actions = requirement.get("actions", [])
         if isinstance(actions, list):
-            return format_list_with_backticks(actions), ", ".join(a for a in actions if isinstance(a, str))
+            patterns = requirement.get("action_patterns")
+            valid = (
+                [p for p in patterns if not regex_problem("action_patterns", p)] if isinstance(patterns, list) else []
+            )
+            shown = actions or valid
+            return format_list_with_backticks(shown) or "`[]`", ", ".join(a for a in actions if isinstance(a, str))
         if isinstance(actions, dict):
             named = [
                 a for g in CONDITION_GROUPS if isinstance(v := actions.get(g), list) for a in v if isinstance(a, str)
@@ -489,7 +529,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             field_name="condition",
             finding_key=rule_key(
                 "severity",
-                requirement.get("actions"),
+                self._requirement_identity(requirement),
                 where,
                 severity,
                 severity_problem_key(node),
@@ -497,10 +537,22 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         )
 
     def _create_malformed_requirement_issue(
-        self, requirement: dict[str, Any], problem: str | None, entry: Any, label: str = ""
+        self,
+        requirement: dict[str, Any],
+        problem: str | None,
+        entry: Any,
+        label: str = "",
+        *,
+        skipped: bool = True,
     ) -> ValidationIssue:
         actions_str, action = self._actions_label(requirement)
-        if problem:
+        if problem and skipped:
+            message = (
+                f"`action_condition_requirements` {problem}, so it is ignored in the requirement for action(s) "
+                f"{actions_str}: `{entry!r}`"
+            )
+            suggestion = "Fix or remove it."
+        elif problem:
             message = (
                 f"`action_condition_requirements` {problem}, so it cannot be enforced for action(s) "
                 f"{actions_str}: `{entry!r}`"
@@ -536,7 +588,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             action=action,
             suggestion=suggestion,
             field_name="condition",
-            finding_key=rule_key("malformed", requirement.get("actions"), problem, label, repr(entry)),
+            finding_key=rule_key("malformed", self._requirement_identity(requirement), problem, label, repr(entry)),
         )
 
     def _create_malformed_branch_issue(self, requirement: dict[str, Any], problem: str) -> ValidationIssue:
@@ -825,8 +877,10 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 active_reqs.append(req)
                 continue
 
-            # Untestable without a file: assume ignored so `enforced_actions` never over-reports.
+            # No file: any non-annotation entry may ignore, so `enforced_actions` never over-reports.
             if policy_file is None:
+                if all(e.keys() <= IgnorePatternMatcher.ANNOTATION_KEYS for e in ignore_patterns):
+                    active_reqs.append(req)
                 continue
 
             # Check if any ignore pattern matches this file
@@ -842,28 +896,16 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         filepath: str,
         ignore_patterns: list[dict[str, Any]],
     ) -> bool:
-        """
-        Check if filepath matches any of the ignore patterns.
-
-        Only checks filepath-based patterns (filepath, filepath_regex).
-        This is used for filtering requirements before merging.
-
-        Args:
-            filepath: Path to the policy file
-            ignore_patterns: List of ignore pattern dictionaries
-
-        Returns:
-            True if filepath matches any pattern
-        """
-        for pattern in ignore_patterns:
-            # Only check filepath-based patterns
-            if "filepath" in pattern or "filepath_regex" in pattern:
-                regex_pattern = pattern.get("filepath") or pattern.get("filepath_regex")
-                if regex_pattern:
-                    compiled = compile_and_cache(regex_pattern)
-                    if compiled and compiled.search(filepath):
-                        return True
-        return False
+        """Whether a requirement-dropping entry matches ``filepath`` on every filepath key."""
+        return any(
+            _drops_requirement(entry)
+            and all(
+                any((c := compile_pattern(p)) is not None and c.search(filepath) for p in _as_list(entry[k]))
+                for k in _FILEPATH_KEYS
+                if k in entry
+            )
+            for entry in ignore_patterns
+        )
 
     def _merge_per_action_override(
         self,
@@ -1493,7 +1535,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                         full_granted_action = f"{service_prefix}:{granted_action}"
                         for pattern in patterns:
                             try:
-                                compiled_pattern = compile_and_cache(pattern)
+                                compiled_pattern = compile_and_cache(pattern, re.IGNORECASE)
                                 if compiled_pattern.match(full_granted_action):
                                     return True
                             except re.error:
@@ -1515,14 +1557,14 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             if whole_service:
                                 return True
                             try:
-                                if compile_and_cache(pattern).match(raw_prefix):
+                                if compile_and_cache(pattern, re.IGNORECASE).match(raw_prefix):
                                     return True
                             except re.error:
                                 continue
 
         for pattern in patterns:
             try:
-                compiled_pattern = compile_and_cache(pattern)
+                compiled_pattern = compile_and_cache(pattern, re.IGNORECASE)
                 if compiled_pattern.match(statement_action):
                     return True
             except re.error:

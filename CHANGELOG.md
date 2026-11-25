@@ -116,6 +116,17 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 - Report a `blocked_principals`, `allowed_principals` or `allowed_service_principals` value that is neither a string nor a list (e.g. an unquoted `blocked_principals: 123456789012`) once per policy as `invalid_condition_requirement`; it was silently ignored. ([#240])
 - Ignore a non-string value in a policy's `Principal` or `NotPrincipal` (e.g. `"AWS": [123456789012]`) instead of crashing `principal_validation` and losing its findings for the policy. ([#240])
 - List the actions of a policy-wide `any_of` / `all_of` / `none_of` finding in the statement's own `Action` order (alphabetical for `NotAction`), with findings and their statement references in statement order, instead of a run-, config- or neighbour-dependent order, and report a list-form requirement and a group requirement over the same actions once. ([#240])
+- Report an `action_condition_enforcement` requirement whose only `action_patterns` are invalid regexes as `invalid_condition_requirement` instead of silently skipping it, and keep reporting an invalid pattern beside valid ones only for policies the requirement matches. ([#240])
+- Report an empty, non-string or invalid-regex `filepath` / `filepath_regex` in a requirement's `ignore_patterns` as `invalid_condition_requirement` and ignore nothing with that entry, instead of crashing the check or still suppressing findings with it; list values stay supported. ([#240])
+- Drop a requirement for a file only when an `ignore_patterns` entry holding `filepath` / `filepath_regex` and otherwise only `reason`, `description` or `comment` matches it on every filepath key, case-insensitively, as the finding filter does, instead of on any one key, case-sensitively, or when the entry also names an `action` or a mistyped key. ([#240])
+- Skip `reason`, `description` and `comment` when matching `ignore_patterns` entries; an entry carrying one, like the README example, ignored nothing. ([#240])
+- Treat an empty-string `ignore_patterns` regex value (`action: ""`, `resource: [""]`, …) as matching nothing instead of everything. ([#240])
+- Report the same invalid `if`-branch `severity` in two pattern-only requirements once per requirement, keep config-problem finding ids stable across unrelated requirement edits, and name only a requirement's valid `action_patterns` in its config-problem messages. ([#240])
+- Count an `action_condition_enforcement` requirement whose `ignore_patterns` entries are all `{}` or annotation-only as enforced for `sensitive_action` dedup; such entries ignore nothing, yet both checks reported the action. ([#240])
+- Say that an invalid `action_condition_enforcement` action, pattern or ignore entry is ignored, naming its `action_patterns` when it has no actions, and report the same bad entry once per pattern-only requirement; the finding claimed the requirement enforced nothing even when the rest still applied, and identical entries in different pattern-only requirements were reported once. ([#240])
+- Report a regex whose repetition count overflows (`a{99999999999}`) in `action_condition_enforcement` patterns or global `ignore_patterns` as invalid instead of crashing. ([#240])
+- Make an empty `{}` global `ignore_patterns` entry ignore nothing; it suppressed every finding. ([#240])
+- Match `action_condition_enforcement` `action_patterns` case-insensitively on every path, not only for expanded service actions. ([#240])
 
 [#240]: https://github.com/boogy/iam-policy-validator/pull/240
 

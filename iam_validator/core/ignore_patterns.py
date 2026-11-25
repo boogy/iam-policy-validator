@@ -41,7 +41,7 @@ def compile_pattern(pattern: str, context: str = "ignore_patterns") -> re.Patter
     """
     try:
         return re.compile(str(pattern), re.IGNORECASE)
-    except re.error as e:
+    except (re.error, OverflowError, RecursionError) as e:
         logger.warning("Invalid regex pattern '%s' in %s: %s", pattern, context, e)
         return None
 
@@ -67,6 +67,9 @@ class IgnorePatternMatcher:
         "sid": "statement_sid",
         "condition_key": "condition_key_matches",
     }
+
+    # Documentation-only entry keys, skipped when matching
+    ANNOTATION_KEYS = frozenset({"reason", "description", "comment"})
 
     @staticmethod
     def should_ignore_issue(
@@ -146,6 +149,7 @@ class IgnorePatternMatcher:
                 else:
                     action_patterns.append(action_regex)
 
+        action_patterns = [p for p in action_patterns if p != ""]
         if not action_patterns:
             return actions
 
@@ -188,6 +192,9 @@ class IgnorePatternMatcher:
             - Early exit on first non-match (AND logic)
             - Uses cached compiled patterns
         """
+        pattern = {k: v for k, v in pattern.items() if k not in IgnorePatternMatcher.ANNOTATION_KEYS}
+        if not pattern:
+            return False
         for field_name, regex_pattern in pattern.items():
             # Get actual value from issue based on field name
             actual_value = IgnorePatternMatcher._get_field_value(field_name, issue, filepath)
@@ -227,6 +234,8 @@ class IgnorePatternMatcher:
             if isinstance(regex_pattern, list):
                 matched = False
                 for single_pattern in regex_pattern:
+                    if single_pattern == "":
+                        continue  # an empty regex would match every value
                     compiled = compile_pattern(str(single_pattern))
                     if compiled and compiled.search(str(actual_value)):
                         matched = True
@@ -235,6 +244,8 @@ class IgnorePatternMatcher:
                     return False  # None of the patterns matched
             else:
                 # Single pattern
+                if regex_pattern == "":
+                    return False
                 compiled = compile_pattern(str(regex_pattern))
                 if not compiled or not compiled.search(str(actual_value)):
                     return False  # Early exit on non-match

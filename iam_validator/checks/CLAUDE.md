@@ -178,9 +178,9 @@ its own severity (entry, inherited from a nested `all_of`, branch, requirement, 
 `requirements` directly suppressed findings for requirements that were never in play.
 Matching is `action_matches`, not `==`: a requirement may be a glob and IAM action names
 are case-insensitive. Mapping-form `actions` count their `any_of` entries and a single-entry `all_of`, each group on its own as `_check_policy_wide` enforces them: a longer `all_of`
-flags only statements granting every action, and `none_of` is a separate rule. `per_action_override` uses the same rule (`_owned_actions`): a user requirement replaces a default when one of its owned actions, as an IAM glob, covers the default's action (case-insensitive; `iam:Pass*` replaces `iam:PassRole`, not the reverse; an overlapping default keeps its uncovered list or `any_of` actions and is dropped when none remain, when the overlap is its single `all_of` action, or when it has `action_patterns`), and only when it enforces on every `Allow` exactly as `enforced_actions` counts it, except that severity is ignored (a `severity: none` user rule still replaces the default, silencing it) (`_owned_enforced_actions`, shared by both); a user rule whose `required_conditions` holds no evaluable entry (e.g. `none_of` only) owns no actions and keeps the default. Policy-level `invalid_condition_requirement` findings carry a `finding_key` digest (`rule_key`, never the message) of the problem text and `repr` of the raw entry, so entries differing only in presentation keys stay distinct; `_dedupe_issues` keys on it. Statement-level checks never receive `policy_file`, so a
-requirement carrying `ignore_patterns` counts as unenforced there and the finding is
-kept rather than wrongly suppressed. Check-level `ignore_patterns` and ignored finding ids are not consulted: suppressing an
+flags only statements granting every action, and `none_of` is a separate rule. `per_action_override` uses the same rule (`_owned_actions`): a user requirement replaces a default when one of its owned actions, as an IAM glob, covers the default's action (case-insensitive; `iam:Pass*` replaces `iam:PassRole`, not the reverse; an overlapping default keeps its uncovered list or `any_of` actions and is dropped when none remain, when the overlap is its single `all_of` action, or when it has `action_patterns`), and only when it enforces on every `Allow` exactly as `enforced_actions` counts it, except that severity is ignored (a `severity: none` user rule still replaces the default, silencing it) (`_owned_enforced_actions`, shared by both); a user rule whose `required_conditions` holds no evaluable entry (e.g. `none_of` only) owns no actions and keeps the default. Policy-level `invalid_condition_requirement` findings carry a `finding_key` digest (`rule_key`, never the message) of the problem text, `repr` of the raw entry and the requirement's `actions` and `action_patterns` (`_requirement_identity`; malformed `if` branches use the full `canonical_rule`, since their problem text omits the entry), so entries differing only in presentation keys, or in pattern-only requirements, stay distinct and keys survive unrelated requirement edits; `_dedupe_issues` keys on it. Statement-level checks never receive `policy_file`, so a
+requirement with an `ignore_patterns` entry holding any non-annotation key counts as unenforced there and the finding is
+kept rather than wrongly suppressed; `{}` and annotation-only entries ignore nothing and keep it enforced. Check-level `ignore_patterns` and ignored finding ids are not consulted: suppressing an
 `action_condition_enforcement` finding that way leaves `sensitive_action` silent too.
 
 ## `if:` branches in `action_condition_enforcement` (gotcha)
@@ -230,8 +230,10 @@ enumerated and are not matched there (a statement granting `Action: "*"` does ma
 it grants; when service data cannot be fetched, `_action_matches` falls back (fail-closed) to
 comparing each top-level alternative's literal prefix case-insensitively with the
 statement's text before `*`. An alternative with no literal prefix (`.*Delete.*`,
-`^[i]am:...`) matches a whole-service wildcard (`s3:*`) and is otherwise regex-matched
-against that text, so `^[i]am:Create` misses `iam:Cr*` offline. `sensitive_action` skips it, as it skips
+`^[i]am:...`, or one opening with a group or inline flag such as `(iam|sts):PassRole` or
+`(?i)iam:...`) matches a whole-service wildcard (`s3:*`) and is otherwise regex-matched
+against that text, so `^[i]am:Create` misses `iam:Cr*` and `(iam|sts):PassRole` misses
+`iam:Pass*` offline. All `action_patterns` matching is case-insensitive. `sensitive_action` skips it, as it skips
 `Action: "*"`: `not_action_not_resource` owns that finding.
 
 ## Hardcoded severities (gotcha)
@@ -248,7 +250,7 @@ literally instead of calling `get_severity(config)`:
   **malformed** config (bad `actions` or `required_conditions` shape, unknown or non-list group,
   non-string `condition_key`/`operator`, invalid requirement, branch or entry
   `severity`, malformed `if` branch, a requirement `ignore_patterns` that is not a list of mappings — its
-  non-mapping entries are ignored, so the requirement stays enforced), where the config itself is at fault. All of these
+  non-mapping entries are ignored, so the requirement stays enforced — or whose `filepath`/`filepath_regex` is empty, non-string or not a valid regex (a list of regexes is fine), an entry `_ignore_patterns` drops so it ignores nothing; an invalid `action_patterns` regex, dropped before the statement match so it is reported only where the remaining actions match, or always when nothing else remains). A requirement is dropped for a file (`_should_ignore_filepath`) only by an entry holding a `filepath`/`filepath_regex` key and otherwise only `IgnorePatternMatcher.ANNOTATION_KEYS` (`reason`, `description`, `comment`) that matches on every filepath key (`_drops_requirement`; any other key, typos included, blocks the drop), case-insensitively like `IgnorePatternMatcher`; entries with other fields only filter findings, where the config itself is at fault. All of these
   except malformed `if` branches (`requirement_branches`, reported by `execute_policy`) come
   from one pre-pass, `_prepare_requirement`, once per policy at `statement_index=-1`; it
   returns a copy (never mutate the shared config) with null and invalid severities

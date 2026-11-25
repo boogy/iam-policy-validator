@@ -44,7 +44,7 @@ def describe_entry(entry: dict[str, Any]) -> str:
 
 
 def is_evaluable_entry(entry: Any) -> bool:
-    """Whether a condition entry has a non-empty string ``condition_key`` (and string ``operator``, if set), or a non-empty ``all_of`` of such entries; a null key or group counts as unset."""
+    """Whether a condition entry names a condition key, or an ``all_of`` of such entries, that can be evaluated."""
     if not isinstance(entry, dict) or has_key_and_group(entry):
         return False
     if entry.get("all_of") is not None:
@@ -111,7 +111,7 @@ def regex_problem(key: str, pattern: Any) -> str | None:
         return f"`{key}` must be a regex string, got `{pattern!r}`"
     try:
         compile_and_cache(pattern)
-    except re.error as exc:
+    except (re.error, OverflowError, RecursionError) as exc:
         return f"`{key}` is not a valid regex (`{pattern}`): {exc}"
     return None
 
