@@ -178,7 +178,7 @@ its own severity (entry, inherited from a nested `all_of`, branch, requirement, 
 `requirements` directly suppressed findings for requirements that were never in play.
 Matching is `action_matches`, not `==`: a requirement may be a glob and IAM action names
 are case-insensitive. Mapping-form `actions` count their `any_of` entries and a single-entry `all_of`, each group on its own as `_check_policy_wide` enforces them: a longer `all_of`
-flags only statements granting every action, and `none_of` is a separate rule. `per_action_override` uses the same rule (`_owned_actions`): a user requirement replaces a default when one of its owned actions, as an IAM glob, covers the default's action (case-insensitive; `iam:Pass*` replaces `iam:PassRole`, not the reverse; an overlapping default keeps its uncovered list or `any_of` actions and is dropped when none remain, when the overlap is its single `all_of` action, or when it has `action_patterns`), and only when it enforces on every `Allow` exactly as `enforced_actions` counts it, except that severity is ignored (a `severity: none` user rule still replaces the default, silencing it) (`_owned_enforced_actions`, shared by both); a user rule whose `required_conditions` holds no evaluable entry (e.g. `none_of` only) owns no actions and keeps the default. Policy-level `invalid_condition_requirement` findings carry a `finding_key` digest (`rule_key`, never the message) of the problem text, `repr` of the raw entry and the requirement's `actions` and `action_patterns` (`_requirement_identity`; malformed `if` branches use the full `canonical_rule`, since their problem text omits the entry), so entries differing only in presentation keys, or in pattern-only requirements, stay distinct and keys survive unrelated requirement edits; `_dedupe_issues` keys on it. Statement-level checks never receive `policy_file`, so a
+flags only statements granting every action, and `none_of` is a separate rule. `per_action_override` uses the same rule (`_owned_actions`): a user requirement replaces a default when one of its owned actions, as an IAM glob, covers the default's action (case-insensitive; `iam:Pass*` replaces `iam:PassRole`, not the reverse; an overlapping default keeps its uncovered list or `any_of` actions and is dropped when none remain, when the overlap is its single `all_of` action, or when it has `action_patterns`), and only when it enforces on every `Allow` exactly as `enforced_actions` counts it, except that severity is ignored (a `severity: none` user rule still replaces the default, silencing it) (`_owned_enforced_actions`, shared by both); a user rule whose `required_conditions` holds no evaluable entry (e.g. `none_of` only) owns no actions and keeps the default. Policy-level `invalid_condition_requirement` findings carry a `finding_key` digest (`rule_key`, never the message) of the problem text, `stable_repr` of the raw entry (`repr` with dict keys sorted, every key kept) and the requirement's `actions` and `action_patterns` (`_requirement_identity`; malformed `if` branches add the `canonical_rule` of the branch the problem names, `_branch_source`, since their problem text omits the entry), so entries differing only in presentation keys, or in pattern-only requirements, stay distinct and keys survive unrelated requirement edits; `_dedupe_issues` keys on it. Statement-level checks never receive `policy_file`, so a
 requirement with an `ignore_patterns` entry holding any non-annotation key counts as unenforced there and the finding is
 kept rather than wrongly suppressed; `{}` and annotation-only entries ignore nothing and keep it enforced. Check-level `ignore_patterns` and ignored finding ids are not consulted: suppressing an
 `action_condition_enforcement` finding that way leaves `sensitive_action` silent too.
@@ -226,8 +226,8 @@ treats an `Allow` + `NotAction` statement as granting every requirement action n
 `NotAction` glob covers (`_granted_actions`); regex `action_patterns` cannot be
 enumerated and are not matched there (a statement granting `Action: "*"` does match them).
 `action_patterns` use `re.match` (prefix; anchor with `$`), unlike `if` branch
-`resource` / `not_resource`, which use a full match. A wildcard statement is matched against them through the actions
-it grants; when service data cannot be fetched, `_action_matches` falls back (fail-closed) to
+`resource` / `not_resource`, which use a case-sensitive full match (ARNs are case-sensitive). A wildcard statement is matched against them through the actions
+it grants; when service data cannot be fetched, `_action_matches` falls back (fail-closed; logged at debug for `EXPECTED_FETCH_ERRORS`, else warning) to
 comparing each top-level alternative's literal prefix case-insensitively with the
 statement's text before `*`. An alternative with no literal prefix (`.*Delete.*`,
 `^[i]am:...`, or one opening with a group or inline flag such as `(iam|sts):PassRole` or
@@ -288,7 +288,7 @@ literally instead of calling `get_severity(config)`:
   Every finding of this check that can repeat in one statement or policy carries a `finding_key`: the principal
   for `blocked_principal`/`unauthorized_principal`; for a requirement finding `rule_key` over its group
   (`required` for a list or `all_of` leaf, `any_of`, `none_of`) and canonical entry (an `any_of` set in any order, duplicates ignored, via `finding_identity.unordered`, as in `action_condition_enforcement`), never the principal patterns;
-  for a config problem `rule_key` over the problem, the group label (`_create_invalid_entry_issue(where=)`, also named in the message) and `repr` of the offending entry (an invalid `severity` includes
+  for a config problem `rule_key` over the problem, the group label (`_create_invalid_entry_issue(where=)`, also named in the message) and `stable_repr` of the offending entry (an invalid `severity` includes
   the entry in canonical form without its presentation keys, `severity_problem_key`, so key order does not matter); never the message or the matching principals.
   `_validate_principal_condition_requirements` merges a statement's requirement findings sharing type, condition key and
   `finding_key`: matched principals unioned in statement order, severity the max, text from the most severe requirement (first in config order on a tie); `rule_key(finding_key, "public")`
@@ -376,7 +376,7 @@ Use these instead of reimplementing:
 - `sensitive_action_matcher.py` — `get_sensitive_actions_by_categories()`, `check_sensitive_actions()`
 - `policy_level_checks.py` — `check_policy_level_actions()`, `_check_all_of_pattern()`
 - `formatting.py` — `format_list_with_backticks()`
-- `finding_identity.py` — `PRESENTATION_KEYS`, `canonical_rule()`, `unordered()`, `rule_key()`, `severity_problem_key()`, `keep_most_severe()`
+- `finding_identity.py` — `PRESENTATION_KEYS`, `canonical_rule()`, `stable_repr()`, `unordered()`, `rule_key()`, `severity_problem_key()`, `keep_most_severe()`
 - `requirement_branches.py` — `requirement_branches()`, `branch_problem()`, `conditions_problem()`, `severity_problem()`, `regex_problem()`, `branch_effects()`,
   `branch_matches_resources()`, `branch_enforces_allow_everywhere()`, `is_evaluable_entry()`,
   `has_key_and_group()`, `without_null_all_of()`

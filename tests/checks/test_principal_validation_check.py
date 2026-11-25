@@ -1654,6 +1654,14 @@ class TestPrincipalListConfigRobustness:
 
         assert [(i.issue_type, i.statement_index) for i in issues] == [("invalid_condition_requirement", -1)]
 
+    async def test_non_string_allowlist_key_ignores_key_order(self, check):
+        principal = {"AWS": "arn:aws:iam::999999999999:root"}
+        forward = await self._run(check, {"allowed_principals": {"AWS": "x", "Service": "y"}}, principal)
+        backward = await self._run(check, {"allowed_principals": {"Service": "y", "AWS": "x"}}, principal)
+
+        assert [i.finding_key for i in forward] == [i.finding_key for i in backward]
+        assert any(i.issue_type == "invalid_condition_requirement" for i in forward)
+
     @pytest.mark.parametrize("allowed", [[111111111111], 111111111111, {"AWS": "x"}, True])
     async def test_allowlist_with_no_string_entries_stays_restrictive(self, check, allowed):
         issues = await self._run(check, {"allowed_principals": allowed}, {"AWS": "arn:aws:iam::999999999999:root"})

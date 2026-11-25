@@ -6,6 +6,8 @@ from typing import Any
 
 from iam_validator.core.models import ValidationIssue
 
+# `Any` throughout: rule values are arbitrary parsed YAML.
+
 PRESENTATION_KEYS = frozenset({"severity", "description", "example", "message"})
 
 
@@ -21,6 +23,19 @@ def canonical_rule(value: Any) -> Any:
         return tuple(canonical_rule(v) for v in value)
     if isinstance(value, (set, frozenset)):
         return tuple(sorted(repr(canonical_rule(v)) for v in value))
+    return repr(value)
+
+
+def stable_repr(value: Any) -> str:
+    """``repr`` of ``value`` with dict keys and set members sorted, keeping every key."""
+    if isinstance(value, dict):
+        return "{" + ", ".join(sorted(f"{stable_repr(k)}: {stable_repr(v)}" for k, v in value.items())) + "}"
+    if isinstance(value, list):
+        return "[" + ", ".join(stable_repr(v) for v in value) + "]"
+    if isinstance(value, tuple):
+        return "(" + ", ".join(stable_repr(v) for v in value) + ",)"
+    if isinstance(value, (set, frozenset)):
+        return "{" + ", ".join(sorted(stable_repr(v) for v in value)) + "}"
     return repr(value)
 
 

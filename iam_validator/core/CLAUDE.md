@@ -126,6 +126,13 @@ crashed (`settings.on_check_error: warn` is the opt-out).
 
 ---
 
+## `ignore_patterns` action pre-filter (gotcha)
+
+`IgnorePatternMatcher.filter_actions` (used by `sensitive_action` and privilege-escalation
+detection before findings exist) has no file path, so it only applies entries whose keys are
+`ACTION_FILTER_KEYS` (`action`/`action_matches` plus annotations). An entry that also names
+`filepath`, `sid`, etc. is left to `should_ignore_issue`, which ANDs every field per finding.
+
 ## Finding suppression
 
 Gated on `settings.suppress_superseded_findings` (default true) and applied in two

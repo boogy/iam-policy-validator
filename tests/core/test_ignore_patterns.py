@@ -434,3 +434,36 @@ class TestDegenerateIgnorePatterns:
         from iam_validator.core.ignore_patterns import compile_pattern
 
         assert compile_pattern("a{99999999999}") is None
+
+
+class TestFilterActionsScoping:
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            {"filepath": "dev/.*", "action": "s3:.*"},
+            {"sid": "Dev", "action": "s3:.*"},
+            {"action": "s3:.*", "typo": "x"},
+        ],
+    )
+    def test_entry_with_other_fields_filters_no_action(self, entry):
+        actions = frozenset({"s3:DeleteBucket"})
+
+        assert IgnorePatternMatcher.filter_actions(actions, [entry]) == actions
+
+    def test_action_only_entry_with_annotation_still_filters(self):
+        entry = {"action": "s3:.*", "reason": "accepted"}
+
+        assert IgnorePatternMatcher.filter_actions(frozenset({"s3:DeleteBucket"}), [entry]) == frozenset()
+
+    @pytest.mark.parametrize(("path", "ignored"), [("dev/x.json", True), ("prod/x.json", False)])
+    def test_filepath_scoped_entry_still_ignores_findings_in_its_files(self, path, ignored):
+        entry = {"filepath": "dev/.*", "action": "s3:.*"}
+        issue = ValidationIssue(
+            severity="high",
+            statement_index=0,
+            issue_type="sensitive_action",
+            message="m",
+            action="s3:DeleteBucket",
+        )
+
+        assert IgnorePatternMatcher.should_ignore_issue(issue, path, [entry]) is ignored

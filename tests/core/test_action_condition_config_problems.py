@@ -1663,3 +1663,70 @@ class TestActionPatternsWithoutServiceData:
         issues = await check.execute_policy(policy, "policy.json", failing_fetcher, config)
 
         assert any(i.issue_type == "missing_required_condition" for i in issues) is flagged
+
+
+class TestConfigProblemKeyStability:
+    @staticmethod
+    def _branch_keys(issues) -> list[str | None]:
+        return [i.finding_key for i in issues if "`if` branch" in i.message]
+
+    async def test_malformed_branch_key_survives_edits_to_another_branch(self, check):
+        bad = {"required_conditions": {"bogus": 1}}
+        before = _config({"actions": [ACTION], "if": [bad, {"required_conditions": [{"condition_key": KEY}]}]})
+        after = _config(
+            {
+                "actions": [ACTION],
+                "required_conditions": [{"condition_key": "aws:SourceAccount"}],
+                "if": [bad, {"required_conditions": [{"condition_key": KEY}, {"condition_key": "aws:SourceArn"}]}],
+            }
+        )
+
+        keys_before = self._branch_keys(await _run(check, before))
+
+        assert keys_before
+        assert self._branch_keys(await _run(check, after)) == keys_before
+
+    async def test_malformed_branches_of_pattern_only_requirements_stay_distinct(self, check):
+        bad = {"required_conditions": {"bogus": 1}}
+        config = _config(
+            {"action_patterns": ["^iam:Pass"], "if": [bad]},
+            {"action_patterns": ["^iam:PassRole$"], "if": [bad]},
+        )
+
+        assert len(set(self._branch_keys(await _run(check, config)))) == 2
+
+    async def test_malformed_entry_key_ignores_key_order(self, check):
+        def config(entry: dict[str, Any]) -> CheckConfig:
+            return _config({"actions": [ACTION], "required_conditions": [entry]})
+
+        forward = await _run(check, config({"operator": 1, "condition_key": KEY}))
+        backward = await _run(check, config({"condition_key": KEY, "operator": 1}))
+
+        assert [i.finding_key for i in forward] == [i.finding_key for i in backward]
+        assert any(i.issue_type == "invalid_condition_requirement" for i in forward)
+
+
+class _FailingFetcher:
+    def __init__(self, error: Exception):
+        self.error = error
+
+    def parse_action(self, action: str) -> tuple[str, str]:
+        service, name = action.split(":", 1)
+        return service, name
+
+    async def fetch_service_by_name(self, service: str):
+        raise self.error
+
+
+class TestActionMatchesFallback:
+    @pytest.mark.parametrize(("error", "level"), [(ValueError("not found"), "DEBUG"), (RuntimeError("bug"), "WARNING")])
+    async def test_unexpected_fetch_error_is_logged_as_a_warning(self, check, caplog, error, level):
+        caplog.set_level("DEBUG", logger="iam_validator.checks.action_condition_enforcement")
+
+        matched = await check._action_matches("iam:Pass*", "", ["^iam:PassRole"], _FailingFetcher(error))
+
+        assert matched
+        assert [r.levelname for r in caplog.records if "Falling back" in r.getMessage()] == [level]
+
+    async def test_overflowing_pattern_does_not_escape(self, check):
+        assert not await check._action_matches("s3:GetObject", "", ["a{4294967296}"], _FailingFetcher(ValueError()))

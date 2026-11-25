@@ -53,6 +53,7 @@ from iam_validator.checks.utils.finding_identity import (
     keep_most_severe,
     rule_key,
     severity_problem_key,
+    stable_repr,
     unordered,
 )
 from iam_validator.checks.utils.requirement_branches import (
@@ -935,7 +936,7 @@ class PrincipalValidationCheck(PolicyCheck):
             suggestion='Set `principals` to a principal pattern or a list of them (e.g. `- "*"`).',
             line_number=None,
             field_name="principal",
-            finding_key=rule_key("principals", repr(requirement.get("principals"))),
+            finding_key=rule_key("principals", stable_repr(requirement.get("principals"))),
         )
 
     @staticmethod
@@ -957,7 +958,7 @@ class PrincipalValidationCheck(PolicyCheck):
             ),
             line_number=None,
             field_name="principal",
-            finding_key=rule_key("non_string_principal", label, repr(entry), whole_value),
+            finding_key=rule_key("non_string_principal", label, stable_repr(entry), whole_value),
         )
 
     @staticmethod
@@ -972,7 +973,7 @@ class PrincipalValidationCheck(PolicyCheck):
             "`required_conditions`.",
             line_number=None,
             field_name="principal",
-            finding_key=rule_key("requirement_entry", problem, repr(entry)),
+            finding_key=rule_key("requirement_entry", problem, stable_repr(entry)),
         )
 
     @staticmethod
@@ -997,7 +998,7 @@ class PrincipalValidationCheck(PolicyCheck):
             ),
             line_number=None,
             field_name="principal",
-            finding_key=PrincipalValidationCheck._rule_key(kind, requirement, where, repr(entry)),
+            finding_key=PrincipalValidationCheck._rule_key(kind, requirement, where, stable_repr(entry)),
         )
 
     @classmethod

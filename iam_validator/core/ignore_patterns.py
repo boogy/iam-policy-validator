@@ -71,6 +71,9 @@ class IgnorePatternMatcher:
     # Documentation-only entry keys, skipped when matching
     ANNOTATION_KEYS = frozenset({"reason", "description", "comment"})
 
+    # Keys an entry may hold to filter actions up front; any other key scopes it to findings
+    ACTION_FILTER_KEYS = frozenset({"action", "action_matches"}) | ANNOTATION_KEYS
+
     @staticmethod
     def should_ignore_issue(
         issue: ValidationIssue,
@@ -114,7 +117,8 @@ class IgnorePatternMatcher:
         """
         Filter actions based on action ignore patterns.
 
-        Only considers patterns that contain an "action" or "action_matches" field.
+        Only considers patterns whose only matching field is "action" or "action_matches";
+        an entry that also names e.g. a filepath is left to ``should_ignore_issue``.
         This is optimized for the sensitive_action check which needs to filter
         actions before creating ValidationIssues.
 
@@ -140,6 +144,8 @@ class IgnorePatternMatcher:
         # Extract action patterns once (cache-friendly)
         action_patterns = []
         for pattern in ignore_patterns:
+            if not pattern.keys() <= IgnorePatternMatcher.ACTION_FILTER_KEYS:
+                continue
             # Support both new and old field names
             action_regex = pattern.get("action") or pattern.get("action_matches")
             if action_regex:

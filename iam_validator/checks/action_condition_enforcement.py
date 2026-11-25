@@ -23,6 +23,8 @@ import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar
 
+import httpx
+
 from iam_validator.checks.utils import format_list_with_backticks
 from iam_validator.checks.utils.aws_matching import action_matches, iam_glob_match
 from iam_validator.checks.utils.condition_matching import has_condition_key
@@ -32,6 +34,7 @@ from iam_validator.checks.utils.finding_identity import (
     keep_most_severe,
     rule_key,
     severity_problem_key,
+    stable_repr,
     unordered,
 )
 from iam_validator.checks.utils.requirement_branches import (
@@ -62,6 +65,22 @@ if TYPE_CHECKING:
     from iam_validator.core.models import IAMPolicy
 
 logger = logging.getLogger(__name__)
+
+REGEX_ERRORS = (re.error, OverflowError, RecursionError)
+EXPECTED_FETCH_ERRORS = (ValueError, OSError, httpx.HTTPError)
+_BRANCH_INDEX = re.compile(r"`if\[(\d+)\]`")
+
+
+def _branch_source(requirement: dict[str, Any], problem: str) -> Any:
+    """The config node a malformed-branch ``problem`` is about: its `if` branch, the top-level conditions or `if`."""
+    if problem.startswith(TOP_LEVEL_PREFIX):
+        return requirement.get("required_conditions")
+    branches = requirement.get("if")
+    match = _BRANCH_INDEX.match(problem)
+    if match and isinstance(branches, list) and int(match[1]) < len(branches):
+        return branches[int(match[1])]
+    return branches
+
 
 ACTIONS_SHAPE_PROBLEM = "`actions` must be a string, a list or a mapping of `all_of`/`any_of`/`none_of`"
 ACTION_PATTERNS_SHAPE_PROBLEM = "`action_patterns` must be a string or a list of regex strings"
@@ -588,7 +607,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             action=action,
             suggestion=suggestion,
             field_name="condition",
-            finding_key=rule_key("malformed", self._requirement_identity(requirement), problem, label, repr(entry)),
+            finding_key=rule_key(
+                "malformed", self._requirement_identity(requirement), problem, label, stable_repr(entry)
+            ),
         )
 
     def _create_malformed_branch_issue(self, requirement: dict[str, Any], problem: str) -> ValidationIssue:
@@ -612,7 +633,12 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 "(`Allow`/`Deny`), `resource`, `not_resource` (regex) and `severity`."
             ),
             field_name="condition",
-            finding_key=rule_key("branch", requirement.get("actions"), problem, canonical_rule(requirement)),
+            finding_key=rule_key(
+                "branch",
+                self._requirement_identity(requirement),
+                problem,
+                canonical_rule(_branch_source(requirement, problem)),
+            ),
         )
 
     @classmethod
@@ -768,7 +794,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 message=f"`{key}` {problem}, so it is not enforced: `{entry!r}`",
                 suggestion=f"Make `{key}` a list of mappings, each with `actions` and `required_conditions`.",
                 field_name="condition",
-                finding_key=rule_key("requirement_list", key, problem, repr(entry)),
+                finding_key=rule_key("requirement_list", key, problem, stable_repr(entry)),
             )
             for key, entry, problem in problems
         ]
@@ -1538,11 +1564,12 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                                 compiled_pattern = compile_and_cache(pattern, re.IGNORECASE)
                                 if compiled_pattern.match(full_granted_action):
                                     return True
-                            except re.error:
+                            except REGEX_ERRORS:
                                 continue
 
                 except Exception as exc:  # pylint: disable=broad-exception-caught
-                    logger.debug("Falling back to prefix matching for %s: %r", statement_action, exc)
+                    level = logging.DEBUG if isinstance(exc, EXPECTED_FETCH_ERRORS) else logging.WARNING
+                    logger.log(level, "Falling back to prefix matching for %s: %r", statement_action, exc)
                     raw_prefix = statement_action.split("*", 1)[0]
                     stmt_prefix = raw_prefix.lower()
                     whole_service = statement_action.endswith(":*") and raw_prefix.count(":") == 1
@@ -1559,7 +1586,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             try:
                                 if compile_and_cache(pattern, re.IGNORECASE).match(raw_prefix):
                                     return True
-                            except re.error:
+                            except REGEX_ERRORS:
                                 continue
 
         for pattern in patterns:
@@ -1567,7 +1594,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 compiled_pattern = compile_and_cache(pattern, re.IGNORECASE)
                 if compiled_pattern.match(statement_action):
                     return True
-            except re.error:
+            except REGEX_ERRORS:
                 continue
 
         return False
