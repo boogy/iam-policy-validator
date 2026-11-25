@@ -195,7 +195,7 @@ verifying it is still the operator's responsibility in that case).
 
 Packaging: `docker build --target lambda` builds a container image (the Lambda
 `lambda` extra pulls in Mangum; `mcp` alone does not) from the repo-root
-`Dockerfile`, based on `public.ecr.aws/lambda/python:3.13`. There is no zip-based
+`Dockerfile`, based on `public.ecr.aws/lambda/python:${PYTHON_VERSION}`. There is no zip-based
 packaging target.
 
 ### Hosted config resolution + config_digest

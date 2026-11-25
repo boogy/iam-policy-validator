@@ -1,0 +1,63 @@
+# Only action_condition_enforcement runs, so the fixture needs no AWS service data.
+action_resource_matching:
+  enabled: false
+action_validation:
+  enabled: false
+condition_key_validation:
+  enabled: false
+condition_type_mismatch:
+  enabled: false
+full_wildcard:
+  enabled: false
+ifexists_condition_usage:
+  enabled: false
+mfa_condition_antipattern:
+  enabled: false
+not_action_not_resource:
+  enabled: false
+not_principal_validation:
+  enabled: false
+policy_size:
+  enabled: false
+policy_structure:
+  enabled: false
+policy_type_validation:
+  enabled: false
+principal_validation:
+  enabled: false
+rcp_best_practices:
+  enabled: false
+resource_validation:
+  enabled: false
+sensitive_action:
+  enabled: false
+service_wildcard:
+  enabled: false
+set_operator_validation:
+  enabled: false
+sid_uniqueness:
+  enabled: false
+trust_policy_validation:
+  enabled: false
+wildcard_action:
+  enabled: false
+wildcard_resource:
+  enabled: false
+
+action_condition_enforcement:
+  merge_strategy: user_only
+  action_condition_requirements:
+    - actions: ["bedrock:CallWithBearerToken"]
+      severity: critical
+      if:
+        - effect: Allow
+          required_conditions:
+            - condition_key: bedrock:bearerTokenType
+              operator: StringEquals
+              expected_value: SHORT_TERM
+        - effect: Deny
+          severity: high
+          required_conditions:
+            - condition_key: bedrock:bearerTokenType
+              operator: StringNotEquals
+              expected_value: SHORT_TERM

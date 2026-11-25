@@ -306,3 +306,38 @@ class TestFindingFingerprintEdgeCases:
         hash_value = fingerprint.to_hash()
 
         assert len(hash_value) == 16
+
+
+class TestFindingKey:
+    @staticmethod
+    def _issue(finding_key: str | None) -> ValidationIssue:
+        return ValidationIssue(
+            severity="error",
+            statement_index=0,
+            issue_type="missing_principal_condition_any_of",
+            message="m",
+            check_id="principal_validation",
+            finding_key=finding_key,
+        )
+
+    def test_unset_finding_key_keeps_existing_ids(self):
+        fingerprint = FindingFingerprint.from_issue(self._issue(None), "p.json")
+
+        assert fingerprint.to_hash() == "98d4fbbfc7f5961b"
+
+    def test_finding_key_distinguishes_ids(self):
+        first = FindingFingerprint.from_issue(self._issue("a"), "p.json").to_hash()
+        second = FindingFingerprint.from_issue(self._issue("b"), "p.json").to_hash()
+
+        assert first != second
+
+    def test_finding_key_survives_a_json_round_trip(self):
+        issue = self._issue("a")
+        restored = ValidationIssue.model_validate_json(issue.model_dump_json())
+
+        assert FindingFingerprint.from_issue(restored, "p.json").to_hash() == (
+            FindingFingerprint.from_issue(issue, "p.json").to_hash()
+        )
+
+    def test_unset_finding_key_is_not_serialized(self):
+        assert "finding_key" not in self._issue(None).model_dump()

@@ -1,0 +1,250 @@
+"""Unit tests for iam_validator.checks.utils.requirement_branches."""
+
+import pytest
+
+from iam_validator.checks.utils.requirement_branches import (
+    branch_effects,
+    branch_enforces_allow_everywhere,
+    branch_matches_resources,
+    branch_problem,
+    has_key_and_group,
+    is_evaluable_entry,
+    requirement_branches,
+    severity_problem,
+)
+from iam_validator.core.models import Statement
+
+CONDS = [{"condition_key": "bedrock:bearerTokenType"}]
+
+
+def _stmt(**kwargs) -> Statement:
+    return Statement(effect="Allow", action="s3:GetObject", **kwargs)
+
+
+def test_well_formed_branch_has_no_problem():
+    branch = {
+        "effect": ["allow", "Deny"],
+        "resource": "arn:.*",
+        "severity": "high",
+        "required_conditions": CONDS,
+    }
+    assert branch_problem(branch) is None
+
+
+@pytest.mark.parametrize(
+    ("branch", "fragment"),
+    [
+        ("Allow", "must be a mapping"),
+        ({"resources": "x", "required_conditions": CONDS}, "unknown key(s) `resources`"),
+        ({"effect": "Allow"}, "`required_conditions` is missing or empty"),
+        ({"required_conditions": []}, "`required_conditions` is missing or empty"),
+        ({"required_conditions": {}}, "`required_conditions` is missing or empty"),
+        ({"required_conditions": {"all_of": []}}, "`required_conditions` is missing or empty"),
+        (
+            {"required_conditions": {"all_of": {"condition_key": "aws:X"}}},
+            "`required_conditions.all_of` must be a list",
+        ),
+        (
+            {"required_conditions": {"any_of": CONDS, "none_of": "aws:X"}},
+            "`required_conditions.none_of` must be a list",
+        ),
+        ({"effect": "Permit", "required_conditions": CONDS}, "`effect` must be"),
+        ({"effect": [], "required_conditions": CONDS}, "`effect` must be"),
+        ({"resource": "arn:(", "required_conditions": CONDS}, "not a valid regex"),
+        ({"resource": ["arn:.*"], "required_conditions": CONDS}, "must be a regex string"),
+        ({"not_resource": 5, "required_conditions": CONDS}, "must be a regex string"),
+        ({"resource": "a", "not_resource": "b", "required_conditions": CONDS}, "mutually exclusive"),
+        ({"effect": "Deny", "required_conditions": {"none_of": CONDS}}, "never fires"),
+        ({"effect": ["deny"], "required_conditions": {"none_of": CONDS, "all_of": []}}, "never fires"),
+    ],
+)
+def test_branch_problem_reports(branch, fragment):
+    problem = branch_problem(branch)
+    assert problem is not None
+    assert fragment in problem
+
+
+@pytest.mark.parametrize("raw", [None, "Allow", {}, []])
+def test_requirement_branches_rejects_non_list_or_empty_if(raw):
+    branches, problems = requirement_branches({"if": raw})
+    assert branches == []
+    assert len(problems) == 1
+    assert "`if` must be a non-empty list" in problems[0]
+
+
+def test_requirement_branches_names_the_bad_branch_and_keeps_good_ones():
+    good = {"effect": "Allow", "required_conditions": CONDS}
+    branches, problems = requirement_branches({"if": [good, {"resources": "x", "required_conditions": CONDS}]})
+    assert branches == [good]
+    assert len(problems) == 1
+    assert problems[0].startswith("`if[1]`")
+
+
+def test_requirement_branches_adds_top_level_required_conditions_as_unscoped_branch():
+    branches, problems = requirement_branches(
+        {"if": [{"effect": "Deny", "required_conditions": CONDS}], "required_conditions": CONDS}
+    )
+    assert problems == []
+    assert branches[-1] == {"required_conditions": CONDS}
+
+
+def test_branch_effects_defaults_to_allow():
+    assert branch_effects({}) == {"Allow"}
+    assert branch_effects({"effect": "deny"}) == {"Deny"}
+    assert branch_effects({"effect": ["ALLOW", "deny"]}) == {"Allow", "Deny"}
+
+
+def test_resource_match_is_anchored():
+    branch = {"resource": "arn:aws:s3:::prod"}
+    assert branch_matches_resources(branch, _stmt(resource="arn:aws:s3:::prod"))
+    assert not branch_matches_resources(branch, _stmt(resource="arn:aws:s3:::prod-backup"))
+    assert not branch_matches_resources(branch, _stmt(resource="xarn:aws:s3:::prod"))
+
+
+def test_resource_match_any_entry_and_case_sensitive():
+    branch = {"resource": "arn:aws:s3:::prod/.*"}
+    assert branch_matches_resources(branch, _stmt(resource=["arn:aws:s3:::dev/x", "arn:aws:s3:::prod/x"]))
+    assert not branch_matches_resources(branch, _stmt(resource="arn:aws:s3:::PROD/x"))
+
+
+def test_wildcard_resource_is_not_special_cased():
+    assert not branch_matches_resources({"resource": "arn:aws:s3:::prod/.*"}, _stmt(resource="*"))
+    assert branch_matches_resources({"resource": ".*"}, _stmt(resource="*"))
+
+
+def test_resource_and_not_resource_target_their_own_field():
+    assert not branch_matches_resources({"resource": ".*"}, _stmt(not_resource="arn:aws:s3:::prod/x"))
+    assert branch_matches_resources({"not_resource": "arn:aws:s3:::prod/.*"}, _stmt(not_resource="arn:aws:s3:::prod/x"))
+    assert not branch_matches_resources({"not_resource": ".*"}, _stmt(resource="arn:aws:s3:::prod/x"))
+
+
+def test_branch_without_resource_keys_matches_any_statement():
+    assert branch_matches_resources({}, _stmt(resource="anything"))
+
+
+def test_branch_enforces_allow_everywhere():
+    assert branch_enforces_allow_everywhere({})
+    assert branch_enforces_allow_everywhere({"effect": ["Deny", "allow"]})
+    assert not branch_enforces_allow_everywhere({"effect": "Deny"})
+    assert not branch_enforces_allow_everywhere({"effect": "Allow", "resource": ".*"})
+    assert not branch_enforces_allow_everywhere({"not_resource": ".*"})
+
+
+@pytest.mark.parametrize("severity", [None, "high", "error"])
+def test_severity_problem_accepts_unset_or_valid(severity):
+    assert severity_problem(severity) is None
+
+
+@pytest.mark.parametrize("severity", ["urgent", "High", 5, ["high"]])
+def test_severity_problem_rejects_invalid(severity):
+    problem = severity_problem(severity)
+    assert problem is not None
+    assert "`severity` must be one of" in problem
+
+
+def test_branch_problem_leaves_severity_to_the_caller():
+    assert branch_problem({"severity": "urgent", "required_conditions": CONDS}) is None
+
+
+@pytest.mark.parametrize("required_conditions", ["aws:SourceIp", 5])
+def test_truthy_scalar_required_conditions_is_not_called_missing(required_conditions):
+    problem = branch_problem({"required_conditions": required_conditions})
+    assert problem == "`required_conditions` must be a list or a mapping of `all_of`/`any_of`/`none_of`"
+
+
+@pytest.mark.parametrize(
+    ("entry", "expected"),
+    [
+        ({"condition_key": "aws:SourceArn"}, True),
+        ({"condition_key": "aws:SourceArn", "operator": "StringEquals"}, True),
+        ({"all_of": [{"condition_key": "a"}, {"all_of": [{"condition_key": "b"}]}]}, True),
+        ("aws:SourceArn", False),
+        ({"condition_key": ""}, False),
+        ({"condition_key": 5}, False),
+        ({"condition_key": "a", "operator": ["StringEquals"]}, False),
+        ({"all_of": []}, False),
+        ({"all_of": "a"}, False),
+        ({"all_of": [{"condition_key": "a"}, "b"]}, False),
+    ],
+)
+def test_is_evaluable_entry(entry, expected):
+    assert is_evaluable_entry(entry) is expected
+
+
+def test_entry_with_condition_key_and_all_of_is_not_evaluable():
+    assert not is_evaluable_entry({"condition_key": "aws:X", "all_of": [{"condition_key": "aws:Y"}]})
+
+
+@pytest.mark.parametrize("value", [False, 0, ""])
+def test_falsy_scalar_required_conditions_is_a_shape_problem(value):
+    assert branch_problem({"required_conditions": value}) == (
+        "`required_conditions` must be a list or a mapping of `all_of`/`any_of`/`none_of`"
+    )
+
+
+def test_null_condition_key_beside_all_of_is_evaluable():
+    assert is_evaluable_entry({"condition_key": None, "all_of": [{"condition_key": "aws:SourceVpc"}]})
+
+
+def test_null_all_of_beside_condition_key_is_evaluable():
+    assert is_evaluable_entry({"condition_key": "aws:MultiFactorAuthPresent", "all_of": None})
+
+
+@pytest.mark.parametrize(
+    "entry", [{"all_of": None}, {"condition_key": None, "all_of": None}, {"condition_key": "", "all_of": None}]
+)
+def test_null_all_of_without_key_is_not_evaluable(entry):
+    assert not is_evaluable_entry(entry)
+
+
+@pytest.mark.parametrize(
+    ("entry", "expected"),
+    [
+        ({"condition_key": "aws:X", "all_of": []}, True),
+        ({"condition_key": "", "all_of": [{"condition_key": "aws:Y"}]}, True),
+        ({"condition_key": None, "all_of": [{"condition_key": "aws:Y"}]}, False),
+        ({"condition_key": "aws:X", "all_of": None}, False),
+        ({"condition_key": "aws:X"}, False),
+        ("aws:X", False),
+    ],
+)
+def test_has_key_and_group(entry, expected):
+    assert has_key_and_group(entry) is expected
+
+
+@pytest.mark.parametrize(
+    "branch",
+    [
+        {"effect": ["Allow", "Deny"], "required_conditions": {"none_of": CONDS}},
+        {"required_conditions": {"none_of": CONDS}},
+        {"effect": "Deny", "required_conditions": {"none_of": CONDS, "all_of": CONDS}},
+        {"effect": "Deny", "required_conditions": CONDS},
+    ],
+)
+def test_branch_that_can_fire_with_none_of_has_no_problem(branch):
+    assert branch_problem(branch) is None
+
+
+@pytest.mark.parametrize("effect", ["Deny", ["deny"]])
+def test_deny_only_branch_on_forbidden_actions_is_reported(effect):
+    requirement = {"actions": {"none_of": ["iam:CreateUser"]}, "if": [{"effect": effect, "required_conditions": CONDS}]}
+
+    branches, problems = requirement_branches(requirement)
+
+    assert branches == []
+    assert problems and "never fires" in problems[0]
+
+
+@pytest.mark.parametrize(
+    "requirement",
+    [
+        {
+            "actions": {"none_of": ["iam:CreateUser"]},
+            "if": [{"effect": ["Allow", "Deny"], "required_conditions": CONDS}],
+        },
+        {"actions": {"none_of": ["a:B"], "any_of": ["c:D"]}, "if": [{"effect": "Deny", "required_conditions": CONDS}]},
+        {"actions": ["iam:CreateUser"], "if": [{"effect": "Deny", "required_conditions": CONDS}]},
+    ],
+)
+def test_branch_that_can_fire_on_forbidden_actions_is_kept(requirement):
+    assert requirement_branches(requirement) == (requirement["if"], [])

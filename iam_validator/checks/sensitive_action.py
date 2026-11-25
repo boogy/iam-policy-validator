@@ -161,7 +161,7 @@ class SensitiveActionCheck(PolicyCheck):
         resources = statement.get_resources()
         return bool(resources) and not statement.not_resource and all("*" not in r for r in resources)
 
-    def _get_actions_covered_by_condition_enforcement(self, config: CheckConfig) -> set[str]:
+    def _get_actions_covered_by_condition_enforcement(self, config: CheckConfig) -> frozenset[str]:
         """
         Get the actions `action_condition_enforcement` will actually enforce.
 
@@ -174,9 +174,9 @@ class SensitiveActionCheck(PolicyCheck):
             config: Check configuration with root_config access
 
         Returns:
-            Set of action strings that are covered by condition requirements
+            Frozen set of action strings that are covered by condition requirements
         """
-        return ActionConditionEnforcementCheck.enforced_actions(config.root_config)
+        return frozenset(ActionConditionEnforcementCheck.enforced_actions(config.root_config))
 
     def _get_category_specific_suggestion(self, action: str, config: CheckConfig) -> tuple[str, str]:
         """

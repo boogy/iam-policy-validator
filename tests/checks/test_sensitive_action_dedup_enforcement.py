@@ -68,6 +68,13 @@ class TestSuppressionRequiresActualEnforcement:
 
         assert [i.issue_type for i in issues] == ["missing_condition"]
 
+    @pytest.mark.parametrize("actions", [{"any_of": ["iam:PassRole"]}, {"all_of": ["iam:PassRole"]}])
+    async def test_a_mapping_form_requirement_suppresses(self, check, actions):
+        requirement = {**PASS_ROLE_REQUIREMENT, "actions": actions}
+        config = _config({"merge_strategy": "user_only", "action_condition_requirements": [requirement]})
+
+        assert await _run(check, config) == []
+
     async def test_a_disabled_enforcement_check_suppresses_nothing(self, check):
         config = _config({"enabled": False, "requirements": [PASS_ROLE_REQUIREMENT]})
 
@@ -135,6 +142,51 @@ class TestEnforcedActions:
 
         assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
 
+    @pytest.mark.parametrize(
+        "required_conditions",
+        [
+            {"none_of": [{"condition_key": "aws:SourceIp"}]},
+            {"all_of": [], "none_of": [{"condition_key": "aws:SourceIp"}]},
+        ],
+    )
+    def test_a_none_of_only_requirement_enforces_nothing(self, required_conditions):
+        requirement = {"actions": ["iam:PassRole"], "required_conditions": required_conditions}
+        root = {
+            "action_condition_enforcement": {
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [requirement],
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    def test_a_none_of_only_if_branch_enforces_nothing(self):
+        branch = {"required_conditions": {"none_of": [{"condition_key": "aws:SourceIp"}]}}
+        requirement = {"actions": ["iam:PassRole"], "if": [branch]}
+        root = {
+            "action_condition_enforcement": {
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [requirement],
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    def test_a_none_of_requirement_with_any_of_still_enforces(self):
+        required_conditions = {
+            "any_of": [{"condition_key": "iam:PassedToService"}],
+            "none_of": [{"condition_key": "aws:SourceIp"}],
+        }
+        requirement = {"actions": ["iam:PassRole"], "required_conditions": required_conditions}
+        root = {
+            "action_condition_enforcement": {
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [requirement],
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
+
     def test_an_empty_config_enforces_nothing(self):
         assert ActionConditionEnforcementCheck.enforced_actions({}) == set()
 
@@ -150,3 +202,164 @@ class TestEnforcedActions:
 
         assert ActionConditionEnforcementCheck.enforced_actions(root, "prod/policy.json") == {"iam:PassRole"}
         assert ActionConditionEnforcementCheck.enforced_actions(root, "tests/policy.json") == set()
+
+    @pytest.mark.parametrize(
+        "ace_config",
+        [
+            {"requirements": [{**PASS_ROLE_REQUIREMENT, "severity": "none"}]},
+            {"severity": "none", "requirements": [PASS_ROLE_REQUIREMENT]},
+            {
+                "requirements": [
+                    {
+                        "actions": ["iam:PassRole"],
+                        "if": [
+                            {"required_conditions": PASS_ROLE_REQUIREMENT["required_conditions"], "severity": "none"}
+                        ],
+                    }
+                ]
+            },
+            {
+                "requirements": [
+                    {
+                        "actions": ["iam:PassRole"],
+                        "severity": "none",
+                        "if": [{"required_conditions": PASS_ROLE_REQUIREMENT["required_conditions"]}],
+                    }
+                ]
+            },
+        ],
+        ids=["requirement", "check", "branch", "inherited-by-branch"],
+    )
+    def test_a_severity_none_requirement_enforces_nothing(self, ace_config):
+        root = {"action_condition_enforcement": ace_config}
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    @pytest.mark.parametrize(
+        "required_conditions",
+        [
+            [{"condition_key": "iam:PassedToService", "severity": "none"}],
+            {"all_of": [{"condition_key": "iam:PassedToService", "severity": "none"}]},
+            [{"severity": "none", "all_of": [{"condition_key": "iam:PassedToService"}]}],
+        ],
+        ids=["list", "all_of", "nested-all_of"],
+    )
+    def test_a_requirement_whose_every_entry_is_severity_none_enforces_nothing(self, required_conditions):
+        root = {
+            "action_condition_enforcement": {
+                "requirements": [{"actions": ["iam:PassRole"], "required_conditions": required_conditions}]
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    def test_an_entry_severity_overrides_a_none_requirement_severity(self):
+        required_conditions = [{"condition_key": "iam:PassedToService", "severity": "high"}]
+        root = {
+            "action_condition_enforcement": {
+                "requirements": [
+                    {"actions": ["iam:PassRole"], "severity": "none", "required_conditions": required_conditions}
+                ]
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
+
+    def test_an_any_of_entry_severity_is_not_what_reports(self):
+        required_conditions = {"any_of": [{"condition_key": "iam:PassedToService", "severity": "none"}]}
+        root = {
+            "action_condition_enforcement": {
+                "requirements": [{"actions": ["iam:PassRole"], "required_conditions": required_conditions}]
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
+
+    @pytest.mark.parametrize(
+        "root",
+        [
+            {"action_condition_enforcement": {"hide_severities": ["high"], "requirements": [PASS_ROLE_REQUIREMENT]}},
+            {"action_condition_enforcement": {"hide_severities": "high", "requirements": [PASS_ROLE_REQUIREMENT]}},
+            {"action_condition_enforcement": {"hide_severities": ("high",), "requirements": [PASS_ROLE_REQUIREMENT]}},
+            {"action_condition_enforcement": {"hide_severities": {"high"}, "requirements": [PASS_ROLE_REQUIREMENT]}},
+            {
+                "settings": {"hide_severities": ["high"]},
+                "action_condition_enforcement": {"requirements": [PASS_ROLE_REQUIREMENT]},
+            },
+            {
+                "settings": {"hide_severities": frozenset({"high"})},
+                "action_condition_enforcement": {"requirements": [PASS_ROLE_REQUIREMENT]},
+            },
+        ],
+        ids=["check", "check-scalar", "check-tuple", "check-set", "global", "global-frozenset"],
+    )
+    def test_a_hidden_severity_enforces_nothing(self, root):
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    def test_a_check_hide_severities_overrides_the_global_one(self):
+        root = {
+            "settings": {"hide_severities": ["high"]},
+            "action_condition_enforcement": {"hide_severities": ["low"], "requirements": [PASS_ROLE_REQUIREMENT]},
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
+
+    def test_a_branch_severity_overrides_a_none_requirement_severity(self):
+        branch = {"required_conditions": PASS_ROLE_REQUIREMENT["required_conditions"], "severity": "high"}
+        root = {
+            "action_condition_enforcement": {
+                "requirements": [{"actions": ["iam:PassRole"], "severity": "none", "if": [branch]}]
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
+
+    @pytest.mark.parametrize("key", ["requirements", "policy_level_requirements"])
+    @pytest.mark.parametrize("policy_file", [None, "tests/policy.json"])
+    def test_an_ignored_default_requirement_enforces_nothing(self, key, policy_file):
+        root = {
+            "action_condition_enforcement": {
+                key: [{**PASS_ROLE_REQUIREMENT, "ignore_patterns": [{"filepath": "^tests/"}]}],
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root, policy_file) == set()
+
+    def test_a_default_requirement_ignored_for_another_file_still_enforces(self):
+        root = {
+            "action_condition_enforcement": {
+                "requirements": [{**PASS_ROLE_REQUIREMENT, "ignore_patterns": [{"filepath": "^tests/"}]}],
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root, "prod/policy.json") == {"iam:PassRole"}
+
+
+class TestCoverageTracksTheLiveConfig:
+    async def test_a_new_root_config_is_recomputed(self, check):
+        assert await _run(check, _config({"requirements": [PASS_ROLE_REQUIREMENT]})) == []
+
+        issues = await _run(check, _config({"enabled": False, "requirements": [PASS_ROLE_REQUIREMENT]}))
+
+        assert [i.issue_type for i in issues] == ["missing_condition"]
+
+    async def test_a_requirement_added_in_place_is_seen(self, check):
+        requirements: list = []
+        config = _config({"requirements": requirements})
+        assert [i.issue_type for i in await _run(check, config)] == ["missing_condition"]
+
+        requirements.append(PASS_ROLE_REQUIREMENT)
+
+        assert await _run(check, config) == []
+
+
+class TestMalformedRequirementListsDoNotCrash:
+    @pytest.mark.parametrize("key", ["requirements", "policy_level_requirements", "action_condition_requirements"])
+    @pytest.mark.parametrize("value", [["iam:PassRole", 5], {"actions": ["iam:PassRole"]}, "iam:PassRole", 5])
+    async def test_malformed_entries_are_dropped(self, check, key, value):
+        config = _config({"requirements": [PASS_ROLE_REQUIREMENT], key: value})
+
+        issues = await _run(check, config)
+
+        expected = ["missing_condition"] if key == "requirements" else []
+        assert [i.issue_type for i in issues] == expected

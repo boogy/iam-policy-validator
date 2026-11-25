@@ -231,6 +231,7 @@ class ValidationIssue(BaseModel):
     action: str | None = None
     resource: str | None = None
     condition_key: str | None = None
+    finding_key: str | None = Field(default=None, exclude_if=lambda v: v is None)  # extra finding-id identity
     suggestion: str | None = None
     example: str | None = None  # Code example (JSON/YAML) - formatted separately for GitHub
     line_number: int | None = None  # Line number in the policy file (if available)
@@ -354,6 +355,7 @@ class ValidationIssue(BaseModel):
                     action=self.action,
                     resource=self.resource,
                     condition_key=self.condition_key,
+                    finding_key=self.finding_key,
                 )
                 parts.append(constants.FINDING_ID_MARKER_FORMAT.format(finding_id=finding_hash) + "\n")
 
@@ -362,7 +364,7 @@ class ValidationIssue(BaseModel):
         parts.append("")
 
         # Build statement context for better navigation
-        statement_context = f"Statement[{self.statement_index}]"
+        statement_context = "Policy-level" if self.statement_index == -1 else f"Statement[{self.statement_index}]"
         if self.statement_sid:
             safe_sid = sanitize(self.statement_sid, neutralize_backticks=True)
             statement_context = f"`{safe_sid}` ({statement_context})"

@@ -62,6 +62,8 @@ Policies are validated concurrently under an `asyncio.Semaphore` bounded by
 only a direct `validate_policies()` call can override it). Within a
 policy, statements are gathered concurrently and unbounded; statement order is preserved
 because `ignore_patterns` and PR-comment fingerprints anchor to it.
+`ValidationIssue.finding_key` (serialized only when set, so JSON reports keep ids) is an optional extra `compute_finding_hash`
+component for findings that share every located field; unset, ids are unchanged.
 
 `PRCommenter` resolves a finding's line through `PolicyLoader.find_statement_line_numbers`
 (JSON and YAML), memoized per file, so its mapping agrees with the `line_number` the
@@ -123,6 +125,13 @@ The single exception is `check_execution_error`: `_handle_check_error` findings 
 crashed (`settings.on_check_error: warn` is the opt-out).
 
 ---
+
+## `ignore_patterns` action pre-filter (gotcha)
+
+`IgnorePatternMatcher.filter_actions` (used by `sensitive_action` and privilege-escalation
+detection before findings exist) has no file path, so it only applies entries whose keys are
+`ACTION_FILTER_KEYS` (`action`/`action_matches` plus annotations). An entry that also names
+`filepath`, `sid`, etc. is left to `should_ignore_issue`, which ANDs every field per finding.
 
 ## Finding suppression
 

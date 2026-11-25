@@ -295,6 +295,19 @@ class TestValidationIssue:
         assert expected_icon in comment
         assert expected_label in comment
 
+    def test_to_pr_comment_labels_policy_level_issue(self):
+        issue = ValidationIssue(
+            severity="error",
+            statement_index=-1,
+            issue_type="invalid_condition_requirement",
+            message="bad config",
+        )
+
+        comment = issue.to_pr_comment(include_identifier=False)
+
+        assert "Statement[-1]" not in comment
+        assert "Policy-level" in comment
+
     def test_to_pr_comment_includes_check_id(self):
         """check_id appears with separator in PR comment output."""
         issue = ValidationIssue(

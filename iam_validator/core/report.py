@@ -263,7 +263,7 @@ class ReportGenerator:
 
             # Use 1-indexed statement numbers for user-facing output
             statement_num = issue.statement_index + 1
-            location = f"Statement {statement_num}"
+            location = "Policy-level" if issue.statement_index == -1 else f"Statement {statement_num}"
             if issue.statement_sid:
                 location += f" ({issue.statement_sid})"
             if issue.line_number is not None:

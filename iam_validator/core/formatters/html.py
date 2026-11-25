@@ -499,7 +499,7 @@ class HTMLFormatter(OutputFormatter):
 
             issues_by_statement: dict[int, list[ValidationIssue]] = {}
             for issue in policy_result.issues:
-                stmt_idx = issue.statement_index or -1
+                stmt_idx = issue.statement_index
                 if stmt_idx not in issues_by_statement:
                     issues_by_statement[stmt_idx] = []
                 issues_by_statement[stmt_idx].append(issue)
@@ -513,7 +513,7 @@ class HTMLFormatter(OutputFormatter):
             for stmt_idx, issues in sorted(issues_by_statement.items()):
                 detail += f"""
                 <div class="statement-issues">
-                    <h4>Statement {stmt_idx + 1 if stmt_idx >= 0 else "Global"}</h4>
+                    <h4>{f"Statement {stmt_idx + 1}" if stmt_idx >= 0 else "Policy-level"}</h4>
                     <ul>
                 """
                 for issue in issues:

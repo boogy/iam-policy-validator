@@ -123,3 +123,29 @@ class TestAllOfKeepsItsBehavior:
         issues = await _run(check, [requirement], _missing("s3:GetObject"))
 
         assert [i.severity for i in issues] == [expected]
+
+
+class TestHiddenSeverityDoesNotSwallowDuplicate:
+    async def test_lower_severity_duplicate_is_reported(self, check):
+        def requirement(severity):
+            return {
+                "actions": ["iam:PassRole"],
+                "severity": severity,
+                "required_conditions": [{"condition_key": "iam:PassedToService"}],
+            }
+
+        config = CheckConfig(
+            check_id="action_condition_enforcement",
+            enabled=True,
+            hide_severities=frozenset({"critical"}),
+            config={
+                "requirements": [requirement("critical")],
+                "action_condition_requirements": [requirement("high")],
+                "merge_strategy": "append",
+            },
+        )
+        policy = IAMPolicy(version="2012-10-17", statement=[_missing("iam:PassRole")])
+
+        issues = await check.execute_policy(policy, "policy.json", AsyncMock(), config)
+
+        assert [i.severity for i in issues] == ["high"]

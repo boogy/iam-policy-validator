@@ -579,6 +579,31 @@ action_condition_enforcement:
           description: "Restrict which services can use the role"
 ```
 
+A requirement may add an `if:` list to scope its conditions by statement `effect`,
+`resource` or `not_resource` regex, with a per-branch `severity`:
+
+```yaml
+action_condition_enforcement:
+  action_condition_requirements:
+    - actions: ["bedrock:CallWithBearerToken"]
+      severity: critical
+      if:
+        - effect: Allow
+          required_conditions:
+            - condition_key: bedrock:bearerTokenType
+              operator: StringEquals
+              expected_value: SHORT_TERM
+        - effect: Deny
+          severity: high
+          required_conditions:
+            - condition_key: bedrock:bearerTokenType
+              operator: StringNotEquals
+              expected_value: SHORT_TERM
+```
+
+See [Effect- and Resource-Aware Requirements](checks/advanced-checks.md#effect-and-resource-aware-requirements-if)
+for branch keys, defaults and malformed-branch reporting.
+
 #### principal_validation
 
 ```yaml

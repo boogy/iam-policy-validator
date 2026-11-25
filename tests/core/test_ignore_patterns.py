@@ -1,5 +1,7 @@
 """Tests for ignore pattern functionality with list support."""
 
+import pytest
+
 from iam_validator.core.ignore_patterns import IgnorePatternMatcher
 from iam_validator.core.models import ValidationIssue
 
@@ -385,3 +387,83 @@ class TestIgnorePatternListSupport:
             "resource": ["arn:aws:s3:::different-bucket/.*"],  # This won't match
         }
         assert not IgnorePatternMatcher._matches_pattern(pattern, issue, "test/policy.json")
+
+
+class TestDegenerateIgnorePatterns:
+    def test_empty_entry_ignores_nothing(self):
+        issue = ValidationIssue(severity="high", issue_type="test", message="Test", statement_index=0)
+
+        assert not IgnorePatternMatcher.should_ignore_issue(issue, "policy.json", [{}])
+
+    def test_annotation_only_entry_ignores_nothing(self):
+        issue = ValidationIssue(severity="high", issue_type="test", message="Test", statement_index=0)
+
+        assert not IgnorePatternMatcher.should_ignore_issue(issue, "policy.json", [{"reason": "reviewed"}])
+
+    def test_annotation_keys_do_not_block_a_match(self):
+        issue = ValidationIssue(
+            severity="high", issue_type="test", message="Test", statement_index=0, action="iam:PassRole"
+        )
+        entry = {"action": "iam:PassRole", "reason": "approved", "description": "d", "comment": "c"}
+
+        assert IgnorePatternMatcher.should_ignore_issue(issue, "policy.json", [entry])
+
+    @pytest.mark.parametrize(
+        "entry",
+        [{"action": ""}, {"action": [""]}, {"resource": ""}, {"filepath": ""}, {"sid": ""}, {"sid": [""]}],
+    )
+    def test_empty_regex_value_ignores_nothing(self, entry):
+        issue = ValidationIssue(
+            severity="high",
+            issue_type="test",
+            message="Test",
+            statement_index=0,
+            statement_sid="S1",
+            action="iam:PassRole",
+            resource="*",
+        )
+
+        assert not IgnorePatternMatcher.should_ignore_issue(issue, "policy.json", [entry])
+
+    def test_empty_action_pattern_filters_no_action(self):
+        actions = frozenset({"iam:PassRole"})
+
+        assert IgnorePatternMatcher.filter_actions(actions, [{"action": [""]}]) == actions
+
+    def test_overflowing_repetition_is_invalid_not_a_crash(self):
+        from iam_validator.core.ignore_patterns import compile_pattern
+
+        assert compile_pattern("a{99999999999}") is None
+
+
+class TestFilterActionsScoping:
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            {"filepath": "dev/.*", "action": "s3:.*"},
+            {"sid": "Dev", "action": "s3:.*"},
+            {"action": "s3:.*", "typo": "x"},
+        ],
+    )
+    def test_entry_with_other_fields_filters_no_action(self, entry):
+        actions = frozenset({"s3:DeleteBucket"})
+
+        assert IgnorePatternMatcher.filter_actions(actions, [entry]) == actions
+
+    def test_action_only_entry_with_annotation_still_filters(self):
+        entry = {"action": "s3:.*", "reason": "accepted"}
+
+        assert IgnorePatternMatcher.filter_actions(frozenset({"s3:DeleteBucket"}), [entry]) == frozenset()
+
+    @pytest.mark.parametrize(("path", "ignored"), [("dev/x.json", True), ("prod/x.json", False)])
+    def test_filepath_scoped_entry_still_ignores_findings_in_its_files(self, path, ignored):
+        entry = {"filepath": "dev/.*", "action": "s3:.*"}
+        issue = ValidationIssue(
+            severity="high",
+            statement_index=0,
+            issue_type="sensitive_action",
+            message="m",
+            action="s3:DeleteBucket",
+        )
+
+        assert IgnorePatternMatcher.should_ignore_issue(issue, path, [entry]) is ignored
