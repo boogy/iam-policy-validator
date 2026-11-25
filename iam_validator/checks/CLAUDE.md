@@ -226,7 +226,12 @@ treats an `Allow` + `NotAction` statement as granting every requirement action n
 `NotAction` glob covers (`_granted_actions`); regex `action_patterns` cannot be
 enumerated and are not matched there (a statement granting `Action: "*"` does match them).
 `action_patterns` use `re.match` (prefix; anchor with `$`), unlike `if` branch
-`resource` / `not_resource`, which use a full match. `sensitive_action` skips it, as it skips
+`resource` / `not_resource`, which use a full match. A wildcard statement is matched against them through the actions
+it grants; when service data cannot be fetched, `_action_matches` falls back (fail-closed) to
+comparing each top-level alternative's literal prefix case-insensitively with the
+statement's text before `*`. An alternative with no literal prefix (`.*Delete.*`,
+`^[i]am:...`) matches a whole-service wildcard (`s3:*`) and is otherwise regex-matched
+against that text, so `^[i]am:Create` misses `iam:Cr*` offline. `sensitive_action` skips it, as it skips
 `Action: "*"`: `not_action_not_resource` owns that finding.
 
 ## Hardcoded severities (gotcha)

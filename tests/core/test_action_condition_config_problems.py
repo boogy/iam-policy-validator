@@ -1435,6 +1435,8 @@ class TestActionPatternsWithoutServiceData:
             ("(iam|s3):Get.*", "ec2:Run*", False),
             ("[Ii]am:Create.*", "s3:Get*", False),
             ("^iam:Create.*|.*Delete.*", "s3:Get*", False),
+            (".*Delete.*", "s3:*", True),
+            ("^[i]am:Create.*", "iam:*", True),
         ],
     )
     async def test_wildcard_statement_matches_compatible_pattern(

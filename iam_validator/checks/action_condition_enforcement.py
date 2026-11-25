@@ -1474,47 +1474,21 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         patterns: list[str],
         fetcher: AWSServiceFetcher,
     ) -> bool:
-        """
-        Check if a statement action matches a required action or pattern.
-        Supports:
-        - Exact matches: "s3:GetObject"
-        - AWS wildcards in both statement and required actions: "s3:*", "s3:Get*", "iam:Creat*"
-        - Regex patterns: "^s3:Get.*", "^iam:Delete.*"
-
-        This method handles bidirectional wildcard matching using real AWS actions from the fetcher:
-        - statement_action="iam:Create*" matches required_action="iam:CreateUser"
-        - statement_action="iam:C*" matches pattern="^iam:Create" (by checking actual AWS actions)
-        """
-        # Exact match, and bidirectional case-insensitive wildcard match
-        # (statement_action="*" or "iam:Create*", required_action="iam:CreateUser" or "iam:Creat*")
+        """Whether ``statement_action`` (an IAM glob) matches ``required_action`` or, via the actions it grants, a pattern."""
         if action_matches(statement_action, required_action):
             return True
 
-        # AWS wildcard match in statement_action (e.g., "iam:Creat*" in policy)
-        # Check if this wildcard would grant access to actions matching our patterns
         if "*" in statement_action:
-            # Check if statement wildcard overlaps with any of our action patterns
-            # Strategy: Use real AWS actions from the fetcher instead of hardcoded guesses
-            # For example: "iam:C*" should match pattern "^iam:Create" because:
-            # - "iam:C*" grants iam:CreateUser, iam:CreateRole, etc. (from AWS)
-            # - "^iam:Create" pattern is meant to catch iam:CreateUser, iam:CreateRole, etc.
-            # - Therefore they overlap
             if patterns:
                 try:
-                    # Parse the service from the wildcard action
                     service_prefix, _ = fetcher.parse_action(statement_action)
-
-                    # Fetch the real list of actions for this service
                     service_detail = await fetcher.fetch_service_by_name(service_prefix)
                     available_actions = list(service_detail.actions.keys())
-
-                    # Find which actual AWS actions the wildcard would grant
                     _, granted_actions = fetcher.match_wildcard_action(
-                        statement_action.split(":", 1)[1],  # Just the action part (e.g., "C*")
+                        statement_action.split(":", 1)[1],
                         available_actions,
                     )
 
-                    # Check if any of the granted actions match our patterns
                     for granted_action in granted_actions:
                         full_granted_action = f"{service_prefix}:{granted_action}"
                         for pattern in patterns:
@@ -1529,6 +1503,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     logger.debug("Falling back to prefix matching for %s: %r", statement_action, exc)
                     raw_prefix = statement_action.split("*", 1)[0]
                     stmt_prefix = raw_prefix.lower()
+                    whole_service = statement_action.endswith(":*") and raw_prefix.count(":") == 1
                     for pattern in patterns:
                         literals = [literal.lower() for literal in _literal_prefixes(pattern)]
                         if any(
@@ -1537,13 +1512,14 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                         ):
                             return True
                         if "" in literals:
+                            if whole_service:
+                                return True
                             try:
                                 if compile_and_cache(pattern).match(raw_prefix):
                                     return True
                             except re.error:
                                 continue
 
-        # Regex pattern match (from action_patterns config)
         for pattern in patterns:
             try:
                 compiled_pattern = compile_and_cache(pattern)

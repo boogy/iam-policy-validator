@@ -513,7 +513,7 @@ class HTMLFormatter(OutputFormatter):
             for stmt_idx, issues in sorted(issues_by_statement.items()):
                 detail += f"""
                 <div class="statement-issues">
-                    <h4>Statement {stmt_idx + 1 if stmt_idx >= 0 else "Global"}</h4>
+                    <h4>{f"Statement {stmt_idx + 1}" if stmt_idx >= 0 else "Policy-level"}</h4>
                     <ul>
                 """
                 for issue in issues:

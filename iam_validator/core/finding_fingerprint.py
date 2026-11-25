@@ -40,7 +40,7 @@ def compute_finding_hash(
         action: Specific action (optional)
         resource: Specific resource (optional)
         condition_key: Condition key (optional)
-        finding_key: Extra identity, appended only when set so existing ids are unchanged
+        finding_key: Extra identity, appended only when set, so ids of findings without one are unchanged
 
     Returns:
         16-character hex string uniquely identifying this finding
