@@ -721,7 +721,7 @@ class TestPerActionOverrideSilencingUserRule:
         assert default not in check._get_merged_requirements(config, "policy.json")
         issues = await _run(check, config, _stmt("S", condition=None))
 
-        assert [i.severity for i in issues] == ["none"]
+        assert issues == []
 
 
 class TestPerActionOverrideNonEnforcingUserRule:
@@ -1429,6 +1429,12 @@ class TestActionPatternsWithoutServiceData:
             ("^iam:Create.*", "s3:*", False),
             ("^iam:Ab?", "iam:Ac*", True),
             ("^s3:Get.*|^iam:Create.*", "iam:*", True),
+            ("^s3:Get.*|^iam:Create.*", "ec2:*", False),
+            (".*Delete.*", "s3:Get*", False),
+            (".*Delete.*", "s3:Delete*", True),
+            ("(iam|s3):Get.*", "ec2:Run*", False),
+            ("[Ii]am:Create.*", "s3:Get*", False),
+            ("^iam:Create.*|.*Delete.*", "s3:Get*", False),
         ],
     )
     async def test_wildcard_statement_matches_compatible_pattern(

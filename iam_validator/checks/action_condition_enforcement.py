@@ -71,10 +71,29 @@ IGNORE_PATTERNS_SHAPE_PROBLEM = "`ignore_patterns` must be a list of mappings"
 _LITERAL_RUN = re.compile(r"\^?([A-Za-z0-9:_-]*)")
 
 
+def _literal_prefixes(pattern: str) -> list[str]:
+    """Per top-level alternative of ``pattern``, the text its matches start with; ``""`` when unsure."""
+    alternatives: list[str] = []
+    depth, start, escaped, in_class = 0, 0, False, False
+    for index, char in enumerate(pattern):
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif in_class:
+            in_class = char != "]"
+        elif char == "[":
+            in_class = True
+        elif char in "()":
+            depth += 1 if char == "(" else -1
+        elif char == "|" and depth == 0:
+            alternatives.append(pattern[start:index])
+            start = index + 1
+    alternatives.append(pattern[start:])
+    return [_literal_prefix(alternative) for alternative in alternatives]
+
+
 def _literal_prefix(pattern: str) -> str:
-    """The text every match of ``pattern`` starts with, as far as a plain scan can tell; ``""`` when unsure."""
-    if "|" in pattern:
-        return ""
     run = _LITERAL_RUN.match(pattern)
     if run is None:
         return ""
@@ -145,7 +164,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         requirements = self._get_merged_requirements(config, policy_file)
 
         if not requirements:
-            return self._dedupe_issues(issues)
+            return self._dedupe_issues(issues, config)
 
         # Process each requirement
         for raw_requirement in requirements:
@@ -182,7 +201,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 )
                 issues.extend(statement_issues)
 
-        return self._dedupe_issues(issues)
+        return self._dedupe_issues(issues, config)
 
     async def _matches_any_statement(
         self, policy: "IAMPolicy", requirement: dict[str, Any], fetcher: AWSServiceFetcher
@@ -248,9 +267,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 )
         return issues
 
-    @staticmethod
-    def _dedupe_issues(issues: list[ValidationIssue]) -> list[ValidationIssue]:
-        """Collapse findings that differ only in severity or suggestion, keeping the most severe."""
+    @classmethod
+    def _dedupe_issues(cls, issues: list[ValidationIssue], config: CheckConfig) -> list[ValidationIssue]:
+        """Collapse kept findings that differ only in severity or suggestion, keeping the most severe."""
 
         def key(issue: ValidationIssue) -> tuple[Any, ...]:
             unidentified = issue.finding_key is None
@@ -266,7 +285,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 issue.example if unidentified else None,
             )
 
-        return keep_most_severe(issues, key)
+        return keep_most_severe([issue for issue in issues if cls._is_kept(config, issue.severity)], key)
 
     def _prepare_requirement(self, requirement: dict[str, Any]) -> tuple[dict[str, Any], list[ValidationIssue]]:
         """A copy of ``requirement`` without null or invalid severities, and one issue per config problem."""
@@ -566,12 +585,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
     @classmethod
     def enforced_actions(cls, root_config: dict[str, Any], policy_file: str | None = None) -> set[str]:
-        """The actions this check will actually enforce under ``root_config``.
-
-        Other checks dedup against this rather than reading ``requirements`` directly, so a
-        ``merge_strategy``, a disabled check, or an ``ignore_patterns`` match that stops
-        enforcement also stops the dedup that assumed it.
-        """
+        """The actions this check will actually enforce under ``root_config``."""
         own_config = cls._resolve_own_config(root_config)
         if not own_config.get("enabled", True):
             return set()
@@ -1513,11 +1527,21 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     logger.debug("Falling back to prefix matching for %s: %r", statement_action, exc)
-                    stmt_prefix = statement_action.split("*", 1)[0].lower()
+                    raw_prefix = statement_action.split("*", 1)[0]
+                    stmt_prefix = raw_prefix.lower()
                     for pattern in patterns:
-                        literal = _literal_prefix(pattern).lower()
-                        if literal.startswith(stmt_prefix) or stmt_prefix.startswith(literal):
+                        literals = [literal.lower() for literal in _literal_prefixes(pattern)]
+                        if any(
+                            literal and (literal.startswith(stmt_prefix) or stmt_prefix.startswith(literal))
+                            for literal in literals
+                        ):
                             return True
+                        if "" in literals:
+                            try:
+                                if compile_and_cache(pattern).match(raw_prefix):
+                                    return True
+                            except re.error:
+                                continue
 
         # Regex pattern match (from action_patterns config)
         for pattern in patterns:
