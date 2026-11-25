@@ -235,6 +235,69 @@ class TestEnforcedActions:
 
         assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
 
+    @pytest.mark.parametrize(
+        "required_conditions",
+        [
+            [{"condition_key": "iam:PassedToService", "severity": "none"}],
+            {"all_of": [{"condition_key": "iam:PassedToService", "severity": "none"}]},
+            [{"severity": "none", "all_of": [{"condition_key": "iam:PassedToService"}]}],
+        ],
+        ids=["list", "all_of", "nested-all_of"],
+    )
+    def test_a_requirement_whose_every_entry_is_severity_none_enforces_nothing(self, required_conditions):
+        root = {
+            "action_condition_enforcement": {
+                "requirements": [{"actions": ["iam:PassRole"], "required_conditions": required_conditions}]
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    def test_an_entry_severity_overrides_a_none_requirement_severity(self):
+        required_conditions = [{"condition_key": "iam:PassedToService", "severity": "high"}]
+        root = {
+            "action_condition_enforcement": {
+                "requirements": [
+                    {"actions": ["iam:PassRole"], "severity": "none", "required_conditions": required_conditions}
+                ]
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
+
+    def test_an_any_of_entry_severity_is_not_what_reports(self):
+        required_conditions = {"any_of": [{"condition_key": "iam:PassedToService", "severity": "none"}]}
+        root = {
+            "action_condition_enforcement": {
+                "requirements": [{"actions": ["iam:PassRole"], "required_conditions": required_conditions}]
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
+
+    @pytest.mark.parametrize(
+        "root",
+        [
+            {"action_condition_enforcement": {"hide_severities": ["high"], "requirements": [PASS_ROLE_REQUIREMENT]}},
+            {"action_condition_enforcement": {"hide_severities": "high", "requirements": [PASS_ROLE_REQUIREMENT]}},
+            {
+                "settings": {"hide_severities": ["high"]},
+                "action_condition_enforcement": {"requirements": [PASS_ROLE_REQUIREMENT]},
+            },
+        ],
+        ids=["check", "check-scalar", "global"],
+    )
+    def test_a_hidden_severity_enforces_nothing(self, root):
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    def test_a_check_hide_severities_overrides_the_global_one(self):
+        root = {
+            "settings": {"hide_severities": ["high"]},
+            "action_condition_enforcement": {"hide_severities": ["low"], "requirements": [PASS_ROLE_REQUIREMENT]},
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
+
     def test_a_branch_severity_overrides_a_none_requirement_severity(self):
         branch = {"required_conditions": PASS_ROLE_REQUIREMENT["required_conditions"], "severity": "high"}
         root = {

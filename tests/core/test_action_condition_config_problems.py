@@ -706,6 +706,24 @@ def _override_config(user: dict[str, Any]) -> tuple[dict[str, Any], CheckConfig]
     )
 
 
+class TestPerActionOverrideSilencingUserRule:
+    @pytest.mark.parametrize(
+        "user",
+        [
+            {"actions": [ACTION], "severity": "none", "required_conditions": [{"condition_key": KEY}]},
+            {"actions": [ACTION], "required_conditions": [{"condition_key": KEY, "severity": "none"}]},
+        ],
+        ids=["requirement", "entry"],
+    )
+    async def test_a_severity_none_user_rule_replaces_the_default(self, check, user):
+        default, config = _override_config(user)
+
+        assert default not in check._get_merged_requirements(config, "policy.json")
+        issues = await _run(check, config, _stmt("S", condition=None))
+
+        assert [i.severity for i in issues] == ["none"]
+
+
 class TestPerActionOverrideNonEnforcingUserRule:
     @pytest.mark.parametrize(
         "user",
@@ -717,7 +735,6 @@ class TestPerActionOverrideNonEnforcingUserRule:
                 "required_conditions": [{"condition_key": KEY, "all_of": [{"condition_key": "aws:SourceIp"}]}],
             },
             {"actions": [ACTION], "if": [{"required_conditions": {"none_of": [{"condition_key": KEY}]}}]},
-            {"actions": [ACTION], "severity": "none", "required_conditions": [{"condition_key": KEY}]},
         ],
     )
     async def test_keeps_the_default_and_matches_enforced_actions(self, check, user):

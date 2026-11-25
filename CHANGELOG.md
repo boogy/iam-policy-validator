@@ -18,6 +18,7 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Fixed
 
+- `sensitive_action` no longer suppresses a finding for an action whose every `action_condition_enforcement` finding is dropped by a condition entry's own `severity: none` or by `hide_severities` (the check's, else `settings`), and no longer reports one that an entry-level severity keeps although the requirement's is `none`. ([#240])
 - `sensitive_action` no longer suppresses a finding for an action whose `action_condition_enforcement` requirement or `if` branch has `severity: none`, or whose default-layer (`requirements` / `policy_level_requirements`) requirement `ignore_patterns` skips the file; neither check reported the missing condition. ([#240])
 - Document that `action_patterns` is a prefix match, unlike an `if` branch's anchored `resource`. ([#240])
 - `action_condition_enforcement` enforces a requirement with only `action_patterns` on a statement granting `Action: "*"`, as it already did for one with `actions`; such a statement got no finding. ([#240])

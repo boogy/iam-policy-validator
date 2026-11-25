@@ -541,6 +541,13 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         if not own_config.get("enabled", True):
             return set()
 
+        hidden = own_config.get("hide_severities")
+        if hidden is None:
+            settings = root_config.get("settings")
+            hidden = settings.get("hide_severities") if isinstance(settings, dict) else None
+        if isinstance(hidden, str):
+            hidden = [hidden]
+
         check = cls()
         config = CheckConfig(
             check_id=cls.check_id,
@@ -548,6 +555,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             severity=own_config.get("severity"),
             config=own_config,
             root_config=root_config,
+            hide_severities=frozenset(hidden) if isinstance(hidden, list) else None,
         )
         requirements = check._filter_requirements_by_filepath(
             check._get_merged_requirements(config, policy_file), policy_file
@@ -555,22 +563,56 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
         return {a for raw_requirement in requirements for a in check._owned_enforced_actions(raw_requirement, config)}
 
-    def _owned_enforced_actions(self, raw_requirement: dict[str, Any], config: CheckConfig) -> list[str]:
-        """The owned actions of a requirement that reports, on every ``Allow``, a missing evaluable condition (or detection)."""
+    def _owned_enforced_actions(self, raw_requirement: dict[str, Any], config: CheckConfig | None) -> list[str]:
+        """The owned actions of a requirement that reports, on every ``Allow``, a missing evaluable condition (or detection).
+
+        With ``config`` ``None``, a finding's severity is not considered.
+        """
         requirement, _ = self._prepare_requirement(raw_requirement)
         if "if" in requirement:
             enforces = any(
                 branch_enforces_allow_everywhere(b)
-                and self._resolve_severity(config, {**requirement, **b}) != "none"
-                and self._requires_evaluable_condition(b["required_conditions"])
+                and self._reports_missing(config, {**requirement, **b}, b["required_conditions"])
                 for b in requirement_branches(requirement)[0]
             )
         else:
             required = requirement.get("required_conditions")
-            enforces = self._resolve_severity(config, requirement) != "none" and (
-                has_no_conditions(required) or self._requires_evaluable_condition(required)
-            )
+            if has_no_conditions(required):
+                enforces = config is None or self._is_kept(config, self._resolve_severity(config, requirement))
+            else:
+                enforces = self._reports_missing(config, requirement, required)
         return self._owned_actions(requirement.get("actions", [])) if enforces else []
+
+    def _reports_missing(self, config: CheckConfig | None, requirement: dict[str, Any], required: Any) -> bool:
+        """Whether a statement lacking every entry of ``required`` gets a finding the registry keeps."""
+        if not self._requires_evaluable_condition(required):
+            return False
+        if config is None:
+            return True
+        if isinstance(required, dict):
+            if self._evaluable_requirements(required.get("any_of")) and self._is_kept(
+                config, self._resolve_severity(config, requirement)
+            ):
+                return True
+            required = required.get("all_of")
+        return any(
+            self._is_kept(config, self._resolve_severity(config, requirement, leaf))
+            for entry in self._evaluable_requirements(required)
+            for leaf in self._leaf_requirements(entry)
+        )
+
+    @classmethod
+    def _leaf_requirements(cls, entry: dict[str, Any], inherited: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """The leaves of ``entry``, each carrying the presentation keys a nested ``all_of`` passes down."""
+        merged = {**(inherited or {}), **{k: v for k, v in entry.items() if v is not None}}
+        if not isinstance(merged.get("all_of"), list):
+            return [merged]
+        passed = {k: merged[k] for k in PRESENTATION_KEYS if k in merged}
+        return [leaf for e in merged["all_of"] if isinstance(e, dict) for leaf in cls._leaf_requirements(e, passed)]
+
+    @staticmethod
+    def _is_kept(config: CheckConfig, severity: str) -> bool:
+        return severity != "none" and config.should_show_severity(severity)
 
     @staticmethod
     def _owned_actions(configured: Any) -> list[str]:
@@ -693,9 +735,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             # Non-matching defaults are kept
             # Note: We use the ORIGINAL user_requirements to determine which actions
             # are "user-defined" (even if filtered out by ignore_patterns)
-            return self._merge_per_action_override(
-                default_requirements, user_requirements, active_user_requirements, config
-            )
+            return self._merge_per_action_override(default_requirements, user_requirements, active_user_requirements)
 
         else:  # "append" (default)
             # Both defaults AND user requirements apply
@@ -781,7 +821,6 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         default_requirements: list[dict[str, Any]],
         all_user_requirements: list[dict[str, Any]],
         active_user_requirements: list[dict[str, Any]],
-        config: CheckConfig,
     ) -> list[dict[str, Any]]:
         """
         Merge user requirements with defaults on a per-action basis.
@@ -806,7 +845,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """
         # Build a set of actions that user has customized (from ALL user requirements)
         # This determines which defaults to exclude
-        user_actions = {a for req in all_user_requirements for a in self._owned_enforced_actions(req, config)}
+        user_actions = {a for req in all_user_requirements for a in self._owned_enforced_actions(req, None)}
 
         # Start with ACTIVE user requirements (filtered by ignore_patterns)
         merged = list(active_user_requirements)

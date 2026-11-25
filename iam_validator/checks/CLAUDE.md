@@ -170,13 +170,15 @@ returns an empty set when the check is disabled, and runs the real
 user-supplied `action_condition_requirements` entry moves both checks together.
 It also applies `ignore_patterns` to the default layer (`requirements`,
 `policy_level_requirements`), which `_get_merged_requirements` leaves unfiltered so
-config problems stay reported, and skips a requirement or branch whose resolved
-severity (branch, then requirement, then check) is `none`, as the registry drops those
-findings. Reading
+config problems stay reported, and skips a requirement or branch none of whose
+findings the registry keeps (`_reports_missing`): each list or `all_of` leaf resolves
+its own severity (entry, inherited from a nested `all_of`, branch, requirement, check),
+`any_of` and detection use the requirement's, and a severity of `none` or one in
+`hide_severities` (the check's, else `settings`) is dropped. Reading
 `requirements` directly suppressed findings for requirements that were never in play.
 Matching is `action_matches`, not `==`: a requirement may be a glob and IAM action names
 are case-insensitive. Mapping-form `actions` count their `any_of` entries and a single-entry `all_of`, each group on its own as `_check_policy_wide` enforces them: a longer `all_of`
-flags only statements granting every action, and `none_of` is a separate rule. `per_action_override` uses the same rule (`_owned_actions`): a user requirement replaces a default when one of its owned actions, as an IAM glob, covers the default's action (case-insensitive; `iam:Pass*` replaces `iam:PassRole`, not the reverse; an overlapping default keeps its uncovered list or `any_of` actions and is dropped when none remain, when the overlap is its single `all_of` action, or when it has `action_patterns`), and only when it enforces on every `Allow` exactly as `enforced_actions` counts it (`_owned_enforced_actions`, shared by both); a user rule whose `required_conditions` holds no evaluable entry (e.g. `none_of` only) owns no actions and keeps the default. Policy-level `invalid_condition_requirement` findings carry a `finding_key` digest (`rule_key`, never the message) of the problem text and `repr` of the raw entry, so entries differing only in presentation keys stay distinct; `_dedupe_issues` keys on it. Statement-level checks never receive `policy_file`, so a
+flags only statements granting every action, and `none_of` is a separate rule. `per_action_override` uses the same rule (`_owned_actions`): a user requirement replaces a default when one of its owned actions, as an IAM glob, covers the default's action (case-insensitive; `iam:Pass*` replaces `iam:PassRole`, not the reverse; an overlapping default keeps its uncovered list or `any_of` actions and is dropped when none remain, when the overlap is its single `all_of` action, or when it has `action_patterns`), and only when it enforces on every `Allow` exactly as `enforced_actions` counts it, except that severity is ignored (a `severity: none` user rule still replaces the default, silencing it) (`_owned_enforced_actions`, shared by both); a user rule whose `required_conditions` holds no evaluable entry (e.g. `none_of` only) owns no actions and keeps the default. Policy-level `invalid_condition_requirement` findings carry a `finding_key` digest (`rule_key`, never the message) of the problem text and `repr` of the raw entry, so entries differing only in presentation keys stay distinct; `_dedupe_issues` keys on it. Statement-level checks never receive `policy_file`, so a
 requirement carrying `ignore_patterns` counts as unenforced there and the finding is
 kept rather than wrongly suppressed.
 
