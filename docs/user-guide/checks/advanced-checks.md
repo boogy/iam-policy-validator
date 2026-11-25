@@ -109,7 +109,9 @@ block the tokens the rule wants to allow.
 `Resource` / `NotResource`); if neither is set, the branch ignores resources. The check
 skips SCPs and RCPs, so `effect: Deny` branches apply to identity, resource and trust
 policies only. A `resource` pattern is not special-cased for `Resource: "*"`:
-`arn:aws:s3:::prod/.*` does not match `"*"`, while `.*` does.
+`arn:aws:s3:::prod/.*` does not match `"*"`, while `.*` does. A requirement's
+`action_patterns` regex is a prefix match instead: `iam:Pass` also matches
+`iam:PassRole`, so end it with `$` to match whole action names only.
 
 A branch without `effect` applies to `Allow` statements only, in both action forms, as
 a requirement without `if` does. Name `Deny` explicitly to check deny statements. A

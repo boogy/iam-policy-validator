@@ -461,7 +461,11 @@ class TestActionPatternsShape:
         assert ("invalid_condition_requirement", -1) in _types(issues)
 
     async def test_pattern_only_requirement_fires_on_a_full_wildcard(self, check):
-        requirement = {"actions": [], "action_patterns": ["^iam:PassRole$"], "required_conditions": [{"condition_key": KEY}]}
+        requirement = {
+            "actions": [],
+            "action_patterns": ["^iam:PassRole$"],
+            "required_conditions": [{"condition_key": KEY}],
+        }
 
         issues = await _run(check, _config(requirement), _stmt("All", action="*"))
 
@@ -713,13 +717,14 @@ class TestPerActionOverrideNonEnforcingUserRule:
                 "required_conditions": [{"condition_key": KEY, "all_of": [{"condition_key": "aws:SourceIp"}]}],
             },
             {"actions": [ACTION], "if": [{"required_conditions": {"none_of": [{"condition_key": KEY}]}}]},
+            {"actions": [ACTION], "severity": "none", "required_conditions": [{"condition_key": KEY}]},
         ],
     )
     async def test_keeps_the_default_and_matches_enforced_actions(self, check, user):
         default, config = _override_config(user)
 
         assert default in check._get_merged_requirements(config, "policy.json")
-        assert check._owned_enforced_actions(user) == []
+        assert check._owned_enforced_actions(user, config) == []
 
     async def test_none_of_only_user_rule_still_reports_the_default_requirement(self, check):
         _, config = _override_config(

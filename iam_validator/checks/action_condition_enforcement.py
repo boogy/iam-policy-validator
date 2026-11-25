@@ -542,29 +542,34 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             return set()
 
         check = cls()
-        requirements = check._get_merged_requirements(
-            CheckConfig(
-                check_id=cls.check_id,
-                enabled=True,
-                config=own_config,
-                root_config=root_config,
-            ),
-            policy_file,
+        config = CheckConfig(
+            check_id=cls.check_id,
+            enabled=True,
+            severity=own_config.get("severity"),
+            config=own_config,
+            root_config=root_config,
+        )
+        requirements = check._filter_requirements_by_filepath(
+            check._get_merged_requirements(config, policy_file), policy_file
         )
 
-        return {a for raw_requirement in requirements for a in check._owned_enforced_actions(raw_requirement)}
+        return {a for raw_requirement in requirements for a in check._owned_enforced_actions(raw_requirement, config)}
 
-    def _owned_enforced_actions(self, raw_requirement: dict[str, Any]) -> list[str]:
-        """The owned actions of a requirement that enforces an evaluable condition (or detection) on every ``Allow``."""
+    def _owned_enforced_actions(self, raw_requirement: dict[str, Any], config: CheckConfig) -> list[str]:
+        """The owned actions of a requirement that reports, on every ``Allow``, a missing evaluable condition (or detection)."""
         requirement, _ = self._prepare_requirement(raw_requirement)
         if "if" in requirement:
             enforces = any(
-                branch_enforces_allow_everywhere(b) and self._requires_evaluable_condition(b["required_conditions"])
+                branch_enforces_allow_everywhere(b)
+                and self._resolve_severity(config, {**requirement, **b}) != "none"
+                and self._requires_evaluable_condition(b["required_conditions"])
                 for b in requirement_branches(requirement)[0]
             )
         else:
             required = requirement.get("required_conditions")
-            enforces = has_no_conditions(required) or self._requires_evaluable_condition(required)
+            enforces = self._resolve_severity(config, requirement) != "none" and (
+                has_no_conditions(required) or self._requires_evaluable_condition(required)
+            )
         return self._owned_actions(requirement.get("actions", [])) if enforces else []
 
     @staticmethod
@@ -587,7 +592,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
 
     @staticmethod
     def _requirement_entries(config: CheckConfig, key: str) -> list[dict[str, Any]]:
-        """The mapping entries of the requirement list under ``key``, a string ``actions`` or ``action_patterns`` made a list; ``execute_policy`` reports the rest."""
+        """The mapping entries of the requirement list under ``key``."""
         value = config.config.get(key)
         if not isinstance(value, list):
             return []
@@ -688,7 +693,9 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             # Non-matching defaults are kept
             # Note: We use the ORIGINAL user_requirements to determine which actions
             # are "user-defined" (even if filtered out by ignore_patterns)
-            return self._merge_per_action_override(default_requirements, user_requirements, active_user_requirements)
+            return self._merge_per_action_override(
+                default_requirements, user_requirements, active_user_requirements, config
+            )
 
         else:  # "append" (default)
             # Both defaults AND user requirements apply
@@ -774,6 +781,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         default_requirements: list[dict[str, Any]],
         all_user_requirements: list[dict[str, Any]],
         active_user_requirements: list[dict[str, Any]],
+        config: CheckConfig,
     ) -> list[dict[str, Any]]:
         """
         Merge user requirements with defaults on a per-action basis.
@@ -798,7 +806,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         """
         # Build a set of actions that user has customized (from ALL user requirements)
         # This determines which defaults to exclude
-        user_actions = {a for req in all_user_requirements for a in self._owned_enforced_actions(req)}
+        user_actions = {a for req in all_user_requirements for a in self._owned_enforced_actions(req, config)}
 
         # Start with ACTIVE user requirements (filtered by ignore_patterns)
         merged = list(active_user_requirements)

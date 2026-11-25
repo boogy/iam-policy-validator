@@ -203,6 +203,68 @@ class TestEnforcedActions:
         assert ActionConditionEnforcementCheck.enforced_actions(root, "prod/policy.json") == {"iam:PassRole"}
         assert ActionConditionEnforcementCheck.enforced_actions(root, "tests/policy.json") == set()
 
+    @pytest.mark.parametrize(
+        "ace_config",
+        [
+            {"requirements": [{**PASS_ROLE_REQUIREMENT, "severity": "none"}]},
+            {"severity": "none", "requirements": [PASS_ROLE_REQUIREMENT]},
+            {
+                "requirements": [
+                    {
+                        "actions": ["iam:PassRole"],
+                        "if": [
+                            {"required_conditions": PASS_ROLE_REQUIREMENT["required_conditions"], "severity": "none"}
+                        ],
+                    }
+                ]
+            },
+            {
+                "requirements": [
+                    {
+                        "actions": ["iam:PassRole"],
+                        "severity": "none",
+                        "if": [{"required_conditions": PASS_ROLE_REQUIREMENT["required_conditions"]}],
+                    }
+                ]
+            },
+        ],
+        ids=["requirement", "check", "branch", "inherited-by-branch"],
+    )
+    def test_a_severity_none_requirement_enforces_nothing(self, ace_config):
+        root = {"action_condition_enforcement": ace_config}
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == set()
+
+    def test_a_branch_severity_overrides_a_none_requirement_severity(self):
+        branch = {"required_conditions": PASS_ROLE_REQUIREMENT["required_conditions"], "severity": "high"}
+        root = {
+            "action_condition_enforcement": {
+                "requirements": [{"actions": ["iam:PassRole"], "severity": "none", "if": [branch]}]
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root) == {"iam:PassRole"}
+
+    @pytest.mark.parametrize("key", ["requirements", "policy_level_requirements"])
+    @pytest.mark.parametrize("policy_file", [None, "tests/policy.json"])
+    def test_an_ignored_default_requirement_enforces_nothing(self, key, policy_file):
+        root = {
+            "action_condition_enforcement": {
+                key: [{**PASS_ROLE_REQUIREMENT, "ignore_patterns": [{"filepath": "^tests/"}]}],
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root, policy_file) == set()
+
+    def test_a_default_requirement_ignored_for_another_file_still_enforces(self):
+        root = {
+            "action_condition_enforcement": {
+                "requirements": [{**PASS_ROLE_REQUIREMENT, "ignore_patterns": [{"filepath": "^tests/"}]}],
+            }
+        }
+
+        assert ActionConditionEnforcementCheck.enforced_actions(root, "prod/policy.json") == {"iam:PassRole"}
+
 
 class TestCoverageTracksTheLiveConfig:
     async def test_a_new_root_config_is_recomputed(self, check):

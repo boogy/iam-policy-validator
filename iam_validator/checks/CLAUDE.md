@@ -167,7 +167,12 @@ calls `ActionConditionEnforcementCheck.enforced_actions(root_config, policy_file
 which resolves the check's own config the way `ValidatorConfig.checks_config` does,
 returns an empty set when the check is disabled, and runs the real
 `_get_merged_requirements` — on every call, never cached, so a `root_config` edited in place is seen — so a `merge_strategy`, an `ignore_patterns` match or a
-user-supplied `action_condition_requirements` entry moves both checks together. Reading
+user-supplied `action_condition_requirements` entry moves both checks together.
+It also applies `ignore_patterns` to the default layer (`requirements`,
+`policy_level_requirements`), which `_get_merged_requirements` leaves unfiltered so
+config problems stay reported, and skips a requirement or branch whose resolved
+severity (branch, then requirement, then check) is `none`, as the registry drops those
+findings. Reading
 `requirements` directly suppressed findings for requirements that were never in play.
 Matching is `action_matches`, not `==`: a requirement may be a glob and IAM action names
 are case-insensitive. Mapping-form `actions` count their `any_of` entries and a single-entry `all_of`, each group on its own as `_check_policy_wide` enforces them: a longer `all_of`
@@ -216,7 +221,9 @@ keeping its `Deny` findings.
 `get_actions()` is empty for a `NotAction` statement. `action_condition_enforcement`
 treats an `Allow` + `NotAction` statement as granting every requirement action no
 `NotAction` glob covers (`_granted_actions`); regex `action_patterns` cannot be
-enumerated and are not matched there (a statement granting `Action: "*"` does match them). `sensitive_action` skips it, as it skips
+enumerated and are not matched there (a statement granting `Action: "*"` does match them).
+`action_patterns` use `re.match` (prefix; anchor with `$`), unlike `if` branch
+`resource` / `not_resource`, which use a full match. `sensitive_action` skips it, as it skips
 `Action: "*"`: `not_action_not_resource` owns that finding.
 
 ## Hardcoded severities (gotcha)
