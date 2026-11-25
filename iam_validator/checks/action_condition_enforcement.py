@@ -18,6 +18,7 @@ Merge Strategies (merge_strategy setting):
 For full documentation, see: docs/condition-requirements.md
 """
 
+import logging
 import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -27,6 +28,7 @@ from iam_validator.checks.utils.aws_matching import action_matches, iam_glob_mat
 from iam_validator.checks.utils.condition_matching import has_condition_key
 from iam_validator.checks.utils.finding_identity import (
     PRESENTATION_KEYS,
+    canonical_rule,
     keep_most_severe,
     rule_key,
     severity_problem_key,
@@ -59,8 +61,17 @@ from iam_validator.utils.regex import compile_and_cache
 if TYPE_CHECKING:
     from iam_validator.core.models import IAMPolicy
 
+logger = logging.getLogger(__name__)
+
 ACTIONS_SHAPE_PROBLEM = "`actions` must be a string, a list or a mapping of `all_of`/`any_of`/`none_of`"
 ACTION_PATTERNS_SHAPE_PROBLEM = "`action_patterns` must be a string or a list of regex strings"
+IGNORE_PATTERNS_SHAPE_PROBLEM = "`ignore_patterns` must be a list of mappings"
+
+
+def _ignore_patterns(requirement: dict[str, Any]) -> list[dict[str, Any]]:
+    """The mapping entries of a requirement's ``ignore_patterns``; anything else ignores nothing."""
+    value = requirement.get("ignore_patterns")
+    return [entry for entry in value if isinstance(entry, dict)] if isinstance(value, list) else []
 
 
 class ActionConditionEnforcementCheck(PolicyCheck):
@@ -138,14 +149,14 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                     policy, requirement, fetcher, config, policy_wide=uses_logical_operators
                 )
                 issues.extend(
-                    self._filter_requirement_issues(branch_issues, requirement.get("ignore_patterns", []), policy_file)
+                    self._filter_requirement_issues(branch_issues, _ignore_patterns(requirement), policy_file)
                 )
             elif uses_logical_operators:
                 # Policy-wide detection (all_of/any_of/none_of)
                 policy_issues = await self._check_policy_wide(policy, requirement, fetcher, config)
                 # Filter by requirement-level ignore_patterns
                 policy_issues = self._filter_requirement_issues(
-                    policy_issues, requirement.get("ignore_patterns", []), policy_file
+                    policy_issues, _ignore_patterns(requirement), policy_file
                 )
                 issues.extend(policy_issues)
             else:
@@ -153,7 +164,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 statement_issues = await self._check_per_statement(policy, requirement, fetcher, config)
                 # Filter by requirement-level ignore_patterns
                 statement_issues = self._filter_requirement_issues(
-                    statement_issues, requirement.get("ignore_patterns", []), policy_file
+                    statement_issues, _ignore_patterns(requirement), policy_file
                 )
                 issues.extend(statement_issues)
 
@@ -249,6 +260,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         cleaned = self._without_bad_severity(requirement, requirement, "", issues)
         self._prepare_actions(requirement, cleaned, issues)
         self._prepare_action_patterns(requirement, cleaned, issues)
+        self._report_ignore_patterns(requirement, issues)
         if "if" not in cleaned:
             if "required_conditions" in cleaned:
                 cleaned["required_conditions"] = self._prepare_conditions(
@@ -315,6 +327,15 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             return
         issues.append(self._create_malformed_requirement_issue(requirement, ACTION_PATTERNS_SHAPE_PROBLEM, patterns))
         cleaned["action_patterns"] = []
+
+    def _report_ignore_patterns(self, requirement: dict[str, Any], issues: list[ValidationIssue]) -> None:
+        value = requirement.get("ignore_patterns")
+        if value is None:
+            return
+        bad = [entry for entry in value if not isinstance(entry, dict)] if isinstance(value, list) else [value]
+        issues.extend(
+            self._create_malformed_requirement_issue(requirement, IGNORE_PATTERNS_SHAPE_PROBLEM, entry) for entry in bad
+        )
 
     def _string_actions(
         self, requirement: dict[str, Any], actions: list[Any], label: str, issues: list[ValidationIssue]
@@ -506,7 +527,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                 "(`Allow`/`Deny`), `resource`, `not_resource` (regex) and `severity`."
             ),
             field_name="condition",
-            finding_key=rule_key("branch", requirement.get("actions"), problem),
+            finding_key=rule_key("branch", requirement.get("actions"), problem, canonical_rule(requirement)),
         )
 
     @classmethod
@@ -761,7 +782,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
             Filtered list of requirements (excluding ignored ones)
 
         Example:
-            User defines: iam:CreateRole with ignore_patterns: [".*test/.*"]
+            User defines: iam:CreateRole with ignore_patterns: [{filepath: ".*test/.*"}]
             When checking test/policy.json:
             - User requirement is filtered out
             - Default iam:CreateRole requirement can apply instead
@@ -769,7 +790,7 @@ class ActionConditionEnforcementCheck(PolicyCheck):
         active_reqs = []
 
         for req in requirements:
-            ignore_patterns = req.get("ignore_patterns", [])
+            ignore_patterns = _ignore_patterns(req)
 
             if not ignore_patterns:
                 # No ignore patterns - include this requirement
@@ -1476,8 +1497,8 @@ class ActionConditionEnforcementCheck(PolicyCheck):
                             except re.error:
                                 continue
 
-                except (ValueError, Exception):  # pylint: disable=broad-exception-caught
-                    # If we can't fetch the service or parse the action, fall back to prefix matching
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    logger.debug("Falling back to prefix matching for %s: %r", statement_action, exc)
                     stmt_prefix = statement_action.rstrip("*")
                     for pattern in patterns:
                         try:

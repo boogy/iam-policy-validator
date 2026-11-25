@@ -1362,3 +1362,49 @@ class TestActionDetectedRuleIdentity:
         detected = [i for i in issues if i.issue_type == "action_detected"]
         assert len(detected) == 2
         assert len(set(_ace_ids(detected))) == 2
+
+
+class TestMalformedIgnorePatterns:
+    @pytest.mark.parametrize(
+        ("ignore_patterns", "bad_count"),
+        [({"filepath": "tests/.*"}, 1), ("tests/.*", 1), ([5, {"filepath": "nomatch"}, "x"], 2)],
+    )
+    async def test_reported_and_requirement_still_enforced(self, check, ignore_patterns, bad_count):
+        config = _config(
+            {"actions": [ACTION], "required_conditions": [{"condition_key": KEY}], "ignore_patterns": ignore_patterns}
+        )
+
+        issues = await _run(check, config)
+
+        problems = [i for i in issues if i.issue_type == "invalid_condition_requirement"]
+        assert len(problems) == bad_count
+        assert all("`ignore_patterns`" in i.message for i in problems)
+        assert [i.statement_index for i in issues if i.issue_type == "missing_required_condition"] == [0]
+
+    async def test_enforced_actions_does_not_crash_with_a_policy_file(self, check):
+        root = {
+            "action_condition_enforcement": {
+                "merge_strategy": "user_only",
+                "action_condition_requirements": [
+                    {
+                        "actions": [ACTION],
+                        "required_conditions": [{"condition_key": KEY}],
+                        "ignore_patterns": {"filepath": "nomatch"},
+                    }
+                ],
+            }
+        }
+
+        assert ACTION in ActionConditionEnforcementCheck.enforced_actions(root, "policy.json")
+
+
+class TestMalformedBranchesOfDistinctRequirementsKept:
+    async def test_two_requirements_with_same_branch_problem_both_reported(self, check):
+        config = _config(
+            {"actions": [ACTION], "if": [{"effect": "Permit", "required_conditions": [{"condition_key": "aws:A"}]}]},
+            {"actions": [ACTION], "if": [{"effect": "Permit", "required_conditions": [{"condition_key": "aws:B"}]}]},
+        )
+
+        issues = await _run(check, config)
+
+        assert [i.issue_type for i in issues].count("invalid_condition_requirement") == 2

@@ -725,7 +725,7 @@ class PrincipalValidationCheck(PolicyCheck):
                 statement, statement_idx, required_conditions_config, config, requirement
             ):
                 sample = render(matching_principals)
-                if sample.severity == "none":
+                if sample.severity == "none" or not config.should_show_severity(sample.severity):
                     continue
                 key = (sample.issue_type, sample.condition_key, sample.finding_key)
                 rank = sample.get_severity_rank()

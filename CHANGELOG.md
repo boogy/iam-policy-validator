@@ -18,6 +18,10 @@ The format is based on [Common Changelog](https://common-changelog.org/), and th
 
 ### Fixed
 
+- Keep a `principal_condition_requirements` requirement whose severity is in `hide_severities` out of the merged finding; its principals were added to a visible finding, and a hidden requirement matching `"*"` changed that finding's id. ([#240])
+- Report a requirement-level `ignore_patterns` in `action_condition_enforcement` that is not a list of mappings as `invalid_condition_requirement` and keep enforcing the requirement; a mapping or string value failed the check. ([#240])
+- Give malformed `if` branches of different `action_condition_enforcement` requirements with the same actions and problem distinct findings; they were reported once. ([#240])
+- Log at debug level when `action_condition_enforcement` falls back to prefix matching because a wildcard action could not be expanded. ([#240])
 - `sensitive_action` no longer suppresses a finding for an action whose every `action_condition_enforcement` finding is dropped by a condition entry's own `severity: none` or by `hide_severities` (the check's, else `settings`), and no longer reports one that an entry-level severity keeps although the requirement's is `none`. ([#240])
 - `sensitive_action` no longer suppresses a finding for an action whose `action_condition_enforcement` requirement or `if` branch has `severity: none`, or whose default-layer (`requirements` / `policy_level_requirements`) requirement `ignore_patterns` skips the file; neither check reported the missing condition. ([#240])
 - Document that `action_patterns` is a prefix match, unlike an `if` branch's anchored `resource`. ([#240])

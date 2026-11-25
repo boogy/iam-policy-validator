@@ -2369,3 +2369,19 @@ class TestPrincipalAnyOfDuplicates:
         issues = await _run_both(check, _principal_statement("*"), None, config)
 
         assert len(issues) == 1
+
+
+class TestPrincipalHiddenSeverityNotMerged:
+    async def test_hidden_requirement_principals_stay_out_of_visible_finding(self, check):
+        config = _requirements_config(
+            _source_arn_requirement([ROOT], "medium"),
+            _source_arn_requirement(["*"], "low"),
+        )
+        config.hide_severities = frozenset({"low"})
+        alone = _requirements_config(_source_arn_requirement([ROOT], "medium"))
+
+        issues = await _run_both(check, _principal_statement([ROOT, "*"]), None, config)
+        expected = await _run_both(check, _principal_statement([ROOT, "*"]), None, alone)
+
+        assert [(i.severity, i.message) for i in issues] == [(i.severity, i.message) for i in expected]
+        assert _finding_ids(issues) == _finding_ids(expected)
